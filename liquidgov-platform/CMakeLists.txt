@@ -46,9 +46,9 @@ target_link_libraries(liquidgov_platform_file_transfer_test PRIVATE liquidgov_pl
 add_executable(liquidgov_platform_messenger_test tests/messenger_test.cpp)
 target_link_libraries(liquidgov_platform_messenger_test PRIVATE liquidgov_platform)
 
-# Site process. Linked with blob/avatar/image_normalize for self-portraits
-# and file_type/file_transfer (+ miniz) for mail attachments. messenger
-# stays out until the messenger-groups slice needs it.
+# Site process. Linked with blob/avatar/image_normalize for self-portraits,
+# file_type/file_transfer (+ miniz) for mail attachments, and messenger for
+# group conversations (Slice C — FileStore implements ConversationStore).
 add_executable(liquidgov_http
     src/http_server.cpp
     src/auth.cpp
@@ -60,6 +60,7 @@ add_executable(liquidgov_http
     src/image_normalize.cpp
     src/file_type.cpp
     src/file_transfer.cpp
+    src/messenger.cpp
     third_party/miniz/miniz.c
     third_party/miniz/miniz_tdef.c
     third_party/miniz/miniz_tinfl.c

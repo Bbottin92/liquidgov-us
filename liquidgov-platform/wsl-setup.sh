@@ -8,7 +8,7 @@ g++ -O2 -std=c++17 \
   -I include -I third_party/stb -I third_party/miniz \
   src/http_server.cpp src/auth.cpp src/password.cpp src/session.cpp src/file_store.cpp \
   src/blob.cpp src/avatar.cpp src/image_normalize.cpp \
-  src/file_type.cpp src/file_transfer.cpp \
+  src/file_type.cpp src/file_transfer.cpp src/messenger.cpp \
   third_party/miniz/miniz.c third_party/miniz/miniz_tdef.c \
   third_party/miniz/miniz_tinfl.c third_party/miniz/miniz_zip.c \
   -lsodium -pthread \

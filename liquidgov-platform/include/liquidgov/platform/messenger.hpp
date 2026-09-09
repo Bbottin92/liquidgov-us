@@ -115,4 +115,20 @@ void report_message(ConversationStore& store, MessageId id);
 void purge_expired_deletions(ConversationStore& store, std::int64_t now,
                               std::int64_t retention_window_seconds);
 
+// The only way Pending ever becomes Active — nothing else in this file
+// promotes a member. Only the pending member themselves calls this for
+// their own AccountId; the caller (site layer) is responsible for that
+// authorization check the same way it is for every other actor param
+// here. Idempotent if already Active.
+MessengerActionResult accept_invite(ConversationStore& store, AccountId account,
+                                     ConversationId conv_id);
+
+// Removes account from the conversation outright. This is how a Pending
+// member declines — never notified, per the closed "no
+// FriendRequestDeclined" pin extended to groups — and how an Active
+// member leaves voluntarily. Same function either way; the caller does
+// not need to know which case it is.
+MessengerActionResult leave_conversation(ConversationStore& store, AccountId account,
+                                          ConversationId conv_id);
+
 } // namespace liquidgov::platform

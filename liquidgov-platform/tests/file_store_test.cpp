@@ -17,6 +17,24 @@ public:
     bool is_breached(const std::string&) const override { return false; }
 };
 
+// Minimal stand-in for the site's real SocialGraph adapter (http_server.cpp):
+// friends through FileStore's username graph, is_minor always false since
+// there is no AgeAssurance yet — same rule the site uses.
+class TestSocialGraph : public SocialGraph {
+public:
+    explicit TestSocialGraph(const FileStore& store) : store_(store) {}
+    bool are_friends(AccountId a, AccountId b) const override {
+        auto ua = store_.find_by_id(a);
+        auto ub = store_.find_by_id(b);
+        if (!ua || !ub) return false;
+        return store_.are_friends(ua->username, ub->username);
+    }
+    bool is_minor(AccountId) const override { return false; }
+
+private:
+    const FileStore& store_;
+};
+
 class AlwaysAllow : public RateLimiter {
 public:
     bool allow(const std::string&, const std::string&) override { return true; }
@@ -260,6 +278,68 @@ int main() {
         assert(store.delete_account(acc->id));
         assert(store.jukebox_of("juke").empty());
         std::cout << "jukebox LGP1 tag survives reload; purged on account delete\n";
+    }
+
+    std::uint64_t conv_id = 0;
+    std::uint64_t msg_id = 0;
+    {
+        FileStore store(path);
+        auto a = create_account(store, breach, "gc-alice", "correct-horse-battery-staple", "+15551110000");
+        auto b = create_account(store, breach, "gc-bob", "correct-horse-battery-staple", "+15551110001");
+        assert(a.error == AuthError::None && b.error == AuthError::None);
+        store.add_friend_request("gc-alice", "gc-bob");
+        store.accept_friend_request("gc-alice", "gc-bob");
+        assert(store.are_friends("gc-alice", "gc-bob"));
+
+        auto alice = store.find_by_username("gc-alice");
+        auto bob = store.find_by_username("gc-bob");
+        TestSocialGraph graph(store);
+        auto created = create_conversation(store, graph, alice->id, {bob->id}, /*is_group=*/true);
+        assert(created.error == MessengerError::None);
+        conv_id = *created.conversation_id;
+
+        auto sent = send_message(store, alice->id, conv_id, "hello group");
+        assert(sent.error == MessengerError::None);
+        msg_id = *sent.message_id;
+        auto edited = edit_message(store, alice->id, msg_id, "hello group, edited");
+        assert(edited.error == MessengerError::None);
+        std::cout << "messenger conversation/message round-trip through FileStore ok\n";
+    }
+    {
+        const std::string on_disk = slurp(path);
+        assert(on_disk.find("\ngc\t") != std::string::npos);
+        assert(on_disk.find("\ngcm\t") != std::string::npos);
+        assert(on_disk.find("\ngmsg\t") != std::string::npos);
+        assert(on_disk.find("\ngmh\t") != std::string::npos);
+        FileStore store(path);
+        auto conv = store.get_conversation(conv_id);
+        assert(conv.has_value());
+        assert(conv->members.size() == 2);
+        auto msg = store.get_message(msg_id);
+        assert(msg.has_value());
+        assert(msg->text == "hello group, edited");
+        assert(msg->edit_history.size() == 1);
+        assert(msg->edit_history[0] == "hello group");
+        std::cout << "gc/gcm/gmsg/gmh LGP1 tags survive reload\n";
+    }
+    {
+        // Unfriending routes through on_relationship_ended: the initiator
+        // (gc-alice, who unfriends here) leaves the shared group; the other
+        // party (gc-bob) stays. Age-blind, same function block() uses too.
+        FileStore store(path);
+        auto alice = store.find_by_username("gc-alice");
+        auto bob = store.find_by_username("gc-bob");
+        store.unfriend("gc-alice", "gc-bob");
+        auto conv = store.get_conversation(conv_id);
+        assert(conv.has_value());
+        bool alice_present = false, bob_present = false;
+        for (auto& m : conv->members) {
+            if (m.account == alice->id) alice_present = true;
+            if (m.account == bob->id) bob_present = true;
+        }
+        assert(!alice_present);
+        assert(bob_present);
+        std::cout << "unfriend() calls on_relationship_ended: initiator leaves the shared group\n";
     }
 
     unlink(path.c_str());

@@ -36,6 +36,15 @@
 //   av     <account_id> <blob_id> <created_at>   // self-portrait; bytes live in the blob dir
 //   jt     <owner_username> <video_id> <added_at>  // jukebox queue entry; video_id is an
 //          11-char YouTube id already validated by extract_youtube_id, never a raw URL
+//   gcn    <next_conversation_id>
+//   gmsn   <next_message_id>
+//   gc     <id> <is_group 0|1> <created_at>          // messenger.hpp Conversation, no roster
+//   gcm    <conv_id> <account_id> <state 0=Active|1=Pending>  // one line per member, in
+//          roster order; the gc line for conv_id is always written before its gcm lines
+//   gmsg   <id> <conv_id> <sender> <sent_at> <edited_at> <deletion 0|1|2> <deleted_at>
+//          <under_review 0|1> <text>                 // messenger.hpp Message, no edit_history
+//   gmh    <message_id> <text>                       // one prior version, oldest first; the
+//          gmsg line for message_id is always written before its gmh lines
 //
 // password_hash is argon2id from hash_password(). Never plaintext.
 // Phone number is not stored (signup binding only). Sessions are secrets;
@@ -43,6 +52,7 @@
 
 #include "liquidgov/platform/auth.hpp"
 #include "liquidgov/platform/avatar.hpp"
+#include "liquidgov/platform/messenger.hpp"
 
 #include <map>
 #include <optional>
@@ -135,7 +145,7 @@ std::string fingerprint_phone(const std::string& e164);
 // this id alone.
 std::optional<std::string> extract_youtube_id(const std::string& url);
 
-class FileStore : public AccountStore, public AvatarStore {
+class FileStore : public AccountStore, public AvatarStore, public ConversationStore {
 public:
     explicit FileStore(std::string path);
     ~FileStore() override = default;
@@ -229,6 +239,22 @@ public:
     void erase(AccountId owner) override;
     std::vector<Avatar> all_avatars() const;
 
+    // ConversationStore — messenger groups. See messenger.hpp for the
+    // business rules; this is storage only, same relationship FileStore
+    // has to auth.hpp/avatar.hpp above.
+    ConversationId create_conversation(const Conversation& conv) override;
+    std::optional<Conversation> get_conversation(ConversationId id) const override;
+    void save_conversation(const Conversation& conv) override;
+    std::vector<Conversation> conversations_for(AccountId account) const override;
+    MessageId save_message(const Message& msg) override;
+    std::optional<Message> get_message(MessageId id) const override;
+    void update_message(const Message& msg) override;
+    std::vector<Message> all_messages() const override;
+    // Convenience for rendering a thread: all messages in a conversation,
+    // oldest first. Not part of ConversationStore — messenger.hpp never
+    // needs "just this conversation's messages" itself.
+    std::vector<Message> messages_in(ConversationId conv_id) const;
+
     // Owner must be an existing account; video_id must already be a validated
     // id (see extract_youtube_id). Returns false on unknown owner, invalid
     // id, or a full queue (kJukeboxQueueCap) — caller renders the refusal.
@@ -268,6 +294,10 @@ private:
     std::vector<Notice> notices_;
     std::map<AccountId, Avatar> avatars_;
     std::map<std::string, std::vector<JukeboxTrack>> jukebox_;
+    ConversationId next_conv_id_ = 1;
+    MessageId next_message_id_ = 1;
+    std::map<ConversationId, Conversation> conversations_;
+    std::map<MessageId, Message> messages_;
 };
 
 } // namespace liquidgov::platform

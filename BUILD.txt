@@ -19,19 +19,25 @@ Sources for that binary:
   src/session.cpp         session ids
   src/file_store.cpp      LGP1 snapshot (accounts, sessions, blurbs, friends, mail,
                           posts, communities, blocks, inner circle, prefs, notices,
-                          avatars)
+                          avatars, jukebox, messenger conversations/messages)
   src/blob.cpp            content-addressed PNG bytes (sha256)
   src/avatar.cpp          normalize + scan + blob
   src/image_normalize.cpp stb decode/re-encode PNG
+  src/file_type.cpp       content-sniff mail attachments
+  src/file_transfer.cpp   default-deny ingest for mail attachments
+  src/messenger.cpp       group conversation business rules (Active/Pending,
+                          minor invariant, edit/delete, accept/leave)
   include/liquidgov/platform/*.hpp
   third_party/stb/        stb_image.h, stb_image_write.h
+  third_party/miniz/      OOXML (zip) sniffing for mail attachments
 
 Persistence: FileStore writes LIQUIDGOV_STORE (default ./liquidgov_accounts.lgp).
 Blob dir: LIQUIDGOV_BLOBS (default ./liquidgov_blobs).
 Format LGP1 — tab-separated percent-encoded snapshot, atomic tmp+fsync+rename,
-mode 0600. New tag `av` for self-portrait blob id. Same create_account/login
-as before; not a second auth system; not the kernel ledger. Restart keeps users
-and portraits.
+mode 0600. Tags `av` (self-portrait blob id), `gc`/`gcm`/`gmsg`/`gmh`/`gcn`/`gmsn`
+(messenger group conversations and messages — field layout documented at the top
+of file_store.hpp). Same create_account/login as before; not a second auth
+system; not the kernel ledger. Restart keeps users, portraits, and groups.
 
 Routes:
   /                genesis disclosure (not sovereignty)
@@ -43,6 +49,11 @@ Routes:
   /me/avatar       POST multipart photo (2 MiB / 1024px, PNG re-encode, no SVG)
   /portrait/<user> static PNG, nosniff, inline
   /friends /search /mail
+  /mail/attachment/<blob_id>   friend-gated attachment download
+  /mail/group/new              POST, creates a group conversation
+  /mail/g/<id>                 group thread: roster, compose, invite, leave/accept
+  /mail/g/<id>/{send,invite,accept,leave}         POST
+  /mail/g/<id>/message/<msg_id>/{edit,delete}     POST, sender-only
   /communities /c/<slug>
   /notices
   /settings        security, privacy, identity, data, notifications

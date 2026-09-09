@@ -395,6 +395,15 @@ void FileStore::unfriend(const std::string& actor, const std::string& other) {
     friends_.erase({other, actor});
     drop_requests_between(actor, other);
     strip_inner_both(actor, other);
+    // Age-blind, uniform: only the actor leaves shared group conversations
+    // (see messenger.hpp on_relationship_ended). block() calls this same
+    // function, so a block gets identical conversation-leaving behavior —
+    // no separate code path to keep in sync.
+    auto actor_id = by_username_.find(actor);
+    auto other_id = by_username_.find(other);
+    if (actor_id != by_username_.end() && other_id != by_username_.end()) {
+        on_relationship_ended(*this, actor_id->second, other_id->second);
+    }
     flush();
 }
 
@@ -808,6 +817,8 @@ void FileStore::load() {
     next_id_ = 1;
     next_post_id_ = 1;
     next_note_id_ = 1;
+    next_conv_id_ = 1;
+    next_message_id_ = 1;
     by_username_.clear();
     accounts_.clear();
     sessions_.clear();
@@ -826,6 +837,8 @@ void FileStore::load() {
     notices_.clear();
     avatars_.clear();
     jukebox_.clear();
+    conversations_.clear();
+    messages_.clear();
 
     std::ifstream in(path_, std::ios::binary);
     if (!in) return;
@@ -988,6 +1001,59 @@ void FileStore::load() {
                 throw std::runtime_error("LGP1: bad jt video_id");
             }
             jukebox_[t.owner].push_back(t);
+        } else if (tag == "gcn") {
+            if (f.size() != 2) throw std::runtime_error("LGP1: bad gcn record");
+            next_conv_id_ = parse_u64(f[1], "next_conversation_id");
+            if (next_conv_id_ == 0) next_conv_id_ = 1;
+        } else if (tag == "gmsn") {
+            if (f.size() != 2) throw std::runtime_error("LGP1: bad gmsn record");
+            next_message_id_ = parse_u64(f[1], "next_message_id");
+            if (next_message_id_ == 0) next_message_id_ = 1;
+        } else if (tag == "gc") {
+            if (f.size() != 4) throw std::runtime_error("LGP1: bad gc record");
+            Conversation conv;
+            conv.id = parse_u64(f[1], "conversation id");
+            conv.is_group = parse_bit(f[2], "conversation is_group");
+            conv.created_at = parse_i64(f[3], "conversation created_at");
+            if (conv.id == 0) throw std::runtime_error("LGP1: empty gc id");
+            if (conversations_.count(conv.id)) throw std::runtime_error("LGP1: duplicate conversation");
+            conversations_[conv.id] = conv;
+            if (conv.id >= next_conv_id_) next_conv_id_ = conv.id + 1;
+        } else if (tag == "gcm") {
+            if (f.size() != 4) throw std::runtime_error("LGP1: bad gcm record");
+            const auto conv_id = parse_u64(f[1], "gcm conversation id");
+            auto it = conversations_.find(conv_id);
+            if (it == conversations_.end()) throw std::runtime_error("LGP1: gcm with no conversation");
+            ConversationMember m;
+            m.account = parse_u64(f[2], "gcm account");
+            const auto state = parse_u64(f[3], "gcm state");
+            if (state > 1) throw std::runtime_error("LGP1: bad gcm state");
+            m.state = static_cast<MemberState>(state);
+            it->second.members.push_back(m);
+        } else if (tag == "gmsg") {
+            if (f.size() != 10) throw std::runtime_error("LGP1: bad gmsg record");
+            Message msg;
+            msg.id = parse_u64(f[1], "message id");
+            msg.conversation_id = parse_u64(f[2], "message conversation id");
+            msg.sender = parse_u64(f[3], "message sender");
+            msg.sent_at = parse_i64(f[4], "message sent_at");
+            msg.edited_at = parse_i64(f[5], "message edited_at");
+            const auto deletion = parse_u64(f[6], "message deletion");
+            if (deletion > 2) throw std::runtime_error("LGP1: bad message deletion state");
+            msg.deletion = static_cast<DeletionState>(deletion);
+            msg.deleted_at = parse_i64(f[7], "message deleted_at");
+            msg.under_review = parse_bit(f[8], "message under_review");
+            msg.text = pct_decode(f[9]);
+            if (msg.id == 0) throw std::runtime_error("LGP1: empty gmsg id");
+            if (messages_.count(msg.id)) throw std::runtime_error("LGP1: duplicate message");
+            messages_[msg.id] = msg;
+            if (msg.id >= next_message_id_) next_message_id_ = msg.id + 1;
+        } else if (tag == "gmh") {
+            if (f.size() != 3) throw std::runtime_error("LGP1: bad gmh record");
+            const auto msg_id = parse_u64(f[1], "gmh message id");
+            auto it = messages_.find(msg_id);
+            if (it == messages_.end()) throw std::runtime_error("LGP1: gmh with no message");
+            it->second.edit_history.push_back(pct_decode(f[2]));
         } else {
             throw std::runtime_error("LGP1: unknown record type '" + tag + "'");
         }
@@ -1007,6 +1073,8 @@ void FileStore::flush() {
     body << "n\t" << next_id_ << "\n";
     body << "pn\t" << next_post_id_ << "\n";
     body << "nn\t" << next_note_id_ << "\n";
+    body << "gcn\t" << next_conv_id_ << "\n";
+    body << "gmsn\t" << next_message_id_ << "\n";
     for (const auto& [id, acc] : accounts_) {
         const std::string b = blurbs_.count(id) ? blurbs_.at(id) : "";
         body << "a\t" << acc.id << "\t" << pct_encode(acc.username) << "\t"
@@ -1087,6 +1155,30 @@ void FileStore::flush() {
                  << t.added_at << "\n";
         }
     }
+    // Conversations/messages are never pruned when an account is deleted —
+    // same "keep the row, relabel at render time" choice as mail_/posts_
+    // above. The numeric sender/member id just stops resolving through
+    // find_by_id; the site layer renders that as "[deleted account]".
+    for (const auto& [id, conv] : conversations_) {
+        body << "gc\t" << conv.id << "\t" << (conv.is_group ? 1 : 0) << "\t" << conv.created_at << "\n";
+    }
+    for (const auto& [id, conv] : conversations_) {
+        for (const auto& m : conv.members) {
+            body << "gcm\t" << conv.id << "\t" << m.account << "\t"
+                 << static_cast<int>(m.state) << "\n";
+        }
+    }
+    for (const auto& [id, msg] : messages_) {
+        body << "gmsg\t" << msg.id << "\t" << msg.conversation_id << "\t" << msg.sender << "\t"
+             << msg.sent_at << "\t" << msg.edited_at << "\t" << static_cast<int>(msg.deletion) << "\t"
+             << msg.deleted_at << "\t" << (msg.under_review ? 1 : 0) << "\t" << pct_encode(msg.text)
+             << "\n";
+    }
+    for (const auto& [id, msg] : messages_) {
+        for (const auto& h : msg.edit_history) {
+            body << "gmh\t" << msg.id << "\t" << pct_encode(h) << "\n";
+        }
+    }
     const std::string data = body.str();
 
     const int fd = ::open(tmp.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
@@ -1129,6 +1221,75 @@ void FileStore::set(const Avatar& avatar) {
 void FileStore::erase(AccountId owner) {
     avatars_.erase(owner);
     flush();
+}
+
+ConversationId FileStore::create_conversation(const Conversation& conv) {
+    const ConversationId id = next_conv_id_++;
+    Conversation stored = conv;
+    stored.id = id;
+    conversations_[id] = stored;
+    flush();
+    return id;
+}
+
+std::optional<Conversation> FileStore::get_conversation(ConversationId id) const {
+    auto it = conversations_.find(id);
+    if (it == conversations_.end()) return std::nullopt;
+    return it->second;
+}
+
+void FileStore::save_conversation(const Conversation& conv) {
+    conversations_[conv.id] = conv;
+    flush();
+}
+
+std::vector<Conversation> FileStore::conversations_for(AccountId account) const {
+    std::vector<Conversation> out;
+    for (const auto& [id, conv] : conversations_) {
+        for (const auto& m : conv.members) {
+            if (m.account == account) {
+                out.push_back(conv);
+                break;
+            }
+        }
+    }
+    return out;
+}
+
+MessageId FileStore::save_message(const Message& msg) {
+    const MessageId id = next_message_id_++;
+    Message stored = msg;
+    stored.id = id;
+    messages_[id] = stored;
+    flush();
+    return id;
+}
+
+std::optional<Message> FileStore::get_message(MessageId id) const {
+    auto it = messages_.find(id);
+    if (it == messages_.end()) return std::nullopt;
+    return it->second;
+}
+
+void FileStore::update_message(const Message& msg) {
+    messages_[msg.id] = msg;
+    flush();
+}
+
+std::vector<Message> FileStore::all_messages() const {
+    std::vector<Message> out;
+    for (const auto& [id, msg] : messages_) out.push_back(msg);
+    return out;
+}
+
+std::vector<Message> FileStore::messages_in(ConversationId conv_id) const {
+    std::vector<Message> out;
+    for (const auto& [id, msg] : messages_) {
+        if (msg.conversation_id == conv_id) out.push_back(msg);
+    }
+    std::stable_sort(out.begin(), out.end(),
+                      [](const Message& a, const Message& b) { return a.sent_at < b.sent_at; });
+    return out;
 }
 
 bool FileStore::add_jukebox_track(const std::string& owner, const std::string& video_id) {

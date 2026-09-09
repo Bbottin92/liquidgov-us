@@ -57,6 +57,7 @@ WSL helper: `bash wsl-setup.sh`. Auth is argon2id via libsodium, `create_account
 | `/me` `/u/<username>` | Blurb profile; public page |
 | `/friends` `/search` `/mail` | Mutual friends, exact+typeahead, friends-only 1:1 |
 | `/communities` `/c/<slug>` | Platform groups — **not** AVND localities |
+| `/mail/group/new` `/mail/g/<id>` | Messenger groups (Slice C). Friend invitees land Active, non-friends Pending until they accept. Minor invariant is a hard refuse, generic copy. Edit/delete/leave/accept are per-conversation. |
 | `/notices` | friend_request, friend_accept, message, group_invite. **No FriendRequestDeclined** |
 | `/settings` | Five sections: security, privacy, identity, data, notifications |
 | `/export` | Sender-only platform export |
@@ -64,7 +65,11 @@ WSL helper: `bash wsl-setup.sh`. Auth is argon2id via libsodium, `create_account
 
 Settings already has: change password, sessions, revoke, logout-other-devices, findability (FriendsOnly / ExactMatch / Typeahead), group-invite confirm, block list, identity stub (no civic link), export, delete+90-day phone quarantine, notification toggles. Inner circle cap 12 is in the C++ site. Unfriend and block exist.
 
-**Modules on disk, not linked into `liquidgov_http`:** `avatar.cpp`, `blob.cpp`, `file_transfer.cpp`, `file_type.cpp`, `image_normalize.cpp`, `messenger.cpp`. CMake builds tests for them. The HTTP binary deliberately does **not** link them until a slice needs them. `preview.py` is a Windows toy.
+**Modules on disk:** all of them are linked into `liquidgov_http` now (`avatar.cpp`, `blob.cpp`, `file_transfer.cpp`, `file_type.cpp`, `image_normalize.cpp`, `messenger.cpp` — Slices A, B, C are all live). `preview.py` is a Windows toy.
+
+`FileStore` now also implements `ConversationStore` (Slice C) — new LGP1 tags `gcn`, `gmsn`, `gc`, `gcm`, `gmsg`, `gmh`, documented at the top of `file_store.hpp`. `SiteSocialGraph` (in `http_server.cpp`) adapts `FileStore`'s username friend graph to `messenger.hpp`'s `AccountId`-keyed `SocialGraph`; its `is_minor` returns `false` unconditionally (AgeAssurance still doesn't exist — same unpaid-liability reasoning as before, just now load-bearing for the group minor invariant too, not only 1:1 mail).
+
+`messenger.hpp`/`messenger.cpp` gained two functions the original spec didn't have but the site needs to make `Pending` usable: `accept_invite` (the only Pending→Active path) and `leave_conversation` (covers both "decline a Pending invite" and "leave as Active" — same function, never notifies on decline, per the closed pin below). Both are unit-tested in `tests/messenger_test.cpp`.
 
 Brand: parchment `#efe8d8`, paper `#f7f1e4`, ink `#1a1814`, navy `#1e2d42`, stone `#6b6458`. Keep the editorial paper look. No emoji chrome. No purple/gold.
 
@@ -74,7 +79,7 @@ Brand: parchment `#efe8d8`, paper `#f7f1e4`, ink `#1a1814`, navy `#1e2d42`, ston
 
 - Friends are mutual accept, not follows. Inner circle cap 12; outer is derived.
 - Minors: friends-only everywhere including 1:1 DMs (Option B). **No age checkbox. No `is_minor()` settings toggle.** `SocialGraph::is_minor` is unpaid until AgeAssurance exists — do not encode an under-13 lock you cannot evaluate, and do not treat everyone as minor (that would brick the site). Until AgeAssurance, keep 1:1 mail friends-only for everyone and say so.
-- Group add: hard refuse, generic copy only (“conflicts with another member’s contact settings”). Adult “don’t add me to groups without asking” is already a pref. Fork a new conversation; do not kick the minor. Unfriend/block: initiator leaves shared conversations, age-blind.
+- Group add: hard refuse, generic copy only (“conflicts with another member’s contact settings”). Fork a new conversation; do not kick the minor. Unfriend/block: initiator leaves shared conversations, age-blind. **Resolved in Slice C:** `group_invite_confirm` (the adult “don’t add me without asking” pref) is deliberately **not** wired into `create_conversation`/`add_member` — it defaults `true` for every account, so gating on it there silently excluded everyone, including friends, which broke the friends-Active default entirely (caught by the smoke test, not a design choice). That pref stays a communities-only mechanism (`invite_community`). Messenger's own Active/Pending + minor-invariant hard-refuse already is the “ask before adding” control for groups — do not re-add the `group_invite_confirm` gate here without fixing this default-excludes-everyone problem first.
 - Auth: password + breach-list; passkeys later. Phone is not the login. Dummy-hash on unknown username.
 - File transfer (when you wire it): default-deny, magic-byte sniff, **no SVG, no archives v1**, cookieless origin, attachment + nosniff. Shared Blob (sha256, refcount, legal_hold).
 - Profile CSS: sandboxed iframe + CSSOM walk + deny-list + compute budget. **Not raw user CSS.**
@@ -89,7 +94,7 @@ Brand: parchment `#efe8d8`, paper `#f7f1e4`, ink `#1a1814`, navy `#1e2d42`, ston
 
 ## Your job this session (one slice)
 
-Implement **exactly one** of these, in this order of preference, unless Brandon names a different one in the same message:
+Slices A, B, and C are all landed now (see below). Pick the next thing from "Do not do this session" only if Brandon explicitly names it in the same message — otherwise stop and ask what's next.
 
 ### Slice A — DONE (self-portrait on the C++ site)
 
@@ -97,13 +102,13 @@ Landed: `/me/avatar` multipart upload, `/portrait/<username>` PNG, LGP1 `av` tag
 `FilesystemBlobStore` + `adopt()` after restart, 2 MiB / 1024px, stb decode/re-encode,
 no SVG, nosniff, no author CSS. Binary now links blob.cpp avatar.cpp image_normalize.cpp.
 
-### Slice B — mail attachments (only if A is already live)
+### Slice B — DONE (mail attachments)
 
-Wire `file_transfer.cpp` default-deny onto existing friend-only `/mail`. No SVG, no archives. Same blob store. Do not open stranger DMs.
+Wired `file_transfer.cpp` default-deny onto friend-only `/mail`. No SVG, no archives. Same blob store. Stranger DMs still refused.
 
-### Slice C — messenger groups (only if Brandon says “groups in mail”)
+### Slice C — DONE (messenger groups)
 
-`messenger.hpp` is the spec. Site mail today is a 1:1 friend thread, not `ConversationStore`. Wiring it means a FileStore (or adapter) that implements `ConversationStore`, a `SocialGraph` that uses FileStore friends, and `is_minor` that does **not** become a client toggle. Keep 1:1 friends-only. Group invite already has the generic error + `group_invite_confirm`. Unfriend must call `on_relationship_ended` semantics (initiator leaves shared threads). Do not notify declines.
+`FileStore` implements `ConversationStore` directly (new LGP1 tags `gc`/`gcm`/`gmsg`/`gmh`/`gcn`/`gmsn`). `SiteSocialGraph` in `http_server.cpp` adapts it to `messenger.hpp`'s `SocialGraph`, `is_minor` always `false` (unpaid until AgeAssurance — see closed pins). Routes: `/mail` lists groups + a "start a group" form; `/mail/group/new` creates one (friends land Active, strangers Pending, unknown/blocked usernames silently dropped); `/mail/g/<id>` is the thread (roster, compose, invite, leave/accept/decline, per-message edit/delete, all gated on being a member — non-members get a plain 404, no existence leak); `/mail/g/<id>/message/<msg_id>/{edit,delete}` enforce sender-only via `messenger.cpp` itself. `unfriend()` in `file_store.cpp` now calls `on_relationship_ended` so the initiator leaves shared groups (block() calls unfriend, so it gets the same behavior for free). `messenger.hpp` gained `accept_invite`/`leave_conversation` — see the "Modules on disk" note above. Group `group_invite_confirm` gating was tried and reverted — see the closed-pins note on that.
 
 ### Do not do this session
 

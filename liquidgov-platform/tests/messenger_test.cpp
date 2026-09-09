@@ -252,6 +252,47 @@ int main() {
                      "an ordinary deletion is purged once it elapses\n";
     }
 
+    // ---- accept_invite: the only path from Pending to Active ----
+    {
+        InMemoryConversationStore store;
+        FakeSocialGraph graph; // nobody is friends -> invitee lands Pending
+        auto conv = create_conversation(store, graph, 1, {2}, true);
+        assert(state_of(*store.get_conversation(*conv.conversation_id), 2) == MemberState::Pending);
+
+        auto wrong_account = accept_invite(store, /*account=*/3, *conv.conversation_id);
+        assert(wrong_account.error == MessengerError::NotAMember); // not on the roster at all
+
+        auto ok = accept_invite(store, /*account=*/2, *conv.conversation_id);
+        assert(ok.error == MessengerError::None);
+        assert(state_of(*store.get_conversation(*conv.conversation_id), 2) == MemberState::Active);
+
+        // Idempotent: accepting again is a harmless no-op, not an error.
+        auto again = accept_invite(store, 2, *conv.conversation_id);
+        assert(again.error == MessengerError::None);
+        std::cout << "accept_invite: Pending -> Active, wrong account rejected, idempotent\n";
+    }
+
+    // ---- leave_conversation: declines a Pending invite or leaves as Active ----
+    {
+        InMemoryConversationStore store;
+        FakeSocialGraph graph;
+        graph.set_friends(1, 2);
+        auto conv = create_conversation(store, graph, 1, {2, 3}, true); // 2 Active, 3 Pending
+
+        auto decline = leave_conversation(store, /*account=*/3, *conv.conversation_id);
+        assert(decline.error == MessengerError::None);
+        assert(!conversation_has_member(*store.get_conversation(*conv.conversation_id), 3));
+
+        auto leave = leave_conversation(store, /*account=*/2, *conv.conversation_id);
+        assert(leave.error == MessengerError::None);
+        assert(!conversation_has_member(*store.get_conversation(*conv.conversation_id), 2));
+
+        auto not_a_member = leave_conversation(store, /*account=*/99, *conv.conversation_id);
+        assert(not_a_member.error == MessengerError::NotAMember);
+        std::cout << "leave_conversation: declines a Pending invite, or leaves as Active, "
+                     "same function either way\n";
+    }
+
     std::cout << "\nall messenger tests passed\n";
     return 0;
 }

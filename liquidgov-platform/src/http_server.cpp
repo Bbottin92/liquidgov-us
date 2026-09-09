@@ -7,6 +7,7 @@
 #include "liquidgov/platform/file_store.hpp"
 #include "liquidgov/platform/file_transfer.hpp"
 #include "liquidgov/platform/file_type.hpp"
+#include "liquidgov/platform/messenger.hpp"
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
@@ -64,6 +65,20 @@ public:
     }
 };
 
+// Adapter over FileStore's username-keyed friend graph, mapping through
+// AccountId as messenger.hpp requires. is_minor has no AgeAssurance
+// backing yet — returns false for everyone rather than fail-safe-true,
+// per the closed pin: treating everyone as a minor would brick the site.
+// The compensating control is that 1:1 mail stays friends-only regardless
+// of this predicate (unchanged, enforced separately in the /mail routes
+// below) — this predicate only ever matters for the group minor
+// invariant, which is consequently unpaid until AgeAssurance lands.
+class SiteSocialGraph : public SocialGraph {
+public:
+    bool are_friends(AccountId a, AccountId b) const override;
+    bool is_minor(AccountId) const override { return false; }
+};
+
 const char* store_path_from_env() {
     const char* p = std::getenv("LIQUIDGOV_STORE");
     return p && p[0] ? p : "liquidgov_accounts.lgp";
@@ -80,6 +95,14 @@ MailAttachmentScanner g_mail_scanner;
 SizeCaps g_mail_caps; // defaults from file_transfer.hpp
 NeverBreached g_breach;
 AllowLimiter g_limiter;
+SiteSocialGraph g_social_graph;
+
+bool SiteSocialGraph::are_friends(AccountId a, AccountId b) const {
+    auto ua = g_store.find_by_id(a);
+    auto ub = g_store.find_by_id(b);
+    if (!ua || !ub) return false;
+    return g_store.are_friends(ua->username, ub->username);
+}
 
 std::string html_escape(const std::string& s) {
     std::string o;
@@ -510,6 +533,29 @@ std::string multipart_field(const std::string& content_type, const std::string& 
     return std::string(v->begin(), v->end());
 }
 
+// Group rosters and messages key on AccountId, which can outlive the
+// account itself (delete_account() does not prune conversations_/
+// messages_ — see file_store.cpp). Same "relabel, don't erase" choice
+// already used for mail_/posts_.
+std::string display_name_for(AccountId id) {
+    auto acc = g_store.find_by_id(id);
+    if (!acc) return "[deleted account]";
+    return acc->username;
+}
+
+// No conversation title in the messenger.hpp/conversation.hpp spec — the
+// list label is everyone else in the room, so the thread is identifiable
+// without inventing a naming feature that isn't there.
+std::string group_label(const Conversation& conv, AccountId viewer) {
+    std::string label;
+    for (const auto& m : conv.members) {
+        if (m.account == viewer) continue;
+        if (!label.empty()) label += ", ";
+        label += display_name_for(m.account);
+    }
+    return label.empty() ? "(just you)" : label;
+}
+
 // Suggested download name only (the browser lets the user rename); no
 // original filename is stored, so this is derived from the mime that
 // ingest_file actually assigned after content sniffing.
@@ -916,6 +962,28 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
                     "<p class=\"muted\">Scanned, content-sniffed, default-deny. No SVG. No archives.</p>"
                     "<button>Send</button></form></div>";
         }
+
+        html += "<div class=\"card\"><h2>Groups</h2>"
+            "<p class=\"muted\">Invite a friend and they join right away. Invite someone you're not "
+            "friends with yet and they get a pending invite to accept before they can post. Adding "
+            "someone into a room that would put a minor with a stranger is refused with a generic "
+            "message — start a new group instead.</p>";
+        auto groups = g_store.conversations_for(acc->id);
+        std::string list;
+        for (auto& conv : groups) {
+            if (!conv.is_group) continue;
+            bool pending = false;
+            for (auto& m : conv.members) if (m.account == acc->id) pending = m.state == MemberState::Pending;
+            list += "<li><a href=\"/mail/g/" + std::to_string(conv.id) + "\">" +
+                    html_escape(group_label(conv, acc->id)) + "</a>" +
+                    (pending ? " <span class=\"muted\">invited</span>" : "") + "</li>";
+        }
+        html += "<ul class=\"plain\">" + (list.empty() ? "<li class=\"muted\">No groups yet.</li>" : list) +
+                "</ul>"
+                "<form method=\"POST\" action=\"/mail/group/new\">"
+                "<label>Start a group — usernames, space or comma separated</label>"
+                "<input name=\"who\" placeholder=\"alice bob carol\">"
+                "<button>Create</button></form></div>";
         return pg("Mail", html);
     }
 
@@ -936,6 +1004,71 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         std::string extra = "Content-Disposition: attachment; filename=\""+attachment_filename_for_mime(mime)+"\"\r\n"
                              "Cache-Control: private, no-store\r\n";
         return http_raw("200 OK", mime.c_str(), data, extra);
+    }
+
+    if(method=="GET"&&path.rfind("/mail/g/",0)==0) {
+        if(!acc) return http_redir("/login");
+        ConversationId conv_id = 0;
+        try { conv_id = std::stoull(path.substr(8)); } catch(...) { conv_id = 0; }
+        auto conv = conv_id ? g_store.get_conversation(conv_id) : std::nullopt;
+        const ConversationMember* self_member = nullptr;
+        if (conv) for (auto& m : conv->members) if (m.account == acc->id) self_member = &m;
+        if (!conv || !conv->is_group || !self_member)
+            return http_code("404 Not Found", wrap("Not found", user, unread, "<div class=\"card\"><p>No such group.</p></div>"));
+        const std::string base = "/mail/g/" + std::to_string(conv_id);
+        const bool active = self_member->state == MemberState::Active;
+
+        std::string html = "<h1>"+html_escape(group_label(*conv, acc->id))+"</h1>"
+            "<p class=\"muted\">Platform group conversation. Not an AVND locality.</p>";
+        if (qs["err"]=="invite") html += "<p class=\"warn\">Conflicts with another member’s contact settings.</p>";
+        html += "<div class=\"card\"><h2>Members</h2><ul class=\"plain\">";
+        for (auto& m : conv->members) {
+            html += "<li>"+html_escape(display_name_for(m.account))+
+                    (m.state==MemberState::Pending?" <span class=\"muted\">invited</span>":"")+"</li>";
+        }
+        html += "</ul>";
+        if (!active) {
+            html += "<p class=\"muted\">You’re invited to this group. Accept to join, or decline — declining is never announced to the room.</p>"
+                    "<form method=\"POST\" action=\""+base+"/accept\"><button>Accept</button></form>"
+                    "<form method=\"POST\" action=\""+base+"/leave\"><button class=\"ghost\">Decline</button></form>";
+        } else {
+            html += "<form method=\"POST\" action=\""+base+"/invite\"><label>Invite</label>"
+                    "<div class=\"row\"><input name=\"who\" required><button>Invite</button></div></form>"
+                    "<form method=\"POST\" action=\""+base+"/leave\"><button class=\"ghost\">Leave group</button></form>";
+        }
+        html += "</div>";
+
+        if (active) {
+            html += "<div class=\"card\">";
+            auto msgs = g_store.messages_in(conv_id);
+            bool any = false;
+            for (auto& m : msgs) {
+                if (m.deletion==DeletionState::DeletedForSender && m.sender==acc->id) continue;
+                any = true;
+                html += "<div class=\"msg\"><div><strong>"+html_escape(display_name_for(m.sender))+"</strong> "
+                        "<span class=\"muted\">"+html_escape(fmt_time(m.sent_at))+"</span>";
+                if (m.deletion==DeletionState::DeletedForEveryone) {
+                    html += "<p class=\"muted\"><em>Message deleted.</em></p>";
+                } else {
+                    html += "<p>"+html_escape(m.text)+"</p>";
+                    if (m.edited_at>0) html += "<p class=\"muted\">(edited)</p>";
+                    if (m.sender==acc->id) {
+                        const std::string mbase = base+"/message/"+std::to_string(m.id);
+                        html += "<form method=\"POST\" action=\""+mbase+"/edit\" class=\"row\">"
+                                "<input name=\"text\" value=\""+html_escape(m.text)+"\" maxlength=\"2000\">"
+                                "<button>Save edit</button></form>"
+                                "<form method=\"POST\" action=\""+mbase+"/delete\">"
+                                "<button class=\"ghost\">Delete</button></form>";
+                    }
+                }
+                html += "</div></div>";
+            }
+            if (!any) html += "<p class=\"empty\">No messages yet.</p>";
+            html += "<form method=\"POST\" action=\""+base+"/send\">"
+                    "<label>Message</label><input name=\"text\" maxlength=\"2000\">"
+                    "<button>Send</button></form></div>";
+        }
+        return pg("Group", html);
     }
 
     if(method=="GET"&&path=="/communities") {
@@ -1296,6 +1429,96 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         }
         if (!text.empty() || blob_id) g_store.add_mail(user,to,text,blob_id,mime);
         return http_redir("/mail?with="+to);
+    }
+
+    if(method=="POST"&&path=="/mail/group/new") {
+        if(!acc) return http_redir("/login");
+        const auto who = parse_form(body)["who"];
+        std::vector<AccountId> invitees;
+        std::string cur;
+        auto flush_tok = [&]() {
+            const auto name = trim_ws(cur);
+            cur.clear();
+            if (name.empty() || name == user) return;
+            auto found = g_store.find_by_username(name);
+            if (!found) return; // unknown username: silently dropped
+            if (g_store.is_blocked(user, name) || g_store.is_blocked(name, user)) return;
+            for (auto id : invitees) if (id == found->id) return; // dedupe
+            invitees.push_back(found->id);
+        };
+        for (char c : who) {
+            if (c==','||c==' '||c=='\t'||c=='\n'||c=='\r') flush_tok();
+            else cur += c;
+        }
+        flush_tok();
+        auto result = create_conversation(g_store, g_social_graph, acc->id, invitees, /*is_group=*/true);
+        return http_redir("/mail/g/"+std::to_string(*result.conversation_id));
+    }
+
+    if(method=="POST"&&path.rfind("/mail/g/",0)==0) {
+        if(!acc) return http_redir("/login");
+        std::string rest = path.substr(8);
+        auto slash = rest.find('/');
+        const std::string id_str = (slash==std::string::npos) ? rest : rest.substr(0,slash);
+        const std::string action = (slash==std::string::npos) ? std::string() : rest.substr(slash+1);
+        ConversationId conv_id = 0;
+        try { conv_id = std::stoull(id_str); } catch(...) { return http_redir("/mail"); }
+        auto conv = g_store.get_conversation(conv_id);
+        if (!conv || !conv->is_group) return http_redir("/mail");
+        const ConversationMember* self_member = nullptr;
+        for (auto& m : conv->members) if (m.account == acc->id) self_member = &m;
+        const std::string base = "/mail/g/"+id_str;
+
+        if (action=="accept") {
+            if (!self_member) return http_redir("/mail");
+            accept_invite(g_store, acc->id, conv_id);
+            return http_redir(base);
+        }
+        if (action=="leave") {
+            if (!self_member) return http_redir("/mail");
+            leave_conversation(g_store, acc->id, conv_id); // Pending "decline" and Active "leave" alike; never notified
+            return http_redir("/mail");
+        }
+        // Everything below requires being an Active member.
+        if (!self_member || self_member->state != MemberState::Active) return http_redir("/mail");
+
+        if (action=="invite") {
+            const auto who = trim_ws(parse_form(body)["who"]);
+            auto found = g_store.find_by_username(who);
+            bool refuse = !found || g_store.is_blocked(user, who) || g_store.is_blocked(who, user);
+            if (!refuse) {
+                auto r = add_member(g_store, g_social_graph, acc->id, found->id, conv_id);
+                refuse = r.error != MessengerError::None;
+            }
+            return http_redir(refuse ? (base+"?err=invite") : base);
+        }
+        if (action=="send") {
+            auto text = trim_ws(parse_form(body)["text"]);
+            if (!text.empty()) {
+                if (text.size()>2000) text.resize(2000);
+                send_message(g_store, acc->id, conv_id, text);
+            }
+            return http_redir(base);
+        }
+        if (action.rfind("message/",0)==0) {
+            const std::string mrest = action.substr(8);
+            const auto mslash = mrest.find('/');
+            if (mslash==std::string::npos) return http_redir(base);
+            MessageId msg_id = 0;
+            try { msg_id = std::stoull(mrest.substr(0,mslash)); } catch(...) { return http_redir(base); }
+            const std::string mact = mrest.substr(mslash+1);
+            if (mact=="edit") {
+                auto text = trim_ws(parse_form(body)["text"]);
+                if (!text.empty()) {
+                    if (text.size()>2000) text.resize(2000);
+                    edit_message(g_store, acc->id, msg_id, text);
+                }
+            } else if (mact=="delete") {
+                delete_message(g_store, acc->id, msg_id, /*for_everyone=*/true);
+            }
+            return http_redir(base);
+        }
+        return http_redir(base);
     }
     if(method=="POST"&&path=="/communities") {
         if(!acc) return http_redir("/login");

@@ -154,4 +154,37 @@ void purge_expired_deletions(ConversationStore& store, std::int64_t now_ts,
     }
 }
 
+MessengerActionResult accept_invite(ConversationStore& store, AccountId account,
+                                     ConversationId conv_id) {
+    auto conv = store.get_conversation(conv_id);
+    if (!conv) return {MessengerError::ConversationNotFound};
+
+    bool found = false;
+    for (auto& m : conv->members) {
+        if (m.account == account) {
+            found = true;
+            m.state = MemberState::Active;
+        }
+    }
+    if (!found) return {MessengerError::NotAMember};
+
+    store.save_conversation(*conv);
+    return {MessengerError::None};
+}
+
+MessengerActionResult leave_conversation(ConversationStore& store, AccountId account,
+                                          ConversationId conv_id) {
+    auto conv = store.get_conversation(conv_id);
+    if (!conv) return {MessengerError::ConversationNotFound};
+
+    const auto before = conv->members.size();
+    conv->members.erase(std::remove_if(conv->members.begin(), conv->members.end(),
+                                        [&](const auto& m) { return m.account == account; }),
+                         conv->members.end());
+    if (conv->members.size() == before) return {MessengerError::NotAMember};
+
+    store.save_conversation(*conv);
+    return {MessengerError::None};
+}
+
 } // namespace liquidgov::platform

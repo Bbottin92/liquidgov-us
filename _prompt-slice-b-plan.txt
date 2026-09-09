@@ -1,0 +1,13 @@
+PLAN ONLY — do not implement yet.
+
+Read ~/lg/CLAUDE_CODE_CONTINUE.md and skim ~/lg/liquidgov-platform (especially file_transfer.*, file_type.*, blob.*, messenger.*, tests/file_transfer_test.cpp).
+
+Write ~/lg/claude-consult/plan-pending.md for LiquidGov slice B (mail/messenger attachments):
+- What already exists vs gaps
+- Exact files you will touch and order
+- Tests you will add/run
+- Risks / overlooked items (OOXML, caps, cookieless serve, no kernel merge)
+
+Hard rules: platform only; do NOT modify liquidgov-core/kernel; do NOT invent a new product.
+
+Then STOP for New Bot review.

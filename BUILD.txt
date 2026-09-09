@@ -1,0 +1,56 @@
+LiquidGov site build (WSL Ubuntu)
+
+Need: Ubuntu WSL, g++, libsodium.
+
+  cd ~/lg/liquidgov-platform
+  bash wsl-setup.sh
+  $HOME/liquidgov_http
+
+Browser: http://127.0.0.1:8080
+
+Binary: liquidgov_http
+Port: 8080 (bind 0.0.0.0)
+Reverse proxy: none in this tree. Do not claim liquidgov.us is live.
+
+Sources for that binary:
+  src/http_server.cpp     HTTP + HTML
+  src/auth.cpp            create_account / login / logout / logout_all_devices
+  src/password.cpp        argon2id
+  src/session.cpp         session ids
+  src/file_store.cpp      LGP1 snapshot (accounts, sessions, blurbs, friends, mail,
+                          posts, communities, blocks, inner circle, prefs, notices,
+                          avatars)
+  src/blob.cpp            content-addressed PNG bytes (sha256)
+  src/avatar.cpp          normalize + scan + blob
+  src/image_normalize.cpp stb decode/re-encode PNG
+  include/liquidgov/platform/*.hpp
+  third_party/stb/        stb_image.h, stb_image_write.h
+
+Persistence: FileStore writes LIQUIDGOV_STORE (default ./liquidgov_accounts.lgp).
+Blob dir: LIQUIDGOV_BLOBS (default ./liquidgov_blobs).
+Format LGP1 — tab-separated percent-encoded snapshot, atomic tmp+fsync+rename,
+mode 0600. New tag `av` for self-portrait blob id. Same create_account/login
+as before; not a second auth system; not the kernel ledger. Restart keeps users
+and portraits.
+
+Routes:
+  /                genesis disclosure (not sovereignty)
+  /laws            three laws + kernel boundary
+  /control         who holds control
+  /signup /login /logout
+  /feed            friends-only posts
+  /me /u/<username>
+  /me/avatar       POST multipart photo (2 MiB / 1024px, PNG re-encode, no SVG)
+  /portrait/<user> static PNG, nosniff, inline
+  /friends /search /mail
+  /communities /c/<slug>
+  /notices
+  /settings        security, privacy, identity, data, notifications
+  /export          sender-only platform export
+  /favicon.svg
+
+genesis.html is the public disclosure page (also the copy on /).
+liquidgov-core/ is the governance kernel — not required to run the site binary.
+
+Python preview (no compiler): liquidgov-platform/preview.py + start.bat
+That is not the C++ auth path.

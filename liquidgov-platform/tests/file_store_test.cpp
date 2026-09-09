@@ -1,0 +1,209 @@
+#include "liquidgov/platform/auth.hpp"
+#include "liquidgov/platform/file_store.hpp"
+
+#include <cassert>
+#include <fstream>
+#include <iostream>
+#include <stdexcept>
+#include <string>
+#include <unistd.h>
+
+using namespace liquidgov::platform;
+
+namespace {
+
+class NeverBreached : public BreachChecker {
+public:
+    bool is_breached(const std::string&) const override { return false; }
+};
+
+class AlwaysAllow : public RateLimiter {
+public:
+    bool allow(const std::string&, const std::string&) override { return true; }
+    void record_attempt(const std::string&, const std::string&) override {}
+};
+
+std::string tmp_path() {
+    char buf[] = "/tmp/lgp-store-XXXXXX";
+    int fd = mkstemp(buf);
+    assert(fd >= 0);
+    close(fd);
+    unlink(buf);
+    return std::string(buf) + ".lgp";
+}
+
+std::string slurp(const std::string& path) {
+    std::ifstream in(path, std::ios::binary);
+    return std::string((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+}
+
+} // namespace
+
+int main() {
+    NeverBreached breach;
+    AlwaysAllow limiter;
+    const std::string path = tmp_path();
+
+    assert(valid_username("brandon"));
+    assert(valid_username("A.B_c-9"));
+    assert(!valid_username(""));
+    assert(!valid_username("has space"));
+    assert(!valid_username("has/slash"));
+    std::cout << "username charset ok\n";
+
+    AccountId id = 0;
+    SessionId sess_id;
+    {
+        FileStore store(path);
+        auto signup = create_account(store, breach, "brandon", "correct-horse-battery-staple", "+15551212");
+        assert(signup.error == AuthError::None);
+        auto acc = store.find_by_username("brandon");
+        assert(acc.has_value());
+        id = acc->id;
+        store.set_blurb(id, "hello\twith\nweird%chars");
+        auto login_r = login(store, limiter, "brandon", "correct-horse-battery-staple", "test-device", "127.0.0.1");
+        assert(login_r.error == AuthError::None);
+        assert(login_r.session.has_value());
+        sess_id = login_r.session->id;
+        store.add_friend_request("brandon", "nobody-yet");
+        store.add_mail("brandon", "friend", "secret body");
+        auto post_id = store.add_post("brandon", "hello feed", "");
+        assert(post_id >= 1);
+        Community c;
+        c.slug = "hall";
+        c.name = "Town hall";
+        c.owner = "brandon";
+        c.about = "talk";
+        c.created_at = 1;
+        assert(store.create_community(c));
+        assert(store.is_member("hall", "brandon"));
+        store.block("brandon", "stranger");
+        assert(store.is_blocked("brandon", "stranger"));
+        assert(!store.is_findable_exact("brandon", "stranger"));
+        std::cout << "created + flushed\n";
+    }
+
+    const std::string on_disk = slurp(path);
+    assert(on_disk.compare(0, 5, "LGP1\n") == 0);
+    assert(on_disk.find("correct-horse-battery-staple") == std::string::npos);
+    assert(on_disk.find("a\t") != std::string::npos);
+    assert(on_disk.find("s\t") != std::string::npos);
+    std::cout << "file is LGP1 and does not contain the password\n";
+
+    {
+        FileStore store(path);
+        auto acc = store.find_by_username("brandon");
+        assert(acc.has_value());
+        assert(acc->id == id);
+        assert(acc->phone_verified);
+        assert(acc->password_hash.find("$argon2") != std::string::npos);
+        assert(store.blurb(id) == "hello\twith\nweird%chars");
+        auto sess = store.get_session(sess_id);
+        assert(sess.has_value());
+        assert(sess->account == id);
+        assert(sess->device_label == "test-device");
+        auto again = login(store, limiter, "brandon", "correct-horse-battery-staple", "device-2", "127.0.0.1");
+        assert(again.error == AuthError::None);
+        assert(store.mail_with("brandon", "friend").size() == 1);
+        assert(store.mail_with("brandon", "friend")[0].text == "secret body");
+        assert(store.feed_for("brandon", 10).size() == 1);
+        assert(store.community("hall").has_value());
+        assert(store.is_blocked("brandon", "stranger"));
+        std::cout << "reload: login, blurb, session, mail, feed, community survive\n";
+    }
+
+    {
+        const std::string bad = tmp_path();
+        {
+            std::ofstream out(bad);
+            out << "NOTLGP1\n";
+        }
+        bool threw = false;
+        try {
+            FileStore store(bad);
+        } catch (const std::runtime_error& e) {
+            threw = true;
+            std::string msg = e.what();
+            assert(msg.find("bad magic") != std::string::npos);
+        }
+        assert(threw);
+        unlink(bad.c_str());
+        std::cout << "bad magic is fail-closed\n";
+    }
+
+    {
+        FileStore store(path);
+        auto second = login(store, limiter, "brandon", "correct-horse-battery-staple", "keep", "127.0.0.1");
+        assert(second.session.has_value());
+        logout_all_devices(store, id, second.session->id);
+        int live = 0;
+        for (const auto& s : store.sessions_for(id)) {
+            if (!s.revoked) ++live;
+        }
+        assert(live == 1);
+        assert(store.get_session(second.session->id).has_value());
+        std::cout << "logout_all_devices keeps current session\n";
+    }
+
+    {
+        FileStore store(path);
+        auto other = create_account(store, breach, "other", "correct-horse-battery-staple", "+15550000");
+        assert(other.error == AuthError::None);
+        store.add_friend_request("brandon", "other");
+        assert(store.accept_friend_request("brandon", "other"));
+        for (int i = 0; i < 12; ++i) {
+            std::string n = "p" + std::to_string(i);
+            create_account(store, breach, n, "correct-horse-battery-staple", "+1555"+std::to_string(10000+i));
+            store.add_friend_request("brandon", n);
+            store.accept_friend_request("brandon", n);
+            assert(store.add_inner("brandon", n));
+        }
+        assert(!store.add_inner("brandon", "other"));
+        assert(store.inner_of("brandon").size() == 12);
+
+        AccountPrefs pr;
+        pr.group_invite_confirm = true;
+        store.set_prefs("other", pr);
+        assert(!store.invite_community("hall", "brandon", "other"));
+
+        auto acc = store.find_by_username("other");
+        auto fp = fingerprint_phone("+15550000");
+        store.set_phone_fp(acc->id, fp);
+        assert(store.delete_account(acc->id));
+        assert(!store.find_by_username("other"));
+        assert(store.phone_quarantined(fp));
+        std::cout << "inner cap, invite refuse, delete+quarantine ok\n";
+    }
+
+    {
+        FileStore store(path);
+        auto acc = store.find_by_username("brandon");
+        assert(acc.has_value());
+        Avatar av;
+        av.owner = acc->id;
+        av.blob_id = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        av.created_at = 42;
+        store.set(av);
+        assert(store.get(acc->id).has_value());
+        assert(store.get(acc->id)->blob_id == av.blob_id);
+        assert(store.all_avatars().size() == 1);
+    }
+    {
+        FileStore store(path);
+        auto acc = store.find_by_username("brandon");
+        auto av = store.get(acc->id);
+        assert(av.has_value());
+        assert(av->blob_id.find("0123456789abcdef") == 0);
+        assert(av->created_at == 42);
+        const std::string on_disk = slurp(path);
+        assert(on_disk.find("\nav\t") != std::string::npos);
+        store.erase(acc->id);
+        assert(!store.get(acc->id).has_value());
+        std::cout << "avatar LGP1 tag survives reload\n";
+    }
+
+    unlink(path.c_str());
+    unlink((path + ".tmp").c_str());
+    std::cout << "\nall file_store tests passed\n";
+    return 0;
+}

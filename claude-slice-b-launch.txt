@@ -1,0 +1,1 @@
+/mnt/c/Users/Brandon/Downloads/launch-slice-b.sh: line 14: claude: command not found

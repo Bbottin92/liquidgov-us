@@ -1,0 +1,14 @@
+Read CLAUDE_CODE_CONTINUE.md first, then LIQUIDGOV_CONTEXT_HANDOFF.md, GROK_BUILD_PROMPT.md, BUILD.txt, and liquidgov-platform/src/http_server.cpp plus the platform headers it needs (auth, account, file_store, messenger, avatar, file_transfer, social_graph, blob, file_type).
+
+Brandon named this session: LiquidGov slice B (mail attachments) only.
+
+Hard rules:
+- Same product LiquidGov.US. Do not invent a new product.
+- Do not merge the governance kernel into the website process. Do not modify liquidgov-core if present. Platform only.
+- Do not treat preview.py as source of truth. Ordinary HTML from the C++ process. No Node/React/WASM-as-UI.
+- Do not reopen closed pins in CLAUDE_CODE_CONTINUE.md.
+- Slice A (self-portrait) is already live — do not rebuild it. Extend mail only.
+
+Implement Slice B: wire file_transfer.cpp default-deny onto existing friend-only /mail. No SVG, no archives. Same blob store. Do not open stranger DMs.
+
+Start by listing the files you opened and that you are doing Slice B. Then implement. Compile with the same sources wsl-setup.sh lists plus any new .cpp you link. Run relevant tests (file_transfer, file_store if touched). Stop and report: what landed, what you refused, what file format changed.

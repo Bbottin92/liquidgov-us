@@ -147,6 +147,23 @@ bool starts_with_ci(const std::string& s, const std::string& prefix) {
     return true;
 }
 
+bool valid_youtube_id(const std::string& id) {
+    if (id.size() != 11) return false;
+    for (unsigned char c : id) {
+        const bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                        (c >= '0' && c <= '9') || c == '_' || c == '-';
+        if (!ok) return false;
+    }
+    return true;
+}
+
+std::string lower_ascii(std::string s) {
+    for (char& c : s) {
+        if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+    }
+    return s;
+}
+
 } // namespace
 
 bool valid_username(const std::string& username) {
@@ -166,6 +183,63 @@ std::string fingerprint_phone(const std::string& e164) {
                        reinterpret_cast<const unsigned char*>(e164.data()), e164.size(),
                        nullptr, 0);
     return to_hex(h, sizeof(h));
+}
+
+std::optional<std::string> extract_youtube_id(const std::string& url) {
+    static const std::string kHttps = "https://";
+    if (url.compare(0, kHttps.size(), kHttps) != 0) return std::nullopt;
+
+    const std::size_t host_start = kHttps.size();
+    const std::size_t host_end = url.find_first_of("/?#", host_start);
+    if (host_end == std::string::npos) return std::nullopt;
+    const std::string host = lower_ascii(url.substr(host_start, host_end - host_start));
+    const std::string rest = url.substr(host_end); // starts with '/'
+
+    auto id_from_path_after = [&](const std::string& prefix) -> std::optional<std::string> {
+        if (rest.compare(0, prefix.size(), prefix) != 0) return std::nullopt;
+        const std::string tail = rest.substr(prefix.size());
+        const std::size_t stop = tail.find_first_of("/?#");
+        const std::string id = (stop == std::string::npos) ? tail : tail.substr(0, stop);
+        if (!valid_youtube_id(id)) return std::nullopt;
+        return id;
+    };
+
+    auto id_from_query_v = [&]() -> std::optional<std::string> {
+        const std::size_t q = rest.find('?');
+        if (q == std::string::npos) return std::nullopt;
+        const std::string query = rest.substr(q + 1);
+        std::size_t pos = 0;
+        while (pos <= query.size()) {
+            const std::size_t amp = query.find('&', pos);
+            const std::string kv =
+                query.substr(pos, amp == std::string::npos ? std::string::npos : amp - pos);
+            if (kv.compare(0, 2, "v=") == 0) {
+                std::string id = kv.substr(2);
+                const std::size_t frag = id.find('#');
+                if (frag != std::string::npos) id = id.substr(0, frag);
+                if (!valid_youtube_id(id)) return std::nullopt;
+                return id;
+            }
+            if (amp == std::string::npos) break;
+            pos = amp + 1;
+        }
+        return std::nullopt;
+    };
+
+    // Exact host match only — never substring/suffix — so
+    // "youtube.com.evil.example" or "evil.example/?host=youtube.com" cannot
+    // pass as YouTube.
+    if (host == "youtu.be") {
+        return id_from_path_after("/");
+    }
+    if (host == "www.youtube.com" || host == "youtube.com" || host == "m.youtube.com") {
+        if (rest.rfind("/watch", 0) == 0) return id_from_query_v();
+        return id_from_path_after("/embed/");
+    }
+    if (host == "www.youtube-nocookie.com" || host == "youtube-nocookie.com") {
+        return id_from_path_after("/embed/");
+    }
+    return std::nullopt;
 }
 
 FileStore::FileStore(std::string path) : path_(std::move(path)) { load(); }
@@ -723,6 +797,7 @@ bool FileStore::delete_account(AccountId id) {
     phone_fp_.erase(id);
     blurbs_.erase(id);
     avatars_.erase(id);
+    jukebox_.erase(name);
     by_username_.erase(name);
     accounts_.erase(it);
     flush();
@@ -750,6 +825,7 @@ void FileStore::load() {
     members_.clear();
     notices_.clear();
     avatars_.clear();
+    jukebox_.clear();
 
     std::ifstream in(path_, std::ios::binary);
     if (!in) return;
@@ -902,6 +978,16 @@ void FileStore::load() {
             av.created_at = parse_i64(f[3], "avatar ts");
             if (av.owner == 0 || av.blob_id.empty()) throw std::runtime_error("LGP1: empty av record");
             avatars_[av.owner] = av;
+        } else if (tag == "jt") {
+            if (f.size() != 4) throw std::runtime_error("LGP1: bad jt record");
+            JukeboxTrack t;
+            t.owner = pct_decode(f[1]);
+            t.video_id = pct_decode(f[2]);
+            t.added_at = parse_i64(f[3], "jukebox added_at");
+            if (t.owner.empty() || !valid_youtube_id(t.video_id)) {
+                throw std::runtime_error("LGP1: bad jt video_id");
+            }
+            jukebox_[t.owner].push_back(t);
         } else {
             throw std::runtime_error("LGP1: unknown record type '" + tag + "'");
         }
@@ -994,6 +1080,13 @@ void FileStore::flush() {
         if (!accounts_.count(id)) continue;
         body << "av\t" << av.owner << "\t" << pct_encode(av.blob_id) << "\t" << av.created_at << "\n";
     }
+    for (const auto& [owner, list] : jukebox_) {
+        if (!by_username_.count(owner)) continue;
+        for (const auto& t : list) {
+            body << "jt\t" << pct_encode(t.owner) << "\t" << pct_encode(t.video_id) << "\t"
+                 << t.added_at << "\n";
+        }
+    }
     const std::string data = body.str();
 
     const int fd = ::open(tmp.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
@@ -1036,6 +1129,35 @@ void FileStore::set(const Avatar& avatar) {
 void FileStore::erase(AccountId owner) {
     avatars_.erase(owner);
     flush();
+}
+
+bool FileStore::add_jukebox_track(const std::string& owner, const std::string& video_id) {
+    if (!by_username_.count(owner)) return false;
+    if (!valid_youtube_id(video_id)) return false;
+    if (jukebox_[owner].size() >= kJukeboxQueueCap) return false;
+    jukebox_[owner].push_back(JukeboxTrack{owner, video_id, now()});
+    flush();
+    return true;
+}
+
+void FileStore::remove_jukebox_track(const std::string& owner, const std::string& video_id) {
+    auto it = jukebox_.find(owner);
+    if (it != jukebox_.end()) {
+        auto& list = it->second;
+        for (std::size_t i = 0; i < list.size(); ++i) {
+            if (list[i].video_id == video_id) {
+                list.erase(list.begin() + static_cast<std::ptrdiff_t>(i));
+                break;
+            }
+        }
+    }
+    flush();
+}
+
+std::vector<JukeboxTrack> FileStore::jukebox_of(const std::string& owner) const {
+    auto it = jukebox_.find(owner);
+    if (it == jukebox_.end()) return {};
+    return it->second;
 }
 
 std::vector<Avatar> FileStore::all_avatars() const {

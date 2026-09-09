@@ -164,6 +164,8 @@ std::string css() {
         ".empty{color:var(--stone);padding:.4rem 0}"
         "form.inline{display:inline}form.stack{margin:0}"
         ".clocks{display:grid;gap:.7rem}@media(min-width:640px){.clocks{grid-template-columns:1fr 1fr}}"
+        ".jukebox iframe{width:100%;max-width:480px;aspect-ratio:16/9;border:0;border-radius:var(--rsm);display:block}"
+        ".jukebox .row{margin-top:.5rem}"
         "@media(max-width:720px){.navbtn{display:inline-flex}nav{display:none;width:100%;flex-direction:column;"
         "align-items:stretch}nav a{min-height:44px}#navc:checked~nav{display:flex}}"
         "@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}";
@@ -532,6 +534,51 @@ std::string portrait_tag(const std::string& username, const char* cls) {
            "\" alt=\"\" width=\"96\" height=\"96\">";
 }
 
+// Page-local jukebox widget (navigation option A: MPA, own instance per
+// page, stops on navigate away — no site-wide SPA, no WebSocket sync).
+// Owner-curated: add/remove only render when owner_view is true; visitors
+// get Prev/Next over the same queue via ordinary links, nothing more.
+std::string jukebox_widget(const std::string& owner, bool owner_view, const std::map<std::string,std::string>& qs) {
+    auto tracks = g_store.jukebox_of(owner);
+    std::string html = "<div class=\"card jukebox\"><h2>Jukebox</h2>";
+    if (qs.count("jerr")) {
+        const std::string& e = qs.at("jerr");
+        if (e=="url") html += "<p class=\"warn\">That link wasn't recognized as a YouTube video.</p>";
+        else if (e=="full") html += "<p class=\"warn\">Queue already holds "+std::to_string(kJukeboxQueueCap)+" tracks. Remove one first.</p>";
+    }
+    if (tracks.empty()) {
+        html += "<p class=\"empty\">No tracks queued.</p>";
+    } else {
+        int idx = 0;
+        auto it = qs.find("t");
+        if (it != qs.end()) { try { idx = std::stoi(it->second); } catch (...) { idx = 0; } }
+        if (idx < 0) idx = 0;
+        if (idx >= static_cast<int>(tracks.size())) idx = static_cast<int>(tracks.size()) - 1;
+        const auto& t = tracks[static_cast<std::size_t>(idx)];
+        html += "<iframe src=\"https://www.youtube-nocookie.com/embed/"+html_escape(t.video_id)+"?rel=0\" "
+                "title=\"Queued track\" allow=\"encrypted-media; picture-in-picture\" "
+                "referrerpolicy=\"strict-origin-when-cross-origin\" allowfullscreen></iframe>"
+                "<p class=\"muted\">Track "+std::to_string(idx+1)+" of "+std::to_string(tracks.size())+"</p>"
+                "<div class=\"row\">";
+        if (idx > 0) html += "<a class=\"btn ghost\" href=\"?t="+std::to_string(idx-1)+"\">Prev</a>";
+        if (idx+1 < static_cast<int>(tracks.size())) html += "<a class=\"btn ghost\" href=\"?t="+std::to_string(idx+1)+"\">Next</a>";
+        if (owner_view) {
+            html += "<form class=\"inline\" method=\"POST\" action=\"/me/jukebox/remove\">"
+                    "<input type=\"hidden\" name=\"video_id\" value=\""+html_escape(t.video_id)+"\">"
+                    "<button class=\"ghost\" type=\"submit\">Remove this track</button></form>";
+        }
+        html += "</div>";
+    }
+    if (owner_view) {
+        html += "<form method=\"POST\" action=\"/me/jukebox/add\"><label>Add a YouTube link</label>"
+                "<div class=\"row\"><input name=\"url\" placeholder=\"https://www.youtube.com/watch?v=...\" required>"
+                "<button>Queue</button></div></form>"
+                "<p class=\"muted\">Owner-curated. Visitors listen; navigating away stops playback.</p>";
+    }
+    html += "</div>";
+    return html;
+}
+
 std::string genesis_body() {
     return "<h1>This is genesis, not a government.</h1>"
            "<p class=\"lede\">LiquidGov.US is a voluntary association and working software for "
@@ -717,6 +764,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             "<form method=\"POST\" action=\"/me\"><label>Blurb</label><textarea name=\"blurb\" rows=\"4\" maxlength=\"2000\">"+html_escape(b)+
             "</textarea><button>Save</button></form>"
             "<p class=\"muted\">Author CSS is not on this route. A platform account is not a CitizenId.</p></div>";
+        html += jukebox_widget(user, true, qs);
         return pg("Profile", html);
     }
 
@@ -746,6 +794,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
                     html_escape(found->username)+"\"><button>Send friend request</button></form>";
         }
         html += "</div>";
+        html += jukebox_widget(found->username, acc && acc->username == found->username, qs);
         return pg(found->username, html);
     }
 
@@ -1147,6 +1196,19 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
     if(method=="POST"&&path=="/me/avatar/clear") {
         if(!acc) return http_redir("/login");
         clear_avatar(g_blobs, g_store, acc->id);
+        return http_redir("/me");
+    }
+    if(method=="POST"&&path=="/me/jukebox/add") {
+        if(!acc) return http_redir("/login");
+        auto url = trim_ws(parse_form(body)["url"]);
+        auto id = extract_youtube_id(url);
+        if (!id) return http_redir("/me?jerr=url");
+        if (!g_store.add_jukebox_track(user, *id)) return http_redir("/me?jerr=full");
+        return http_redir("/me");
+    }
+    if(method=="POST"&&path=="/me/jukebox/remove") {
+        if(!acc) return http_redir("/login");
+        g_store.remove_jukebox_track(user, parse_form(body)["video_id"]);
         return http_redir("/me");
     }
     if(method=="POST"&&path=="/feed") {

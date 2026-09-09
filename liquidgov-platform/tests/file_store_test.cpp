@@ -202,6 +202,66 @@ int main() {
         std::cout << "avatar LGP1 tag survives reload\n";
     }
 
+    {
+        assert(extract_youtube_id("https://www.youtube.com/watch?v=dQw4w9WgXcQ") == "dQw4w9WgXcQ");
+        assert(extract_youtube_id("https://www.youtube.com/watch?list=x&v=dQw4w9WgXcQ&t=30s") == "dQw4w9WgXcQ");
+        assert(extract_youtube_id("https://youtu.be/dQw4w9WgXcQ") == "dQw4w9WgXcQ");
+        assert(extract_youtube_id("https://youtu.be/dQw4w9WgXcQ?t=5") == "dQw4w9WgXcQ");
+        assert(extract_youtube_id("https://www.youtube.com/embed/dQw4w9WgXcQ?autoplay=1") == "dQw4w9WgXcQ");
+        assert(extract_youtube_id("https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ") == "dQw4w9WgXcQ");
+        // Not https, not an allow-listed host, an id that's the wrong
+        // length, or a host that merely contains "youtube.com" as a
+        // substring/suffix — every one of these must fail closed.
+        assert(!extract_youtube_id("http://www.youtube.com/watch?v=dQw4w9WgXcQ"));
+        assert(!extract_youtube_id("https://evil.example/watch?v=dQw4w9WgXcQ"));
+        assert(!extract_youtube_id("https://youtube.com.evil.example/watch?v=dQw4w9WgXcQ"));
+        assert(!extract_youtube_id("https://evil.example/?u=https://www.youtube.com/watch?v=dQw4w9WgXcQ"));
+        assert(!extract_youtube_id("https://www.youtube.com/watch?v=short"));
+        assert(!extract_youtube_id("not a url at all"));
+        assert(!extract_youtube_id(""));
+        std::cout << "extract_youtube_id: allow-list holds, no substring/scheme bypass\n";
+    }
+
+    {
+        FileStore store(path);
+        auto signup = create_account(store, breach, "juke", "correct-horse-battery-staple", "+15559999");
+        assert(signup.error == AuthError::None);
+
+        assert(!store.add_jukebox_track("nobody-such-account", "dQw4w9WgXcQ"));
+        assert(!store.add_jukebox_track("juke", "too-short")); // defensive: not 11 chars
+
+        assert(store.add_jukebox_track("juke", "dQw4w9WgXcQ"));
+        assert(store.add_jukebox_track("juke", "aaaaaaaaaaa"));
+        assert(store.jukebox_of("juke").size() == 2);
+        assert(store.jukebox_of("juke")[0].video_id == "dQw4w9WgXcQ");
+
+        store.remove_jukebox_track("juke", "dQw4w9WgXcQ");
+        assert(store.jukebox_of("juke").size() == 1);
+        assert(store.jukebox_of("juke")[0].video_id == "aaaaaaaaaaa");
+        store.remove_jukebox_track("juke", "not-queued-x"); // no-op, doesn't throw
+
+        for (std::size_t i = store.jukebox_of("juke").size(); i < kJukeboxQueueCap; ++i) {
+            std::string id(11, 'b');
+            id[0] = static_cast<char>('a' + (i % 26));
+            assert(store.add_jukebox_track("juke", id));
+        }
+        assert(store.jukebox_of("juke").size() == kJukeboxQueueCap);
+        assert(!store.add_jukebox_track("juke", "zzzzzzzzzzz")); // full
+        std::cout << "jukebox add/remove/cap ok\n";
+    }
+
+    {
+        const std::string on_disk = slurp(path);
+        assert(on_disk.find("\njt\t") != std::string::npos);
+        FileStore store(path);
+        assert(store.jukebox_of("juke").size() == kJukeboxQueueCap);
+        auto acc = store.find_by_username("juke");
+        assert(acc.has_value());
+        assert(store.delete_account(acc->id));
+        assert(store.jukebox_of("juke").empty());
+        std::cout << "jukebox LGP1 tag survives reload; purged on account delete\n";
+    }
+
     unlink(path.c_str());
     unlink((path + ".tmp").c_str());
     std::cout << "\nall file_store tests passed\n";

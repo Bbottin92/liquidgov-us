@@ -34,6 +34,8 @@
 //   note   <id> <to> <type> <from> <ts> <read 0|1> <extra>
 //   nn     <next_note_id>
 //   av     <account_id> <blob_id> <created_at>   // self-portrait; bytes live in the blob dir
+//   jt     <owner_username> <video_id> <added_at>  // jukebox queue entry; video_id is an
+//          11-char YouTube id already validated by extract_youtube_id, never a raw URL
 //
 // password_hash is argon2id from hash_password(). Never plaintext.
 // Phone number is not stored (signup binding only). Sessions are secrets;
@@ -109,8 +111,29 @@ struct Notice {
     std::string extra;
 };
 
+// Page-local jukebox queue entry for a profile (design: LIQUIDGOV_CONTEXT_HANDOFF.md
+// "Jukebox", navigation option A — MPA, no site-wide SPA, stop on navigate away).
+// Owner-curated: only the profile owner can add/remove; visitors play through the
+// queue read-only, independently per page load. No WebSocket sync — that is the
+// in-world jukebox, a separate, unbuilt slice.
+struct JukeboxTrack {
+    std::string owner;      // username
+    std::string video_id;   // validated 11-char YouTube id, never a raw URL
+    std::int64_t added_at = 0;
+};
+
+inline constexpr std::size_t kJukeboxQueueCap = 50;
+
 bool valid_username(const std::string& username);
 std::string fingerprint_phone(const std::string& e164);
+
+// Extracts an 11-char YouTube video id from a small allow-listed set of URL
+// shapes (youtube.com/watch?v=, youtu.be/<id>, youtube.com/embed/<id>,
+// youtube-nocookie.com/embed/<id>). Returns nullopt for anything else. This
+// is the only thing ever stored or rendered from a submitted URL — never the
+// URL itself, never author HTML; the embed src is built by the platform from
+// this id alone.
+std::optional<std::string> extract_youtube_id(const std::string& url);
 
 class FileStore : public AccountStore, public AvatarStore {
 public:
@@ -206,6 +229,15 @@ public:
     void erase(AccountId owner) override;
     std::vector<Avatar> all_avatars() const;
 
+    // Owner must be an existing account; video_id must already be a validated
+    // id (see extract_youtube_id). Returns false on unknown owner, invalid
+    // id, or a full queue (kJukeboxQueueCap) — caller renders the refusal.
+    bool add_jukebox_track(const std::string& owner, const std::string& video_id);
+    // Removes the first matching (owner, video_id) entry, if any. No-op if
+    // absent — same shape as remove_inner.
+    void remove_jukebox_track(const std::string& owner, const std::string& video_id);
+    std::vector<JukeboxTrack> jukebox_of(const std::string& owner) const;
+
     const std::string& path() const { return path_; }
 
 private:
@@ -235,6 +267,7 @@ private:
     std::map<std::string, std::set<std::string>> members_;
     std::vector<Notice> notices_;
     std::map<AccountId, Avatar> avatars_;
+    std::map<std::string, std::vector<JukeboxTrack>> jukebox_;
 };
 
 } // namespace liquidgov::platform

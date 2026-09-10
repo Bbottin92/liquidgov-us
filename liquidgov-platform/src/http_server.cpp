@@ -202,6 +202,20 @@ std::string js_string_literal(const std::string& s) {
     return o;
 }
 
+// Gates a Visibility-tiered surface (profile, posts) for one viewer.
+// is_owner always sees their own; otherwise Public admits anyone (including
+// an anonymous visitor), Members requires a signed-in account, Friends
+// requires the relationship, and OnlyMe admits nobody else at all.
+bool visible_to(Visibility v, bool is_owner, bool viewer_signed_in, bool is_friend) {
+    if (is_owner) return true;
+    switch (v) {
+        case Visibility::Public: return true;
+        case Visibility::Members: return viewer_signed_in;
+        case Visibility::Friends: return is_friend;
+        case Visibility::OnlyMe: default: return false;
+    }
+}
+
 // Author CSS for /u/<username>/theme. This is a deliberately narrow v1 of
 // the "Author CSS isolation" design in LIQUIDGOV_CONTEXT_HANDOFF.md, not
 // the full spec (no CSSOM-walking parser, no compute budget, no gallery) --
@@ -377,6 +391,12 @@ std::string css() {
         ".person,.sess,.msg,.post{border-top:1px solid var(--rule);padding:.7rem 0;display:flex;"
         "justify-content:space-between;gap:.8rem;flex-wrap:wrap;align-items:flex-start}"
         ".person:first-of-type,.sess:first-of-type,.msg:first-of-type,.post:first-of-type{border-top:0}"
+        "table.register{width:100%;border-collapse:collapse;margin:.6rem 0 1rem}"
+        "table.register th{text-align:left;font:600 .7rem var(--body);letter-spacing:.08em;"
+        "text-transform:uppercase;color:var(--stone);padding:.4rem .3rem;border-bottom:1px solid var(--rule)}"
+        "table.register td{padding:.5rem .3rem;border-bottom:1px solid var(--rule)}"
+        "table.register select{width:auto;min-height:auto;padding:.3rem .5rem}"
+        ".eyebrow{font:600 .7rem var(--body);letter-spacing:.1em;text-transform:uppercase;color:var(--stone);margin-bottom:.15rem}"
         ".portrait{width:96px;height:96px;border-radius:50%;object-fit:cover;border:1px solid var(--rule);"
         "background:var(--parchment);flex-shrink:0;display:inline-block;vertical-align:middle}"
         ".portrait.sm{width:36px;height:36px}"
@@ -2936,16 +2956,26 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         const bool is_owner = acc && acc->username == found->username;
         const bool is_friend = acc && !is_owner && g_store.are_friends(user, found->username);
         auto target_prefs = g_store.prefs_of(found->username);
-        const bool profile_hidden = !is_owner &&
-            ((is_friend && target_prefs.hide_profile_from_friends) ||
-             (!is_friend && target_prefs.hide_profile_from_others));
-        if (profile_hidden) {
+        if (!visible_to(target_prefs.profile_visibility, is_owner, acc.has_value(), is_friend)) {
             return http_code("200 OK", wrap(found->username, user, unread,
                 "<div class=\"card\"><p>This profile is private.</p></div>"));
         }
+        auto committees = g_store.communities_of(found->username);
+        std::string committees_html;
+        if (!committees.empty()) {
+            std::vector<std::string> names;
+            for (const auto& c : committees) names.push_back(html_escape(c.name));
+            committees_html = "<p class=\"muted eyebrow\">Committees</p><p>";
+            for (std::size_t i = 0; i < names.size(); ++i) {
+                if (i) committees_html += " · ";
+                committees_html += names[i];
+            }
+            committees_html += "</p>";
+        }
         std::string html = "<div class=\"card\"><div class=\"who\">"+portrait_tag(found->username,"")+
             "<div><h1>"+html_escape(found->username)+"</h1>"
-            "<p class=\"muted\">Public profile. Not a CitizenId. Not a seated office.</p></div></div>";
+            "<p class=\"muted\">Associate · good standing · enrolled "+html_escape(fmt_time(found->created_at))+
+            "</p></div></div>"+committees_html;
         if (!g_store.author_css(found->id).empty()) {
             // sandbox="allow-same-origin", not sandbox="" (opaque origin):
             // confirmed live that opaque-origin sandboxed iframes get
@@ -2980,10 +3010,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         html += "</div>";
         html += jukebox_widget(found->username, is_owner, user, qs);
         {
-            const bool posts_hidden = !is_owner &&
-                ((is_friend && target_prefs.hide_posts_from_friends) ||
-                 (!is_friend && target_prefs.hide_posts_from_others));
-            if (!posts_hidden) {
+            if (visible_to(target_prefs.posts_visibility, is_owner, acc.has_value(), is_friend)) {
                 auto theirPosts = g_store.posts_by(found->username);
                 std::reverse(theirPosts.begin(), theirPosts.end());
                 for (const auto& p : theirPosts) html += "<div class=\"card\">"+post_block(p, user)+"</div>";
@@ -3364,25 +3391,40 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             + "Hide presence (presence is not shown in this release)</label></p>"
             + "<p class=\"muted\">Direct messages are friends-only for everyone until age can be assured. "
             + "That is policy, not a self-reported minor toggle.</p>"
-            + "<label>Profile</label>"
-            + "<p><label><input type=\"checkbox\" name=\"hide_profile_from_friends\" value=\"1\"" + (p.hide_profile_from_friends?" checked":"") + "> "
-            + "Hide my profile from friends</label></p>"
-            + "<p><label><input type=\"checkbox\" name=\"hide_profile_from_others\" value=\"1\"" + (p.hide_profile_from_others?" checked":"") + "> "
-            + "Hide my profile from everyone else</label></p>"
-            + "<label>Posts</label>"
-            + "<p><label><input type=\"checkbox\" name=\"hide_posts_from_friends\" value=\"1\"" + (p.hide_posts_from_friends?" checked":"") + "> "
-            + "Hide my posts from friends</label></p>"
-            + "<p><label><input type=\"checkbox\" name=\"hide_posts_from_others\" value=\"1\"" + (p.hide_posts_from_others?" checked":"") + "> "
-            + "Hide my posts from everyone else</label></p>"
-            + "<button>Save privacy</button></form><h2>Block list</h2>";
-        auto bl = g_store.blocked_by(user);
+            + "<label>Visibility register</label>"
+            + "<p class=\"muted\">Each level admits every level after it too: public sees everything members do, "
+            + "members see everything friends do, friends see everything only-me hides from everyone else.</p>";
+        auto vis_select = [&](const char* field, Visibility current) {
+            auto opt = [&](Visibility v, const char* label) {
+                return std::string("<option value=\"") + std::to_string(static_cast<int>(v)) + "\""
+                    + (current == v ? " selected" : "") + ">" + label + "</option>";
+            };
+            return std::string("<select name=\"") + field + "\">"
+                + opt(Visibility::Public, "Public")
+                + opt(Visibility::Members, "Members")
+                + opt(Visibility::Friends, "Friends")
+                + opt(Visibility::OnlyMe, "Only me")
+                + "</select>";
+        };
+        html += "<table class=\"register\"><tr><th>Surface</th><th>Who can see it</th></tr>"
+                "<tr><td>Profile</td><td>" + vis_select("profile_visibility", p.profile_visibility) + "</td></tr>"
+                "<tr><td>Posts</td><td>" + vis_select("posts_visibility", p.posts_visibility) + "</td></tr>"
+                "</table>"
+                "<button>Save privacy</button></form><h2>Block list</h2>";
+        auto bl = g_store.block_entries_of(user);
         if (bl.empty()) html += "<p class=\"empty\">No one blocked.</p>";
-        for (auto& n : bl) {
-            html += "<div class=\"person\"><span>"+html_escape(n)+"</span>"
+        for (auto& b : bl) {
+            html += "<div class=\"person\"><div><span>"+html_escape(b.other)+"</span>"
+                    "<div class=\"muted\">Blocked "+html_escape(fmt_time(b.at))+
+                    (b.reason.empty() ? "" : " · " + html_escape(b.reason))+"</div></div>"
                     "<form method=\"POST\" action=\"/settings/unblock\">"
-                    "<input type=\"hidden\" name=\"who\" value=\""+html_escape(n)+"\">"
+                    "<input type=\"hidden\" name=\"who\" value=\""+html_escape(b.other)+"\">"
                     "<button class=\"ghost\">Unblock</button></form></div>";
         }
+        html += "<form method=\"POST\" action=\"/settings/block\" style=\"margin-top:.75rem\">"
+                "<div class=\"row\"><input name=\"who\" placeholder=\"username\" required style=\"flex:1\">"
+                "<button class=\"danger\" type=\"submit\">Add block</button></div>"
+                "<input name=\"reason\" placeholder=\"Reason (optional, only you see it)\" maxlength=\"200\"></form>";
         html += "</div>";
 
         html += "<div class=\"card\"><h2>Identity</h2>"
@@ -3901,10 +3943,14 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         p.findability = static_cast<Findability>(fv);
         p.group_invite_confirm = f["group_invite_confirm"] == "1";
         p.presence_hide = f["presence_hide"] == "1";
-        p.hide_profile_from_friends = f["hide_profile_from_friends"] == "1";
-        p.hide_profile_from_others = f["hide_profile_from_others"] == "1";
-        p.hide_posts_from_friends = f["hide_posts_from_friends"] == "1";
-        p.hide_posts_from_others = f["hide_posts_from_others"] == "1";
+        auto vis_of = [&](const std::string& field, Visibility fallback) {
+            int v = static_cast<int>(fallback);
+            try { v = std::stoi(f[field]); } catch (...) { v = static_cast<int>(fallback); }
+            if (v < 0 || v > 3) v = static_cast<int>(fallback);
+            return static_cast<Visibility>(v);
+        };
+        p.profile_visibility = vis_of("profile_visibility", p.profile_visibility);
+        p.posts_visibility = vis_of("posts_visibility", p.posts_visibility);
         g_store.set_prefs(user, p);
         return http_redir("/settings");
     }
@@ -3921,6 +3967,13 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
     if(method=="POST"&&path=="/settings/unblock") {
         if(!acc) return http_redir("/login");
         g_store.unblock(user, parse_form(body)["who"]);
+        return http_redir("/settings");
+    }
+    if(method=="POST"&&path=="/settings/block") {
+        if(!acc) return http_redir("/login");
+        auto f = parse_form(body);
+        auto who = trim_ws(f["who"]);
+        if (valid_username(who) && who != user) g_store.block(user, who, trim_ws(f["reason"]));
         return http_redir("/settings");
     }
     if(method=="POST"&&path=="/settings/delete") {

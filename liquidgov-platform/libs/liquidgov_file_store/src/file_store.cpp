@@ -516,10 +516,11 @@ std::vector<MailMessage> FileStore::all_mail_with_attachments() const {
     return out;
 }
 
-void FileStore::block(const std::string& actor, const std::string& other) {
+void FileStore::block(const std::string& actor, const std::string& other, const std::string& reason) {
     if (actor.empty() || other.empty() || actor == other) return;
     unfriend(actor, other);
     blocks_.insert({actor, other});
+    block_meta_[{actor, other}] = BlockEntry{actor, other, now(), reason};
     flush();
 }
 
@@ -535,8 +536,19 @@ std::vector<std::string> FileStore::blocked_by(const std::string& actor) const {
     return out;
 }
 
+std::vector<BlockEntry> FileStore::block_entries_of(const std::string& actor) const {
+    std::vector<BlockEntry> out;
+    for (const auto& p : blocks_) {
+        if (p.first != actor) continue;
+        auto it = block_meta_.find(p);
+        out.push_back(it != block_meta_.end() ? it->second : BlockEntry{p.first, p.second, 0, ""});
+    }
+    return out;
+}
+
 void FileStore::unblock(const std::string& actor, const std::string& other) {
     blocks_.erase({actor, other});
+    block_meta_.erase({actor, other});
     flush();
 }
 
@@ -639,7 +651,10 @@ std::vector<Post> FileStore::feed_for(const std::string& user, std::size_t limit
         if (!it->community.empty()) continue;
         if (it->author == user || are_friends(user, it->author)) {
             if (is_blocked(user, it->author)) continue;
-            if (it->author != user && prefs_of(it->author).hide_posts_from_friends) continue;
+            // Every post reaching here is either the viewer's own or from a
+            // confirmed friend, so Public/Members/Friends all permit it --
+            // only OnlyMe (hidden even from friends) excludes it here.
+            if (it->author != user && prefs_of(it->author).posts_visibility == Visibility::OnlyMe) continue;
             out.push_back(*it);
             if (out.size() >= limit) break;
         }
@@ -852,7 +867,7 @@ bool FileStore::delete_account(AccountId id) {
     for (auto& [owner, set] : inner_) set.erase(name);
     std::set<std::pair<std::string, std::string>> keep_blk;
     for (const auto& p : blocks_) {
-        if (p.first == name || p.second == name) continue;
+        if (p.first == name || p.second == name) { block_meta_.erase(p); continue; }
         keep_blk.insert(p);
     }
     blocks_.swap(keep_blk);
@@ -903,6 +918,7 @@ void FileStore::load() {
     requests_.clear();
     mail_.clear();
     blocks_.clear();
+    block_meta_.clear();
     inner_.clear();
     prefs_.clear();
     posts_.clear();
@@ -1041,13 +1057,21 @@ void FileStore::load() {
             if (f.size() != 3) throw std::runtime_error("LGP1: bad cm record");
             members_[pct_decode(f[1])].insert(pct_decode(f[2]));
         } else if (tag == "blk") {
-            if (f.size() != 3) throw std::runtime_error("LGP1: bad blk record");
-            blocks_.insert({pct_decode(f[1]), pct_decode(f[2])});
+            if (f.size() != 3 && f.size() != 5) throw std::runtime_error("LGP1: bad blk record");
+            BlockEntry b;
+            b.actor = pct_decode(f[1]);
+            b.other = pct_decode(f[2]);
+            if (f.size() == 5) {
+                b.at = parse_i64(f[3], "blk at");
+                b.reason = pct_decode(f[4]);
+            }
+            blocks_.insert({b.actor, b.other});
+            block_meta_[{b.actor, b.other}] = b;
         } else if (tag == "inner") {
             if (f.size() != 3) throw std::runtime_error("LGP1: bad inner record");
             inner_[pct_decode(f[1])].insert(pct_decode(f[2]));
         } else if (tag == "pref") {
-            if (f.size() != 9 && f.size() != 14) throw std::runtime_error("LGP1: bad pref record");
+            if (f.size() != 9 && f.size() != 12 && f.size() != 14) throw std::runtime_error("LGP1: bad pref record");
             AccountPrefs p;
             const auto fv = parse_u64(f[2], "findability");
             if (fv > 2) throw std::runtime_error("LGP1: bad findability");
@@ -1058,14 +1082,34 @@ void FileStore::load() {
             p.notify_friend = parse_bit(f[6], "n_friend");
             p.notify_message = parse_bit(f[7], "n_message");
             p.notify_group = parse_bit(f[8], "n_group");
-            if (f.size() == 14) {
+            if (f.size() == 12) {
                 const auto jp = parse_u64(f[9], "jukebox_policy");
                 if (jp > 2) throw std::runtime_error("LGP1: bad jukebox_policy");
                 p.jukebox_policy = static_cast<JukeboxPolicy>(jp);
-                p.hide_profile_from_friends = parse_bit(f[10], "hide_profile_from_friends");
-                p.hide_profile_from_others = parse_bit(f[11], "hide_profile_from_others");
-                p.hide_posts_from_friends = parse_bit(f[12], "hide_posts_from_friends");
-                p.hide_posts_from_others = parse_bit(f[13], "hide_posts_from_others");
+                const auto pv = parse_u64(f[10], "profile_visibility");
+                const auto ov = parse_u64(f[11], "posts_visibility");
+                if (pv > 3 || ov > 3) throw std::runtime_error("LGP1: bad visibility");
+                p.profile_visibility = static_cast<Visibility>(pv);
+                p.posts_visibility = static_cast<Visibility>(ov);
+            } else if (f.size() == 14) {
+                // Superseded shape from this release's own earlier dev build:
+                // jukebox_policy plus four independent hide_from_friends/others
+                // bools. Translated to the closest point on the Visibility
+                // ladder -- lossy only for the one combination that ladder
+                // can't express (hidden from friends but not from strangers),
+                // which nothing but this codebase's own throwaway test
+                // accounts ever produced.
+                const auto jp = parse_u64(f[9], "jukebox_policy");
+                if (jp > 2) throw std::runtime_error("LGP1: bad jukebox_policy");
+                p.jukebox_policy = static_cast<JukeboxPolicy>(jp);
+                const bool hide_profile_friends = parse_bit(f[10], "hide_profile_from_friends");
+                const bool hide_profile_others = parse_bit(f[11], "hide_profile_from_others");
+                const bool hide_posts_friends = parse_bit(f[12], "hide_posts_from_friends");
+                const bool hide_posts_others = parse_bit(f[13], "hide_posts_from_others");
+                p.profile_visibility = hide_profile_friends ? Visibility::OnlyMe
+                    : hide_profile_others ? Visibility::Friends : Visibility::Public;
+                p.posts_visibility = hide_posts_friends ? Visibility::OnlyMe
+                    : hide_posts_others ? Visibility::Friends : Visibility::Public;
             }
             prefs_[pct_decode(f[1])] = p;
         } else if (tag == "note") {
@@ -1278,7 +1322,10 @@ void FileStore::flush() {
         }
     }
     for (const auto& b : blocks_) {
-        body << "blk\t" << pct_encode(b.first) << "\t" << pct_encode(b.second) << "\n";
+        auto mit = block_meta_.find(b);
+        const BlockEntry meta = mit != block_meta_.end() ? mit->second : BlockEntry{b.first, b.second, 0, ""};
+        body << "blk\t" << pct_encode(b.first) << "\t" << pct_encode(b.second) << "\t"
+             << meta.at << "\t" << pct_encode(meta.reason) << "\n";
     }
     for (const auto& [owner, set] : inner_) {
         for (const auto& u : set) {
@@ -1290,9 +1337,8 @@ void FileStore::flush() {
              << (p.friends_only_dm ? 1 : 0) << "\t" << (p.group_invite_confirm ? 1 : 0) << "\t"
              << (p.presence_hide ? 1 : 0) << "\t" << (p.notify_friend ? 1 : 0) << "\t"
              << (p.notify_message ? 1 : 0) << "\t" << (p.notify_group ? 1 : 0) << "\t"
-             << static_cast<int>(p.jukebox_policy) << "\t" << (p.hide_profile_from_friends ? 1 : 0) << "\t"
-             << (p.hide_profile_from_others ? 1 : 0) << "\t" << (p.hide_posts_from_friends ? 1 : 0) << "\t"
-             << (p.hide_posts_from_others ? 1 : 0) << "\n";
+             << static_cast<int>(p.jukebox_policy) << "\t" << static_cast<int>(p.profile_visibility) << "\t"
+             << static_cast<int>(p.posts_visibility) << "\n";
     }
     for (const auto& n : notices_) {
         body << "note\t" << n.id << "\t" << pct_encode(n.to) << "\t" << pct_encode(n.type) << "\t"

@@ -27,13 +27,17 @@
 //   pn     <next_post_id>
 //   comm   <slug> <name> <owner> <about> <created_at>
 //   cm     <slug> <username>
-//   blk    <blocker> <blocked>
+//   blk    <blocker> <blocked> [<at> <reason>]  // trailing two fields optional -- an
+//          older 3-token line means an unknown time (0) and no reason
 //   inner  <owner> <friend>
 //   pref   <username> <findability 0-2> <friends_only_dm> <group_invite_confirm>
 //          <presence_hide> <n_friend> <n_message> <n_group>
-//          [<jukebox_policy 0-2> <hide_profile_from_friends> <hide_profile_from_others>
-//           <hide_posts_from_friends> <hide_posts_from_others>]  // trailing five fields
-//          optional -- an older 9-token line means all five are their defaults (0/false)
+//          [<jukebox_policy 0-2> <profile_visibility 0-3> <posts_visibility 0-3>]
+//          -- trailing three fields optional; an older 9-token line means all three
+//          are their defaults (0/Public). A since-superseded 14-token shape (this
+//          release's own earlier dev build: jukebox_policy plus four now-removed
+//          hide_profile/posts_from_friends/others bools) is still accepted and
+//          translated to the closest Visibility on load -- see the loader.
 //   note   <id> <to> <type> <from> <ts> <read 0|1> <extra>
 //   nn     <next_note_id>
 //   av     <account_id> <blob_id> <created_at>   // self-portrait; bytes live in the blob dir
@@ -137,6 +141,17 @@ enum class JukeboxPolicy : int {
     Anyone = 2,
 };
 
+// A minimum-trust ladder, most to least open: anyone at all, then anyone
+// signed in, then friends only, then the owner alone. Each level implies
+// every level after it can also see it -- there's no way to express "show
+// strangers but hide friends" here (see Visibility below for that).
+enum class Visibility : int {
+    Public = 0,
+    Members = 1,
+    Friends = 2,
+    OnlyMe = 3,
+};
+
 struct AccountPrefs {
     Findability findability = Findability::ExactMatch;
     bool friends_only_dm = true;
@@ -146,10 +161,19 @@ struct AccountPrefs {
     bool notify_message = true;
     bool notify_group = true;
     JukeboxPolicy jukebox_policy = JukeboxPolicy::OwnerOnly;
-    bool hide_profile_from_friends = false;
-    bool hide_profile_from_others = false;
-    bool hide_posts_from_friends = false;
-    bool hide_posts_from_others = false;
+    Visibility profile_visibility = Visibility::Public;
+    Visibility posts_visibility = Visibility::Public;
+};
+
+// One block, with the context a settings page actually wants to show back
+// -- when, and why (freeform, actor's own words, never shown to the
+// blocked party). is_blocked/blocked_by stay the cheap boolean/list lookup
+// they always were; this is the richer read for rendering the block list.
+struct BlockEntry {
+    std::string actor;
+    std::string other;
+    std::int64_t at = 0;
+    std::string reason;
 };
 
 struct Notice {
@@ -274,9 +298,10 @@ public:
     // FilesystemBlobStore's refcount metadata is in-memory only.
     std::vector<MailMessage> all_mail_with_attachments() const;
 
-    void block(const std::string& actor, const std::string& other);
+    void block(const std::string& actor, const std::string& other, const std::string& reason = "");
     bool is_blocked(const std::string& blocker, const std::string& blocked) const;
     std::vector<std::string> blocked_by(const std::string& actor) const;
+    std::vector<BlockEntry> block_entries_of(const std::string& actor) const;
     void unblock(const std::string& actor, const std::string& other);
 
     bool add_inner(const std::string& owner, const std::string& friend_name);
@@ -387,6 +412,7 @@ private:
     std::vector<std::pair<std::string, std::string>> requests_;
     std::vector<MailMessage> mail_;
     std::set<std::pair<std::string, std::string>> blocks_;
+    std::map<std::pair<std::string, std::string>, BlockEntry> block_meta_;
     std::map<std::string, std::set<std::string>> inner_;
     std::map<std::string, AccountPrefs> prefs_;
     std::vector<Post> posts_;

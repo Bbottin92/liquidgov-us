@@ -316,18 +316,37 @@ int main() {
         assert(signup.error == AuthError::None);
         auto pr = store.prefs_of("prefuser");
         assert(pr.jukebox_policy == JukeboxPolicy::OwnerOnly); // default before any save
+        assert(pr.profile_visibility == Visibility::Public && pr.posts_visibility == Visibility::Public);
         pr.jukebox_policy = JukeboxPolicy::Friends;
-        pr.hide_profile_from_others = true;
-        pr.hide_posts_from_friends = true;
+        pr.profile_visibility = Visibility::Friends;
+        pr.posts_visibility = Visibility::OnlyMe;
         store.set_prefs("prefuser", pr);
     }
     {
         FileStore store(path); // reload
         auto pr = store.prefs_of("prefuser");
         assert(pr.jukebox_policy == JukeboxPolicy::Friends);
-        assert(pr.hide_profile_from_others && !pr.hide_profile_from_friends);
-        assert(pr.hide_posts_from_friends && !pr.hide_posts_from_others);
-        std::cout << "jukebox policy and hide-from prefs survive reload\n";
+        assert(pr.profile_visibility == Visibility::Friends);
+        assert(pr.posts_visibility == Visibility::OnlyMe);
+        std::cout << "jukebox policy and visibility prefs survive reload\n";
+    }
+
+    {
+        FileStore store(path);
+        auto signup = create_account(store, breach, "blockee", "correct-horse-battery-staple", "+15557002");
+        assert(signup.error == AuthError::None);
+        store.block("prefuser", "blockee", "test reason");
+        auto entries = store.block_entries_of("prefuser");
+        assert(entries.size() == 1);
+        assert(entries[0].other == "blockee" && entries[0].reason == "test reason" && entries[0].at > 0);
+    }
+    {
+        FileStore store(path); // reload
+        auto entries = store.block_entries_of("prefuser");
+        assert(entries.size() == 1);
+        assert(entries[0].other == "blockee" && entries[0].reason == "test reason" && entries[0].at > 0);
+        assert(store.is_blocked("prefuser", "blockee"));
+        std::cout << "block reason and timestamp survive reload\n";
     }
 
     std::uint64_t conv_id = 0;

@@ -406,6 +406,19 @@ std::string url_decode(const std::string& s) {
     }
     return o;
 }
+// Percent-encodes for safe embedding in a query string. Needed specifically
+// for values that didn't come through our own validation (e.g. a raw login
+// username attempt, which -- unlike a stored account's username -- isn't
+// guaranteed to be in valid_username's restricted charset).
+std::string url_encode(const std::string& s) {
+    static const char* kHex = "0123456789ABCDEF";
+    std::string o;
+    for (unsigned char c : s) {
+        if ((c>='A'&&c<='Z')||(c>='a'&&c<='z')||(c>='0'&&c<='9')||c=='-'||c=='_'||c=='.'||c=='~') o += char(c);
+        else { o += '%'; o += kHex[c >> 4]; o += kHex[c & 0xf]; }
+    }
+    return o;
+}
 std::map<std::string,std::string> parse_form(const std::string& body) {
     std::map<std::string,std::string> m; std::stringstream ss(body); std::string part;
     while (std::getline(ss,part,'&')) { auto eq=part.find('='); if(eq==std::string::npos) continue;
@@ -1582,12 +1595,22 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
     if(method=="GET"&&path=="/laws") return pg("Laws", laws_body());
     if(method=="GET"&&path=="/control") return pg("Who holds control", control_body());
     if(method=="GET"&&path=="/signup") return http_ok(signup_page(user, unread, "", "", ""));
-    if(method=="GET"&&path=="/login")
+    if(method=="GET"&&path=="/login") {
+        std::string err;
+        // Deliberately one generic message for bad-username and
+        // bad-password alike (and phone-not-verified folded in too) --
+        // splitting them would let a caller enumerate which usernames
+        // exist. Rate-limit is the one case safe to name specifically:
+        // it doesn't depend on whether the account exists.
+        if (qs["err"]=="login") err = "<p class=\"warn\">Invalid username or password.</p>";
+        else if (qs["err"]=="ratelimit") err = "<p class=\"warn\">Too many attempts. Wait a moment and try again.</p>";
         return pg("Log in", "<div class=\"card\"><h1>Log in</h1>"
-            "<p class=\"muted\">Username and password. Phone is not the daily credential.</p>"
-            "<form method=\"POST\" action=\"/login\"><label>Username</label><input name=\"username\" required autocomplete=\"username\">"
+            "<p class=\"muted\">Username and password. Phone is not the daily credential.</p>"+err+
+            "<form method=\"POST\" action=\"/login\"><label>Username</label>"
+            "<input name=\"username\" required autocomplete=\"username\" value=\""+html_escape(qs["username"])+"\">"
             "<label>Password</label><input type=\"password\" name=\"password\" required autocomplete=\"current-password\">"
             "<button>Continue</button></form></div>");
+    }
     if(method=="GET"&&path=="/logout") {
         logout(g_store, sid);
         return http_redir("/", clear_cookie());
@@ -2233,9 +2256,12 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
     }
     if(method=="POST"&&path=="/login") {
         auto f=parse_form(body);
-        auto r=login(g_store,g_limiter,trim_ws(f["username"]),f["password"],device_label_from(req,peer_ip),peer_ip);
-        if(r.error!=AuthError::None||!r.session)
-            return http_ok(wrap("Log in","",0,"<div class=\"card\"><p>Invalid username or password. <a href=\"/login\">Back</a></p></div>"));
+        auto uname = trim_ws(f["username"]);
+        auto r=login(g_store,g_limiter,uname,f["password"],device_label_from(req,peer_ip),peer_ip);
+        if(r.error!=AuthError::None||!r.session) {
+            const char* code = (r.error==AuthError::RateLimited) ? "ratelimit" : "login";
+            return http_redir("/login?err=" + std::string(code) + "&username=" + url_encode(uname));
+        }
         return http_redir("/feed", set_cookie(r.session->id));
     }
     if(method=="POST"&&path=="/me") {

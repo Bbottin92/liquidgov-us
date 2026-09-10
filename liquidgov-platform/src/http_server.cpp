@@ -2826,17 +2826,6 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
                        "<body><p>No such profile.</p></body></html>";
             } else {
                 auto author_css = g_store.author_css(found->id);
-                // Server-controlled markup -- adding elements here is safe
-                // regardless of what author_css contains, since only the
-                // CSS goes through sanitize_author_css. The avatar is a
-                // real <img>, not a CSS background, specifically so
-                // profile CSS has a legitimate third element to target
-                // without needing url() (which stays denied).
-                std::string avatar_tag;
-                if (has_portrait(found->id)) {
-                    avatar_tag = "<img class=\"lg-avatar\" src=\"/portrait/" + html_escape(found->username) +
-                                 "\" alt=\"\" width=\"64\" height=\"64\">";
-                }
                 auto canvas_frames = g_store.canvas_frames(found->id);
                 std::string canvas_css = theme_background_css(
                     found->username, canvas_frames.size(), g_store.canvas_timelapse(found->id));
@@ -2854,11 +2843,10 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
                        "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
                        "<style>body{margin:0;padding:1rem;font:16px/1.5 system-ui,sans-serif;"
                        "background:#fff;color:#1a1814}h1{margin:.2rem 0}"
-                       "p{white-space:pre-wrap}.lg-avatar{border-radius:50%;display:block;"
-                       "border:3px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.15)}</style>"
+                       "p{white-space:pre-wrap}</style>"
                        "<style>" + canvas_css + "</style>"
                        "<style>" + author_css + "</style></head>"
-                       "<body><div class=\"lg-theme\">" + avatar_tag + "<h1>" + html_escape(found->username) + "</h1>"
+                       "<body><div class=\"lg-theme\"><h1>" + html_escape(found->username) + "</h1>"
                        "</div></body></html>";
             }
         }

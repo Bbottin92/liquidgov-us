@@ -2758,6 +2758,12 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         else if (qs["err"]=="large") err = "<p class=\"warn\">That file is too large. Cap is 2&nbsp;MiB and 1024 pixels on the long edge.</p>";
         else if (qs["err"]=="scan") err = "<p class=\"warn\">That file could not be stored.</p>";
         std::string html;
+        html += "<div class=\"card\"><div class=\"who\">"+portrait_tag(user,"")+"<div><h1>"+html_escape(user)+"</h1>"
+            "<p class=\"muted\">Platform profile · <a href=\"/u/"+html_escape(user)+"\">public page</a> · member since "+
+            html_escape(fmt_time(acc->created_at))+"</p></div></div>"+err+
+            "<p class=\"muted\">Self-portrait &mdash; draw one with the same tools as the "
+            "<a href=\"/me/portrait\">portrait tool</a>.</p>";
+        html += "<p class=\"muted\">A platform account is not a CitizenId.</p></div>";
         {
             auto n_frames = g_store.canvas_frames(acc->id).size();
             std::string canvas_status = n_frames == 0
@@ -2786,21 +2792,6 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
                 "<button>Save CSS</button></form></div>";
         }
         html += jukebox_widget(user, true, qs);
-        html += "<div class=\"card\"><div class=\"who\">"+portrait_tag(user,"")+"<div><h1>"+html_escape(user)+"</h1>"
-            "<p class=\"muted\">Platform profile · <a href=\"/u/"+html_escape(user)+"\">public page</a> · member since "+
-            html_escape(fmt_time(acc->created_at))+"</p></div></div>"+err+
-            "<p class=\"muted\">Self-portrait &mdash; draw one with the same tools as the "
-            "<a href=\"/me/portrait\">portrait tool</a>.</p>";
-        html += "<p class=\"muted\">A platform account is not a CitizenId.</p></div>";
-        html += composer_media_error(qs["perr"]);
-        html += "<div class=\"card\"><form method=\"POST\" action=\"/me/post\" enctype=\"multipart/form-data\">"
-            "<label>Post to your profile</label>"
-            "<textarea name=\"text\" maxlength=\"2000\" placeholder=\"What's on your mind?\"></textarea>"
-            "<label>Photo or video (optional)</label><input type=\"file\" name=\"media\" accept=\"image/*,video/*\">"
-            "<button>Post</button></form>"
-            "<p class=\"muted\" style=\"margin-top:.5rem\">Or <a href=\"/me/post/canvas\">open the canvas</a> "
-            "to draw, crop, layer, or paste one together first. See your posts on your "
-            "<a href=\"/u/"+html_escape(user)+"\">public page</a>.</p></div>";
         return pg("Profile", html);
     }
 

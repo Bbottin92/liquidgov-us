@@ -963,6 +963,20 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "<svg viewBox=\"0 0 16 16\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" "
         "stroke-width=\"1.2\" aria-hidden=\"true\"><path d=\"M4 10.5 7 3h2l3 7.5\"/><path d=\"M5.1 8h5.8\"/>"
         "<rect x=\"2.5\" y=\"12.3\" width=\"11\" height=\"1.8\" fill=\"currentColor\" stroke=\"none\"/></svg>";
+    // One dial glyph, reused at two sizes for the size/opacity wheels below
+    // -- a bigger circle reads as "coarser steps" and a smaller one as
+    // "finer steps" on its own, without needing a second icon design to
+    // tell them apart (and risk being just as unclear as an abstract pair
+    // would be).
+    const std::string kIconDial =
+        "<svg viewBox=\"0 0 16 16\" width=\"100%\" height=\"100%\" fill=\"none\" stroke=\"currentColor\" "
+        "stroke-width=\"1.2\" aria-hidden=\"true\"><circle cx=\"8\" cy=\"8\" r=\"6.5\"/><path d=\"M8 2.5v3\"/></svg>";
+    // The standard diagonal-dot resize grip every native textarea already
+    // uses in its own bottom-right corner.
+    const std::string kIconResizeGrip =
+        "<svg viewBox=\"0 0 16 16\" width=\"100%\" height=\"100%\" fill=\"currentColor\" aria-hidden=\"true\">"
+        "<circle cx=\"12\" cy=\"4\" r=\"1.1\"/><circle cx=\"12\" cy=\"8\" r=\"1.1\"/><circle cx=\"12\" cy=\"12\" r=\"1.1\"/>"
+        "<circle cx=\"8\" cy=\"8\" r=\"1.1\"/><circle cx=\"8\" cy=\"12\" r=\"1.1\"/><circle cx=\"4\" cy=\"12\" r=\"1.1\"/></svg>";
     std::string title = portrait ? "Self-portrait" : (post_mode ? "Compose a post" : "Canvas");
     std::string intro = portrait
         ? "Draw your self-portrait with the same tools as the profile-background canvas &mdash; "
@@ -1001,10 +1015,33 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "<div class=\"row\" style=\"flex-wrap:wrap;gap:.4rem 1rem;align-items:center;margin-bottom:.4rem\">"
         "<input type=\"color\" id=\"ccolor\" value=\"#1a1814\" aria-label=\"Color\" "
         "style=\"width:36px;min-height:36px;padding:2px;flex:0 0 auto\">"
-        "<label style=\"display:flex;align-items:center;gap:.3rem\">Size"
-        "<input type=\"range\" id=\"csize\" min=\"1\" max=\"48\" value=\"8\" style=\"width:6rem\"></label>"
-        "<label style=\"display:flex;align-items:center;gap:.3rem\">Opacity"
-        "<input type=\"range\" id=\"copacity\" min=\"5\" max=\"100\" value=\"100\" style=\"width:6rem\"></label>"
+        // Coarse/fine wheels instead of a single slider: drag one
+        // vertically, or scroll it, and it nudges the number beside it --
+        // the bigger circle moves in bigger steps, the smaller one in
+        // smaller steps, same size-implies-precision logic as a real
+        // jog/shuttle pair, so which is which never needs explaining.
+        "<label>Size</label>"
+        "<div class=\"row\" style=\"gap:.3rem;align-items:center\">"
+        "<div class=\"wheel\" id=\"csizec\" data-target=\"csize\" data-step=\"5\" title=\"Size, coarse (drag or scroll, \\u00b15)\" "
+        "style=\"width:30px;height:30px;border-radius:50%;border:1px solid var(--rule);cursor:ns-resize;"
+        "touch-action:none;flex:0 0 auto\">"+kIconDial+"</div>"
+        "<div class=\"wheel\" id=\"csizef\" data-target=\"csize\" data-step=\"1\" title=\"Size, fine (drag or scroll, \\u00b11)\" "
+        "style=\"width:20px;height:20px;border-radius:50%;border:1px solid var(--rule);cursor:ns-resize;"
+        "touch-action:none;flex:0 0 auto\">"+kIconDial+"</div>"
+        "<input type=\"number\" id=\"csize\" min=\"1\" max=\"48\" value=\"8\" style=\"width:4rem\">"
+        "</div>"
+        "<label>Opacity</label>"
+        "<div class=\"row\" style=\"gap:.3rem;align-items:center\">"
+        "<div class=\"wheel\" id=\"copacityc\" data-target=\"copacity\" data-step=\"20\" "
+        "title=\"Opacity, coarse (drag or scroll, \\u00b120)\" "
+        "style=\"width:30px;height:30px;border-radius:50%;border:1px solid var(--rule);cursor:ns-resize;"
+        "touch-action:none;flex:0 0 auto\">"+kIconDial+"</div>"
+        "<div class=\"wheel\" id=\"copacityf\" data-target=\"copacity\" data-step=\"5\" "
+        "title=\"Opacity, fine (drag or scroll, \\u00b15)\" "
+        "style=\"width:20px;height:20px;border-radius:50%;border:1px solid var(--rule);cursor:ns-resize;"
+        "touch-action:none;flex:0 0 auto\">"+kIconDial+"</div>"
+        "<input type=\"number\" id=\"copacity\" min=\"5\" max=\"100\" value=\"100\" style=\"width:4rem\">"
+        "</div>"
         "<label><input type=\"checkbox\" id=\"cglow\"> Glow</label>"
         "<label><input type=\"checkbox\" id=\"csymmetry\"> Mirror</label>"
         "<label><input type=\"checkbox\" id=\"cfill\"> Fill shape</label>"
@@ -1064,16 +1101,9 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "<button type=\"button\" class=\"ghost\" id=\"ccrop\" title=\"Apply crop to selection\" "
         "style=\"padding:.5rem .55rem\">"+kIconCrop+"</button>"
         "</div>"
-        "<div class=\"row\" style=\"gap:.3rem;align-items:center\">"
-        "<span class=\"muted\">Canvas size</span>"
-        "<input type=\"number\" id=\"crw\" min=\"16\" max=\"2000\" value=\""+cws+"\" style=\"width:4.5rem\">"
-        "<span class=\"muted\">&times;</span>"
-        "<input type=\"number\" id=\"crh\" min=\"16\" max=\"2000\" value=\""+chs+"\" style=\"width:4.5rem\">"
-        "<button type=\"button\" class=\"ghost\" id=\"cresize\">Resize</button>"
-        "</div>"
         "</div>"
         "<p class=\"muted\" style=\"margin:-.3rem 0 .6rem\">Ctrl+V also pastes an image straight from your "
-        "OS clipboard onto the active layer.</p>"
+        "OS clipboard onto the active layer. Drag the corner grip to resize the whole canvas.</p>"
         // Layers as a vertical tab strip down the canvas's own left edge --
         // physically attached to the surface they control, the way layer
         // panels normally sit next to (not above) the thing being layered.
@@ -1116,6 +1146,9 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "style=\"position:absolute;inset:0;width:100%;height:100%\"></canvas>"
         "<canvas id=\"coverlay\" width=\""+cws+"\" height=\""+chs+"\" "
         "style=\"position:absolute;inset:0;width:100%;height:100%;cursor:crosshair\"></canvas>"
+        "<div id=\"cresizehandle\" title=\"Drag to resize the canvas\" "
+        "style=\"position:absolute;right:0;bottom:0;width:16px;height:16px;padding:2px;"
+        "cursor:nwse-resize;z-index:11;touch-action:none;color:var(--stone)\">"+kIconResizeGrip+"</div>"
         "</div>"
         "</div>"
         "<div class=\"row\" style=\"margin-top:.6rem;gap:.4rem\">"
@@ -1345,7 +1378,6 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "overlay.width=nw;overlay.height=nh;"
         "var wrap=document.getElementById('ccanvaswrap');"
         "wrap.style.maxWidth=nw+'px';wrap.style.aspectRatio=nw+'/'+nh;"
-        "document.getElementById('crw').value=nw;document.getElementById('crh').value=nh;"
         "selRect=null;clearOverlay();captureFrame(false);"
         "}"
         "document.getElementById('ccrop').addEventListener('click',function(){"
@@ -1353,10 +1385,59 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "resizeAllLayers(Math.round(selRect.w),Math.round(selRect.h),"
         "{x:Math.round(selRect.x),y:Math.round(selRect.y)});"
         "});"
-        "document.getElementById('cresize').addEventListener('click',function(){"
-        "var nw=Math.max(16,Math.min(2000,Number(document.getElementById('crw').value)||acv().width));"
-        "var nh=Math.max(16,Math.min(2000,Number(document.getElementById('crh').value)||acv().height));"
-        "resizeAllLayers(Math.round(nw),Math.round(nh),null);"
+        // Drag the corner grip to resize the canvas -- live CSS-only
+        // preview while dragging (cheap: just the wrap's own box, the
+        // actual bitmaps untouched so the existing drawing visibly
+        // stretches to match, same as dragging an image placeholder in
+        // any editor), then the real per-layer resize commits once on
+        // release via the same resizeAllLayers() the old numeric-input
+        // form used.
+        "(function(){"
+        "var handle=document.getElementById('cresizehandle'),wrap=document.getElementById('ccanvaswrap');"
+        "var dragging=false,startX=0,startY=0,startCw=0,startCh=0,cssToCanvas=1;"
+        "handle.addEventListener('pointerdown',function(e){"
+        "dragging=true;startX=e.clientX;startY=e.clientY;"
+        "var r=wrap.getBoundingClientRect();"
+        "startCw=r.width;startCh=r.height;cssToCanvas=acv().width/r.width;"
+        "handle.setPointerCapture(e.pointerId);e.preventDefault();e.stopPropagation();"
+        "});"
+        "handle.addEventListener('pointermove',function(e){"
+        "if(!dragging)return;"
+        "var nw=Math.max(40,startCw+(e.clientX-startX));"
+        "var nh=Math.max(40,startCh+(e.clientY-startY));"
+        "wrap.style.maxWidth=nw+'px';wrap.style.aspectRatio=nw+'/'+nh;"
+        "e.preventDefault();e.stopPropagation();"
+        "});"
+        "handle.addEventListener('pointerup',function(e){"
+        "if(!dragging)return;dragging=false;"
+        "var nw=Math.max(16,Math.min(2000,Math.round((startCw+(e.clientX-startX))*cssToCanvas)));"
+        "var nh=Math.max(16,Math.min(2000,Math.round((startCh+(e.clientY-startY))*cssToCanvas)));"
+        "resizeAllLayers(nw,nh,null);"
+        "e.preventDefault();e.stopPropagation();"
+        "});"
+        "})();"
+        // Coarse/fine wheels: drag vertically or scroll over one to nudge
+        // its target number input by its own step, clamped to that
+        // input's own min/max. A little rotation on each notch is purely
+        // cosmetic feedback that the wheel actually registered the input.
+        "document.querySelectorAll('.wheel').forEach(function(w){"
+        "var target=document.getElementById(w.dataset.target),step=Number(w.dataset.step),rotation=0;"
+        "function apply(dir){"
+        "var min=Number(target.min)||0,max=Number(target.max)||9999;"
+        "target.value=Math.max(min,Math.min(max,Number(target.value)+dir*step));"
+        "rotation+=dir*20;w.style.transform='rotate('+rotation+'deg)';"
+        "}"
+        "w.addEventListener('wheel',function(e){e.preventDefault();apply(e.deltaY<0?1:-1);},{passive:false});"
+        "var dragging=false,lastY=0;"
+        "w.addEventListener('pointerdown',function(e){"
+        "dragging=true;lastY=e.clientY;w.setPointerCapture(e.pointerId);e.preventDefault();"
+        "});"
+        "w.addEventListener('pointermove',function(e){"
+        "if(!dragging)return;"
+        "var dy=lastY-e.clientY;"
+        "if(Math.abs(dy)>=6){apply(dy>0?1:-1);lastY=e.clientY;}"
+        "});"
+        "w.addEventListener('pointerup',function(){dragging=false;});"
         "});"
         // Text: drag the Text tool on the canvas -- vertical distance
         // sets the font size, horizontal sets the field width the text

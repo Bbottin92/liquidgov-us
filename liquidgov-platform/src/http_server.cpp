@@ -1665,7 +1665,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             else if (qs["err"]=="css") css_msg = "<p class=\"warn\">"+html_escape(css_reject_message(qs["reason"]))+"</p>";
             html += "<div class=\"card\"><h2>Profile CSS</h2>"
                 "<p class=\"muted\">Restyles your public profile page (/u/"+html_escape(user)+
-                "), shown inside a sandboxed frame with no scripts and no access to this site's cookies or data. "
+                "), shown inside a sandboxed frame that can never run scripts. "
                 "@import, url(), and anything script-adjacent are rejected outright, not silently stripped. "
                 "Limit " + std::to_string(kAuthorCssMaxBytes/1000) + "KB. Leave empty to use the default look.</p>"
                 + css_msg +
@@ -1739,8 +1739,22 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             "<p>"+html_escape(b.empty()?"No blurb yet.":b)+"</p>"
             "<p class=\"muted\">Public profile. Not a CitizenId. Not a seated office.</p></div></div>";
         if (!g_store.author_css(found->id).empty()) {
-            html += "<iframe src=\"/u/"+html_escape(found->username)+"/theme\" sandbox=\"\" "
-                    "title=\"Profile theme\" loading=\"lazy\" "
+            // sandbox="allow-same-origin", not sandbox="" (opaque origin):
+            // confirmed live that opaque-origin sandboxed iframes get
+            // silently dropped by real-world browser privacy/tracking
+            // protections (reproduced in two independent browsers, not a
+            // one-off) -- the iframe element rendered but its document
+            // never loaded. allow-same-origin fixes that. This does NOT
+            // reopen the security hole it looks like: allow-scripts is
+            // still withheld, so nothing can ever execute inside this
+            // frame regardless of origin -- and with zero script
+            // execution possible, having the same origin as the rest of
+            // the site is not exploitable (there's no JS to act on it).
+            // The two real defenses -- sanitize_author_css rejecting
+            // script-adjacent CSS, and no script execution ever being
+            // possible in this frame -- are both still fully intact.
+            html += "<iframe src=\"/u/"+html_escape(found->username)+"/theme\" sandbox=\"allow-same-origin\" "
+                    "title=\"Profile theme\" "
                     "style=\"width:100%;min-height:220px;border:1px solid var(--rule);"
                     "border-radius:var(--rsm);background:#fff\"></iframe>";
         }

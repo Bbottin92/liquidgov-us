@@ -867,7 +867,8 @@ std::string canvas_page(const std::string& username, const std::string& err) {
         "Import image/video<input type=\"file\" id=\"cimport\" accept=\"image/*,video/*\" "
         "style=\"display:none\"></label>"
         "</div>"
-        "<div id=\"ccanvaswrap\" style=\"position:relative;width:100%;max-width:640px;"
+        "<div id=\"cstage\" style=\"position:relative;width:100%;max-width:640px\">"
+        "<div id=\"ccanvaswrap\" style=\"position:relative;width:100%;"
         "aspect-ratio:640/440;background:#fff;border:1px solid var(--rule);"
         "border-radius:var(--rsm);overflow:hidden;touch-action:none\">"
         "<canvas id=\"clayer0\" width=\"640\" height=\"440\" "
@@ -879,6 +880,21 @@ std::string canvas_page(const std::string& username, const std::string& err) {
         "<canvas id=\"coverlay\" width=\"640\" height=\"440\" "
         "style=\"position:absolute;inset:0;width:100%;height:100%;cursor:crosshair\"></canvas>"
         "</div>"
+        // The self-portrait is just a circular crop of whatever's on the
+        // canvas right now -- no separate drawing surface, no file picker.
+        // Sits as a badge overlapping the canvas's own corner so the
+        // connection ("this IS your canvas, cropped round") is visual, not
+        // just explained in text.
+        "<div style=\"position:absolute;right:8px;bottom:8px;display:flex;"
+        "flex-direction:column;align-items:center;gap:.3rem\">"
+        "<canvas id=\"pmini\" width=\"120\" height=\"120\" title=\"Your self-portrait, live\" "
+        "style=\"width:72px;height:72px;border-radius:50%;border:3px solid var(--paper);"
+        "box-shadow:0 1px 5px rgba(0,0,0,.3);background:#fff\"></canvas>"
+        "<button type=\"button\" class=\"ghost\" id=\"psave\" "
+        "style=\"font-size:.75rem;padding:.3rem .55rem\">Save as self-portrait</button>"
+        "</div>"
+        "</div>"
+        "<p class=\"muted\" id=\"pstatus\"></p>"
         "<div class=\"row\" style=\"margin-top:.6rem;gap:.4rem\">"
         "<button type=\"button\" class=\"ghost\" id=\"cundo\">Undo</button>"
         "<button type=\"button\" class=\"ghost\" id=\"credo\">Redo</button>"
@@ -1111,12 +1127,38 @@ std::string canvas_page(const std::string& username, const std::string& err) {
         "for(var i=0;i<layers.length;i++)octx2.drawImage(layers[i].cv,0,0);"
         "return out;"
         "}"
+        // The self-portrait is a centred square crop of the flattened
+        // canvas -- not a squish of the whole 640x440 rectangle, so it
+        // doesn't come out stretched once the circular mask goes on top.
+        "function cropSquare(out){"
+        "var side=Math.min(out.width,out.height);"
+        "var sx=(out.width-side)/2,sy=(out.height-side)/2;"
+        "var crop=document.createElement('canvas');crop.width=side;crop.height=side;"
+        "crop.getContext('2d').drawImage(out,sx,sy,side,side,0,0,side,side);"
+        "return crop;"
+        "}"
+        "var pmini=document.getElementById('pmini'),pctx=pmini.getContext('2d');"
+        "function updatePreview(out){"
+        "pctx.clearRect(0,0,pmini.width,pmini.height);"
+        "pctx.drawImage(cropSquare(out),0,0,pmini.width,pmini.height);"
+        "}"
+        "updatePreview(flatten());"
+        "document.getElementById('psave').addEventListener('click',function(){"
+        "var st=document.getElementById('pstatus');st.textContent='Saving\\u2026';"
+        "cropSquare(flatten()).toBlob(function(blob){"
+        "var fd=new FormData();fd.append('photo',blob,'portrait.png');"
+        "fetch('/me/avatar',{method:'POST',body:fd}).then(function(r){"
+        "st.textContent=r.ok?'Saved as your self-portrait.':'Could not save. Try again.';"
+        "}).catch(function(){st.textContent='Could not save. Try again.';});"
+        "},'image/png');"
+        "});"
         // done() always fires, whether this capture actually uploaded or
         // was skipped (cap hit, no force) -- callers that need to know the
         // frame really landed (Save, below) depend on that.
         "function captureFrame(force,done){"
         "if(frameCount>=23&&!force){if(done)done();return;}"
-        "flatten().toBlob(function(blob){"
+        "var out=flatten();updatePreview(out);"
+        "out.toBlob(function(blob){"
         "var fd=new FormData();fd.append('frame',blob,'frame.png');"
         "function go(){"
         "fetch('/me/canvas/frame',{method:'POST',body:fd}).then(function(r){"
@@ -1706,57 +1748,6 @@ std::string jukebox_standalone_page(const std::string& yt_key) {
            + jukebox_script(yt_key, true);
 }
 
-// In-browser drawing tool for the self-portrait. Draws to a <canvas>, exports
-// via canvas.toBlob('image/png') and POSTs it to the *same* /me/avatar route
-// as a file upload — the server can't tell a drawn PNG from an uploaded one,
-// so save_avatar's normalize/scan/blob pipeline is untouched by this feature.
-std::string portrait_draw_widget() {
-    return
-        "<div class=\"card\"><h2>Or draw one</h2>"
-        "<canvas id=\"pcanvas\" width=\"256\" height=\"256\" "
-        "style=\"border:1px solid var(--rule);border-radius:var(--rsm);background:#fff;"
-        "touch-action:none;cursor:crosshair;max-width:100%\"></canvas>"
-        "<div class=\"row\" style=\"margin-top:.5rem\">"
-        "<input type=\"color\" id=\"pcolor\" value=\"#1a1814\" aria-label=\"Color\" "
-        "style=\"width:44px;min-height:44px;padding:2px;flex:0 0 auto\">"
-        "<input type=\"range\" id=\"psize\" min=\"1\" max=\"24\" value=\"4\" aria-label=\"Brush size\" "
-        "style=\"width:auto;flex:1 1 8rem\">"
-        "<button type=\"button\" class=\"ghost\" id=\"pclear\">Clear</button>"
-        "<button type=\"button\" id=\"psave\">Use this drawing</button>"
-        "</div><p class=\"muted\" id=\"pstatus\"></p></div>"
-        "<script>(function(){"
-        "var cv=document.getElementById('pcanvas'),ctx=cv.getContext('2d');"
-        "ctx.fillStyle='#fff';ctx.fillRect(0,0,cv.width,cv.height);"
-        "var drawing=false,last=null;"
-        "function pos(e){var r=cv.getBoundingClientRect();var p=e.touches?e.touches[0]:e;"
-        "return{x:(p.clientX-r.left)*cv.width/r.width,y:(p.clientY-r.top)*cv.height/r.height};}"
-        "function start(e){drawing=true;last=pos(e);e.preventDefault();}"
-        "function move(e){if(!drawing)return;var p=pos(e);"
-        "ctx.strokeStyle=document.getElementById('pcolor').value;"
-        "ctx.lineWidth=document.getElementById('psize').value;"
-        "ctx.lineCap='round';ctx.lineJoin='round';"
-        "ctx.beginPath();ctx.moveTo(last.x,last.y);ctx.lineTo(p.x,p.y);ctx.stroke();"
-        "last=p;e.preventDefault();}"
-        "function end(){drawing=false;}"
-        "cv.addEventListener('mousedown',start);cv.addEventListener('mousemove',move);"
-        "window.addEventListener('mouseup',end);"
-        "cv.addEventListener('touchstart',start,{passive:false});"
-        "cv.addEventListener('touchmove',move,{passive:false});"
-        "cv.addEventListener('touchend',end);"
-        "document.getElementById('pclear').addEventListener('click',function(){"
-        "ctx.fillStyle='#fff';ctx.fillRect(0,0,cv.width,cv.height);});"
-        "document.getElementById('psave').addEventListener('click',function(){"
-        "var st=document.getElementById('pstatus');st.textContent='Saving\\u2026';"
-        "cv.toBlob(function(blob){"
-        "var fd=new FormData();fd.append('photo',blob,'portrait.png');"
-        "fetch('/me/avatar',{method:'POST',body:fd}).then(function(r){"
-        "window.location=r.url||'/me';"
-        "}).catch(function(){st.textContent='Could not save. Try again.';});"
-        "},'image/png');"
-        "});"
-        "})();</script>";
-}
-
 // Page-local jukebox widget (navigation option A: MPA, own instance per
 // page, stops on navigate away — no site-wide SPA, no WebSocket sync).
 // Owner-curated: add/remove only render when owner_view is true; visitors
@@ -2090,12 +2081,8 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         std::string html = "<div class=\"card\"><div class=\"who\">"+portrait_tag(user,"")+"<div><h1>"+html_escape(user)+"</h1>"
             "<p class=\"muted\">Platform profile · <a href=\"/u/"+html_escape(user)+"\">public page</a> · member since "+
             html_escape(fmt_time(acc->created_at))+"</p></div></div>"+err+
-            "<form method=\"POST\" action=\"/me/avatar\" enctype=\"multipart/form-data\">"
-            "<label>Self-portrait</label>"
-            "<input type=\"file\" name=\"photo\" accept=\"image/png,image/jpeg,image/gif\" required>"
-            "<p class=\"muted\">Decoded and re-encoded as PNG. No SVG. No author CSS. Not a CitizenId.</p>"
-            "<div class=\"row\"><button>Upload</button></div></form>"
-            + portrait_draw_widget();
+            "<p class=\"muted\">Self-portrait &mdash; draw one from the <a href=\"/me/canvas\">Canvas</a> "
+            "tool; the small circle on it saves straight here.</p>";
         if (has_portrait(acc->id))
             html += "<form method=\"POST\" action=\"/me/avatar/clear\"><button class=\"ghost\" type=\"submit\">Remove portrait</button></form>";
         html += "<p>"+html_escape(b.empty()?"No blurb yet.":b)+"</p>"

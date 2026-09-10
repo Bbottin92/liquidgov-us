@@ -1679,6 +1679,17 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             } else {
                 auto b = g_store.blurb(found->id);
                 auto author_css = g_store.author_css(found->id);
+                // Server-controlled markup -- adding elements here is safe
+                // regardless of what author_css contains, since only the
+                // CSS goes through sanitize_author_css. The avatar is a
+                // real <img>, not a CSS background, specifically so
+                // profile CSS has a legitimate third element to target
+                // without needing url() (which stays denied).
+                std::string avatar_tag;
+                if (has_portrait(found->id)) {
+                    avatar_tag = "<img class=\"lg-avatar\" src=\"/portrait/" + html_escape(found->username) +
+                                 "\" alt=\"\" width=\"64\" height=\"64\">";
+                }
                 // Deliberately not wrap()/page_wrap(): no nav, no jukebox
                 // widget, no session cookie context, no scripts at all --
                 // this document only ever renders inside the sandboxed,
@@ -1689,9 +1700,9 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
                        "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
                        "<style>body{margin:0;padding:1rem;font:16px/1.5 system-ui,sans-serif;"
                        "background:#fff;color:#1a1814}h1{margin:.2rem 0}"
-                       "p{white-space:pre-wrap}</style>"
+                       "p{white-space:pre-wrap}.lg-avatar{border-radius:50%;display:block}</style>"
                        "<style>" + author_css + "</style></head>"
-                       "<body><div class=\"lg-theme\"><h1>" + html_escape(found->username) + "</h1>"
+                       "<body><div class=\"lg-theme\">" + avatar_tag + "<h1>" + html_escape(found->username) + "</h1>"
                        "<p>" + html_escape(b.empty() ? "No blurb yet." : b) + "</p></div></body></html>";
             }
         }

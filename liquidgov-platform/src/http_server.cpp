@@ -1951,9 +1951,14 @@ std::string post_block(const Post& p, const std::string& viewer) {
     std::string mediaHtml;
     if (!p.attachment_blob_id.empty()) {
         std::string src = "/post-media/"+html_escape(p.attachment_blob_id);
+        // width:100% (not max-width) so a small source image still fills
+        // the card instead of rendering at its native pixel size -- the
+        // bug that first surfaced this: a 120x80 test PNG showed up
+        // genuinely postage-stamp-sized, since max-width alone only ever
+        // scales large images down, never scales small ones up.
         mediaHtml = (p.attachment_mime.rfind("video/",0)==0)
-            ? "<video controls preload=\"metadata\" style=\"max-width:100%;border-radius:var(--rsm);margin-top:.4rem\" src=\""+src+"\"></video>"
-            : "<img style=\"max-width:100%;border-radius:var(--rsm);margin-top:.4rem\" src=\""+src+"\" alt=\"\">";
+            ? "<video controls preload=\"metadata\" style=\"width:100%;height:auto;display:block;border-radius:var(--rsm);margin-top:.4rem\" src=\""+src+"\"></video>"
+            : "<img style=\"width:100%;height:auto;display:block;border-radius:var(--rsm);margin-top:.4rem\" src=\""+src+"\" alt=\"\">";
     }
     return "<article class=\"post\"><div class=\"who\">"+portrait_tag(p.author,"sm")+"<div><a href=\"/u/"+html_escape(p.author)+"\"><strong>"+
            html_escape(p.author)+"</strong></a>"+where+

@@ -560,9 +560,17 @@ bool read_http_request(int fd, std::string& req) {
 std::string global_jukebox_widget(const std::string& yt_key); // defined below, needed here for wrap()
 
 std::string wrap(const std::string& title, const std::string& user, int unread, const std::string& body) {
-    std::string b = body;
-    if (!user.empty()) b += global_jukebox_widget(youtube_api_key_from_env());
-    return page_wrap(title, nav(user, unread), b);
+    std::string page = page_wrap(title, nav(user, unread), body);
+    // Widget goes *after* </main>, not inside it: soft-navigation (see
+    // jukebox_script's nav-interception) only ever replaces <main>'s
+    // contents, so a sibling widget's live WebSocket/YT player survive a
+    // page-to-page click untouched instead of being torn down and rebuilt.
+    if (!user.empty()) {
+        std::string widget = global_jukebox_widget(youtube_api_key_from_env());
+        auto pos = page.find("</main>");
+        if (pos != std::string::npos) page.insert(pos + 7, widget);
+    }
+    return page;
 }
 
 std::string trim_copy(std::string s) {
@@ -1065,14 +1073,59 @@ std::string jukebox_script(const std::string& yt_key, bool standalone) {
         "panel.hidden=!panel.hidden;"
         "if(!panel.hidden){ensurePlayer(function(){});connectWs();}"
         "});"
-        "document.getElementById('jbclose').addEventListener('click',function(){"
-        "panel.hidden=true;teardown();"
-        "});"
+        // Closing the panel is a minimize, not a stop: audio keeps playing
+        // in the background on this page, same as e.g. a music site's
+        // player bar collapsing. Only Pop-out tears down -- a separate
+        // /listen window is taking over, so this page's copy would
+        // otherwise be a redundant, potentially state-confusing connection.
+        "document.getElementById('jbclose').addEventListener('click',function(){panel.hidden=true;});"
         "var popoutBtn=document.getElementById('jbpopout');"
         "if(popoutBtn)popoutBtn.addEventListener('click',function(){"
         "window.open('/listen','lg_jukebox','width=360,height=560,menubar=no,toolbar=no,location=no,status=no');"
         "panel.hidden=true;teardown();"
         "});"
+        // Soft navigation: intercept plain same-origin link clicks and swap
+        // <main>'s content via fetch instead of a full page load, so the
+        // widget (a sibling of <main>, see wrap()) and its live
+        // WebSocket/YT player are simply never touched by an ordinary click
+        // around the site. Forms/POSTs are untouched (this only hooks
+        // anchor clicks) and still do a normal full-page round trip.
+        "document.addEventListener('click',function(e){"
+        "if(e.defaultPrevented||e.button!==0||e.metaKey||e.ctrlKey||e.shiftKey||e.altKey)return;"
+        "var a=e.target.closest&&e.target.closest('a[href]');"
+        "if(!a||a.target&&a.target!=='_self'||a.hasAttribute('download'))return;"
+        "var url;try{url=new URL(a.href,location.href);}catch(err){return;}"
+        "if(url.origin!==location.origin||url.pathname===location.pathname&&url.search===location.search&&url.hash)return;"
+        "e.preventDefault();"
+        "softNavigate(url.href,true);"
+        "});"
+        "window.addEventListener('popstate',function(){softNavigate(location.href,false);});"
+        "function reExecuteScripts(container){"
+        "Array.prototype.forEach.call(container.querySelectorAll('script'),function(old){"
+        "var fresh=document.createElement('script');"
+        "for(var i=0;i<old.attributes.length;i++)fresh.setAttribute(old.attributes[i].name,old.attributes[i].value);"
+        "fresh.textContent=old.textContent;"
+        "old.parentNode.replaceChild(fresh,old);"
+        "});"
+        "}"
+        "function softNavigate(url,pushState){"
+        "fetch(url,{headers:{'X-Soft-Nav':'1'}}).then(function(r){"
+        "if(!r.ok)throw new Error('nav failed');"
+        "return r.text().then(function(html){return{html:html,finalUrl:r.url};});"
+        "}).then(function(res){"
+        "var doc=new DOMParser().parseFromString(res.html,'text/html');"
+        "var newMain=doc.querySelector('main.wrap');"
+        "if(!newMain){location.href=url;return;}"
+        "document.querySelector('main.wrap').innerHTML=newMain.innerHTML;"
+        "reExecuteScripts(document.querySelector('main.wrap'));"
+        "var newNav=doc.querySelector('header.top nav');"
+        "var navEl=document.querySelector('header.top nav');"
+        "if(navEl&&newNav)navEl.innerHTML=newNav.innerHTML;"
+        "document.title=doc.title;"
+        "if(pushState)history.pushState({},'',res.finalUrl);"
+        "window.scrollTo(0,0);"
+        "}).catch(function(){location.href=url;});"
+        "}"
         "}else{"
         "document.getElementById('jbclose').addEventListener('click',function(){window.close();});"
         "ensurePlayer(function(){});connectWs();"

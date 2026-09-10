@@ -411,6 +411,40 @@ int main() {
         std::cout << "unfriend() calls on_relationship_ended: initiator leaves the shared group\n";
     }
 
+    {
+        FileStore store(path);
+        auto a = create_account(store, breach, "prop-a", "correct-horse-battery-staple", "+15559100000");
+        auto b = create_account(store, breach, "prop-b", "correct-horse-battery-staple", "+15559100001");
+        assert(a.error == AuthError::None && b.error == AuthError::None);
+
+        auto id = store.add_proposal("prop-a", "Adopt a flag", "Something simple, not a seal.");
+        assert(store.proposal_by_id(id)->title == "Adopt a flag");
+        assert(!store.proposal_vote_of(id, "prop-b").has_value());
+
+        store.cast_proposal_vote(id, "prop-a", ProposalVote::Yes);
+        store.cast_proposal_vote(id, "prop-b", ProposalVote::No);
+        auto t = store.tally_of(id);
+        assert(t.yes == 1 && t.no == 1 && t.abstain == 0);
+
+        // Re-voting overwrites, doesn't add a second ballot.
+        store.cast_proposal_vote(id, "prop-b", ProposalVote::Abstain);
+        t = store.tally_of(id);
+        assert(t.yes == 1 && t.no == 0 && t.abstain == 1);
+        assert(store.proposal_vote_of(id, "prop-b") == ProposalVote::Abstain);
+        std::cout << "proposal add/vote/re-vote/tally ok\n";
+    }
+    {
+        FileStore store(path); // reload
+        auto all = store.all_proposals();
+        assert(all.size() == 1 && all[0].title == "Adopt a flag");
+        auto t = store.tally_of(all[0].id);
+        assert(t.yes == 1 && t.no == 0 && t.abstain == 1);
+        auto acc = store.find_by_username("prop-a");
+        assert(store.delete_account(acc->id));
+        assert(store.proposal_by_id(all[0].id)->author == "[deleted account]");
+        std::cout << "proposal LGP1 tags survive reload; author relabeled on delete\n";
+    }
+
     unlink(path.c_str());
     unlink((path + ".tmp").c_str());
     std::cout << "\nall file_store tests passed\n";

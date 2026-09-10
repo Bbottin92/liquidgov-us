@@ -696,6 +696,57 @@ std::vector<Post> FileStore::all_posts_with_attachments() const {
     return out;
 }
 
+std::uint64_t FileStore::add_proposal(const std::string& author, const std::string& title, const std::string& body) {
+    Proposal p;
+    p.id = next_proposal_id_++;
+    p.author = author;
+    p.ts = now();
+    p.title = title;
+    p.body = body;
+    proposals_.push_back(p);
+    flush();
+    return p.id;
+}
+
+std::vector<Proposal> FileStore::all_proposals() const {
+    return proposals_;
+}
+
+std::optional<Proposal> FileStore::proposal_by_id(std::uint64_t id) const {
+    for (const auto& p : proposals_) {
+        if (p.id == id) return p;
+    }
+    return std::nullopt;
+}
+
+void FileStore::cast_proposal_vote(std::uint64_t proposal_id, const std::string& voter, ProposalVote choice) {
+    if (voter.empty()) return;
+    proposal_votes_[proposal_id][voter] = choice;
+    flush();
+}
+
+std::optional<ProposalVote> FileStore::proposal_vote_of(std::uint64_t proposal_id, const std::string& voter) const {
+    auto pit = proposal_votes_.find(proposal_id);
+    if (pit == proposal_votes_.end()) return std::nullopt;
+    auto vit = pit->second.find(voter);
+    if (vit == pit->second.end()) return std::nullopt;
+    return vit->second;
+}
+
+ProposalTally FileStore::tally_of(std::uint64_t proposal_id) const {
+    ProposalTally t;
+    auto pit = proposal_votes_.find(proposal_id);
+    if (pit == proposal_votes_.end()) return t;
+    for (const auto& [voter, choice] : pit->second) {
+        switch (choice) {
+            case ProposalVote::Yes: ++t.yes; break;
+            case ProposalVote::No: ++t.no; break;
+            case ProposalVote::Abstain: ++t.abstain; break;
+        }
+    }
+    return t;
+}
+
 bool FileStore::create_community(const Community& c) {
     if (!valid_username(c.slug)) return false;
     if (communities_.count(c.slug)) return false;
@@ -880,6 +931,10 @@ bool FileStore::delete_account(AccountId id) {
         keep_posts.push_back(p);
     }
     posts_.swap(keep_posts);
+    for (auto& p : proposals_) {
+        if (p.author == name) p.author = "[deleted account]";
+    }
+    for (auto& [pid, votes] : proposal_votes_) votes.erase(name);
     std::vector<SessionId> drop;
     for (const auto& [sid, s] : sessions_) {
         if (s.account == id) drop.push_back(sid);
@@ -902,6 +957,7 @@ bool FileStore::delete_account(AccountId id) {
 void FileStore::load() {
     next_id_ = 1;
     next_post_id_ = 1;
+    next_proposal_id_ = 1;
     next_note_id_ = 1;
     next_conv_id_ = 1;
     next_message_id_ = 1;
@@ -922,6 +978,8 @@ void FileStore::load() {
     inner_.clear();
     prefs_.clear();
     posts_.clear();
+    proposals_.clear();
+    proposal_votes_.clear();
     communities_.clear();
     members_.clear();
     notices_.clear();
@@ -1029,6 +1087,27 @@ void FileStore::load() {
             if (f.size() != 2) throw std::runtime_error("LGP1: bad pn record");
             next_post_id_ = parse_u64(f[1], "next_post_id");
             if (next_post_id_ == 0) next_post_id_ = 1;
+        } else if (tag == "prop") {
+            if (f.size() != 6) throw std::runtime_error("LGP1: bad prop record");
+            Proposal p;
+            p.id = parse_u64(f[1], "proposal id");
+            p.author = pct_decode(f[2]);
+            p.ts = parse_i64(f[3], "proposal ts");
+            p.title = pct_decode(f[4]);
+            p.body = pct_decode(f[5]);
+            proposals_.push_back(p);
+            if (p.id >= next_proposal_id_) next_proposal_id_ = p.id + 1;
+        } else if (tag == "propn") {
+            if (f.size() != 2) throw std::runtime_error("LGP1: bad propn record");
+            next_proposal_id_ = parse_u64(f[1], "next_proposal_id");
+            if (next_proposal_id_ == 0) next_proposal_id_ = 1;
+        } else if (tag == "pvote") {
+            if (f.size() != 4) throw std::runtime_error("LGP1: bad pvote record");
+            const auto pid = parse_u64(f[1], "pvote proposal id");
+            const auto voter = pct_decode(f[2]);
+            const auto cv = parse_u64(f[3], "pvote choice");
+            if (cv > 2) throw std::runtime_error("LGP1: bad pvote choice");
+            proposal_votes_[pid][voter] = static_cast<ProposalVote>(cv);
         } else if (tag == "rp") {
             // A separate tag (not a wider "post" record) specifically so
             // existing 6-field "post" records from before reposts existed
@@ -1310,6 +1389,16 @@ void FileStore::flush() {
         if (!p.attachment_blob_id.empty()) {
             body << "pa\t" << p.id << "\t" << pct_encode(p.attachment_blob_id) << "\t"
                  << pct_encode(p.attachment_mime) << "\n";
+        }
+    }
+    body << "propn\t" << next_proposal_id_ << "\n";
+    for (const auto& p : proposals_) {
+        body << "prop\t" << p.id << "\t" << pct_encode(p.author) << "\t" << p.ts << "\t"
+             << pct_encode(p.title) << "\t" << pct_encode(p.body) << "\n";
+    }
+    for (const auto& [pid, votes] : proposal_votes_) {
+        for (const auto& [voter, choice] : votes) {
+            body << "pvote\t" << pid << "\t" << pct_encode(voter) << "\t" << static_cast<int>(choice) << "\n";
         }
     }
     for (const auto& [slug, c] : communities_) {

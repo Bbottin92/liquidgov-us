@@ -473,6 +473,7 @@ std::string nav(const std::string& user, int unread) {
     std::string n = burger+"<nav><a href=\"/feed\">Feed</a>"
                     "<a href=\"/friends\">People</a><a href=\"/mail\">Mail</a>"
                     "<a href=\"/communities\">Groups</a>"
+                    "<a href=\"/proposals\">Proposals</a>"
                     "<a href=\"/world\">World</a>"
                     "<a href=\"/notices\">Notices";
     if (unread > 0) n += "<span class=\"badge\">"+std::to_string(unread)+"</span>";
@@ -2631,6 +2632,41 @@ std::string post_block(const Post& p, const std::string& viewer) {
            "<p>"+html_escape(p.text)+"</p>"+mediaHtml+repostForm+"</div></div></article>";
 }
 
+// A proportional Yes/No/Abstain bar plus one-click vote buttons, the
+// current voter's own choice picked out with a filled button instead of a
+// ghost one. viewer empty (logged out) renders the tally with no voting UI.
+std::string proposal_block(const Proposal& p, const std::string& viewer, const ProposalTally& t,
+                            std::optional<ProposalVote> my_vote) {
+    const int total = t.yes + t.no + t.abstain;
+    std::string bar = "<div style=\"display:flex;height:8px;border-radius:4px;overflow:hidden;background:var(--rule);margin:.5rem 0\">";
+    if (total > 0) {
+        if (t.yes) bar += "<div style=\"flex:"+std::to_string(t.yes)+";background:var(--ok)\"></div>";
+        if (t.no) bar += "<div style=\"flex:"+std::to_string(t.no)+";background:var(--danger)\"></div>";
+        if (t.abstain) bar += "<div style=\"flex:"+std::to_string(t.abstain)+";background:var(--stone)\"></div>";
+    }
+    bar += "</div><p class=\"muted\">"+std::to_string(t.yes)+" yes · "+std::to_string(t.no)+" no · "+
+           std::to_string(t.abstain)+" abstain · "+std::to_string(total)+" total</p>";
+    std::string voteForm;
+    if (!viewer.empty()) {
+        auto btn = [&](ProposalVote v, const char* label) {
+            const bool active = my_vote.has_value() && *my_vote == v;
+            return "<form class=\"inline\" method=\"POST\" action=\"/proposals/vote\">"
+                   "<input type=\"hidden\" name=\"id\" value=\""+std::to_string(p.id)+"\">"
+                   "<input type=\"hidden\" name=\"choice\" value=\""+std::to_string(static_cast<int>(v))+"\">"
+                   "<button class=\""+std::string(active ? "" : "ghost")+"\" type=\"submit\">"+label+
+                   (active ? " &#10003;" : "")+"</button></form>";
+        };
+        voteForm = "<div class=\"row\">"+btn(ProposalVote::Yes,"Yes")+btn(ProposalVote::No,"No")+
+                   btn(ProposalVote::Abstain,"Abstain")+"</div>";
+    }
+    std::string when = fmt_time(p.ts);
+    return "<p class=\"muted eyebrow\">Proposal "+std::to_string(p.id)+"</p>"
+           "<h3 style=\"margin:.1rem 0\">"+html_escape(p.title)+"</h3>"
+           "<p class=\"muted\">by <a href=\"/u/"+html_escape(p.author)+"\">"+html_escape(p.author)+"</a>"+
+           (when.empty()?"":" · "+html_escape(when))+"</p>"
+           "<p style=\"white-space:pre-wrap\">"+html_escape(p.body)+"</p>"+bar+voteForm;
+}
+
 // Shared by every post composer (/me/post, /feed, /c/<slug>): pulls the
 // text field and an optional media file out of either a multipart or
 // urlencoded body, and -- if a file was attached -- ingests it through the
@@ -2788,6 +2824,28 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         if (posts.empty()) html += "<p class=\"empty\">Nothing yet. Write something, or add a friend.</p>";
         for (const auto& p : posts) html += "<div class=\"card\">"+post_block(p, user)+"</div>";
         return pg("Feed", html);
+    }
+
+    if(method=="GET"&&path=="/proposals") {
+        if(!acc) return http_redir("/login");
+        std::string html = "<h1>Proposals</h1>"
+            "<p class=\"muted\">Unofficial straw polls &mdash; a way to gauge how people feel about "
+            "something not yet decided. Not a CitizenId vote, not binding, not this platform's Phase 2.</p>";
+        if (qs["err"]=="empty") html += "<p class=\"warn\">Need a title and a body.</p>";
+        html += "<div class=\"card\"><form method=\"POST\" action=\"/proposals\">"
+                "<label>Title</label><input name=\"title\" maxlength=\"140\" required>"
+                "<label>What's being proposed</label>"
+                "<textarea name=\"body\" maxlength=\"4000\" required placeholder=\"Plain text.\"></textarea>"
+                "<button>Open for votes</button></form></div>";
+        auto all = g_store.all_proposals();
+        std::reverse(all.begin(), all.end());
+        if (all.empty()) html += "<p class=\"empty\">No proposals yet.</p>";
+        for (const auto& p : all) {
+            auto t = g_store.tally_of(p.id);
+            auto mv = g_store.proposal_vote_of(p.id, user);
+            html += "<div class=\"card\">"+proposal_block(p, user, t, mv)+"</div>";
+        }
+        return pg("Proposals", html);
     }
 
     if(method=="GET"&&path.rfind("/portrait/",0)==0) {
@@ -3698,6 +3756,27 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         if (!text.empty() || !c.attachment_blob_id.empty())
             g_store.add_post(user, text, "", "", 0, c.attachment_blob_id, c.attachment_mime);
         return http_redir("/feed");
+    }
+    if(method=="POST"&&path=="/proposals") {
+        if(!acc) return http_redir("/login");
+        auto f = parse_form(body);
+        auto title = trim_ws(f["title"]);
+        auto ptext = trim_ws(f["body"]);
+        if (title.empty() || ptext.empty()) return http_redir("/proposals?err=empty");
+        g_store.add_proposal(user, title, ptext);
+        return http_redir("/proposals");
+    }
+    if(method=="POST"&&path=="/proposals/vote") {
+        if(!acc) return http_redir("/login");
+        auto f = parse_form(body);
+        std::uint64_t id = 0;
+        try { id = std::stoull(f["id"]); } catch (...) { return http_redir("/proposals"); }
+        if (!g_store.proposal_by_id(id)) return http_redir("/proposals");
+        int cv = 2;
+        try { cv = std::stoi(f["choice"]); } catch (...) { cv = 2; }
+        if (cv < 0 || cv > 2) cv = 2;
+        g_store.cast_proposal_vote(id, user, static_cast<ProposalVote>(cv));
+        return http_redir("/proposals");
     }
     if(method=="POST"&&path=="/friends") {
         if(!acc) return http_redir("/login");

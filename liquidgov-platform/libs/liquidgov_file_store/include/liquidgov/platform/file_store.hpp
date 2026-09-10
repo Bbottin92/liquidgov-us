@@ -25,6 +25,11 @@
 //   pq     <phone_fp> <until>         // 90-day quarantine after delete
 //   post   <id> <author> <ts> <text> <community_slug-or-empty>
 //   pn     <next_post_id>
+//   prop   <id> <author> <ts> <title> <body>   // unofficial site-wide straw poll,
+//          see Proposal's comment -- not a CitizenId vote
+//   propn  <next_proposal_id>
+//   pvote  <proposal_id> <voter> <choice 0-2>   // one line per (proposal, voter);
+//          re-voting overwrites the prior line for that pair on the next flush
 //   comm   <slug> <name> <owner> <about> <created_at>
 //   cm     <slug> <username>
 //   blk    <blocker> <blocked> [<at> <reason>]  // trailing two fields optional -- an
@@ -130,6 +135,30 @@ struct Community {
     std::string owner;
     std::string about;
     std::int64_t created_at = 0;
+};
+
+// A site-wide, unofficial straw poll -- explicitly not a binding vote (the
+// genesis-phase copy is clear real governmental authority is a later,
+// separate landslide). Any member can open one and any member can cast one
+// vote on it, changeable, to gauge sentiment on something not yet decided.
+struct Proposal {
+    std::uint64_t id = 0;
+    std::string author;
+    std::int64_t ts = 0;
+    std::string title;
+    std::string body;
+};
+
+enum class ProposalVote : int {
+    Yes = 0,
+    No = 1,
+    Abstain = 2,
+};
+
+struct ProposalTally {
+    int yes = 0;
+    int no = 0;
+    int abstain = 0;
 };
 
 // Who besides the owner may add tracks to an account's jukebox. The owner can
@@ -324,6 +353,15 @@ public:
     // For BlobStore::adopt() at process startup -- see main()'s comment.
     std::vector<Post> all_posts_with_attachments() const;
 
+    std::uint64_t add_proposal(const std::string& author, const std::string& title, const std::string& body);
+    std::vector<Proposal> all_proposals() const; // oldest first, same as posts_by
+    std::optional<Proposal> proposal_by_id(std::uint64_t id) const;
+    // Casting again overwrites the voter's own prior choice on this
+    // proposal -- one live vote per (proposal, voter), not a running log.
+    void cast_proposal_vote(std::uint64_t proposal_id, const std::string& voter, ProposalVote choice);
+    std::optional<ProposalVote> proposal_vote_of(std::uint64_t proposal_id, const std::string& voter) const;
+    ProposalTally tally_of(std::uint64_t proposal_id) const;
+
     bool create_community(const Community& c);
     std::optional<Community> community(const std::string& slug) const;
     std::vector<Community> all_communities() const;
@@ -416,6 +454,9 @@ private:
     std::map<std::string, std::set<std::string>> inner_;
     std::map<std::string, AccountPrefs> prefs_;
     std::vector<Post> posts_;
+    std::uint64_t next_proposal_id_ = 1;
+    std::vector<Proposal> proposals_;
+    std::map<std::uint64_t, std::map<std::string, ProposalVote>> proposal_votes_;
     std::map<std::string, Community> communities_;
     std::map<std::string, std::set<std::string>> members_;
     std::vector<Notice> notices_;

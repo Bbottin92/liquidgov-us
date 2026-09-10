@@ -402,8 +402,20 @@ std::string css() {
         ".clocks{display:grid;gap:.7rem}@media(min-width:640px){.clocks{grid-template-columns:1fr 1fr}}"
         ".jukebox iframe{width:100%;max-width:480px;aspect-ratio:16/9;border:0;border-radius:var(--rsm);display:block}"
         ".jukebox .row{margin-top:.5rem}"
-        "@media(max-width:720px){.navbtn{display:inline-flex}nav{display:none;width:100%;flex-direction:column;"
-        "align-items:stretch}nav a{min-height:44px}#navc:checked~nav{display:flex}}"
+        // nav used to expand in normal document flow, inside the sticky
+        // header -- fine until the link list itself got taller than a
+        // small viewport, at which point the whole (now very tall)
+        // header was still sticky, so it stayed pinned over the page as
+        // you scrolled past it, covering everything underneath instead
+        // of scrolling away. position:absolute here keeps header.top's
+        // own box always just the slim top bar; the expanded menu floats
+        // over the content below as a real dropdown instead of dragging
+        // the sticky container's height along with it.
+        "@media(max-width:720px){.navbtn{display:inline-flex}"
+        "nav{display:none;position:absolute;top:100%;left:0;right:0;flex-direction:column;"
+        "align-items:stretch;background:var(--parchment);border-bottom:1px solid var(--rule);"
+        "padding:0 1.1rem;max-height:calc(100vh - 60px);overflow-y:auto;z-index:6}"
+        "nav a{min-height:44px}#navc:checked~nav{display:flex}}"
         "@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}";
 }
 

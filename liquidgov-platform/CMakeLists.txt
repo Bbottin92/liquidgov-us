@@ -20,6 +20,7 @@ add_subdirectory(libs/liquidgov_avatar)
 add_subdirectory(libs/liquidgov_messenger)
 add_subdirectory(libs/liquidgov_file_transfer)
 add_subdirectory(libs/liquidgov_file_store)
+add_subdirectory(libs/liquidgov_websocket)
 
 add_executable(liquidgov_platform_auth_test tests/auth_test.cpp)
 target_link_libraries(liquidgov_platform_auth_test PRIVATE liquidgov_auth)
@@ -51,5 +52,6 @@ target_link_libraries(liquidgov_http PRIVATE
     liquidgov_file_transfer
     liquidgov_file_type
     liquidgov_messenger
+    liquidgov_websocket
     Threads::Threads
 )

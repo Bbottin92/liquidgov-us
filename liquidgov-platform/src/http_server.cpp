@@ -8,12 +8,15 @@
 #include "liquidgov/platform/file_transfer.hpp"
 #include "liquidgov/platform/file_type.hpp"
 #include "liquidgov/platform/messenger.hpp"
+#include "liquidgov/platform/websocket.hpp"
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <unistd.h>
 #include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
@@ -25,6 +28,8 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <thread>
+#include <unordered_map>
 #include <vector>
 using namespace liquidgov::platform;
 namespace {
@@ -34,6 +39,26 @@ constexpr int kPort = 8080;
 // loop's ceiling has to cover the largest of those plus multipart overhead.
 constexpr std::size_t kMaxBody = 25ull * 1024 * 1024 + 64 * 1024;
 std::mutex g_mu;
+
+// --- World: one shared room, connected users see each other move. ---
+// Deliberately separate from g_mu / g_store: this is ephemeral in-memory
+// position state, never persisted, touched only by world session threads
+// (one per connected /world/ws client) — the rest of the server stays on
+// its existing single-threaded accept loop, untouched by this feature.
+struct WorldPlayer {
+    double x = 128, y = 128;
+    std::string username;
+    std::string color;
+};
+std::mutex g_world_mu;
+std::unordered_map<int, WorldPlayer> g_world_players; // keyed by client socket fd
+
+std::string world_color_for(const std::string& username) {
+    static const char* kPalette[] = {"#a23b3b", "#3b6ea2", "#3ba25e", "#a2823b",
+                                      "#6e3ba2", "#3ba297", "#a23b8f", "#5f7a2e"};
+    std::size_t h = std::hash<std::string>{}(username);
+    return kPalette[h % 8];
+}
 
 class NeverBreached : public BreachChecker {
 public:
@@ -87,6 +112,15 @@ const char* blob_path_from_env() {
     const char* p = std::getenv("LIQUIDGOV_BLOBS");
     return p && p[0] ? p : "liquidgov_blobs";
 }
+// Client-side YouTube search (Data API v3 search.list) needs a key. Read-only
+// key, meant to be HTTP-referrer-restricted in Google Cloud Console to this
+// site's origin — same trust level as any client-embedded map/analytics key.
+// Empty means "not configured"; the search box degrades to a message instead
+// of failing silently.
+const char* youtube_api_key_from_env() {
+    const char* p = std::getenv("YOUTUBE_API_KEY");
+    return p && p[0] ? p : "";
+}
 
 FileStore g_store{store_path_from_env()};
 FilesystemBlobStore g_blobs{blob_path_from_env()};
@@ -116,6 +150,22 @@ std::string html_escape(const std::string& s) {
             default: o += c; break;
         }
     }
+    return o;
+}
+
+// Quotes a server-controlled (not user-controlled) string as a single-quoted
+// JS string literal embedded in generated HTML, e.g. the YouTube API key.
+std::string js_string_literal(const std::string& s) {
+    std::string o = "'";
+    for (char c : s) {
+        switch (c) {
+            case '\'': o += "\\'"; break;
+            case '\\': o += "\\\\"; break;
+            case '<': o += "\\x3c"; break;
+            default: o += c; break;
+        }
+    }
+    o += "'";
     return o;
 }
 
@@ -228,6 +278,7 @@ std::string nav(const std::string& user, int unread) {
     std::string n = burger+"<nav><a href=\"/feed\">Feed</a>"
                     "<a href=\"/friends\">People</a><a href=\"/mail\">Mail</a>"
                     "<a href=\"/communities\">Groups</a>"
+                    "<a href=\"/world\">World</a>"
                     "<a href=\"/notices\">Notices";
     if (unread > 0) n += "<span class=\"badge\">"+std::to_string(unread)+"</span>";
     n += "</a><a href=\"/me\">"+html_escape(user)+"</a>"
@@ -580,6 +631,185 @@ std::string portrait_tag(const std::string& username, const char* cls) {
            "\" alt=\"\" width=\"96\" height=\"96\">";
 }
 
+// World client page: a <canvas>, WASD/arrow movement, one WebSocket to
+// /world/ws. Sends {"x":n,"y":n} on movement; server broadcasts the full
+// player snapshot back on an interval regardless of whether this client
+// moved, so remote players animate smoothly too. Matches the documented
+// MVP: "One shared room, two people see each other move."
+std::string world_page(const std::string& username) {
+    std::string html =
+        "<div class=\"card\"><h1>World</h1>"
+        "<p class=\"muted\">One shared room. Arrow keys or WASD to move. Closing this page removes you.</p>"
+        "<canvas id=\"wcanvas\" width=\"800\" height=\"500\" "
+        "style=\"border:1px solid var(--rule);border-radius:var(--rsm);background:#eee7d6;"
+        "max-width:100%;touch-action:none\"></canvas>"
+        "<p class=\"muted\" id=\"wstatus\">Connecting\\u2026</p></div>"
+        "<script>(function(){"
+        "var me="+js_string_literal(username)+";"
+        "var cv=document.getElementById('wcanvas'),ctx=cv.getContext('2d');"
+        "var st=document.getElementById('wstatus');"
+        "var players={};"
+        "var proto=location.protocol==='https:'?'wss:':'ws:';"
+        "var ws=new WebSocket(proto+'//'+location.host+'/world/ws');"
+        "var keys={};"
+        "ws.onopen=function(){st.textContent='Connected.';};"
+        "ws.onclose=function(){st.textContent='Disconnected. Reload to rejoin.';};"
+        "ws.onerror=function(){st.textContent='Connection error.';};"
+        "ws.onmessage=function(ev){"
+        "try{var data=JSON.parse(ev.data);players=data.players||{};}catch(e){}"
+        "draw();"
+        "};"
+        "function draw(){"
+        "ctx.clearRect(0,0,cv.width,cv.height);"
+        "Object.keys(players).forEach(function(id){"
+        "var p=players[id];"
+        "ctx.beginPath();ctx.arc(p.x,p.y,14,0,Math.PI*2);"
+        "ctx.fillStyle=p.color;ctx.fill();"
+        "if(p.username===me){ctx.lineWidth=2;ctx.strokeStyle='#1a1814';ctx.stroke();}"
+        "ctx.fillStyle='#1a1814';ctx.font='12px sans-serif';ctx.textAlign='center';"
+        "ctx.fillText(p.username,p.x,p.y-20);"
+        "});"
+        "}"
+        "document.addEventListener('keydown',function(e){keys[e.key.toLowerCase()]=true;});"
+        "document.addEventListener('keyup',function(e){keys[e.key.toLowerCase()]=false;});"
+        "var x=cv.width/2,y=cv.height/2;"
+        "setInterval(function(){"
+        "if(ws.readyState!==1)return;"
+        "var dx=0,dy=0,speed=5;"
+        "if(keys['arrowleft']||keys['a'])dx-=speed;"
+        "if(keys['arrowright']||keys['d'])dx+=speed;"
+        "if(keys['arrowup']||keys['w'])dy-=speed;"
+        "if(keys['arrowdown']||keys['s'])dy+=speed;"
+        "if(dx||dy){"
+        "x=Math.max(14,Math.min(cv.width-14,x+dx));"
+        "y=Math.max(14,Math.min(cv.height-14,y+dy));"
+        "ws.send(JSON.stringify({x:x,y:y}));"
+        "}"
+        "},50);"
+        "})();</script>";
+    return html;
+}
+
+// One thread per connected /world/ws client. Runs the RFC 6455 handshake
+// response, then loops: try to read this client's new position (short
+// timeout so the loop can broadcast even when nobody moved), update the
+// shared registry, and push everyone's current positions back to this
+// client. Removes the client from the registry on disconnect.
+void run_world_session(int fd, std::string username) {
+    timeval tv{}; tv.tv_sec = 0; tv.tv_usec = 100000; // 100ms
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
+    {
+        std::lock_guard<std::mutex> lock(g_world_mu);
+        WorldPlayer p;
+        p.username = username;
+        p.color = world_color_for(username);
+        g_world_players[fd] = p;
+    }
+
+    for (;;) {
+        auto result = ws_read_frame(fd);
+        if (result.status == WsReadStatus::Closed) break;
+        if (result.status == WsReadStatus::Ok) {
+            if (result.frame.opcode == WsOpcode::Close) break;
+            if (result.frame.opcode == WsOpcode::Text) {
+                // Minimal ad-hoc parse of {"x":<num>,"y":<num>} — the only
+                // shape this endpoint ever receives, so a general JSON
+                // parser would be pure overhead here.
+                const std::string& s = result.frame.payload;
+                auto extract = [&](const char* key) -> std::optional<double> {
+                    auto p = s.find(key);
+                    if (p == std::string::npos) return std::nullopt;
+                    p = s.find(':', p);
+                    if (p == std::string::npos) return std::nullopt;
+                    try { return std::stod(s.substr(p + 1)); } catch (...) { return std::nullopt; }
+                };
+                auto nx = extract("\"x\"");
+                auto ny = extract("\"y\"");
+                if (nx && ny) {
+                    std::lock_guard<std::mutex> lock(g_world_mu);
+                    auto it = g_world_players.find(fd);
+                    if (it != g_world_players.end()) { it->second.x = *nx; it->second.y = *ny; }
+                }
+            }
+        }
+        // status == Timeout falls through here too — always re-broadcast.
+
+        std::string snapshot;
+        {
+            std::lock_guard<std::mutex> lock(g_world_mu);
+            if (g_world_players.find(fd) == g_world_players.end()) break;
+            std::ostringstream os;
+            os << "{\"players\":{";
+            bool first = true;
+            for (auto& [id, p] : g_world_players) {
+                if (!first) os << ",";
+                first = false;
+                os << "\"" << id << "\":{\"x\":" << p.x << ",\"y\":" << p.y
+                   << ",\"username\":\"" << p.username << "\",\"color\":\"" << p.color << "\"}";
+            }
+            os << "}}";
+            snapshot = os.str();
+        }
+        if (!ws_write_frame(fd, WsOpcode::Text, snapshot)) break;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(g_world_mu);
+        g_world_players.erase(fd);
+    }
+    close(fd);
+}
+
+// In-browser drawing tool for the self-portrait. Draws to a <canvas>, exports
+// via canvas.toBlob('image/png') and POSTs it to the *same* /me/avatar route
+// as a file upload — the server can't tell a drawn PNG from an uploaded one,
+// so save_avatar's normalize/scan/blob pipeline is untouched by this feature.
+std::string portrait_draw_widget() {
+    return
+        "<div class=\"card\"><h2>Or draw one</h2>"
+        "<canvas id=\"pcanvas\" width=\"256\" height=\"256\" "
+        "style=\"border:1px solid var(--rule);border-radius:var(--rsm);background:#fff;"
+        "touch-action:none;cursor:crosshair;max-width:100%\"></canvas>"
+        "<div class=\"row\" style=\"margin-top:.5rem\">"
+        "<input type=\"color\" id=\"pcolor\" value=\"#1a1814\" aria-label=\"Color\">"
+        "<input type=\"range\" id=\"psize\" min=\"1\" max=\"24\" value=\"4\" aria-label=\"Brush size\">"
+        "<button type=\"button\" class=\"ghost\" id=\"pclear\">Clear</button>"
+        "<button type=\"button\" id=\"psave\">Use this drawing</button>"
+        "</div><p class=\"muted\" id=\"pstatus\"></p></div>"
+        "<script>(function(){"
+        "var cv=document.getElementById('pcanvas'),ctx=cv.getContext('2d');"
+        "ctx.fillStyle='#fff';ctx.fillRect(0,0,cv.width,cv.height);"
+        "var drawing=false,last=null;"
+        "function pos(e){var r=cv.getBoundingClientRect();var p=e.touches?e.touches[0]:e;"
+        "return{x:(p.clientX-r.left)*cv.width/r.width,y:(p.clientY-r.top)*cv.height/r.height};}"
+        "function start(e){drawing=true;last=pos(e);e.preventDefault();}"
+        "function move(e){if(!drawing)return;var p=pos(e);"
+        "ctx.strokeStyle=document.getElementById('pcolor').value;"
+        "ctx.lineWidth=document.getElementById('psize').value;"
+        "ctx.lineCap='round';ctx.lineJoin='round';"
+        "ctx.beginPath();ctx.moveTo(last.x,last.y);ctx.lineTo(p.x,p.y);ctx.stroke();"
+        "last=p;e.preventDefault();}"
+        "function end(){drawing=false;}"
+        "cv.addEventListener('mousedown',start);cv.addEventListener('mousemove',move);"
+        "window.addEventListener('mouseup',end);"
+        "cv.addEventListener('touchstart',start,{passive:false});"
+        "cv.addEventListener('touchmove',move,{passive:false});"
+        "cv.addEventListener('touchend',end);"
+        "document.getElementById('pclear').addEventListener('click',function(){"
+        "ctx.fillStyle='#fff';ctx.fillRect(0,0,cv.width,cv.height);});"
+        "document.getElementById('psave').addEventListener('click',function(){"
+        "var st=document.getElementById('pstatus');st.textContent='Saving\\u2026';"
+        "cv.toBlob(function(blob){"
+        "var fd=new FormData();fd.append('photo',blob,'portrait.png');"
+        "fetch('/me/avatar',{method:'POST',body:fd}).then(function(r){"
+        "window.location=r.url||'/me';"
+        "}).catch(function(){st.textContent='Could not save. Try again.';});"
+        "},'image/png');"
+        "});"
+        "})();</script>";
+}
+
 // Page-local jukebox widget (navigation option A: MPA, own instance per
 // page, stops on navigate away — no site-wide SPA, no WebSocket sync).
 // Owner-curated: add/remove only render when owner_view is true; visitors
@@ -616,6 +846,44 @@ std::string jukebox_widget(const std::string& owner, bool owner_view, const std:
         html += "</div>";
     }
     if (owner_view) {
+        const char* yt_key = youtube_api_key_from_env();
+        if (yt_key[0]) {
+            html += "<div><label>Search YouTube</label>"
+                    "<div class=\"row\"><input id=\"jsq\" placeholder=\"Search for a video\">"
+                    "<button type=\"button\" id=\"jsbtn\">Search</button></div>"
+                    "<div id=\"jsresults\" class=\"row\" style=\"margin-top:.5rem;flex-direction:column;align-items:stretch;gap:.4rem\"></div></div>"
+                    "<script>(function(){"
+                    "var key="+js_string_literal(yt_key)+";"
+                    "var q=document.getElementById('jsq'),btn=document.getElementById('jsbtn'),out=document.getElementById('jsresults');"
+                    "function esc(s){var d=document.createElement('div');d.textContent=s;return d.innerHTML;}"
+                    "function run(){"
+                    "var term=q.value.trim();if(!term)return;"
+                    "out.innerHTML='<p class=\"muted\">Searching\\u2026</p>';"
+                    "fetch('https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=8&q='"
+                    "+encodeURIComponent(term)+'&key='+key)"
+                    ".then(function(r){return r.json();}).then(function(data){"
+                    "if(!data.items||!data.items.length){out.innerHTML='<p class=\"muted\">No results.</p>';return;}"
+                    "out.innerHTML='';"
+                    "data.items.forEach(function(it){"
+                    "var id=it.id.videoId,title=it.snippet.title,thumb=it.snippet.thumbnails.default.url;"
+                    "var row=document.createElement('div');row.className='row';row.style.alignItems='center';"
+                    "row.innerHTML='<img src=\"'+thumb+'\" width=\"60\" height=\"45\" alt=\"\" style=\"border-radius:4px\">"
+                    "<span style=\"flex:1\">'+esc(title)+'</span>"
+                    "<button type=\"button\" class=\"ghost\" data-id=\"'+id+'\">Queue</button>';"
+                    "row.querySelector('button').addEventListener('click',function(){"
+                    "var fd=new FormData();fd.append('url','https://www.youtube.com/watch?v='+id);"
+                    "fetch('/me/jukebox/add',{method:'POST',body:fd}).then(function(r){window.location=r.url||location.href;});"
+                    "});"
+                    "out.appendChild(row);"
+                    "});"
+                    "}).catch(function(){out.innerHTML='<p class=\"warn\">Search failed.</p>';});"
+                    "}"
+                    "btn.addEventListener('click',run);"
+                    "q.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();run();}});"
+                    "})();</script>";
+        } else {
+            html += "<p class=\"muted\">Search is off (site operator hasn't set YOUTUBE_API_KEY). Paste a link instead:</p>";
+        }
         html += "<form method=\"POST\" action=\"/me/jukebox/add\"><label>Add a YouTube link</label>"
                 "<div class=\"row\"><input name=\"url\" placeholder=\"https://www.youtube.com/watch?v=...\" required>"
                 "<button>Queue</button></div></form>"
@@ -758,6 +1026,10 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         return http_redir("/", clear_cookie());
     }
 
+    if(method=="GET"&&path=="/world") {
+        if(!acc) return http_redir("/login");
+        return pg("World", world_page(user));
+    }
     if(method=="GET"&&path=="/feed") {
         if(!acc) return http_redir("/login");
         std::string html = "<h1>Feed</h1>"
@@ -803,7 +1075,8 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             "<label>Self-portrait</label>"
             "<input type=\"file\" name=\"photo\" accept=\"image/png,image/jpeg,image/gif\" required>"
             "<p class=\"muted\">Decoded and re-encoded as PNG. No SVG. No author CSS. Not a CitizenId.</p>"
-            "<div class=\"row\"><button>Upload</button></div></form>";
+            "<div class=\"row\"><button>Upload</button></div></form>"
+            + portrait_draw_widget();
         if (has_portrait(acc->id))
             html += "<form method=\"POST\" action=\"/me/avatar/clear\"><button class=\"ghost\" type=\"submit\">Remove portrait</button></form>";
         html += "<p>"+html_escape(b.empty()?"No blurb yet.":b)+"</p>"
@@ -1643,6 +1916,46 @@ int main() {
         char ipbuf[INET_ADDRSTRLEN]="0.0.0.0"; inet_ntop(AF_INET,&peer.sin_addr,ipbuf,sizeof(ipbuf));
         std::string req;
         read_http_request(c, req);
+
+        // /world/ws is the one route that doesn't get the ordinary
+        // request/response treatment: a successful upgrade hands the fd to
+        // its own thread and keeps it open, instead of sending one response
+        // and closing. Every other route is untouched — still handled
+        // synchronously on this single accept-loop thread, exactly as
+        // before this feature existed.
+        {
+            auto line_end = req.find("\r\n");
+            std::string method, rawpath;
+            if (line_end != std::string::npos) {
+                std::istringstream is(req.substr(0, line_end));
+                is >> method >> rawpath;
+            }
+            if (method == "GET" && rawpath == "/world/ws" &&
+                header_value(req, "Upgrade").find("websocket") != std::string::npos) {
+                std::string username;
+                {
+                    std::lock_guard<std::mutex> lock(g_mu);
+                    auto acc = account_from_req(req);
+                    if (acc) username = acc->username;
+                }
+                auto key = header_value(req, "Sec-WebSocket-Key");
+                if (!username.empty() && !key.empty()) {
+                    std::string accept_val = websocket_accept_value(key);
+                    std::ostringstream resp101;
+                    resp101 << "HTTP/1.1 101 Switching Protocols\r\n"
+                               "Upgrade: websocket\r\nConnection: Upgrade\r\n"
+                               "Sec-WebSocket-Accept: " << accept_val << "\r\n\r\n";
+                    std::string r = resp101.str();
+                    if (send(c, r.data(), r.size(), 0) > 0) {
+                        std::thread(run_world_session, c, username).detach();
+                        continue; // socket now owned by the world session thread
+                    }
+                }
+                close(c);
+                continue;
+            }
+        }
+
         std::string resp;
         try {
             resp = handle(req,ipbuf);

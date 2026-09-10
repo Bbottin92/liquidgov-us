@@ -18,3 +18,8 @@ build/
 *.lgp.tmp
 liquidgov_accounts.lgp
 liquidgov_blobs/
+
+# Local secrets (API keys etc). Never commit — see .env.local.example for
+# the expected shape.
+.env.local
+liquidgov-platform/.env.local

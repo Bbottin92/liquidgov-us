@@ -3219,10 +3219,24 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
 }
 }
 int main() {
+    // FilesystemBlobStore::get()/meta() both gate on an in-memory refcount
+    // entry that ONLY put() or adopt() ever create -- bytes sitting on
+    // disk from a previous process are otherwise invisible, not just
+    // unreferenced. Every blob id this server can later re-fetch by id
+    // (as opposed to one only ever read back inside the same put() call
+    // that created it) has to be re-adopted here on every startup, or it
+    // 404s the moment the process restarts. Canvas frames and post
+    // attachments were missed when those features were first built --
+    // found via a live report of a "missing" image that was actually
+    // sitting on disk the whole time, invisible only because of this.
     for (const auto& av : g_store.all_avatars())
         g_blobs.adopt(av.blob_id, "image/png");
     for (const auto& m : g_store.all_mail_with_attachments())
         g_blobs.adopt(*m.attachment_blob_id, m.attachment_mime.value_or("application/octet-stream"));
+    for (const auto& blob_id : g_store.all_canvas_frame_blob_ids())
+        g_blobs.adopt(blob_id, "image/png");
+    for (const auto& p : g_store.all_posts_with_attachments())
+        g_blobs.adopt(p.attachment_blob_id, p.attachment_mime);
     int fd=socket(AF_INET,SOCK_STREAM,0); if(fd<0) return 1;
     int yes=1; setsockopt(fd,SOL_SOCKET,SO_REUSEADDR,&yes,sizeof(yes));
     sockaddr_in addr{}; addr.sin_family=AF_INET; addr.sin_port=htons(kPort); addr.sin_addr.s_addr=htonl(INADDR_ANY);

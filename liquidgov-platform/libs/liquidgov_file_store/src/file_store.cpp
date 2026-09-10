@@ -356,6 +356,14 @@ bool FileStore::canvas_timelapse(AccountId id) const {
     return it == canvas_timelapse_.end() ? false : it->second;
 }
 
+std::vector<std::string> FileStore::all_canvas_frame_blob_ids() const {
+    std::vector<std::string> out;
+    for (const auto& [id, frames] : canvas_frames_) {
+        out.insert(out.end(), frames.begin(), frames.end());
+    }
+    return out;
+}
+
 bool FileStore::set_password_hash(AccountId id, const std::string& password_hash) {
     auto it = accounts_.find(id);
     if (it == accounts_.end()) return false;
@@ -662,6 +670,14 @@ std::optional<Post> FileStore::post_by_id(std::uint64_t id) const {
         if (p.id == id) return p;
     }
     return std::nullopt;
+}
+
+std::vector<Post> FileStore::all_posts_with_attachments() const {
+    std::vector<Post> out;
+    for (const auto& p : posts_) {
+        if (!p.attachment_blob_id.empty()) out.push_back(p);
+    }
+    return out;
 }
 
 bool FileStore::create_community(const Community& c) {

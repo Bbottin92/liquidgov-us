@@ -207,6 +207,8 @@ public:
     std::vector<std::string> canvas_frames(AccountId id) const; // blob ids, draw order
     void set_canvas_timelapse(AccountId id, bool on);
     bool canvas_timelapse(AccountId id) const;
+    // For BlobStore::adopt() at process startup -- see main()'s comment.
+    std::vector<std::string> all_canvas_frame_blob_ids() const;
 
     bool set_password_hash(AccountId id, const std::string& password_hash);
 
@@ -256,6 +258,8 @@ public:
     std::vector<Post> posts_in(const std::string& community, std::size_t limit) const;
     std::vector<Post> posts_by(const std::string& author) const;
     std::optional<Post> post_by_id(std::uint64_t id) const;
+    // For BlobStore::adopt() at process startup -- see main()'s comment.
+    std::vector<Post> all_posts_with_attachments() const;
 
     bool create_community(const Community& c);
     std::optional<Community> community(const std::string& slug) const;

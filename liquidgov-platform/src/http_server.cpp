@@ -1657,7 +1657,8 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         html += "<p>"+html_escape(b.empty()?"No blurb yet.":b)+"</p>"
             "<form method=\"POST\" action=\"/me\"><label>Blurb</label><textarea name=\"blurb\" rows=\"4\" maxlength=\"2000\">"+html_escape(b)+
             "</textarea><button>Save</button></form>"
-            "<p class=\"muted\">Author CSS is not on this route. A platform account is not a CitizenId.</p></div>";
+            "<p class=\"muted\">Restyle your public profile in <a href=\"/settings\">Settings &rarr; Profile CSS</a>. "
+            "A platform account is not a CitizenId.</p></div>";
         html += jukebox_widget(user, true, qs);
         return pg("Profile", html);
     }

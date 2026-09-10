@@ -887,22 +887,22 @@ void run_community_session(int fd, const std::string& username) {
 // reconnects and re-syncs to the live community track next time it's
 // opened. True across-navigation persistence would need the browser's
 // Picture-in-Picture API, deliberately not added here.
-std::string global_jukebox_widget(const std::string& yt_key) {
+// Shared panel guts (player, tabs, controls, community/search sections) —
+// identical whether embedded in the floating widget or filling the whole
+// /listen popout window.
+std::string jukebox_panel_body(bool standalone) {
     return
-        "<button id=\"jbtoggle\" type=\"button\" aria-label=\"Jukebox\" "
-        "style=\"position:fixed;right:1rem;bottom:1rem;z-index:30;width:52px;height:52px;"
-        "border-radius:50%;background:var(--navy);color:var(--paper);border:0;"
-        "font-size:1.4rem;line-height:52px;text-align:center;cursor:pointer;"
-        "box-shadow:0 2px 10px rgba(0,0,0,.3)\">\xF0\x9F\x93\xB1</button>"
-        "<div id=\"jbpanel\" hidden style=\"position:fixed;right:1rem;bottom:4.5rem;z-index:30;"
-        "width:320px;max-width:92vw;background:var(--panel);border:1px solid var(--rule);"
-        "border-radius:var(--rlg);padding:.9rem;box-shadow:0 6px 24px rgba(0,0,0,.35)\">"
         "<div class=\"row\" style=\"justify-content:space-between;align-items:center\">"
         "<div class=\"row\" style=\"gap:.3rem\">"
         "<button type=\"button\" class=\"ghost\" id=\"jbtab-community\">Community</button>"
         "<button type=\"button\" class=\"ghost\" id=\"jbtab-search\">My search</button>"
         "</div>"
-        "<button type=\"button\" class=\"ghost\" id=\"jbclose\" aria-label=\"Close\">\xE2\x9C\x95</button>"
+        "<div class=\"row\" style=\"gap:.3rem\">"
+        + std::string(standalone
+            ? "<button type=\"button\" class=\"ghost\" id=\"jbfloat\" hidden>Float above</button>"
+            : "<button type=\"button\" class=\"ghost\" id=\"jbpopout\" title=\"Open in its own window \\u2014 keeps playing while you browse\">Pop out</button>")
+        + "<button type=\"button\" class=\"ghost\" id=\"jbclose\" aria-label=\"Close\">\xE2\x9C\x95</button>"
+        "</div>"
         "</div>"
         "<div id=\"jbplayer\" style=\"margin-top:.6rem;aspect-ratio:16/9;background:#000;"
         "border-radius:var(--rsm)\"></div>"
@@ -922,11 +922,21 @@ std::string global_jukebox_widget(const std::string& yt_key) {
         "<input id=\"jbsearch\" placeholder=\"Search or paste a link\" autocomplete=\"off\" "
         "style=\"margin-top:.5rem;width:100%\">"
         "<div id=\"jbsearchresults\" style=\"margin-top:.3rem;display:flex;flex-direction:column;gap:.15rem\"></div>"
-        "</div>"
-        "</div>"
+        "</div>";
+}
+
+// Shared controller JS. `standalone` selects between the two hosting
+// contexts: embedded (toggle button + collapsible panel, Pop-out button
+// opens /listen) vs the /listen window itself (always visible, Close button
+// really closes the window, and — since *this* window's own document never
+// navigates away as long as it stays open — a working "Float above" button
+// using the real Document Picture-in-Picture API, moving the whole panel
+// into an always-on-top OS-level window for as long as this tab stays open).
+std::string jukebox_script(const std::string& yt_key, bool standalone) {
+    std::string s =
         "<script>(function(){"
         "var key="+js_string_literal(yt_key)+";"
-        "var toggle=document.getElementById('jbtoggle'),panel=document.getElementById('jbpanel');"
+        "var STANDALONE="+std::string(standalone ? "true" : "false")+";"
         "var tabC=document.getElementById('jbtab-community'),tabS=document.getElementById('jbtab-search');"
         "var playerDiv=document.getElementById('jbplayer');"
         "var playPauseBtn=document.getElementById('jbplaypause'),muteBtn=document.getElementById('jbmute');"
@@ -1044,11 +1054,47 @@ std::string global_jukebox_widget(const std::string& yt_key) {
         "switchMode('search');"
         "ensurePlayer(function(){ytPlayer.loadVideoById(m[1]);});"
         "});"
+        "if(!STANDALONE){"
+        "var toggle=document.getElementById('jbtoggle'),panel=document.getElementById('jbpanel');"
         "toggle.addEventListener('click',function(){"
         "panel.hidden=!panel.hidden;"
         "if(!panel.hidden){ensurePlayer(function(){});connectWs();}"
         "});"
         "document.getElementById('jbclose').addEventListener('click',function(){panel.hidden=true;});"
+        "var popoutBtn=document.getElementById('jbpopout');"
+        "if(popoutBtn)popoutBtn.addEventListener('click',function(){"
+        "window.open('/listen','lg_jukebox','width=360,height=560,menubar=no,toolbar=no,location=no,status=no');"
+        "});"
+        "}else{"
+        "document.getElementById('jbclose').addEventListener('click',function(){window.close();});"
+        "ensurePlayer(function(){});connectWs();"
+        "var floatBtn=document.getElementById('jbfloat');"
+        "if('documentPictureInPicture' in window){"
+        "floatBtn.hidden=false;"
+        "floatBtn.addEventListener('click',function(){"
+        "documentPictureInPicture.requestWindow({width:340,height:300}).then(function(pipWin){"
+        "Array.prototype.forEach.call(document.styleSheets,function(sheet){"
+        "try{"
+        "if(sheet.ownerNode&&sheet.ownerNode.tagName==='STYLE'){"
+        "var style=document.createElement('style');"
+        "style.textContent=sheet.ownerNode.textContent;"
+        "pipWin.document.head.appendChild(style);"
+        "}"
+        "}catch(e){}"
+        "});"
+        "pipWin.document.body.style.margin='0';"
+        "pipWin.document.body.appendChild(document.getElementById('jbroot'));"
+        "pipWin.addEventListener('pagehide',function(){"
+        "document.body.appendChild(document.getElementById('jbroot'));"
+        "});"
+        "}).catch(function(e){"
+        "console.error('Float above failed:',e);"
+        "floatBtn.textContent='Couldn\\u2019t float \\u2014 try again';"
+        "setTimeout(function(){floatBtn.textContent='Float above';},2500);"
+        "});"
+        "});"
+        "}"
+        "}"
         "tabC.addEventListener('click',function(){switchMode('community');});"
         "tabS.addEventListener('click',function(){switchMode('search');});"
         "playPauseBtn.addEventListener('click',function(){"
@@ -1066,6 +1112,42 @@ std::string global_jukebox_widget(const std::string& yt_key) {
         "});"
         "updateTabs();"
         "})();</script>";
+    return s;
+}
+
+// Floating embedded widget: phone-icon toggle + collapsible panel, injected
+// on every logged-in page via wrap(). "Pop out" opens /listen in a real
+// separate window — see jukebox_script's comment for why that, and not
+// requestPictureInPicture, is what actually survives navigating this
+// (deliberately multi-page) site.
+std::string global_jukebox_widget(const std::string& yt_key) {
+    return
+        "<button id=\"jbtoggle\" type=\"button\" aria-label=\"Jukebox\" "
+        "style=\"position:fixed;right:1rem;bottom:1rem;z-index:30;width:52px;height:52px;"
+        "border-radius:50%;background:var(--navy);color:var(--paper);border:0;"
+        "font-size:1.4rem;line-height:52px;text-align:center;cursor:pointer;"
+        "box-shadow:0 2px 10px rgba(0,0,0,.3)\">\xF0\x9F\x93\xB1</button>"
+        "<div id=\"jbpanel\" hidden style=\"position:fixed;right:1rem;bottom:4.5rem;z-index:30;"
+        "width:320px;max-width:92vw;max-height:min(75vh,540px);overflow-y:auto;"
+        "background:var(--panel);border:1px solid var(--rule);"
+        "border-radius:var(--rlg);padding:.9rem;box-shadow:0 6px 24px rgba(0,0,0,.35)\">"
+        "<div id=\"jbroot\">" + jukebox_panel_body(false) + "</div>"
+        "</div>"
+        + jukebox_script(yt_key, false);
+}
+
+// The /listen popout: a real, independent top-level window. Once open, it
+// keeps playing regardless of what the opener tab navigates to — this is
+// what actually delivers "listen while browsing elsewhere" on a multi-page
+// site, unlike requestPictureInPicture (blocked here by the YouTube embed
+// being cross-origin) or the Document Picture-in-Picture API (tied to the
+// opener document's lifetime — closes on real navigation, not just this
+// site's choice). From inside *this* window, Float above uses Document PiP
+// for real, since this window's own document doesn't navigate away.
+std::string jukebox_standalone_page(const std::string& yt_key) {
+    return "<div id=\"jbroot\" style=\"max-width:400px;margin:0 auto\">"
+           + jukebox_panel_body(true) + "</div>"
+           + jukebox_script(yt_key, true);
 }
 
 // In-browser drawing tool for the self-portrait. Draws to a <canvas>, exports
@@ -1360,6 +1442,14 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
     if(method=="GET"&&path=="/world") {
         if(!acc) return http_redir("/login");
         return pg("World", world_page(user));
+    }
+    if(method=="GET"&&path=="/listen") {
+        // Deliberately not wrap()/pg(): this window IS the player, full-page
+        // nav chrome and a second (redundant) floating-widget toggle would
+        // just be noise in a small popout.
+        if(!acc) return http_redir("/login");
+        return http_ok(page_wrap("Listen", "",
+            "<div style=\"padding:.75rem\">" + jukebox_standalone_page(youtube_api_key_from_env()) + "</div>"));
     }
     if(method=="GET"&&path=="/feed") {
         if(!acc) return http_redir("/login");

@@ -381,7 +381,17 @@ std::string css() {
         "background:var(--parchment);flex-shrink:0;display:inline-block;vertical-align:middle}"
         ".portrait.sm{width:36px;height:36px}"
         ".portrait.ph{box-sizing:border-box}"
+        // The info div next to the avatar is a flex item with no
+        // flex-grow, so by default it only ever sizes to fit its own
+        // text (a short "name · timestamp" line) -- fine until a post's
+        // width:100% image/video landed inside it and sized itself
+        // against that narrow shrink-wrapped box instead of the actual
+        // card. flex:1 makes it fill the row like the rest of the
+        // layout already assumes; min-width:0 is required alongside it
+        // so a flex item is actually allowed to be narrower than its
+        // content's intrinsic width instead of blowing out the row.
         ".who{display:flex;gap:.75rem;align-items:flex-start}"
+        ".who>div{flex:1;min-width:0}"
         ".post p{margin:.25rem 0 0;white-space:pre-wrap}"
         "ul.plain{list-style:none;padding:0;margin:0}ul.plain li{border-top:1px solid var(--rule);padding:.65rem 0}"
         "footer.site{max-width:58rem;margin:0 auto;padding:1.2rem 1.1rem 2.5rem;color:var(--stone);font-size:.82rem;"

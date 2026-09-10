@@ -1657,8 +1657,24 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         html += "<p>"+html_escape(b.empty()?"No blurb yet.":b)+"</p>"
             "<form method=\"POST\" action=\"/me\"><label>Blurb</label><textarea name=\"blurb\" rows=\"4\" maxlength=\"2000\">"+html_escape(b)+
             "</textarea><button>Save</button></form>"
-            "<p class=\"muted\">Restyle your public profile in <a href=\"/settings\">Settings &rarr; Profile CSS</a>. "
-            "A platform account is not a CitizenId.</p></div>";
+            "<p class=\"muted\">A platform account is not a CitizenId.</p></div>";
+        {
+            auto current_css = g_store.author_css(acc->id);
+            std::string css_msg;
+            if (qs["ok"]=="css") css_msg = "<p class=\"ok\">Saved. See it at <a href=\"/u/"+html_escape(user)+"\">your public profile</a>.</p>";
+            else if (qs["err"]=="css") css_msg = "<p class=\"warn\">"+html_escape(css_reject_message(qs["reason"]))+"</p>";
+            html += "<div class=\"card\"><h2>Profile CSS</h2>"
+                "<p class=\"muted\">Restyles your public profile page (/u/"+html_escape(user)+
+                "), shown inside a sandboxed frame with no scripts and no access to this site's cookies or data. "
+                "@import, url(), and anything script-adjacent are rejected outright, not silently stripped. "
+                "Limit " + std::to_string(kAuthorCssMaxBytes/1000) + "KB. Leave empty to use the default look.</p>"
+                + css_msg +
+                "<form method=\"POST\" action=\"/me/css\">"
+                "<textarea name=\"css\" rows=\"8\" spellcheck=\"false\" "
+                "style=\"font-family:ui-monospace,Consolas,monospace;font-size:.85rem\" "
+                "placeholder=\".lg-theme h1{color:#a23b3b}\">"+html_escape(current_css)+"</textarea>"
+                "<button>Save CSS</button></form></div>";
+        }
         html += jukebox_widget(user, true, qs);
         return pg("Profile", html);
     }
@@ -2121,24 +2137,6 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             "Unlink would drop voting access until re-verified; it would not resign citizenship. "
             "This page does not write CitizenId, GrantCitizenship, points, seats, or parcels.</p></div>";
 
-        {
-            auto current_css = g_store.author_css(acc->id);
-            std::string css_msg;
-            if (qs["ok"]=="css") css_msg = "<p class=\"ok\">Saved. See it at <a href=\"/u/"+html_escape(user)+"\">your public profile</a>.</p>";
-            else if (qs["err"]=="css") css_msg = "<p class=\"warn\">"+html_escape(css_reject_message(qs["reason"]))+"</p>";
-            html += "<div class=\"card\"><h2>Profile CSS</h2>"
-                "<p class=\"muted\">Restyles your public profile page (/u/"+html_escape(user)+
-                "), shown inside a sandboxed frame with no scripts and no access to this site's cookies or data. "
-                "@import, url(), and anything script-adjacent are rejected outright, not silently stripped. "
-                "Limit " + std::to_string(kAuthorCssMaxBytes/1000) + "KB. Leave empty to use the default look.</p>"
-                + css_msg +
-                "<form method=\"POST\" action=\"/settings/css\">"
-                "<textarea name=\"css\" rows=\"8\" spellcheck=\"false\" "
-                "style=\"font-family:ui-monospace,Consolas,monospace;font-size:.85rem\" "
-                "placeholder=\".lg-theme h1{color:#a23b3b}\">"+html_escape(current_css)+"</textarea>"
-                "<button>Save CSS</button></form></div>";
-        }
-
         html += "<div class=\"card\"><h2>Data</h2>"
             "<p><a class=\"btn ghost\" href=\"/export\">Download your export</a></p>"
             "<p class=\"muted\">Export includes username, blurb, profile CSS, your friend list, communities you started or joined, "
@@ -2232,6 +2230,15 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         auto b=f["blurb"]; if(b.size()>2000) b.resize(2000);
         g_store.set_blurb(acc->id, b);
         return http_redir("/me");
+    }
+    if(method=="POST"&&path=="/me/css") {
+        if(!acc) return http_redir("/login");
+        auto f = parse_form(body);
+        const std::string& raw_css = f["css"];
+        auto check = sanitize_author_css(raw_css);
+        if (!check.ok) return http_redir("/me?err=css&reason=" + check.code);
+        g_store.set_author_css(acc->id, raw_css);
+        return http_redir("/me?ok=css");
     }
     if(method=="POST"&&path=="/me/avatar") {
         if(!acc) return http_redir("/login");
@@ -2502,15 +2509,6 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             return http_redir("/settings?err=password");
         g_store.set_password_hash(acc->id, hash_password(f["next"]));
         return http_redir("/settings?ok=password");
-    }
-    if(method=="POST"&&path=="/settings/css") {
-        if(!acc) return http_redir("/login");
-        auto f = parse_form(body);
-        const std::string& raw_css = f["css"];
-        auto check = sanitize_author_css(raw_css);
-        if (!check.ok) return http_redir("/settings?err=css&reason=" + check.code);
-        g_store.set_author_css(acc->id, raw_css);
-        return http_redir("/settings?ok=css");
     }
     if(method=="POST"&&path=="/settings/privacy") {
         if(!acc) return http_redir("/login");

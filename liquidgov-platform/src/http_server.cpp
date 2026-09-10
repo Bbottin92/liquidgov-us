@@ -809,30 +809,48 @@ std::string portrait_tag(const std::string& username, const char* cls) {
            "\" alt=\"\" width=\"96\" height=\"96\">";
 }
 
-// Drawing canvas: freehand brushes (pen, marker, spray, eraser, smudge),
-// shape tools (line, rectangle, circle, with an optional filled variant),
-// a paint-bucket flood fill, up to three independently-undoable layers,
-// and image/video/gif import (drawn in as a single still frame -- the
-// storage layer only ever holds flat PNGs, so there's no way to keep a
-// video or an animated gif "alive" inside a saved frame). Captures a PNG
-// snapshot after every completed action (capped, see kCanvasMaxFrames) by
-// flattening the layers together and uploading through /me/canvas/frame --
-// the exact same normalize/scan pipeline as the self-portrait upload, just
-// appending to an ordered list instead of replacing a single slot. Those
-// frames become the profile theme's background: last one as a static
-// image, or all of them as a CSS-only looping animation (see
-// theme_background_css) -- no JS runs inside the sandboxed theme document,
-// so the "replay" has to be a real image sequence, not a script driving a
-// canvas there.
-std::string canvas_page(const std::string& username, const std::string& err) {
+// Shared drawing-tool engine: freehand brushes (pen, marker, spray, eraser,
+// smudge), shape tools (line, rectangle, circle, with an optional filled
+// variant), a paint-bucket flood fill, up to three independently-undoable
+// layers, and image/video/gif import (drawn in as a single still frame --
+// the storage layer only ever holds flat PNGs, so there's no way to keep a
+// video or an animated gif "alive" inside a saved frame). Powers two pages
+// that share every tool but differ in what "Save" does:
+//   portrait=false -- /me/canvas, the profile-background tool. Captures a
+//     PNG after every completed action (capped, see kCanvasMaxFrames) by
+//     flattening the layers and uploading through /me/canvas/frame -- the
+//     exact same normalize/scan pipeline as an avatar upload, just
+//     appending to an ordered list instead of replacing a single slot.
+//     Save turns that list into the profile theme's background: last frame
+//     as a static image, or all of them as a CSS-only looping animation
+//     (see theme_background_css) -- no JS runs inside the sandboxed theme
+//     document, so the "replay" has to be a real image sequence.
+//   portrait=true -- /me/portrait, the self-portrait tool. No frame
+//     history needed (an avatar isn't a sequence): Save just flattens the
+//     current layers and POSTs the one image straight to /me/avatar.
+// Everything else -- the whole brush/shape/layer/import engine -- is
+// identical, built once here rather than forked into two copies that would
+// drift apart.
+std::string canvas_tool_page(const std::string& username, const std::string& err, bool portrait) {
+    int cw = portrait ? 400 : 640;
+    int ch = portrait ? 400 : 440;
+    std::string cws = std::to_string(cw), chs = std::to_string(ch);
+    std::string aspect = cws + "/" + chs;
     std::string errHtml;
-    if (err=="image") errHtml = "<p class=\"warn\">That frame wasn't a usable image.</p>";
-    else if (err=="large") errHtml = "<p class=\"warn\">That frame was too large.</p>";
-    else if (err=="full") errHtml = "<p class=\"warn\">This drawing already has the max 24 frames.</p>";
+    if (!portrait) {
+        if (err=="image") errHtml = "<p class=\"warn\">That frame wasn't a usable image.</p>";
+        else if (err=="large") errHtml = "<p class=\"warn\">That frame was too large.</p>";
+        else if (err=="full") errHtml = "<p class=\"warn\">This drawing already has the max 24 frames.</p>";
+    }
+    std::string title = portrait ? "Self-portrait" : "Canvas";
+    std::string intro = portrait
+        ? "Draw your self-portrait with the same tools as the profile-background canvas &mdash; "
+          "pen, shapes, layers, all of it."
+        : "Draw, then save it as your profile background &mdash; a still image, "
+          "or a loop of the drawing as it happened.";
     std::string html =
-        "<div class=\"card\"><h1>Canvas</h1>"
-        "<p class=\"muted\">Draw, then save it as your profile background &mdash; a still image, "
-        "or a loop of the drawing as it happened.</p>"+errHtml+
+        "<div class=\"card\"><h1>"+title+"</h1>"
+        "<p class=\"muted\">"+intro+"</p>"+errHtml+
         "<div class=\"row\" style=\"flex-wrap:wrap;gap:.4rem 1rem;align-items:center;margin-bottom:.4rem\">"
         "<label style=\"display:flex;align-items:center;gap:.3rem\">Tool"
         "<select id=\"ctool\">"
@@ -867,44 +885,32 @@ std::string canvas_page(const std::string& username, const std::string& err) {
         "Import image/video<input type=\"file\" id=\"cimport\" accept=\"image/*,video/*\" "
         "style=\"display:none\"></label>"
         "</div>"
-        "<div id=\"cstage\" style=\"position:relative;width:100%;max-width:640px\">"
-        "<div id=\"ccanvaswrap\" style=\"position:relative;width:100%;"
-        "aspect-ratio:640/440;background:#fff;border:1px solid var(--rule);"
+        "<div id=\"ccanvaswrap\" style=\"position:relative;width:100%;max-width:"+cws+"px;"
+        "aspect-ratio:"+aspect+";background:#fff;border:1px solid var(--rule);"
         "border-radius:var(--rsm);overflow:hidden;touch-action:none\">"
-        "<canvas id=\"clayer0\" width=\"640\" height=\"440\" "
+        "<canvas id=\"clayer0\" width=\""+cws+"\" height=\""+chs+"\" "
         "style=\"position:absolute;inset:0;width:100%;height:100%\"></canvas>"
-        "<canvas id=\"clayer1\" width=\"640\" height=\"440\" "
+        "<canvas id=\"clayer1\" width=\""+cws+"\" height=\""+chs+"\" "
         "style=\"position:absolute;inset:0;width:100%;height:100%\"></canvas>"
-        "<canvas id=\"clayer2\" width=\"640\" height=\"440\" "
+        "<canvas id=\"clayer2\" width=\""+cws+"\" height=\""+chs+"\" "
         "style=\"position:absolute;inset:0;width:100%;height:100%\"></canvas>"
-        "<canvas id=\"coverlay\" width=\"640\" height=\"440\" "
+        "<canvas id=\"coverlay\" width=\""+cws+"\" height=\""+chs+"\" "
         "style=\"position:absolute;inset:0;width:100%;height:100%;cursor:crosshair\"></canvas>"
         "</div>"
-        // The self-portrait is just a circular crop of whatever's on the
-        // canvas right now -- no separate drawing surface, no file picker.
-        // Sits as a badge overlapping the canvas's own corner so the
-        // connection ("this IS your canvas, cropped round") is visual, not
-        // just explained in text.
-        "<div style=\"position:absolute;right:8px;bottom:8px;display:flex;"
-        "flex-direction:column;align-items:center;gap:.3rem\">"
-        "<canvas id=\"pmini\" width=\"120\" height=\"120\" title=\"Your self-portrait, live\" "
-        "style=\"width:72px;height:72px;border-radius:50%;border:3px solid var(--paper);"
-        "box-shadow:0 1px 5px rgba(0,0,0,.3);background:#fff\"></canvas>"
-        "<button type=\"button\" class=\"ghost\" id=\"psave\" "
-        "style=\"font-size:.75rem;padding:.3rem .55rem\">Save as self-portrait</button>"
-        "</div>"
-        "</div>"
-        "<p class=\"muted\" id=\"pstatus\"></p>"
         "<div class=\"row\" style=\"margin-top:.6rem;gap:.4rem\">"
         "<button type=\"button\" class=\"ghost\" id=\"cundo\">Undo</button>"
         "<button type=\"button\" class=\"ghost\" id=\"credo\">Redo</button>"
         "<button type=\"button\" class=\"ghost\" id=\"cclear\">Clear layer</button>"
-        "</div>"
-        "<p class=\"muted\" id=\"cframecount\" style=\"margin-top:.6rem\">0/24 frames captured</p>"
-        "<label style=\"display:block;margin-top:.4rem\"><input type=\"checkbox\" id=\"ctimelapse\"> "
-        "Loop the drawing as my background instead of a still image</label>"
+        "</div>";
+    if (!portrait) {
+        html +=
+            "<p class=\"muted\" id=\"cframecount\" style=\"margin-top:.6rem\">0/24 frames captured</p>"
+            "<label style=\"display:block;margin-top:.4rem\"><input type=\"checkbox\" id=\"ctimelapse\"> "
+            "Loop the drawing as my background instead of a still image</label>";
+    }
+    html +=
         "<div class=\"row\" style=\"margin-top:.6rem\">"
-        "<button type=\"button\" id=\"csave\">Save to profile</button>"
+        "<button type=\"button\" id=\"csave\">"+std::string(portrait?"Save as self-portrait":"Save to profile")+"</button>"
         "</div>"
         "<p class=\"muted\" id=\"cstatus\"></p></div>"
         "<script>(function(){"
@@ -1111,14 +1117,12 @@ std::string canvas_page(const std::string& username, const std::string& err) {
         "}"
         "e.target.value='';"
         "});"
-        "var clearedOnce=false,frameCount=0;"
-        "function updateCounter(){"
-        "document.getElementById('cframecount').textContent=frameCount+'/24 frames captured';"
-        "}"
         // Flattens all layers onto a fresh white-backed canvas -- storage
         // only ever holds one flat PNG per frame, so layers are purely a
         // client-side editing convenience that collapses down at capture
-        // time, same as an image editor's "flatten" export.
+        // time, same as an image editor's "flatten" export. Shared by both
+        // modes: the background tool's per-action frame capture below, and
+        // the self-portrait tool's own one-shot Save handler.
         "function flatten(){"
         "var out=document.createElement('canvas');"
         "out.width=layers[0].cv.width;out.height=layers[0].cv.height;"
@@ -1126,51 +1130,6 @@ std::string canvas_page(const std::string& username, const std::string& err) {
         "octx2.fillStyle='#fff';octx2.fillRect(0,0,out.width,out.height);"
         "for(var i=0;i<layers.length;i++)octx2.drawImage(layers[i].cv,0,0);"
         "return out;"
-        "}"
-        // The self-portrait is a centred square crop of the flattened
-        // canvas -- not a squish of the whole 640x440 rectangle, so it
-        // doesn't come out stretched once the circular mask goes on top.
-        "function cropSquare(out){"
-        "var side=Math.min(out.width,out.height);"
-        "var sx=(out.width-side)/2,sy=(out.height-side)/2;"
-        "var crop=document.createElement('canvas');crop.width=side;crop.height=side;"
-        "crop.getContext('2d').drawImage(out,sx,sy,side,side,0,0,side,side);"
-        "return crop;"
-        "}"
-        "var pmini=document.getElementById('pmini'),pctx=pmini.getContext('2d');"
-        "function updatePreview(out){"
-        "pctx.clearRect(0,0,pmini.width,pmini.height);"
-        "pctx.drawImage(cropSquare(out),0,0,pmini.width,pmini.height);"
-        "}"
-        "updatePreview(flatten());"
-        "document.getElementById('psave').addEventListener('click',function(){"
-        "var st=document.getElementById('pstatus');st.textContent='Saving\\u2026';"
-        "cropSquare(flatten()).toBlob(function(blob){"
-        "var fd=new FormData();fd.append('photo',blob,'portrait.png');"
-        "fetch('/me/avatar',{method:'POST',body:fd}).then(function(r){"
-        "st.textContent=r.ok?'Saved as your self-portrait.':'Could not save. Try again.';"
-        "}).catch(function(){st.textContent='Could not save. Try again.';});"
-        "},'image/png');"
-        "});"
-        // done() always fires, whether this capture actually uploaded or
-        // was skipped (cap hit, no force) -- callers that need to know the
-        // frame really landed (Save, below) depend on that.
-        "function captureFrame(force,done){"
-        "if(frameCount>=23&&!force){if(done)done();return;}"
-        "var out=flatten();updatePreview(out);"
-        "out.toBlob(function(blob){"
-        "var fd=new FormData();fd.append('frame',blob,'frame.png');"
-        "function go(){"
-        "fetch('/me/canvas/frame',{method:'POST',body:fd}).then(function(r){"
-        "if(r.ok){frameCount++;updateCounter();}"
-        "if(done)done();"
-        "}).catch(function(){if(done)done();});"
-        "}"
-        "if(!clearedOnce){"
-        "clearedOnce=true;"
-        "fetch('/me/canvas/clear',{method:'POST'}).then(go).catch(go);"
-        "}else{go();}"
-        "},'image/png');"
         "}"
         "document.getElementById('cundo').addEventListener('click',function(){"
         "var L=layers[activeLayer];if(!L.undo.length)return;"
@@ -1184,19 +1143,61 @@ std::string canvas_page(const std::string& username, const std::string& err) {
         "});"
         "document.getElementById('cclear').addEventListener('click',function(){"
         "snap();var L=layers[activeLayer];L.ctx.clearRect(0,0,L.cv.width,L.cv.height);"
-        "});"
-        "document.getElementById('csave').addEventListener('click',function(){"
-        "var status=document.getElementById('cstatus');status.textContent='Saving\\u2026';"
-        "var timelapse=document.getElementById('ctimelapse').checked?'1':'0';"
-        "captureFrame(true,function(){"
-        "fetch('/me/canvas/mode',{method:'POST',"
-        "headers:{'Content-Type':'application/x-www-form-urlencoded'},"
-        "body:'timelapse='+timelapse}).then(function(){"
-        "window.location='/u/'+"+js_string_literal(username)+";"
-        "});"
-        "});"
-        "});"
-        "})();</script>";
+        "});";
+    if (portrait) {
+        // No frame history for a self-portrait -- captureFrame is called
+        // from the shared pointer/import handlers above regardless of
+        // mode, so it stays a real function here too, just a no-op; Save
+        // does the only upload, straight to the existing /me/avatar route.
+        html +=
+            "function captureFrame(force,done){if(done)done();}"
+            "document.getElementById('csave').addEventListener('click',function(){"
+            "var status=document.getElementById('cstatus');status.textContent='Saving\\u2026';"
+            "flatten().toBlob(function(blob){"
+            "var fd=new FormData();fd.append('photo',blob,'portrait.png');"
+            "fetch('/me/avatar',{method:'POST',body:fd}).then(function(r){"
+            "window.location=r.url||'/me';"
+            "}).catch(function(){status.textContent='Could not save. Try again.';});"
+            "},'image/png');"
+            "});";
+    } else {
+        html +=
+            "var clearedOnce=false,frameCount=0;"
+            "function updateCounter(){"
+            "document.getElementById('cframecount').textContent=frameCount+'/24 frames captured';"
+            "}"
+            // done() always fires, whether this capture actually uploaded
+            // or was skipped (cap hit, no force) -- callers that need to
+            // know the frame really landed (Save, below) depend on that.
+            "function captureFrame(force,done){"
+            "if(frameCount>=23&&!force){if(done)done();return;}"
+            "flatten().toBlob(function(blob){"
+            "var fd=new FormData();fd.append('frame',blob,'frame.png');"
+            "function go(){"
+            "fetch('/me/canvas/frame',{method:'POST',body:fd}).then(function(r){"
+            "if(r.ok){frameCount++;updateCounter();}"
+            "if(done)done();"
+            "}).catch(function(){if(done)done();});"
+            "}"
+            "if(!clearedOnce){"
+            "clearedOnce=true;"
+            "fetch('/me/canvas/clear',{method:'POST'}).then(go).catch(go);"
+            "}else{go();}"
+            "},'image/png');"
+            "}"
+            "document.getElementById('csave').addEventListener('click',function(){"
+            "var status=document.getElementById('cstatus');status.textContent='Saving\\u2026';"
+            "var timelapse=document.getElementById('ctimelapse').checked?'1':'0';"
+            "captureFrame(true,function(){"
+            "fetch('/me/canvas/mode',{method:'POST',"
+            "headers:{'Content-Type':'application/x-www-form-urlencoded'},"
+            "body:'timelapse='+timelapse}).then(function(){"
+            "window.location='/u/'+"+js_string_literal(username)+";"
+            "});"
+            "});"
+            "});";
+    }
+    html += "})();</script>";
     return html;
 }
 
@@ -2004,7 +2005,11 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
     }
     if(method=="GET"&&path=="/me/canvas") {
         if(!acc) return http_redir("/login");
-        return pg("Canvas", canvas_page(user, qs["err"]));
+        return pg("Canvas", canvas_tool_page(user, qs["err"], false));
+    }
+    if(method=="GET"&&path=="/me/portrait") {
+        if(!acc) return http_redir("/login");
+        return pg("Self-portrait", canvas_tool_page(user, qs["err"], true));
     }
     if(method=="GET"&&path=="/listen") {
         // Deliberately not wrap()/pg(): this window IS the player, full-page
@@ -2081,8 +2086,8 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         std::string html = "<div class=\"card\"><div class=\"who\">"+portrait_tag(user,"")+"<div><h1>"+html_escape(user)+"</h1>"
             "<p class=\"muted\">Platform profile · <a href=\"/u/"+html_escape(user)+"\">public page</a> · member since "+
             html_escape(fmt_time(acc->created_at))+"</p></div></div>"+err+
-            "<p class=\"muted\">Self-portrait &mdash; draw one from the <a href=\"/me/canvas\">Canvas</a> "
-            "tool; the small circle on it saves straight here.</p>";
+            "<p class=\"muted\">Self-portrait &mdash; draw one with the same tools as the "
+            "<a href=\"/me/portrait\">portrait tool</a>.</p>";
         if (has_portrait(acc->id))
             html += "<form method=\"POST\" action=\"/me/avatar/clear\"><button class=\"ghost\" type=\"submit\">Remove portrait</button></form>";
         html += "<p>"+html_escape(b.empty()?"No blurb yet.":b)+"</p>"

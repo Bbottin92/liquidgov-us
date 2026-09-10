@@ -901,6 +901,51 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "<svg viewBox=\"0 0 16 16\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" "
         "stroke-width=\"1.1\" aria-hidden=\"true\"><path d=\"M8 1 14 4.2 8 7.4 2 4.2Z\"/>"
         "<path d=\"M2 7.6 8 10.8 14 7.6\"/><path d=\"M2 11 8 14.2 14 11\"/></svg>";
+    // The tool picker, same reasoning: eleven recognizable shapes read
+    // faster than eleven words in a dropdown you have to open first.
+    const std::string kIconPen =
+        "<svg viewBox=\"0 0 16 16\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" "
+        "stroke-width=\"1.2\" aria-hidden=\"true\"><path d=\"M3 13l.6-2.8L10.6 3.2a1 1 0 0 1 1.4 0l.8.8a1 1 0 0 1 0 1.4"
+        "L5.8 12.4 3 13Z\"/><path d=\"M9.3 4.5 11.5 6.7\"/></svg>";
+    const std::string kIconMarker =
+        "<svg viewBox=\"0 0 16 16\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" "
+        "stroke-width=\"2.6\" stroke-linecap=\"round\" aria-hidden=\"true\"><path d=\"M4 12 11.5 4.5\"/></svg>";
+    const std::string kIconSpray =
+        "<svg viewBox=\"0 0 16 16\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" "
+        "stroke-width=\"1.2\" aria-hidden=\"true\"><circle cx=\"5.5\" cy=\"9.5\" r=\"2.2\"/>"
+        "<circle cx=\"11\" cy=\"3\" r=\".7\" fill=\"currentColor\" stroke=\"none\"/>"
+        "<circle cx=\"13\" cy=\"6\" r=\".7\" fill=\"currentColor\" stroke=\"none\"/>"
+        "<circle cx=\"9.5\" cy=\"3.5\" r=\".7\" fill=\"currentColor\" stroke=\"none\"/>"
+        "<circle cx=\"11.5\" cy=\"8.5\" r=\".7\" fill=\"currentColor\" stroke=\"none\"/></svg>";
+    const std::string kIconSmudge =
+        "<svg viewBox=\"0 0 16 16\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" "
+        "stroke-width=\"1.2\" stroke-linecap=\"round\" aria-hidden=\"true\">"
+        "<path d=\"M2 9c1.3-2.3 2.7-2.3 4-1s2.7 1.3 4 0 2.7-2.3 4-1.3\"/></svg>";
+    const std::string kIconEraser =
+        "<svg viewBox=\"0 0 16 16\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" "
+        "stroke-width=\"1.2\" aria-hidden=\"true\">"
+        "<rect x=\"3.3\" y=\"6.3\" width=\"9.4\" height=\"5.4\" rx=\"1\" transform=\"rotate(-28 8 9)\"/></svg>";
+    const std::string kIconLine =
+        "<svg viewBox=\"0 0 16 16\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" "
+        "stroke-width=\"1.3\" stroke-linecap=\"round\" aria-hidden=\"true\"><path d=\"M2.5 13.5 13.5 2.5\"/></svg>";
+    const std::string kIconRect =
+        "<svg viewBox=\"0 0 16 16\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" "
+        "stroke-width=\"1.3\" aria-hidden=\"true\"><rect x=\"2.5\" y=\"3.5\" width=\"11\" height=\"9\" rx=\"1\"/></svg>";
+    const std::string kIconCircle =
+        "<svg viewBox=\"0 0 16 16\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" "
+        "stroke-width=\"1.3\" aria-hidden=\"true\"><circle cx=\"8\" cy=\"8\" r=\"5.3\"/></svg>";
+    const std::string kIconBucket =
+        "<svg viewBox=\"0 0 16 16\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" "
+        "stroke-width=\"1.2\" aria-hidden=\"true\"><path d=\"M3 7 8.5 2.5 14 8l-5.5 4.5L3 7Z\"/>"
+        "<path d=\"M4.5 10.3c-1 1-1 2.4 0 3.1s2.1.3 2.1-.8\"/></svg>";
+    const std::string kIconSelect =
+        "<svg viewBox=\"0 0 16 16\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" "
+        "stroke-width=\"1.3\" stroke-dasharray=\"2.3 2\" aria-hidden=\"true\">"
+        "<rect x=\"2.5\" y=\"2.5\" width=\"11\" height=\"11\" rx=\"1\"/></svg>";
+    const std::string kIconText =
+        "<svg viewBox=\"0 0 16 16\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" "
+        "stroke-width=\"1.3\" stroke-linecap=\"round\" aria-hidden=\"true\">"
+        "<path d=\"M2.8 3.5h10.4\"/><path d=\"M8 3.5v9\"/></svg>";
     std::string title = portrait ? "Self-portrait" : (post_mode ? "Compose a post" : "Canvas");
     std::string intro = portrait
         ? "Draw your self-portrait with the same tools as the profile-background canvas &mdash; "
@@ -912,21 +957,31 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
     std::string html =
         "<div class=\"card\"><h1>"+title+"</h1>"
         "<p class=\"muted\">"+intro+"</p>"+errHtml+
+        "<div class=\"row\" style=\"flex-wrap:wrap;gap:.3rem;align-items:center;margin-bottom:.4rem\">"
+        "<button type=\"button\" class=\"ghost toolbtn\" data-tool=\"pen\" title=\"Pen\" "
+        "style=\"padding:.5rem .55rem\">"+kIconPen+"</button>"
+        "<button type=\"button\" class=\"ghost toolbtn\" data-tool=\"marker\" title=\"Marker\" "
+        "style=\"padding:.5rem .55rem\">"+kIconMarker+"</button>"
+        "<button type=\"button\" class=\"ghost toolbtn\" data-tool=\"spray\" title=\"Spray\" "
+        "style=\"padding:.5rem .55rem\">"+kIconSpray+"</button>"
+        "<button type=\"button\" class=\"ghost toolbtn\" data-tool=\"smudge\" title=\"Smudge\" "
+        "style=\"padding:.5rem .55rem\">"+kIconSmudge+"</button>"
+        "<button type=\"button\" class=\"ghost toolbtn\" data-tool=\"eraser\" title=\"Eraser\" "
+        "style=\"padding:.5rem .55rem\">"+kIconEraser+"</button>"
+        "<button type=\"button\" class=\"ghost toolbtn\" data-tool=\"line\" title=\"Line\" "
+        "style=\"padding:.5rem .55rem\">"+kIconLine+"</button>"
+        "<button type=\"button\" class=\"ghost toolbtn\" data-tool=\"rect\" title=\"Rectangle\" "
+        "style=\"padding:.5rem .55rem\">"+kIconRect+"</button>"
+        "<button type=\"button\" class=\"ghost toolbtn\" data-tool=\"circle\" title=\"Circle\" "
+        "style=\"padding:.5rem .55rem\">"+kIconCircle+"</button>"
+        "<button type=\"button\" class=\"ghost toolbtn\" data-tool=\"bucket\" title=\"Paint bucket\" "
+        "style=\"padding:.5rem .55rem\">"+kIconBucket+"</button>"
+        "<button type=\"button\" class=\"ghost toolbtn\" data-tool=\"select\" title=\"Select\" "
+        "style=\"padding:.5rem .55rem\">"+kIconSelect+"</button>"
+        "<button type=\"button\" class=\"ghost toolbtn\" data-tool=\"text\" title=\"Text\" "
+        "style=\"padding:.5rem .55rem\">"+kIconText+"</button>"
+        "</div>"
         "<div class=\"row\" style=\"flex-wrap:wrap;gap:.4rem 1rem;align-items:center;margin-bottom:.4rem\">"
-        "<label style=\"display:flex;align-items:center;gap:.3rem\">Tool"
-        "<select id=\"ctool\">"
-        "<option value=\"pen\">Pen</option>"
-        "<option value=\"marker\">Marker</option>"
-        "<option value=\"spray\">Spray</option>"
-        "<option value=\"smudge\">Smudge</option>"
-        "<option value=\"eraser\">Eraser</option>"
-        "<option value=\"line\">Line</option>"
-        "<option value=\"rect\">Rectangle</option>"
-        "<option value=\"circle\">Circle</option>"
-        "<option value=\"bucket\">Paint bucket</option>"
-        "<option value=\"select\">Select</option>"
-        "<option value=\"text\">Text</option>"
-        "</select></label>"
         "<input type=\"color\" id=\"ccolor\" value=\"#1a1814\" aria-label=\"Color\" "
         "style=\"width:36px;min-height:36px;padding:2px;flex:0 0 auto\">"
         "<label style=\"display:flex;align-items:center;gap:.3rem\">Size"
@@ -936,6 +991,26 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "<label><input type=\"checkbox\" id=\"cglow\"> Glow</label>"
         "<label><input type=\"checkbox\" id=\"csymmetry\"> Mirror</label>"
         "<label><input type=\"checkbox\" id=\"cfill\"> Fill shape</label>"
+        "</div>"
+        // Text tool controls -- font/weight/style/underline/background all
+        // apply at commit time (see addTextBox), read the same way colour
+        // and size already are for every other tool. Drag the Text tool
+        // itself on the canvas to size the box: vertical drag sets the
+        // font size, horizontal sets the field width text wraps within.
+        "<div class=\"row\" style=\"flex-wrap:wrap;gap:.4rem 1rem;align-items:center;margin-bottom:.6rem\">"
+        "<span class=\"muted\">Text</span>"
+        "<select id=\"cfont\" style=\"width:auto;min-height:36px\">"
+        "<option value=\"sans-serif\">Sans-serif</option>"
+        "<option value=\"serif\">Serif</option>"
+        "<option value=\"monospace\">Monospace</option>"
+        "<option value=\"cursive\">Cursive</option>"
+        "</select>"
+        "<label><input type=\"checkbox\" id=\"cbold\"> Bold</label>"
+        "<label><input type=\"checkbox\" id=\"citalic\"> Italic</label>"
+        "<label><input type=\"checkbox\" id=\"cunderline\"> Underline</label>"
+        "<label><input type=\"checkbox\" id=\"ctextbg\"> Background</label>"
+        "<input type=\"color\" id=\"ctextbgcolor\" value=\"#ffffff\" aria-label=\"Text background colour\" "
+        "style=\"width:36px;min-height:36px;padding:2px;flex:0 0 auto\">"
         "</div>"
         "<div class=\"row\" style=\"flex-wrap:wrap;gap:.4rem 1rem;align-items:center;margin-bottom:.6rem\">"
         "<label class=\"ghost\" style=\"cursor:pointer;padding:.3rem .6rem;border-radius:var(--rsm)\">"
@@ -1062,7 +1137,16 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "var r=overlay.getBoundingClientRect();var p=e.touches?e.touches[0]:e;"
         "return{x:(p.clientX-r.left)*overlay.width/r.width,y:(p.clientY-r.top)*overlay.height/r.height};"
         "}"
-        "function toolVal(){return document.getElementById('ctool').value;}"
+        "var curTool='pen';"
+        "function toolVal(){return curTool;}"
+        "var toolBtns=document.querySelectorAll('.toolbtn');"
+        "function refreshToolBtns(){"
+        "toolBtns.forEach(function(b){b.style.background=b.dataset.tool===curTool?'var(--rule)':'';});"
+        "}"
+        "toolBtns.forEach(function(b){"
+        "b.addEventListener('click',function(){curTool=b.dataset.tool;refreshToolBtns();});"
+        "});"
+        "refreshToolBtns();"
         "function drawSeg(ax,ay,bx,by){"
         "var b=toolVal(),color=document.getElementById('ccolor').value;"
         "var size=Number(document.getElementById('csize').value);"
@@ -1232,42 +1316,73 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "var nh=Math.max(16,Math.min(2000,Number(document.getElementById('crh').value)||acv().height));"
         "resizeAllLayers(Math.round(nw),Math.round(nh),null);"
         "});"
-        // Text: click, type into a floating input positioned over the
-        // canvas, Enter/blur bakes it onto the active layer as real
-        // pixels via fillText -- not a movable/re-editable text object
-        // afterward, same "commits to pixels" contract as every other
-        // tool here.
-        "function addTextAt(x,y){"
+        // Text: drag the Text tool on the canvas -- vertical distance
+        // sets the font size, horizontal sets the field width the text
+        // wraps within (a plain click falls back to a sensible default
+        // box instead of doing nothing). Opens a real <textarea> over the
+        // canvas, styled live from the font/bold/italic/underline
+        // controls, so what you see while typing already looks like what
+        // commit() is about to bake onto the active layer as pixels
+        // (word-wrapped to the box width, underline drawn by hand since
+        // canvas text has no native underline, background filled first if
+        // enabled) -- blur commits, Escape cancels without committing.
+        "function addTextBox(x,y,boxW,fontPx){"
         "var r=overlay.getBoundingClientRect(),scale=r.width/overlay.width;"
-        "var inp=document.createElement('input');"
-        "inp.type='text';inp.placeholder='Text';inp.autocomplete='off';"
-        "var fpx=Number(document.getElementById('csize').value)*2;"
-        // width:auto overrides the site-wide input{width:100%} rule (meant
-        // for real form fields), which would otherwise stretch this
-        // floating box across the whole canvas -- the same class of bug
-        // already hit input[type=color] and input[type=checkbox] once
-        // each; explicit sizing here heads it off for this one too.
-        "inp.style.cssText='position:absolute;z-index:10;background:transparent;width:auto;min-height:0;'+"
-        "'border:1px dashed '+document.getElementById('ccolor').value+';'+"
-        "'font:'+(fpx*scale)+'px sans-serif;color:'+document.getElementById('ccolor').value+';padding:0 2px';"
-        "inp.style.left=(x*scale)+'px';inp.style.top=(y*scale-fpx*scale*.15)+'px';"
-        "document.getElementById('ccanvaswrap').appendChild(inp);"
-        "inp.focus();"
+        "var ta=document.createElement('textarea');"
+        "ta.placeholder='Text';"
+        "var bold=document.getElementById('cbold').checked;"
+        "var italic=document.getElementById('citalic').checked;"
+        "var underline=document.getElementById('cunderline').checked;"
+        "var fam=document.getElementById('cfont').value;"
+        "var color=document.getElementById('ccolor').value;"
+        // width/min-height:auto overrides the site-wide
+        // input,textarea{width:100%;min-height:44px} rule (meant for real
+        // form fields), which would otherwise stretch this floating box
+        // across the whole canvas -- the same class of bug already hit
+        // input[type=color]/[type=checkbox] once each.
+        "ta.style.cssText='position:absolute;z-index:10;width:auto;min-height:0;resize:both;overflow:auto;'+"
+        "'padding:2px;box-sizing:border-box;background:rgba(255,255,255,.85);'+"
+        "'border:1px dashed '+color+';color:'+color+';font-family:'+fam+';'+"
+        "'font-size:'+(fontPx*scale)+'px;'+(bold?'font-weight:bold;':'')+(italic?'font-style:italic;':'')+"
+        "(underline?'text-decoration:underline;':'');"
+        "ta.style.left=(x*scale)+'px';ta.style.top=(y*scale)+'px';"
+        "ta.style.width=(boxW*scale)+'px';ta.style.height=Math.max(fontPx*1.6,40)*scale+'px';"
+        "document.getElementById('ccanvaswrap').appendChild(ta);"
+        "ta.focus();"
         "var done=false;"
         "function commit(){"
         "if(done)return;done=true;"
-        "var val=inp.value;inp.remove();"
+        "var val=ta.value;ta.remove();"
         "if(!val)return;"
         "snap();var cx=actx();cx.save();"
-        "cx.fillStyle=document.getElementById('ccolor').value;"
-        "cx.font=fpx+'px sans-serif';cx.textBaseline='top';cx.fillText(val,x,y);cx.restore();"
+        "cx.font=(italic?'italic ':'')+(bold?'bold ':'')+fontPx+'px '+fam;"
+        "cx.textBaseline='top';"
+        "var lineH=fontPx*1.25,lines=[];"
+        "val.split('\\n').forEach(function(paragraph){"
+        "var words=paragraph.split(' '),cur='';"
+        "words.forEach(function(w){"
+        "var test=cur?cur+' '+w:w;"
+        "if(cur&&cx.measureText(test).width>boxW){lines.push(cur);cur=w;}else{cur=test;}"
+        "});"
+        "lines.push(cur);"
+        "});"
+        "if(document.getElementById('ctextbg').checked){"
+        "cx.fillStyle=document.getElementById('ctextbgcolor').value;"
+        "cx.fillRect(x,y,boxW,lines.length*lineH);"
+        "}"
+        "cx.fillStyle=color;"
+        "lines.forEach(function(line,i){"
+        "var ly=y+i*lineH;cx.fillText(line,x,ly);"
+        "if(underline){"
+        "var w=cx.measureText(line).width;"
+        "cx.fillRect(x,ly+fontPx*.92,w,Math.max(1,fontPx*.06));"
+        "}"
+        "});"
+        "cx.restore();"
         "captureFrame(false);"
         "}"
-        "inp.addEventListener('keydown',function(e){"
-        "if(e.key==='Enter'){e.preventDefault();commit();}"
-        "else if(e.key==='Escape'){done=true;inp.remove();}"
-        "});"
-        "inp.addEventListener('blur',commit);"
+        "ta.addEventListener('keydown',function(e){if(e.key==='Escape'){done=true;ta.remove();}});"
+        "ta.addEventListener('blur',commit);"
         "}"
         // Paste from the OS clipboard (e.g. a screenshot copied outside
         // the browser) -- separate from the internal Copy/Cut/Paste
@@ -1291,8 +1406,7 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "overlay.addEventListener('pointerdown',function(e){"
         "var t=toolVal(),p=pos(e);"
         "if(pastePending){pastePending=false;placeClipboardAt(p.x,p.y);e.preventDefault();return;}"
-        "if(t==='text'){addTextAt(p.x,p.y);e.preventDefault();return;}"
-        "if(t==='select'){shapeStart=p;e.preventDefault();return;}"
+        "if(t==='text'||t==='select'){shapeStart=p;e.preventDefault();return;}"
         "if(t==='bucket'){snap();floodFill(p.x,p.y);captureFrame(false);e.preventDefault();return;}"
         "if(t==='line'||t==='rect'||t==='circle'){snap();shapeStart=p;e.preventDefault();return;}"
         "snap();drawing=true;lastX=p.x;lastY=p.y;"
@@ -1301,7 +1415,7 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "});"
         "overlay.addEventListener('pointermove',function(e){"
         "var t=toolVal(),p=pos(e);"
-        "if(shapeStart&&t==='select'){clearOverlay();drawMarquee(rectFrom(shapeStart,p));e.preventDefault();return;}"
+        "if(shapeStart&&(t==='select'||t==='text')){clearOverlay();drawMarquee(rectFrom(shapeStart,p));e.preventDefault();return;}"
         "if(shapeStart){clearOverlay();drawShape(shapeStart.x,shapeStart.y,p.x,p.y,octx);e.preventDefault();return;}"
         "if(!drawing)return;"
         "if(t==='smudge')smudgeAt(p.x,p.y);else strokeAt(lastX,lastY,p.x,p.y);"
@@ -1312,6 +1426,16 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "var p=pos(e);var r=rectFrom(shapeStart,p);clearOverlay();"
         "if(r.w>=2&&r.h>=2){selRect=r;drawMarquee(r);}"
         "shapeStart=null;return;"
+        "}"
+        "if(shapeStart&&toolVal()==='text'){"
+        "var p=pos(e);var r=rectFrom(shapeStart,p);var start=shapeStart;clearOverlay();shapeStart=null;"
+        // A near-zero drag (effectively just a click) falls back to a
+        // sensible default box instead of creating an unusable sliver.
+        "var fontPx=r.h>=6?Math.round(r.h):24;"
+        "var boxW=r.w>=20?Math.round(r.w):200;"
+        "var tx=r.w>=6?r.x:start.x,ty=r.h>=6?r.y:start.y;"
+        "addTextBox(tx,ty,boxW,fontPx);"
+        "return;"
         "}"
         "if(shapeStart){"
         "var p=pos(e);clearOverlay();drawShape(shapeStart.x,shapeStart.y,p.x,p.y,actx());"

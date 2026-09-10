@@ -907,9 +907,13 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "<svg viewBox=\"0 0 16 16\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" "
         "stroke-width=\"1.2\" aria-hidden=\"true\"><path d=\"M3 13l.6-2.8L10.6 3.2a1 1 0 0 1 1.4 0l.8.8a1 1 0 0 1 0 1.4"
         "L5.8 12.4 3 13Z\"/><path d=\"M9.3 4.5 11.5 6.7\"/></svg>";
+    // A bare thick diagonal line read as just "a thicker Line tool", not
+    // "marker" -- a recognizable pen body (the barrel) plus its own ink
+    // mark reads as the tool, not the stroke it happens to draw.
     const std::string kIconMarker =
         "<svg viewBox=\"0 0 16 16\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" "
-        "stroke-width=\"2.6\" stroke-linecap=\"round\" aria-hidden=\"true\"><path d=\"M4 12 11.5 4.5\"/></svg>";
+        "stroke-width=\"1.2\" aria-hidden=\"true\"><rect x=\"2.3\" y=\"2.3\" width=\"4\" height=\"10.5\" rx=\"1\" "
+        "transform=\"rotate(40 4.3 7.55)\"/><path d=\"M2.3 13.8h4\" stroke-width=\"2\" stroke-linecap=\"round\"/></svg>";
     const std::string kIconSpray =
         "<svg viewBox=\"0 0 16 16\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" "
         "stroke-width=\"1.2\" aria-hidden=\"true\"><circle cx=\"5.5\" cy=\"9.5\" r=\"2.2\"/>"
@@ -917,10 +921,13 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "<circle cx=\"13\" cy=\"6\" r=\".7\" fill=\"currentColor\" stroke=\"none\"/>"
         "<circle cx=\"9.5\" cy=\"3.5\" r=\".7\" fill=\"currentColor\" stroke=\"none\"/>"
         "<circle cx=\"11.5\" cy=\"8.5\" r=\".7\" fill=\"currentColor\" stroke=\"none\"/></svg>";
+    // A single wavy line just read as "squiggle," not "blend/drag" --
+    // three parallel strokes fading out reads as a motion trail, the same
+    // visual shorthand smudge/blur tools use elsewhere.
     const std::string kIconSmudge =
         "<svg viewBox=\"0 0 16 16\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" "
-        "stroke-width=\"1.2\" stroke-linecap=\"round\" aria-hidden=\"true\">"
-        "<path d=\"M2 9c1.3-2.3 2.7-2.3 4-1s2.7 1.3 4 0 2.7-2.3 4-1.3\"/></svg>";
+        "stroke-width=\"1.4\" stroke-linecap=\"round\" aria-hidden=\"true\"><path d=\"M3.5 12.5 7.5 8.5\"/>"
+        "<path d=\"M6 13.5 10 9.5\" opacity=\".6\"/><path d=\"M8.5 14.5 12.5 10.5\" opacity=\".3\"/></svg>";
     const std::string kIconEraser =
         "<svg viewBox=\"0 0 16 16\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" "
         "stroke-width=\"1.2\" aria-hidden=\"true\">"
@@ -934,10 +941,14 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
     const std::string kIconCircle =
         "<svg viewBox=\"0 0 16 16\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" "
         "stroke-width=\"1.3\" aria-hidden=\"true\"><circle cx=\"8\" cy=\"8\" r=\"5.3\"/></svg>";
+    // The old abstract polygon-plus-drip didn't read as a bucket at 16px --
+    // a real trapezoid body with a rim and a single drip is the shape
+    // paint-bucket icons actually use everywhere else.
     const std::string kIconBucket =
         "<svg viewBox=\"0 0 16 16\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" "
-        "stroke-width=\"1.2\" aria-hidden=\"true\"><path d=\"M3 7 8.5 2.5 14 8l-5.5 4.5L3 7Z\"/>"
-        "<path d=\"M4.5 10.3c-1 1-1 2.4 0 3.1s2.1.3 2.1-.8\"/></svg>";
+        "stroke-width=\"1.2\" aria-hidden=\"true\"><path d=\"M3 5h8.5l-1.1 6.3a1 1 0 0 1-1 .8H5.1a1 1 0 0 1-1-.8L3 5Z\"/>"
+        "<path d=\"M2.5 5 4.3 2h5.4l1.8 3\"/>"
+        "<circle cx=\"13\" cy=\"12.2\" r=\"1.2\" fill=\"currentColor\" stroke=\"none\"/></svg>";
     const std::string kIconSelect =
         "<svg viewBox=\"0 0 16 16\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" "
         "stroke-width=\"1.3\" stroke-dasharray=\"2.3 2\" aria-hidden=\"true\">"
@@ -946,6 +957,12 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "<svg viewBox=\"0 0 16 16\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" "
         "stroke-width=\"1.3\" stroke-linecap=\"round\" aria-hidden=\"true\">"
         "<path d=\"M2.8 3.5h10.4\"/><path d=\"M8 3.5v9\"/></svg>";
+    // The standard "highlight colour" glyph everywhere from Word to Google
+    // Docs: a capital A with a solid colour bar underneath it.
+    const std::string kIconHighlight =
+        "<svg viewBox=\"0 0 16 16\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" "
+        "stroke-width=\"1.2\" aria-hidden=\"true\"><path d=\"M4 10.5 7 3h2l3 7.5\"/><path d=\"M5.1 8h5.8\"/>"
+        "<rect x=\"2.5\" y=\"12.3\" width=\"11\" height=\"1.8\" fill=\"currentColor\" stroke=\"none\"/></svg>";
     std::string title = portrait ? "Self-portrait" : (post_mode ? "Compose a post" : "Canvas");
     std::string intro = portrait
         ? "Draw your self-portrait with the same tools as the profile-background canvas &mdash; "
@@ -997,20 +1014,34 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         // and size already are for every other tool. Drag the Text tool
         // itself on the canvas to size the box: vertical drag sets the
         // font size, horizontal sets the field width text wraps within.
-        "<div class=\"row\" style=\"flex-wrap:wrap;gap:.4rem 1rem;align-items:center;margin-bottom:.6rem\">"
-        "<span class=\"muted\">Text</span>"
+        // Only meaningful for one of eleven tools, so this whole row stays
+        // hidden (see refreshToolBtns) until the Text tool is actually
+        // selected, instead of cluttering every other tool's controls.
+        // Bold/Italic/Underline are their own established symbols --
+        // literally the styled B/I/U every text editor uses -- so they're
+        // toggle buttons showing that styling directly, not checkboxes
+        // with a redundant word next to them; Background gets the
+        // standard highlight-colour glyph for the same reason.
+        "<div class=\"row\" id=\"ctextrow\" hidden "
+        "style=\"flex-wrap:wrap;gap:.4rem 1rem;align-items:center;margin-bottom:.6rem\">"
         "<select id=\"cfont\" style=\"width:auto;min-height:36px\">"
         "<option value=\"sans-serif\">Sans-serif</option>"
         "<option value=\"serif\">Serif</option>"
         "<option value=\"monospace\">Monospace</option>"
         "<option value=\"cursive\">Cursive</option>"
         "</select>"
-        "<label><input type=\"checkbox\" id=\"cbold\"> Bold</label>"
-        "<label><input type=\"checkbox\" id=\"citalic\"> Italic</label>"
-        "<label><input type=\"checkbox\" id=\"cunderline\"> Underline</label>"
-        "<label><input type=\"checkbox\" id=\"ctextbg\"> Background</label>"
+        "<div class=\"row\" style=\"gap:.3rem\">"
+        "<button type=\"button\" class=\"ghost fmtbtn\" id=\"cbold\" data-on=\"0\" title=\"Bold\" "
+        "style=\"padding:.5rem .75rem;font-weight:bold\">B</button>"
+        "<button type=\"button\" class=\"ghost fmtbtn\" id=\"citalic\" data-on=\"0\" title=\"Italic\" "
+        "style=\"padding:.5rem .75rem;font-style:italic\">I</button>"
+        "<button type=\"button\" class=\"ghost fmtbtn\" id=\"cunderline\" data-on=\"0\" title=\"Underline\" "
+        "style=\"padding:.5rem .75rem;text-decoration:underline\">U</button>"
+        "<button type=\"button\" class=\"ghost fmtbtn\" id=\"ctextbg\" data-on=\"0\" title=\"Text background\" "
+        "style=\"padding:.5rem .6rem\">"+kIconHighlight+"</button>"
         "<input type=\"color\" id=\"ctextbgcolor\" value=\"#ffffff\" aria-label=\"Text background colour\" "
         "style=\"width:36px;min-height:36px;padding:2px;flex:0 0 auto\">"
+        "</div>"
         "</div>"
         "<div class=\"row\" style=\"flex-wrap:wrap;gap:.4rem 1rem;align-items:center;margin-bottom:.6rem\">"
         "<label class=\"ghost\" style=\"cursor:pointer;padding:.3rem .6rem;border-radius:var(--rsm)\">"
@@ -1142,11 +1173,22 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "var toolBtns=document.querySelectorAll('.toolbtn');"
         "function refreshToolBtns(){"
         "toolBtns.forEach(function(b){b.style.background=b.dataset.tool===curTool?'var(--rule)':'';});"
+        // .row{display:flex} outranks the browser's default [hidden]{display:
+        // none} in the cascade (same specificity, .row comes later in the
+        // stylesheet), so the hidden attribute alone silently does nothing
+        // on an element that also has class="row" -- toggling style.display
+        // directly sidesteps that instead of fighting the cascade.
+        "document.getElementById('ctextrow').style.display=curTool==='text'?'flex':'none';"
         "}"
         "toolBtns.forEach(function(b){"
         "b.addEventListener('click',function(){curTool=b.dataset.tool;refreshToolBtns();});"
         "});"
         "refreshToolBtns();"
+        "document.querySelectorAll('.fmtbtn').forEach(function(b){"
+        "b.addEventListener('click',function(){"
+        "var on=b.dataset.on==='1';b.dataset.on=on?'0':'1';b.style.background=on?'':'var(--rule)';"
+        "});"
+        "});"
         "function drawSeg(ax,ay,bx,by){"
         "var b=toolVal(),color=document.getElementById('ccolor').value;"
         "var size=Number(document.getElementById('csize').value);"
@@ -1330,9 +1372,9 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "var r=overlay.getBoundingClientRect(),scale=r.width/overlay.width;"
         "var ta=document.createElement('textarea');"
         "ta.placeholder='Text';"
-        "var bold=document.getElementById('cbold').checked;"
-        "var italic=document.getElementById('citalic').checked;"
-        "var underline=document.getElementById('cunderline').checked;"
+        "var bold=document.getElementById('cbold').dataset.on==='1';"
+        "var italic=document.getElementById('citalic').dataset.on==='1';"
+        "var underline=document.getElementById('cunderline').dataset.on==='1';"
         "var fam=document.getElementById('cfont').value;"
         "var color=document.getElementById('ccolor').value;"
         // width/min-height:auto overrides the site-wide
@@ -1366,7 +1408,7 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "});"
         "lines.push(cur);"
         "});"
-        "if(document.getElementById('ctextbg').checked){"
+        "if(document.getElementById('ctextbg').dataset.on==='1'){"
         "cx.fillStyle=document.getElementById('ctextbgcolor').value;"
         "cx.fillRect(x,y,boxW,lines.length*lineH);"
         "}"

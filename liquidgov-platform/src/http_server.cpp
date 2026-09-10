@@ -821,41 +821,80 @@ std::string portrait_tag(const std::string& username, const char* cls) {
 
 // Shared drawing-tool engine: freehand brushes (pen, marker, spray, eraser,
 // smudge), shape tools (line, rectangle, circle, with an optional filled
-// variant), a paint-bucket flood fill, up to three independently-undoable
-// layers, and image/video/gif import (drawn in as a single still frame --
-// the storage layer only ever holds flat PNGs, so there's no way to keep a
-// video or an animated gif "alive" inside a saved frame). Powers two pages
+// variant), a paint-bucket flood fill, a rectangular select tool (copy/cut/
+// paste, plus crop and resize against the selection), a text tool, up to
+// three independently-undoable layers, image/video/gif import, and paste
+// of an external image straight from the OS clipboard. Powers three pages
 // that share every tool but differ in what "Save" does:
-//   portrait=false -- /me/canvas, the profile-background tool. Captures a
-//     PNG after every completed action (capped, see kCanvasMaxFrames) by
-//     flattening the layers and uploading through /me/canvas/frame -- the
-//     exact same normalize/scan pipeline as an avatar upload, just
-//     appending to an ordered list instead of replacing a single slot.
-//     Save turns that list into the profile theme's background: last frame
-//     as a static image, or all of them as a CSS-only looping animation
-//     (see theme_background_css) -- no JS runs inside the sandboxed theme
-//     document, so the "replay" has to be a real image sequence.
+//   portrait=false, post_target empty -- /me/canvas, the profile-background
+//     tool. Captures a PNG after every completed action (capped, see
+//     kCanvasMaxFrames) by flattening the layers and uploading through
+//     /me/canvas/frame -- the exact same normalize/scan pipeline as an
+//     avatar upload, just appending to an ordered list instead of
+//     replacing a single slot. Save turns that list into the profile
+//     theme's background: last frame as a static image, or all of them as
+//     a CSS-only looping animation (see theme_background_css) -- no JS
+//     runs inside the sandboxed theme document, so the "replay" has to be
+//     a real image sequence.
 //   portrait=true -- /me/portrait, the self-portrait tool. No frame
 //     history needed (an avatar isn't a sequence): Save just flattens the
 //     current layers and POSTs the one image straight to /me/avatar.
-// Everything else -- the whole brush/shape/layer/import engine -- is
-// identical, built once here rather than forked into two copies that would
-// drift apart.
-std::string canvas_tool_page(const std::string& username, const std::string& err, bool portrait) {
-    int cw = portrait ? 400 : 640;
-    int ch = portrait ? 400 : 440;
+//   post_target non-empty -- a post composer (/me/post/canvas, /feed/canvas,
+//     /c/<slug>/canvas): the canvas itself IS the post's photo/video editor.
+//     No frame history either; Save flattens the layers, pairs the image
+//     with the caption textarea, and POSTs both as one multipart request
+//     straight to post_target (/me/post, /feed, or /c/<slug>) -- the exact
+//     same read_composer_post()-backed route a plain file-upload composer
+//     already posts to, so no new backend ingestion path was needed for
+//     this at all, only a richer way to produce the "media" file first.
+// Everything else -- the whole brush/shape/layer/select/import engine -- is
+// identical, built once here rather than forked into three copies that
+// would drift apart.
+std::string canvas_tool_page(const std::string& username, const std::string& err, bool portrait,
+                             const std::string& post_target = "") {
+    bool post_mode = !post_target.empty();
+    int cw = portrait ? 400 : (post_mode ? 640 : 640);
+    int ch = portrait ? 400 : (post_mode ? 480 : 440);
     std::string cws = std::to_string(cw), chs = std::to_string(ch);
     std::string aspect = cws + "/" + chs;
     std::string errHtml;
-    if (!portrait) {
+    if (!portrait && !post_mode) {
         if (err=="image") errHtml = "<p class=\"warn\">That frame wasn't a usable image.</p>";
         else if (err=="large") errHtml = "<p class=\"warn\">That frame was too large.</p>";
         else if (err=="full") errHtml = "<p class=\"warn\">This drawing already has the max 24 frames.</p>";
     }
-    std::string title = portrait ? "Self-portrait" : "Canvas";
+    // Icon buttons, not text labels: each of these already has a symbol
+    // recognized from every other editor -- currentColor so they follow
+    // the button's own text colour (and the light/dark theme) for free.
+    const std::string kIconCopy =
+        "<svg viewBox=\"0 0 16 16\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" "
+        "stroke-width=\"1.3\" aria-hidden=\"true\"><rect x=\"5.5\" y=\"5.5\" width=\"8\" height=\"8\" rx=\"1\"/>"
+        "<path d=\"M3 10.5V3a1 1 0 0 1 1-1h7.5\"/></svg>";
+    const std::string kIconCut =
+        "<svg viewBox=\"0 0 16 16\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" "
+        "stroke-width=\"1.3\" aria-hidden=\"true\"><circle cx=\"4\" cy=\"4\" r=\"1.6\"/>"
+        "<circle cx=\"4\" cy=\"12\" r=\"1.6\"/><path d=\"M5.2 5.2 13 13M5.2 10.8 13 3\"/></svg>";
+    const std::string kIconPaste =
+        "<svg viewBox=\"0 0 16 16\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" "
+        "stroke-width=\"1.3\" aria-hidden=\"true\"><rect x=\"3\" y=\"3\" width=\"10\" height=\"11.5\" rx=\"1\"/>"
+        "<rect x=\"6\" y=\"1.3\" width=\"4\" height=\"2.4\" rx=\"0.6\"/></svg>";
+    const std::string kIconCrop =
+        "<svg viewBox=\"0 0 16 16\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" "
+        "stroke-width=\"1.3\" aria-hidden=\"true\"><path d=\"M4 1v10.5a1 1 0 0 0 1 1H15\"/>"
+        "<path d=\"M12 15V4.5a1 1 0 0 0-1-1H1\"/></svg>";
+    // Same icon on all three layer tabs, deliberately -- a layer tab's job
+    // is "switch to this one" and "is this the active one" (shown by the
+    // ghost/highlighted background), not "remember which number this is".
+    const std::string kIconLayer =
+        "<svg viewBox=\"0 0 16 16\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" "
+        "stroke-width=\"1.1\" aria-hidden=\"true\"><path d=\"M8 1 14 4.2 8 7.4 2 4.2Z\"/>"
+        "<path d=\"M2 7.6 8 10.8 14 7.6\"/><path d=\"M2 11 8 14.2 14 11\"/></svg>";
+    std::string title = portrait ? "Self-portrait" : (post_mode ? "Compose a post" : "Canvas");
     std::string intro = portrait
         ? "Draw your self-portrait with the same tools as the profile-background canvas &mdash; "
           "pen, shapes, layers, all of it."
+        : post_mode
+        ? "Draw, crop, layer, paste in a photo, or drop text on it &mdash; then post it, caption included."
         : "Draw, then save it as your profile background &mdash; a still image, "
           "or a loop of the drawing as it happened.";
     std::string html =
@@ -873,6 +912,8 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "<option value=\"rect\">Rectangle</option>"
         "<option value=\"circle\">Circle</option>"
         "<option value=\"bucket\">Paint bucket</option>"
+        "<option value=\"select\">Select</option>"
+        "<option value=\"text\">Text</option>"
         "</select></label>"
         "<input type=\"color\" id=\"ccolor\" value=\"#1a1814\" aria-label=\"Color\" "
         "style=\"width:36px;min-height:36px;padding:2px;flex:0 0 auto\">"
@@ -885,17 +926,68 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "<label><input type=\"checkbox\" id=\"cfill\"> Fill shape</label>"
         "</div>"
         "<div class=\"row\" style=\"flex-wrap:wrap;gap:.4rem 1rem;align-items:center;margin-bottom:.6rem\">"
-        "<div class=\"row\" style=\"gap:.3rem\">"
-        "<span class=\"muted\">Layer</span>"
-        "<button type=\"button\" class=\"ghost layerbtn\" data-layer=\"0\">1</button>"
-        "<button type=\"button\" class=\"ghost layerbtn\" data-layer=\"1\">2</button>"
-        "<button type=\"button\" class=\"ghost layerbtn\" data-layer=\"2\">3</button>"
-        "</div>"
         "<label class=\"ghost\" style=\"cursor:pointer;padding:.3rem .6rem;border-radius:var(--rsm)\">"
         "Import image/video<input type=\"file\" id=\"cimport\" accept=\"image/*,video/*\" "
         "style=\"display:none\"></label>"
+        // Drag a rectangle with the Select tool first -- these four
+        // buttons all act on that same selection (copy/cut sample it,
+        // paste drops the last-copied piece at your next click, crop
+        // trims the whole canvas down to it). Icons, not labels: each of
+        // these already has a symbol everyone recognizes from every other
+        // editor (clipboard stack, scissors, crop corners) -- a text
+        // label would just be slower to scan than the glyph itself.
+        "<div class=\"row\" style=\"gap:.3rem\">"
+        "<button type=\"button\" class=\"ghost\" id=\"ccopy\" title=\"Copy selection\" "
+        "style=\"padding:.5rem .55rem\">"+kIconCopy+"</button>"
+        "<button type=\"button\" class=\"ghost\" id=\"ccut\" title=\"Cut selection\" "
+        "style=\"padding:.5rem .55rem\">"+kIconCut+"</button>"
+        "<button type=\"button\" class=\"ghost\" id=\"cpaste\" title=\"Paste\" "
+        "style=\"padding:.5rem .55rem\">"+kIconPaste+"</button>"
+        "<button type=\"button\" class=\"ghost\" id=\"ccrop\" title=\"Apply crop to selection\" "
+        "style=\"padding:.5rem .55rem\">"+kIconCrop+"</button>"
         "</div>"
-        "<div id=\"ccanvaswrap\" style=\"position:relative;width:100%;max-width:"+cws+"px;"
+        "<div class=\"row\" style=\"gap:.3rem;align-items:center\">"
+        "<span class=\"muted\">Canvas size</span>"
+        "<input type=\"number\" id=\"crw\" min=\"16\" max=\"2000\" value=\""+cws+"\" style=\"width:4.5rem\">"
+        "<span class=\"muted\">&times;</span>"
+        "<input type=\"number\" id=\"crh\" min=\"16\" max=\"2000\" value=\""+chs+"\" style=\"width:4.5rem\">"
+        "<button type=\"button\" class=\"ghost\" id=\"cresize\">Resize</button>"
+        "</div>"
+        "</div>"
+        "<p class=\"muted\" style=\"margin:-.3rem 0 .6rem\">Ctrl+V also pastes an image straight from your "
+        "OS clipboard onto the active layer.</p>"
+        // Layers as a vertical tab strip down the canvas's own left edge --
+        // physically attached to the surface they control, the way layer
+        // panels normally sit next to (not above) the thing being layered.
+        // No numbers on the tabs themselves: switching to one and seeing
+        // which is active (the highlighted background) is all a tab needs
+        // to communicate, and all three do the same job -- a number would
+        // just be one more thing to read, not new information. Each still
+        // gets its own opacity slider, a real per-layer property applied
+        // both live (CSS opacity on that layer's own <canvas>) and in
+        // flatten() so a saved/posted image matches what's on screen.
+        "<div style=\"display:flex;gap:.5rem;align-items:flex-start\">"
+        "<div style=\"display:flex;flex-direction:column;gap:.6rem;width:2.6rem\">"
+        "<div style=\"display:flex;flex-direction:column;gap:.15rem;align-items:center\">"
+        "<button type=\"button\" class=\"ghost layerbtn\" data-layer=\"0\" title=\"Switch to layer 1\" "
+        "style=\"width:2.4rem;padding:.5rem 0\">"+kIconLayer+"</button>"
+        "<input type=\"range\" class=\"layeropacity\" data-layer=\"0\" min=\"0\" max=\"100\" value=\"100\" "
+        "title=\"Layer 1 opacity\" style=\"width:2.4rem\">"
+        "</div>"
+        "<div style=\"display:flex;flex-direction:column;gap:.15rem;align-items:center\">"
+        "<button type=\"button\" class=\"ghost layerbtn\" data-layer=\"1\" title=\"Switch to layer 2\" "
+        "style=\"width:2.4rem;padding:.5rem 0\">"+kIconLayer+"</button>"
+        "<input type=\"range\" class=\"layeropacity\" data-layer=\"1\" min=\"0\" max=\"100\" value=\"100\" "
+        "title=\"Layer 2 opacity\" style=\"width:2.4rem\">"
+        "</div>"
+        "<div style=\"display:flex;flex-direction:column;gap:.15rem;align-items:center\">"
+        "<button type=\"button\" class=\"ghost layerbtn\" data-layer=\"2\" title=\"Switch to layer 3\" "
+        "style=\"width:2.4rem;padding:.5rem 0\">"+kIconLayer+"</button>"
+        "<input type=\"range\" class=\"layeropacity\" data-layer=\"2\" min=\"0\" max=\"100\" value=\"100\" "
+        "title=\"Layer 3 opacity\" style=\"width:2.4rem\">"
+        "</div>"
+        "</div>"
+        "<div id=\"ccanvaswrap\" style=\"position:relative;flex:1;min-width:0;max-width:"+cws+"px;"
         "aspect-ratio:"+aspect+";background:#fff;border:1px solid var(--rule);"
         "border-radius:var(--rsm);overflow:hidden;touch-action:none\">"
         "<canvas id=\"clayer0\" width=\""+cws+"\" height=\""+chs+"\" "
@@ -907,28 +999,41 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "<canvas id=\"coverlay\" width=\""+cws+"\" height=\""+chs+"\" "
         "style=\"position:absolute;inset:0;width:100%;height:100%;cursor:crosshair\"></canvas>"
         "</div>"
+        "</div>"
         "<div class=\"row\" style=\"margin-top:.6rem;gap:.4rem\">"
-        "<button type=\"button\" class=\"ghost\" id=\"cundo\">Undo</button>"
-        "<button type=\"button\" class=\"ghost\" id=\"credo\">Redo</button>"
+        "<button type=\"button\" class=\"ghost\" id=\"cundo\" title=\"Undo\">&#8617;</button>"
+        "<button type=\"button\" class=\"ghost\" id=\"credo\" title=\"Redo\">&#8618;</button>"
         "<button type=\"button\" class=\"ghost\" id=\"cclear\">Clear layer</button>"
         "</div>";
-    if (!portrait) {
+    if (!portrait && !post_mode) {
         html +=
             "<p class=\"muted\" id=\"cframecount\" style=\"margin-top:.6rem\">0/24 frames captured</p>"
             "<label style=\"display:block;margin-top:.4rem\"><input type=\"checkbox\" id=\"ctimelapse\"> "
             "Loop the drawing as my background instead of a still image</label>";
     }
+    if (post_mode) {
+        html +=
+            "<label style=\"display:block;margin-top:.6rem\">Caption</label>"
+            "<textarea id=\"cpcaption\" maxlength=\"2000\" placeholder=\"What's on your mind?\"></textarea>";
+    }
+    std::string saveLabel = portrait ? "Save as self-portrait" : (post_mode ? "Post" : "Save to profile");
     html +=
         "<div class=\"row\" style=\"margin-top:.6rem\">"
-        "<button type=\"button\" id=\"csave\">"+std::string(portrait?"Save as self-portrait":"Save to profile")+"</button>"
+        "<button type=\"button\" id=\"csave\">"+saveLabel+"</button>"
         "</div>"
         "<p class=\"muted\" id=\"cstatus\"></p></div>"
         "<script>(function(){"
         "var LAYN=3,layers=[];"
         "for(var li=0;li<LAYN;li++){"
         "var lc=document.getElementById('clayer'+li);"
-        "layers.push({cv:lc,ctx:lc.getContext('2d'),undo:[],redo:[]});"
+        "layers.push({cv:lc,ctx:lc.getContext('2d'),undo:[],redo:[],opacity:1});"
         "}"
+        "document.querySelectorAll('.layeropacity').forEach(function(s){"
+        "s.addEventListener('input',function(){"
+        "var L=layers[Number(s.dataset.layer)];"
+        "L.opacity=Number(s.value)/100;L.cv.style.opacity=L.opacity;"
+        "});"
+        "});"
         "var activeLayer=0;"
         "function acv(){return layers[activeLayer].cv;}"
         "function actx(){return layers[activeLayer].ctx;}"
@@ -1056,8 +1161,126 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "cx.drawImage(smudgeBuf,0,0,sw,sh,x-r,y-r,sw,sh);"
         "cx.restore();"
         "}"
+        // Select: drag a marquee (no pixel change of its own -- just
+        // records selRect and draws a dashed outline). Copy/Cut sample
+        // that rectangle from the active layer into an internal clip
+        // canvas; Paste arms a "next click places it" mode rather than
+        // dropping it at a fixed spot, since a canvas has no cursor to
+        // paste "at" the way a text editor does.
+        "var selRect=null,clip=null,pastePending=false;"
+        "function rectFrom(a,b){return{x:Math.min(a.x,b.x),y:Math.min(a.y,b.y),w:Math.abs(b.x-a.x),h:Math.abs(b.y-a.y)};}"
+        "function drawMarquee(r){octx.save();octx.strokeStyle='#000';octx.lineWidth=1;octx.setLineDash([5,4]);"
+        "octx.strokeRect(Math.round(r.x)+.5,Math.round(r.y)+.5,Math.round(r.w),Math.round(r.h));octx.restore();}"
+        "function copySel(){"
+        "if(!selRect||selRect.w<1||selRect.h<1)return;"
+        "var c=document.createElement('canvas');c.width=Math.round(selRect.w);c.height=Math.round(selRect.h);"
+        "c.getContext('2d').drawImage(acv(),selRect.x,selRect.y,c.width,c.height,0,0,c.width,c.height);"
+        "clip=c;"
+        "}"
+        "document.getElementById('ccopy').addEventListener('click',copySel);"
+        "document.getElementById('ccut').addEventListener('click',function(){"
+        "if(!selRect||selRect.w<1||selRect.h<1)return;"
+        "copySel();snap();actx().clearRect(selRect.x,selRect.y,selRect.w,selRect.h);captureFrame(false);"
+        "});"
+        "document.getElementById('cpaste').addEventListener('click',function(){if(clip)pastePending=true;});"
+        "function placeClipboardAt(x,y){"
+        "if(!clip)return;snap();actx().drawImage(clip,x-clip.width/2,y-clip.height/2);captureFrame(false);"
+        "}"
+        // Crop trims every layer's canvas down to the selection (sampled
+        // BEFORE each layer's own canvas is resized, since resizing a
+        // <canvas> element's width/height attribute always clears it).
+        // Resize instead scales each layer's whole existing content into
+        // a new canvas size -- no selection involved.
+        "function resizeAllLayers(nw,nh,sampleRect){"
+        "layers.forEach(function(L){"
+        "var tmp=document.createElement('canvas');"
+        "if(sampleRect){"
+        "tmp.width=nw;tmp.height=nh;"
+        "tmp.getContext('2d').drawImage(L.cv,sampleRect.x,sampleRect.y,nw,nh,0,0,nw,nh);"
+        "}else{"
+        "tmp.width=L.cv.width;tmp.height=L.cv.height;tmp.getContext('2d').drawImage(L.cv,0,0);"
+        "}"
+        "L.cv.width=nw;L.cv.height=nh;"
+        "if(sampleRect)L.ctx.drawImage(tmp,0,0);else L.ctx.drawImage(tmp,0,0,tmp.width,tmp.height,0,0,nw,nh);"
+        "L.undo=[];L.redo=[];"
+        "});"
+        "overlay.width=nw;overlay.height=nh;"
+        "var wrap=document.getElementById('ccanvaswrap');"
+        "wrap.style.maxWidth=nw+'px';wrap.style.aspectRatio=nw+'/'+nh;"
+        "document.getElementById('crw').value=nw;document.getElementById('crh').value=nh;"
+        "selRect=null;clearOverlay();captureFrame(false);"
+        "}"
+        "document.getElementById('ccrop').addEventListener('click',function(){"
+        "if(!selRect||selRect.w<2||selRect.h<2)return;"
+        "resizeAllLayers(Math.round(selRect.w),Math.round(selRect.h),"
+        "{x:Math.round(selRect.x),y:Math.round(selRect.y)});"
+        "});"
+        "document.getElementById('cresize').addEventListener('click',function(){"
+        "var nw=Math.max(16,Math.min(2000,Number(document.getElementById('crw').value)||acv().width));"
+        "var nh=Math.max(16,Math.min(2000,Number(document.getElementById('crh').value)||acv().height));"
+        "resizeAllLayers(Math.round(nw),Math.round(nh),null);"
+        "});"
+        // Text: click, type into a floating input positioned over the
+        // canvas, Enter/blur bakes it onto the active layer as real
+        // pixels via fillText -- not a movable/re-editable text object
+        // afterward, same "commits to pixels" contract as every other
+        // tool here.
+        "function addTextAt(x,y){"
+        "var r=overlay.getBoundingClientRect(),scale=r.width/overlay.width;"
+        "var inp=document.createElement('input');"
+        "inp.type='text';inp.placeholder='Text';inp.autocomplete='off';"
+        "var fpx=Number(document.getElementById('csize').value)*2;"
+        // width:auto overrides the site-wide input{width:100%} rule (meant
+        // for real form fields), which would otherwise stretch this
+        // floating box across the whole canvas -- the same class of bug
+        // already hit input[type=color] and input[type=checkbox] once
+        // each; explicit sizing here heads it off for this one too.
+        "inp.style.cssText='position:absolute;z-index:10;background:transparent;width:auto;min-height:0;'+"
+        "'border:1px dashed '+document.getElementById('ccolor').value+';'+"
+        "'font:'+(fpx*scale)+'px sans-serif;color:'+document.getElementById('ccolor').value+';padding:0 2px';"
+        "inp.style.left=(x*scale)+'px';inp.style.top=(y*scale-fpx*scale*.15)+'px';"
+        "document.getElementById('ccanvaswrap').appendChild(inp);"
+        "inp.focus();"
+        "var done=false;"
+        "function commit(){"
+        "if(done)return;done=true;"
+        "var val=inp.value;inp.remove();"
+        "if(!val)return;"
+        "snap();var cx=actx();cx.save();"
+        "cx.fillStyle=document.getElementById('ccolor').value;"
+        "cx.font=fpx+'px sans-serif';cx.textBaseline='top';cx.fillText(val,x,y);cx.restore();"
+        "captureFrame(false);"
+        "}"
+        "inp.addEventListener('keydown',function(e){"
+        "if(e.key==='Enter'){e.preventDefault();commit();}"
+        "else if(e.key==='Escape'){done=true;inp.remove();}"
+        "});"
+        "inp.addEventListener('blur',commit);"
+        "}"
+        // Paste from the OS clipboard (e.g. a screenshot copied outside
+        // the browser) -- separate from the internal Copy/Cut/Paste
+        // above, which only ever moves pixels around inside this canvas.
+        "document.addEventListener('paste',function(e){"
+        "var items=(e.clipboardData||{}).items||[];"
+        "for(var i=0;i<items.length;i++){"
+        "if(items[i].type.indexOf('image')!==0)continue;"
+        "var file=items[i].getAsFile();if(!file)continue;"
+        "var url=URL.createObjectURL(file),img=new Image();"
+        "img.onload=function(){"
+        "snap();var cvw=acv().width,cvh=acv().height;"
+        "var scale=Math.min(cvw/img.width,cvh/img.height,1);"
+        "var dw=img.width*scale,dh=img.height*scale;"
+        "actx().drawImage(img,(cvw-dw)/2,(cvh-dh)/2,dw,dh);"
+        "captureFrame(false);URL.revokeObjectURL(url);"
+        "};"
+        "img.src=url;e.preventDefault();break;"
+        "}"
+        "});"
         "overlay.addEventListener('pointerdown',function(e){"
         "var t=toolVal(),p=pos(e);"
+        "if(pastePending){pastePending=false;placeClipboardAt(p.x,p.y);e.preventDefault();return;}"
+        "if(t==='text'){addTextAt(p.x,p.y);e.preventDefault();return;}"
+        "if(t==='select'){shapeStart=p;e.preventDefault();return;}"
         "if(t==='bucket'){snap();floodFill(p.x,p.y);captureFrame(false);e.preventDefault();return;}"
         "if(t==='line'||t==='rect'||t==='circle'){snap();shapeStart=p;e.preventDefault();return;}"
         "snap();drawing=true;lastX=p.x;lastY=p.y;"
@@ -1066,12 +1289,18 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "});"
         "overlay.addEventListener('pointermove',function(e){"
         "var t=toolVal(),p=pos(e);"
+        "if(shapeStart&&t==='select'){clearOverlay();drawMarquee(rectFrom(shapeStart,p));e.preventDefault();return;}"
         "if(shapeStart){clearOverlay();drawShape(shapeStart.x,shapeStart.y,p.x,p.y,octx);e.preventDefault();return;}"
         "if(!drawing)return;"
         "if(t==='smudge')smudgeAt(p.x,p.y);else strokeAt(lastX,lastY,p.x,p.y);"
         "lastX=p.x;lastY=p.y;e.preventDefault();"
         "});"
         "window.addEventListener('pointerup',function(e){"
+        "if(shapeStart&&toolVal()==='select'){"
+        "var p=pos(e);var r=rectFrom(shapeStart,p);clearOverlay();"
+        "if(r.w>=2&&r.h>=2){selRect=r;drawMarquee(r);}"
+        "shapeStart=null;return;"
+        "}"
         "if(shapeStart){"
         "var p=pos(e);clearOverlay();drawShape(shapeStart.x,shapeStart.y,p.x,p.y,actx());"
         "shapeStart=null;captureFrame(false);return;"
@@ -1138,7 +1367,10 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "out.width=layers[0].cv.width;out.height=layers[0].cv.height;"
         "var octx2=out.getContext('2d');"
         "octx2.fillStyle='#fff';octx2.fillRect(0,0,out.width,out.height);"
-        "for(var i=0;i<layers.length;i++)octx2.drawImage(layers[i].cv,0,0);"
+        "for(var i=0;i<layers.length;i++){"
+        "octx2.globalAlpha=layers[i].opacity;octx2.drawImage(layers[i].cv,0,0);"
+        "}"
+        "octx2.globalAlpha=1;"
         "return out;"
         "}"
         "document.getElementById('cundo').addEventListener('click',function(){"
@@ -1168,6 +1400,26 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
             "fetch('/me/avatar',{method:'POST',body:fd}).then(function(r){"
             "window.location=r.url||'/me';"
             "}).catch(function(){status.textContent='Could not save. Try again.';});"
+            "},'image/png');"
+            "});";
+    } else if (post_mode) {
+        // No frame history for a post either -- one flattened image, paired
+        // with the caption, POSTed as one multipart request straight to
+        // whichever composer route this page was opened for. r.url is the
+        // real final URL fetch landed on after following that route's own
+        // redirect, so a media error still surfaces as that route's own
+        // ?perr= message -- same pattern as the self-portrait Save above.
+        html +=
+            "function captureFrame(force,done){if(done)done();}"
+            "document.getElementById('csave').addEventListener('click',function(){"
+            "var status=document.getElementById('cstatus');status.textContent='Posting\\u2026';"
+            "flatten().toBlob(function(blob){"
+            "var fd=new FormData();"
+            "fd.append('text',document.getElementById('cpcaption').value);"
+            "fd.append('media',blob,'post.png');"
+            "fetch("+js_string_literal(post_target)+",{method:'POST',body:fd}).then(function(r){"
+            "window.location=r.url||"+js_string_literal(post_target)+";"
+            "}).catch(function(){status.textContent='Could not post. Try again.';});"
             "},'image/png');"
             "});";
     } else {
@@ -1957,7 +2209,7 @@ std::string post_block(const Post& p, const std::string& viewer) {
     if (!viewer.empty())
         repostForm = "<form class=\"inline\" method=\"POST\" action=\"/me/repost\">"
                      "<input type=\"hidden\" name=\"post_id\" value=\""+std::to_string(p.id)+"\">"
-                     "<button class=\"ghost\" type=\"submit\">Repost</button></form>";
+                     "<button class=\"ghost\" type=\"submit\">&#8635; Repost</button></form>";
     std::string mediaHtml;
     if (!p.attachment_blob_id.empty()) {
         std::string src = "/post-media/"+html_escape(p.attachment_blob_id);
@@ -2102,6 +2354,14 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         if(!acc) return http_redir("/login");
         return pg("Self-portrait", canvas_tool_page(user, qs["err"], true));
     }
+    if(method=="GET"&&path=="/me/post/canvas") {
+        if(!acc) return http_redir("/login");
+        return pg("Compose a post", canvas_tool_page(user, "", false, "/me/post"));
+    }
+    if(method=="GET"&&path=="/feed/canvas") {
+        if(!acc) return http_redir("/login");
+        return pg("Compose a post", canvas_tool_page(user, "", false, "/feed"));
+    }
     if(method=="GET"&&path=="/listen") {
         // Deliberately not wrap()/pg(): this window IS the player, full-page
         // nav chrome and a second (redundant) floating-widget toggle would
@@ -2118,6 +2378,8 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             "<textarea name=\"text\" maxlength=\"2000\" placeholder=\"Plain text. Friends see this.\"></textarea>"
             "<label>Photo or video (optional)</label><input type=\"file\" name=\"media\" accept=\"image/*,video/*\">"
             "<button>Post</button></form>"
+            "<p class=\"muted\" style=\"margin-top:.5rem\">Or <a href=\"/feed/canvas\">open the canvas</a> "
+            "to draw, crop, layer, or paste one together first.</p>"
             "<p class=\"muted\">Personal posts reach you and your friends. Communities have their own pages. "
             "This is not a civic act.</p></div>";
         auto posts = g_store.feed_for(user, 80);
@@ -2215,7 +2477,9 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
                 "<label>Post to your profile</label>"
                 "<textarea name=\"text\" maxlength=\"2000\" placeholder=\"What's on your mind?\"></textarea>"
                 "<label>Photo or video (optional)</label><input type=\"file\" name=\"media\" accept=\"image/*,video/*\">"
-                "<button>Post</button></form></div>";
+                "<button>Post</button></form>"
+                "<p class=\"muted\" style=\"margin-top:.5rem\">Or <a href=\"/me/post/canvas\">open the canvas</a> "
+                "to draw, crop, layer, or paste one together first.</p></div>";
             auto myposts = g_store.posts_by(user);
             std::reverse(myposts.begin(), myposts.end());
             if (myposts.empty()) html += "<p class=\"empty\">Nothing posted or reposted yet. Posts you write, and "
@@ -2610,6 +2874,13 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         return pg("Communities", html);
     }
 
+    if(method=="GET"&&path.rfind("/c/",0)==0&&path.size()>10&&path.compare(path.size()-7,7,"/canvas")==0) {
+        if(!acc) return http_redir("/login");
+        const std::string slug = path.substr(3, path.size()-3-7);
+        if (!g_store.community(slug) || !g_store.is_member(slug, user)) return http_redir("/c/"+slug);
+        return pg("Compose a post", canvas_tool_page(user, "", false, "/c/"+slug));
+    }
+
     if(method=="GET"&&path.rfind("/c/",0)==0) {
         if(!acc) return http_redir("/login");
         const std::string slug = path.substr(3);
@@ -2638,7 +2909,9 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
                     "<label>Post in "+html_escape(c->name)+"</label>"
                     "<textarea name=\"text\" maxlength=\"2000\"></textarea>"
                     "<label>Photo or video (optional)</label><input type=\"file\" name=\"media\" accept=\"image/*,video/*\">"
-                    "<button>Post</button></form></div>";
+                    "<button>Post</button></form>"
+                    "<p class=\"muted\" style=\"margin-top:.5rem\">Or <a href=\"/c/"+html_escape(slug)+"/canvas\">open the canvas</a> "
+                    "to draw, crop, layer, or paste one together first.</p></div>";
             html += "<div class=\"card\"><h2>Invite</h2>"
                     "<form method=\"POST\" action=\"/c/"+html_escape(slug)+"/invite\">"
                     "<label>Username</label><div class=\"row\"><input name=\"who\" required><button>Invite</button></div></form>"

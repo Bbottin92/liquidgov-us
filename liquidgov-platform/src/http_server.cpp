@@ -1929,15 +1929,30 @@ std::string signup_page(const std::string& navuser, int unread, const std::strin
         "<button>Continue</button></form></div>");
 }
 
-std::string post_block(const Post& p) {
+// viewer is the logged-in username rendering this post (empty for an
+// anonymous visitor to a public profile) -- only a logged-in viewer gets a
+// Repost button. Reposting always credits the true original author (see
+// the repost_of_author comment on Post), so a chain of reposts never grows
+// deeper than one hop of attribution.
+std::string post_block(const Post& p, const std::string& viewer) {
     std::string where;
     if (!p.community.empty())
         where = " in <a href=\"/c/"+html_escape(p.community)+"\">"+html_escape(p.community)+"</a>";
     std::string when = fmt_time(p.ts);
+    std::string repostLine;
+    if (!p.repost_of_author.empty())
+        repostLine = "<p class=\"muted\">&#8635; Reposted from <a href=\"/u/"+html_escape(p.repost_of_author)+
+                     "\">"+html_escape(p.repost_of_author)+"</a></p>";
+    std::string repostForm;
+    if (!viewer.empty())
+        repostForm = "<form class=\"inline\" method=\"POST\" action=\"/me/repost\">"
+                     "<input type=\"hidden\" name=\"post_id\" value=\""+std::to_string(p.id)+"\">"
+                     "<button class=\"ghost\" type=\"submit\">Repost</button></form>";
     return "<article class=\"post\"><div class=\"who\">"+portrait_tag(p.author,"sm")+"<div><a href=\"/u/"+html_escape(p.author)+"\"><strong>"+
            html_escape(p.author)+"</strong></a>"+where+
            (when.empty()?"":" <span class=\"muted\">"+html_escape(when)+"</span>")+
-           "<p>"+html_escape(p.text)+"</p></div></div></article>";
+           repostLine+
+           "<p>"+html_escape(p.text)+"</p>"+repostForm+"</div></div></article>";
 }
 
 std::string handle(const std::string& req, const std::string& peer_ip) {
@@ -2030,7 +2045,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             "This is not a civic act.</p></div>";
         auto posts = g_store.feed_for(user, 80);
         if (posts.empty()) html += "<p class=\"empty\">Nothing yet. Write something, or add a friend.</p>";
-        for (const auto& p : posts) html += "<div class=\"card\">"+post_block(p)+"</div>";
+        for (const auto& p : posts) html += "<div class=\"card\">"+post_block(p, user)+"</div>";
         return pg("Feed", html);
     }
 
@@ -2078,7 +2093,6 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
 
     if(method=="GET"&&path=="/me") {
         if(!acc) return http_redir("/login");
-        auto b = g_store.blurb(acc->id);
         std::string err;
         if (qs["err"]=="image") err = "<p class=\"warn\">That file was not a usable image (PNG/JPEG/GIF, 2&nbsp;MiB, 1024px). SVG is not accepted.</p>";
         else if (qs["err"]=="large") err = "<p class=\"warn\">That file is too large. Cap is 2&nbsp;MiB and 1024 pixels on the long edge.</p>";
@@ -2090,10 +2104,18 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             "<a href=\"/me/portrait\">portrait tool</a>.</p>";
         if (has_portrait(acc->id))
             html += "<form method=\"POST\" action=\"/me/avatar/clear\"><button class=\"ghost\" type=\"submit\">Remove portrait</button></form>";
-        html += "<p>"+html_escape(b.empty()?"No blurb yet.":b)+"</p>"
-            "<form method=\"POST\" action=\"/me\"><label>Blurb</label><textarea name=\"blurb\" rows=\"4\" maxlength=\"2000\">"+html_escape(b)+
-            "</textarea><button>Save</button></form>"
-            "<p class=\"muted\">A platform account is not a CitizenId.</p></div>";
+        html += "<p class=\"muted\">A platform account is not a CitizenId.</p></div>";
+        {
+            html += "<div class=\"card\"><form method=\"POST\" action=\"/me/post\">"
+                "<label>Post to your profile</label>"
+                "<textarea name=\"text\" maxlength=\"2000\" required placeholder=\"What's on your mind?\"></textarea>"
+                "<button>Post</button></form></div>";
+            auto myposts = g_store.posts_by(user);
+            std::reverse(myposts.begin(), myposts.end());
+            if (myposts.empty()) html += "<p class=\"empty\">Nothing posted or reposted yet. Posts you write, and "
+                "posts you repost from a group or someone's profile, show up here.</p>";
+            for (const auto& p : myposts) html += "<div class=\"card\">"+post_block(p, user)+"</div>";
+        }
         {
             auto n_frames = g_store.canvas_frames(acc->id).size();
             std::string canvas_status = n_frames == 0
@@ -2187,10 +2209,8 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             return http_code("404 Not Found", wrap("Not found", user, unread, "<div class=\"card\"><p>No such profile.</p></div>"));
         if (acc && g_store.is_blocked(user, found->username))
             return http_code("404 Not Found", wrap("Not found", user, unread, "<div class=\"card\"><p>No such profile.</p></div>"));
-        auto b = g_store.blurb(found->id);
         std::string html = "<div class=\"card\"><div class=\"who\">"+portrait_tag(found->username,"")+
             "<div><h1>"+html_escape(found->username)+"</h1>"
-            "<p>"+html_escape(b.empty()?"No blurb yet.":b)+"</p>"
             "<p class=\"muted\">Public profile. Not a CitizenId. Not a seated office.</p></div></div>";
         if (!g_store.author_css(found->id).empty()) {
             // sandbox="allow-same-origin", not sandbox="" (opaque origin):
@@ -2225,6 +2245,13 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         }
         html += "</div>";
         html += jukebox_widget(found->username, acc && acc->username == found->username, qs);
+        {
+            auto theirPosts = g_store.posts_by(found->username);
+            std::reverse(theirPosts.begin(), theirPosts.end());
+            if (!theirPosts.empty()) {
+                for (const auto& p : theirPosts) html += "<div class=\"card\">"+post_block(p, user)+"</div>";
+            }
+        }
         return pg(found->username, html);
     }
 
@@ -2515,7 +2542,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         html += "</ul></div>";
         auto posts = g_store.posts_in(slug, 80);
         if (posts.empty()) html += "<p class=\"empty\">No posts yet.</p>";
-        for (const auto& p : posts) html += "<div class=\"card\">"+post_block(p)+"</div>";
+        for (const auto& p : posts) html += "<div class=\"card\">"+post_block(p, user)+"</div>";
         return pg(c->name, html);
     }
 
@@ -2695,11 +2722,27 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         }
         return http_redir("/feed", set_cookie(r.session->id));
     }
-    if(method=="POST"&&path=="/me") {
+    if(method=="POST"&&path=="/me/post") {
         if(!acc) return http_redir("/login");
         auto f=parse_form(body);
-        auto b=f["blurb"]; if(b.size()>2000) b.resize(2000);
-        g_store.set_blurb(acc->id, b);
+        auto text=f["text"]; if(text.size()>2000) text.resize(2000);
+        if (!text.empty()) g_store.add_post(user, text, "");
+        return http_redir("/me");
+    }
+    if(method=="POST"&&path=="/me/repost") {
+        if(!acc) return http_redir("/login");
+        auto f = parse_form(body);
+        std::uint64_t pid = 0;
+        try { pid = std::stoull(f["post_id"]); } catch (...) { return http_redir("/me"); }
+        auto target = g_store.post_by_id(pid);
+        if (!target) return http_redir("/me");
+        // A repost of a repost still credits the true original author, not
+        // the intermediate reposter -- see the repost_of_author comment on
+        // Post.
+        const std::string& origAuthor = target->repost_of_author.empty() ? target->author : target->repost_of_author;
+        std::uint64_t origId = target->repost_of_author.empty() ? target->id : target->repost_of_id;
+        if (g_store.is_blocked(user, origAuthor)) return http_redir("/me");
+        g_store.add_post(user, target->text, "", origAuthor, origId);
         return http_redir("/me");
     }
     if(method=="POST"&&path=="/me/css") {

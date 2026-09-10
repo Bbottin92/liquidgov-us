@@ -607,13 +607,16 @@ std::vector<std::string> FileStore::typeahead(const std::string& requester, cons
 }
 
 std::uint64_t FileStore::add_post(const std::string& author, const std::string& text,
-                                  const std::string& community) {
+                                  const std::string& community,
+                                  const std::string& repost_of_author, std::uint64_t repost_of_id) {
     Post p;
     p.id = next_post_id_++;
     p.author = author;
     p.ts = now();
     p.text = text;
     p.community = community;
+    p.repost_of_author = repost_of_author;
+    p.repost_of_id = repost_of_id;
     posts_.push_back(p);
     flush();
     return p.id;
@@ -649,6 +652,13 @@ std::vector<Post> FileStore::posts_by(const std::string& author) const {
         if (p.author == author) out.push_back(p);
     }
     return out;
+}
+
+std::optional<Post> FileStore::post_by_id(std::uint64_t id) const {
+    for (const auto& p : posts_) {
+        if (p.id == id) return p;
+    }
+    return std::nullopt;
 }
 
 bool FileStore::create_community(const Community& c) {
@@ -831,6 +841,7 @@ bool FileStore::delete_account(AccountId id) {
     std::vector<Post> keep_posts;
     for (auto& p : posts_) {
         if (p.author == name) p.author = "[deleted account]";
+        if (p.repost_of_author == name) p.repost_of_author = "[deleted account]";
         keep_posts.push_back(p);
     }
     posts_.swap(keep_posts);
@@ -892,6 +903,7 @@ void FileStore::load() {
         throw std::runtime_error("LGP1: bad magic in " + path_ + " (refusing to wipe)");
     }
 
+    std::map<std::uint64_t, std::pair<std::string, std::uint64_t>> pending_reposts;
     while (std::getline(in, line)) {
         if (!line.empty() && line.back() == '\r') line.pop_back();
         if (line.empty()) continue;
@@ -978,6 +990,15 @@ void FileStore::load() {
             if (f.size() != 2) throw std::runtime_error("LGP1: bad pn record");
             next_post_id_ = parse_u64(f[1], "next_post_id");
             if (next_post_id_ == 0) next_post_id_ = 1;
+        } else if (tag == "rp") {
+            // A separate tag (not a wider "post" record) specifically so
+            // existing 6-field "post" records from before reposts existed
+            // still load unchanged -- no format migration needed. Recorded
+            // here and applied to posts_ in a fixup pass after the load
+            // loop, since "rp" isn't guaranteed to appear after its "post".
+            if (f.size() != 4) throw std::runtime_error("LGP1: bad rp record");
+            pending_reposts[parse_u64(f[1], "rp post id")] =
+                {pct_decode(f[2]), parse_u64(f[3], "rp origin id")};
         } else if (tag == "comm") {
             if (f.size() != 6) throw std::runtime_error("LGP1: bad comm record");
             Community c;
@@ -1119,6 +1140,13 @@ void FileStore::load() {
             throw std::runtime_error("LGP1: unknown record type '" + tag + "'");
         }
     }
+    for (auto& p : posts_) {
+        auto it = pending_reposts.find(p.id);
+        if (it != pending_reposts.end()) {
+            p.repost_of_author = it->second.first;
+            p.repost_of_id = it->second.second;
+        }
+    }
 }
 
 void FileStore::flush() {
@@ -1176,6 +1204,10 @@ void FileStore::flush() {
     for (const auto& p : posts_) {
         body << "post\t" << p.id << "\t" << pct_encode(p.author) << "\t" << p.ts << "\t"
              << pct_encode(p.text) << "\t" << pct_encode(p.community) << "\n";
+        if (!p.repost_of_author.empty()) {
+            body << "rp\t" << p.id << "\t" << pct_encode(p.repost_of_author) << "\t"
+                 << p.repost_of_id << "\n";
+        }
     }
     for (const auto& [slug, c] : communities_) {
         body << "comm\t" << pct_encode(c.slug) << "\t" << pct_encode(c.name) << "\t"

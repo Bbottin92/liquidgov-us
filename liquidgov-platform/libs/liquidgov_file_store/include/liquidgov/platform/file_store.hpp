@@ -99,6 +99,13 @@ struct Post {
     std::int64_t ts = 0;
     std::string text;
     std::string community; // empty = personal feed
+    // A repost is its own Post row (its own id/author/ts, in the reposting
+    // user's own feed) that additionally names the ORIGINAL author/id --
+    // not the post it was reposted from, if that itself was a repost, so
+    // reposting a repost always credits the true original, same as
+    // resharing an already-shared post.
+    std::string repost_of_author; // empty = not a repost
+    std::uint64_t repost_of_id = 0;
 };
 
 struct Community {
@@ -236,10 +243,12 @@ public:
     bool is_findable_exact(const std::string& requester, const std::string& target) const;
     std::vector<std::string> typeahead(const std::string& requester, const std::string& prefix) const;
 
-    std::uint64_t add_post(const std::string& author, const std::string& text, const std::string& community);
+    std::uint64_t add_post(const std::string& author, const std::string& text, const std::string& community,
+                           const std::string& repost_of_author = "", std::uint64_t repost_of_id = 0);
     std::vector<Post> feed_for(const std::string& user, std::size_t limit) const;
     std::vector<Post> posts_in(const std::string& community, std::size_t limit) const;
     std::vector<Post> posts_by(const std::string& author) const;
+    std::optional<Post> post_by_id(std::uint64_t id) const;
 
     bool create_community(const Community& c);
     std::optional<Community> community(const std::string& slug) const;

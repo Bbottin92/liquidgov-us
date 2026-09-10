@@ -977,6 +977,11 @@ std::string jukebox_script(const std::string& yt_key, bool standalone) {
         "}});"
         "});"
         "}"
+        "function teardown(){"
+        "if(ws){try{ws.close();}catch(e){}ws=null;}"
+        "if(ytPlayer){try{ytPlayer.destroy();}catch(e){}ytPlayer=null;}"
+        "lastCommunityId=null;"
+        "}"
         "function connectWs(){"
         "if(ws)return;"
         "var proto=location.protocol==='https:'?'wss:':'ws:';"
@@ -1060,10 +1065,13 @@ std::string jukebox_script(const std::string& yt_key, bool standalone) {
         "panel.hidden=!panel.hidden;"
         "if(!panel.hidden){ensurePlayer(function(){});connectWs();}"
         "});"
-        "document.getElementById('jbclose').addEventListener('click',function(){panel.hidden=true;});"
+        "document.getElementById('jbclose').addEventListener('click',function(){"
+        "panel.hidden=true;teardown();"
+        "});"
         "var popoutBtn=document.getElementById('jbpopout');"
         "if(popoutBtn)popoutBtn.addEventListener('click',function(){"
         "window.open('/listen','lg_jukebox','width=360,height=560,menubar=no,toolbar=no,location=no,status=no');"
+        "panel.hidden=true;teardown();"
         "});"
         "}else{"
         "document.getElementById('jbclose').addEventListener('click',function(){window.close();});"
@@ -1109,6 +1117,18 @@ std::string jukebox_script(const std::string& yt_key, bool standalone) {
         "});"
         "volumeSlider.addEventListener('input',function(){"
         "if(ytPlayer)ytPlayer.setVolume(Number(volumeSlider.value));"
+        "});"
+        // YouTube's own embedded player frequently pauses itself when its
+        // tab goes to the background (a documented IFrame Player quirk,
+        // distinct from — and in addition to — generic browser tab
+        // throttling). Catch back up to the live community position
+        // instead of leaving it stalled whenever the tab is visible again.
+        "document.addEventListener('visibilitychange',function(){"
+        "if(!document.hidden&&mode==='community'&&ytPlayer&&lastCommunityId){"
+        "if(ytPlayer.getPlayerState()!==YT.PlayerState.PLAYING){"
+        "ytPlayer.seekTo(lastCommunityElapsed,true);ytPlayer.playVideo();"
+        "}"
+        "}"
         "});"
         "updateTabs();"
         "})();</script>";

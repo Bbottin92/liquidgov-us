@@ -335,7 +335,7 @@ std::string css() {
     return
         ":root{--paper:#f7f1e4;--parchment:#efe8d8;--panel:#f3ecdd;--ink:#1a1814;"
         "--navy:#1e2d42;--stone:#6b6458;--rule:rgba(26,24,20,.14);--danger:#6b2424;"
-        "--warn:#7a4a12;--ok:#1e3d32;--rsm:8px;--rmd:14px;--rlg:22px;"
+        "--warn:#7a4a12;--ok:#1e3d32;--rsm:6px;--rmd:8px;--rlg:10px;"
         "--display:\"Iowan Old Style\",Palatino,\"Palatino Linotype\",Georgia,serif;"
         "--body:\"Segoe UI\",system-ui,-apple-system,sans-serif}"
         // Same tokens, ink warmed rather than pure black -- system dark
@@ -353,9 +353,15 @@ std::string css() {
         "body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.5 var(--body);"
         "transition:background .15s ease,color .15s ease}"
         "a{color:var(--navy)}a:hover{color:var(--ink)}"
-        "h1,h2,h3{font-family:var(--display);font-weight:600;letter-spacing:-.02em;"
+        "h1,h3{font-family:var(--display);font-weight:600;letter-spacing:-.02em;"
         "text-wrap:balance;line-height:1.2}h1{font-size:clamp(1.6rem,1.2rem + 1.6vw,2.2rem);margin:.2rem 0 .8rem}"
-        "h2{font-size:1.15rem;margin:1.4rem 0 .6rem}p{text-wrap:pretty}"
+        "h3{font-size:1.15rem;margin:0 0 .3rem}"
+        // A register, not app chrome: every card/section title is a small
+        // tracked-out label naming what the block below it is, not a
+        // headline competing with the page's own h1.
+        "h2{font-family:var(--display);font-weight:400;font-size:.75rem;letter-spacing:.12em;"
+        "text-transform:uppercase;color:var(--stone);margin:1.5rem 0 .7rem;line-height:1.3}"
+        "p{text-wrap:pretty}"
         ".wrap{max-width:58rem;margin:0 auto;padding:0 1.1rem 3.5rem}"
         "header.top{border-bottom:1px solid var(--rule);background:var(--parchment);"
         "position:sticky;top:0;z-index:5}"
@@ -365,7 +371,7 @@ std::string css() {
         ".mark{width:28px;height:28px;border:1.5px solid var(--navy);display:grid;"
         "grid-template-rows:1fr 1fr 1fr;padding:6px 5px;gap:3px;flex-shrink:0}"
         ".mark i{display:block;height:1.5px;background:var(--ink)}"
-        ".brand strong{font-family:var(--display);font-size:1.15rem;letter-spacing:-.03em}"
+        ".brand strong{font-family:var(--display);font-weight:600;font-size:1.35rem;letter-spacing:-.03em}"
         ".brand span{color:var(--stone);font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;margin-left:.15rem}"
         "#navc{position:absolute;left:-999px}"
         ".navbtn{display:none;min-height:44px;min-width:44px;align-items:center;justify-content:center;"
@@ -412,7 +418,8 @@ std::string css() {
         "text-transform:uppercase;color:var(--stone);padding:.4rem .3rem;border-bottom:1px solid var(--rule)}"
         "table.register td{padding:.5rem .3rem;border-bottom:1px solid var(--rule)}"
         "table.register select{width:auto;min-height:auto;padding:.3rem .5rem}"
-        ".eyebrow{font:600 .7rem var(--body);letter-spacing:.1em;text-transform:uppercase;color:var(--stone);margin-bottom:.15rem}"
+        ".eyebrow{font-family:var(--display);font-weight:400;font-size:.75rem;letter-spacing:.12em;"
+        "text-transform:uppercase;color:var(--stone);margin:0 0 .3rem}"
         ".portrait{width:96px;height:96px;border-radius:50%;object-fit:cover;border:1px solid var(--rule);"
         "background:var(--parchment);flex-shrink:0;display:inline-block;vertical-align:middle}"
         ".portrait.sm{width:36px;height:36px}"
@@ -2700,7 +2707,8 @@ std::string post_block(const Post& p, const std::string& viewer) {
             ? "<video controls preload=\"metadata\" style=\"width:100%;height:auto;display:block;border-radius:var(--rsm);margin-top:.4rem\" src=\""+src+"\"></video>"
             : "<img style=\"width:100%;height:auto;display:block;border-radius:var(--rsm);margin-top:.4rem\" src=\""+src+"\" alt=\"\">";
     }
-    return "<article class=\"post\"><div class=\"who\">"+portrait_tag(p.author,"sm")+"<div><a href=\"/u/"+html_escape(p.author)+"\"><strong>"+
+    return "<article class=\"post\"><p class=\"eyebrow\" style=\"width:100%\">Entry "+std::to_string(p.id)+
+           "</p><div class=\"who\">"+portrait_tag(p.author,"sm")+"<div><a href=\"/u/"+html_escape(p.author)+"\"><strong>"+
            html_escape(p.author)+"</strong></a>"+where+
            (when.empty()?"":" <span class=\"muted\">"+html_escape(when)+"</span>")+
            repostLine+

@@ -20,6 +20,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <deque>
 #include <iostream>
 #include <map>
 #include <mutex>
@@ -58,6 +59,37 @@ std::string world_color_for(const std::string& username) {
                                       "#6e3ba2", "#3ba297", "#a23b8f", "#5f7a2e"};
     std::size_t h = std::hash<std::string>{}(username);
     return kPalette[h % 8];
+}
+
+// --- Community jukebox: one shared, site-wide queue everyone connected to
+// /community/ws hears "live" (new joiners seek to the current track's
+// elapsed position). Separate mutex, separate ephemeral state, same
+// one-thread-per-connection pattern as /world/ws — nothing else on the
+// server changes. Open queue: any logged-in visitor can add a track, same
+// posture as the rest of the platform (open messaging, etc).
+struct CommunityTrack {
+    std::string video_id;
+    std::string queued_by;
+};
+struct CommunityNowPlaying {
+    std::string video_id;
+    std::string queued_by;
+    std::int64_t started_at = 0;
+    bool active = false;
+};
+std::mutex g_community_mu;
+CommunityNowPlaying g_community_now;
+std::deque<CommunityTrack> g_community_upcoming;
+
+// Caller must hold g_community_mu.
+void community_advance_locked(std::int64_t now) {
+    if (g_community_upcoming.empty()) {
+        g_community_now = CommunityNowPlaying{};
+        return;
+    }
+    auto next = g_community_upcoming.front();
+    g_community_upcoming.pop_front();
+    g_community_now = CommunityNowPlaying{next.video_id, next.queued_by, now, true};
 }
 
 class NeverBreached : public BreachChecker {
@@ -525,8 +557,12 @@ bool read_http_request(int fd, std::string& req) {
     return true;
 }
 
+std::string global_jukebox_widget(const std::string& yt_key); // defined below, needed here for wrap()
+
 std::string wrap(const std::string& title, const std::string& user, int unread, const std::string& body) {
-    return page_wrap(title, nav(user, unread), body);
+    std::string b = body;
+    if (!user.empty()) b += global_jukebox_widget(youtube_api_key_from_env());
+    return page_wrap(title, nav(user, unread), b);
 }
 
 std::string trim_copy(std::string s) {
@@ -761,6 +797,277 @@ void run_world_session(int fd, std::string username) {
     close(fd);
 }
 
+// Minimal ad-hoc extractor for a top-level {"key":"value"} string field —
+// same "only shape this endpoint ever receives" reasoning as the world
+// socket's x/y number parser. Not escape-aware: fine for URLs, which never
+// contain a literal quote character.
+std::optional<std::string> extract_json_string_field(const std::string& s, const char* key) {
+    auto p = s.find(key);
+    if (p == std::string::npos) return std::nullopt;
+    p = s.find(':', p);
+    if (p == std::string::npos) return std::nullopt;
+    auto open = s.find('"', p);
+    if (open == std::string::npos) return std::nullopt;
+    auto close_pos = s.find('"', open + 1);
+    if (close_pos == std::string::npos) return std::nullopt;
+    return s.substr(open + 1, close_pos - open - 1);
+}
+
+// One thread per connected /community/ws client — same shape as
+// run_world_session, entirely separate shared state (g_community_mu).
+// Any logged-in visitor can add a track (open queue, same posture as the
+// rest of the platform); the queue auto-advances when any connected
+// client's player reports the current track ended.
+void run_community_session(int fd, const std::string& username) {
+    timeval tv{}; tv.tv_sec = 0; tv.tv_usec = 500000; // 500ms — a shared queue doesn't need world's 100ms cadence
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
+    for (;;) {
+        auto result = ws_read_frame(fd);
+        if (result.status == WsReadStatus::Closed) break;
+        if (result.status == WsReadStatus::Ok) {
+            if (result.frame.opcode == WsOpcode::Close) break;
+            if (result.frame.opcode == WsOpcode::Text) {
+                const std::string& s = result.frame.payload;
+                if (auto raw = extract_json_string_field(s, "\"add\"")) {
+                    if (auto id = extract_youtube_id(trim_ws(*raw))) {
+                        std::lock_guard<std::mutex> lock(g_community_mu);
+                        if (!g_community_now.active && g_community_upcoming.empty()) {
+                            g_community_now = CommunityNowPlaying{*id, username,
+                                std::chrono::duration_cast<std::chrono::seconds>(
+                                    std::chrono::system_clock::now().time_since_epoch()).count(),
+                                true};
+                        } else {
+                            g_community_upcoming.push_back(CommunityTrack{*id, username});
+                        }
+                    }
+                } else if (s.find("\"ended\"") != std::string::npos) {
+                    std::lock_guard<std::mutex> lock(g_community_mu);
+                    if (g_community_now.active) {
+                        community_advance_locked(std::chrono::duration_cast<std::chrono::seconds>(
+                            std::chrono::system_clock::now().time_since_epoch()).count());
+                    }
+                }
+            }
+        }
+
+        std::string snapshot;
+        {
+            std::lock_guard<std::mutex> lock(g_community_mu);
+            const auto now = std::chrono::duration_cast<std::chrono::seconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count();
+            std::ostringstream os;
+            os << "{";
+            if (g_community_now.active) {
+                os << "\"now\":{\"video_id\":\"" << g_community_now.video_id
+                   << "\",\"queued_by\":\"" << g_community_now.queued_by
+                   << "\",\"elapsed\":" << std::max<std::int64_t>(0, now - g_community_now.started_at) << "}";
+            } else {
+                os << "\"now\":null";
+            }
+            os << ",\"upcoming\":" << g_community_upcoming.size() << "}";
+            snapshot = os.str();
+        }
+        if (!ws_write_frame(fd, WsOpcode::Text, snapshot)) break;
+    }
+    close(fd);
+}
+
+// Floating jukebox widget: a phone-icon button, present on every logged-in
+// page (injected from wrap()), that expands into a panel with two modes —
+// "Community" (synced to the site-wide queue over /community/ws, same
+// real-time pattern as /world/ws) and "My search" (private, local-only
+// playback, never touches the server). One YT.Player instance is reused
+// across both modes so play/pause/mute/volume always act on whatever's
+// currently loaded.
+//
+// Honest limitation, not hidden: this site is deliberately a multi-page
+// app (LIQUIDGOV_CONTEXT_HANDOFF.md's Jukebox section — no site-wide SPA).
+// Navigating to a different page resets local playback; the widget
+// reconnects and re-syncs to the live community track next time it's
+// opened. True across-navigation persistence would need the browser's
+// Picture-in-Picture API, deliberately not added here.
+std::string global_jukebox_widget(const std::string& yt_key) {
+    return
+        "<button id=\"jbtoggle\" type=\"button\" aria-label=\"Jukebox\" "
+        "style=\"position:fixed;right:1rem;bottom:1rem;z-index:30;width:52px;height:52px;"
+        "border-radius:50%;background:var(--navy);color:var(--paper);border:0;"
+        "font-size:1.4rem;line-height:52px;text-align:center;cursor:pointer;"
+        "box-shadow:0 2px 10px rgba(0,0,0,.3)\">\xF0\x9F\x93\xB1</button>"
+        "<div id=\"jbpanel\" hidden style=\"position:fixed;right:1rem;bottom:4.5rem;z-index:30;"
+        "width:320px;max-width:92vw;background:var(--panel);border:1px solid var(--rule);"
+        "border-radius:var(--rlg);padding:.9rem;box-shadow:0 6px 24px rgba(0,0,0,.35)\">"
+        "<div class=\"row\" style=\"justify-content:space-between;align-items:center\">"
+        "<div class=\"row\" style=\"gap:.3rem\">"
+        "<button type=\"button\" class=\"ghost\" id=\"jbtab-community\">Community</button>"
+        "<button type=\"button\" class=\"ghost\" id=\"jbtab-search\">My search</button>"
+        "</div>"
+        "<button type=\"button\" class=\"ghost\" id=\"jbclose\" aria-label=\"Close\">\xE2\x9C\x95</button>"
+        "</div>"
+        "<div id=\"jbplayer\" style=\"margin-top:.6rem;aspect-ratio:16/9;background:#000;"
+        "border-radius:var(--rsm)\"></div>"
+        "<div class=\"row\" style=\"margin-top:.5rem;align-items:center;gap:.4rem\">"
+        "<button type=\"button\" class=\"ghost\" id=\"jbplaypause\">Play</button>"
+        "<button type=\"button\" class=\"ghost\" id=\"jbmute\">Mute</button>"
+        "<input type=\"range\" id=\"jbvolume\" min=\"0\" max=\"100\" value=\"70\" style=\"flex:1\">"
+        "</div>"
+        "<div id=\"jbcommunity-ui\">"
+        "<p class=\"muted\" id=\"jbnow\" style=\"margin:.5rem 0 0\">Connecting\\u2026</p>"
+        "<p class=\"muted\" id=\"jbupcoming\" style=\"margin:.1rem 0 0\"></p>"
+        "<input id=\"jbadd\" placeholder=\"Add to the community queue\" autocomplete=\"off\" "
+        "style=\"margin-top:.4rem;width:100%\">"
+        "<div id=\"jbaddresults\" style=\"margin-top:.3rem;display:flex;flex-direction:column;gap:.15rem\"></div>"
+        "</div>"
+        "<div id=\"jbsearch-ui\" hidden>"
+        "<input id=\"jbsearch\" placeholder=\"Search or paste a link\" autocomplete=\"off\" "
+        "style=\"margin-top:.5rem;width:100%\">"
+        "<div id=\"jbsearchresults\" style=\"margin-top:.3rem;display:flex;flex-direction:column;gap:.15rem\"></div>"
+        "</div>"
+        "</div>"
+        "<script>(function(){"
+        "var key="+js_string_literal(yt_key)+";"
+        "var toggle=document.getElementById('jbtoggle'),panel=document.getElementById('jbpanel');"
+        "var tabC=document.getElementById('jbtab-community'),tabS=document.getElementById('jbtab-search');"
+        "var playerDiv=document.getElementById('jbplayer');"
+        "var playPauseBtn=document.getElementById('jbplaypause'),muteBtn=document.getElementById('jbmute');"
+        "var volumeSlider=document.getElementById('jbvolume');"
+        "var nowEl=document.getElementById('jbnow'),upcomingEl=document.getElementById('jbupcoming');"
+        "var addInput=document.getElementById('jbadd'),addResults=document.getElementById('jbaddresults');"
+        "var searchInput=document.getElementById('jbsearch'),searchResults=document.getElementById('jbsearchresults');"
+        "var communityUi=document.getElementById('jbcommunity-ui'),searchUi=document.getElementById('jbsearch-ui');"
+        "var mode='community',ytPlayer=null,ws=null,muted=false;"
+        "var lastCommunityId=null,lastCommunityElapsed=0;"
+        "function esc(s){var ta=document.createElement('textarea');ta.innerHTML=s;"
+        "var d=document.createElement('div');d.textContent=ta.value;return d.innerHTML;}"
+        "function looksLikeUrl(s){return /^https?:\\/\\//i.test(s)||/youtu\\.?be/i.test(s);}"
+        "function updateTabs(){"
+        "tabC.style.background=mode==='community'?'var(--navy)':'';tabC.style.color=mode==='community'?'var(--paper)':'';"
+        "tabS.style.background=mode==='search'?'var(--navy)':'';tabS.style.color=mode==='search'?'var(--paper)':'';"
+        "}"
+        "function ensureYT(cb){"
+        "if(window.YT&&window.YT.Player){cb();return;}"
+        "if(!document.getElementById('jbytapi')){"
+        "var s=document.createElement('script');s.id='jbytapi';s.src='https://www.youtube.com/iframe_api';"
+        "document.head.appendChild(s);}"
+        "var prev=window.onYouTubeIframeAPIReady;"
+        "window.onYouTubeIframeAPIReady=function(){if(prev)prev();cb();};"
+        "}"
+        "function ensurePlayer(cb){"
+        "if(ytPlayer){cb();return;}"
+        "ensureYT(function(){"
+        "ytPlayer=new YT.Player('jbplayer',{height:'100%',width:'100%',"
+        "playerVars:{rel:0,playsinline:1},events:{"
+        "onReady:function(){ytPlayer.setVolume(Number(volumeSlider.value));cb();},"
+        "onStateChange:function(e){"
+        "if(e.data===YT.PlayerState.PLAYING)playPauseBtn.textContent='Pause';"
+        "else if(e.data===YT.PlayerState.PAUSED)playPauseBtn.textContent='Play';"
+        "if(e.data===YT.PlayerState.ENDED&&mode==='community'&&ws&&ws.readyState===1)"
+        "ws.send(JSON.stringify({ended:true}));"
+        "}"
+        "}});"
+        "});"
+        "}"
+        "function connectWs(){"
+        "if(ws)return;"
+        "var proto=location.protocol==='https:'?'wss:':'ws:';"
+        "ws=new WebSocket(proto+'//'+location.host+'/community/ws');"
+        "ws.onmessage=function(ev){"
+        "var data;try{data=JSON.parse(ev.data);}catch(e){return;}"
+        "if(data.now){"
+        "nowEl.textContent='Now playing \\u2014 queued by '+data.now.queued_by;"
+        "if(data.now.video_id!==lastCommunityId){"
+        "lastCommunityId=data.now.video_id;lastCommunityElapsed=data.now.elapsed;"
+        "if(mode==='community')ensurePlayer(function(){"
+        "ytPlayer.loadVideoById({videoId:lastCommunityId,startSeconds:lastCommunityElapsed});"
+        "});"
+        "}else{lastCommunityElapsed=data.now.elapsed;}"
+        "}else{"
+        "nowEl.textContent='Nothing playing \\u2014 add a track below.';"
+        "lastCommunityId=null;"
+        "if(mode==='community'&&ytPlayer)ytPlayer.stopVideo();"
+        "}"
+        "upcomingEl.textContent=data.upcoming?(data.upcoming+' track'+(data.upcoming===1?'':'s')+' queued next'):'';"
+        "};"
+        "}"
+        "function switchMode(m){"
+        "mode=m;updateTabs();"
+        "communityUi.hidden=(m!=='community');searchUi.hidden=(m!=='search');"
+        "if(m==='community'){"
+        "connectWs();"
+        "if(lastCommunityId)ensurePlayer(function(){"
+        "ytPlayer.loadVideoById({videoId:lastCommunityId,startSeconds:lastCommunityElapsed});"
+        "});"
+        "}"
+        "}"
+        "function attachLiveSearch(input,resultsEl,onPick){"
+        "var timer=null,gen=0;"
+        "input.addEventListener('input',function(){"
+        "var val=input.value.trim();clearTimeout(timer);"
+        "if(!val||looksLikeUrl(val)){resultsEl.innerHTML='';return;}"
+        "timer=setTimeout(function(){"
+        "if(!key)return;"
+        "var my=++gen;"
+        "fetch('https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=6&q='"
+        "+encodeURIComponent(val)+'&key='+key)"
+        ".then(function(r){return r.json();})"
+        ".then(function(data){"
+        "if(my!==gen)return;"
+        "resultsEl.innerHTML='';"
+        "(data.items||[]).forEach(function(it){"
+        "var id=it.id.videoId,title=it.snippet.title,thumb=it.snippet.thumbnails.default.url;"
+        "var row=document.createElement('div');row.className='row';"
+        "row.style.cssText='align-items:center;cursor:pointer;padding:.25rem;border-radius:var(--rsm)';"
+        "row.innerHTML='<img src=\"'+thumb+'\" width=\"48\" height=\"36\" alt=\"\" style=\"border-radius:4px\">"
+        "<span style=\"flex:1;font-size:.85rem\">'+esc(title)+'</span>';"
+        "row.addEventListener('click',function(){"
+        "input.value='';resultsEl.innerHTML='';onPick('https://www.youtube.com/watch?v='+id);"
+        "});"
+        "resultsEl.appendChild(row);"
+        "});"
+        "}).catch(function(){});"
+        "},300);"
+        "});"
+        "input.addEventListener('keydown',function(e){"
+        "if(e.key==='Enter'){"
+        "e.preventDefault();"
+        "var val=input.value.trim();"
+        "if(val&&looksLikeUrl(val)){input.value='';resultsEl.innerHTML='';onPick(val);}"
+        "}"
+        "});"
+        "}"
+        "attachLiveSearch(addInput,addResults,function(url){"
+        "if(ws&&ws.readyState===1)ws.send(JSON.stringify({add:url}));"
+        "});"
+        "attachLiveSearch(searchInput,searchResults,function(url){"
+        "var m=url.match(/[?&]v=([A-Za-z0-9_-]{11})/)||url.match(/youtu\\.be\\/([A-Za-z0-9_-]{11})/);"
+        "if(!m)return;"
+        "switchMode('search');"
+        "ensurePlayer(function(){ytPlayer.loadVideoById(m[1]);});"
+        "});"
+        "toggle.addEventListener('click',function(){"
+        "panel.hidden=!panel.hidden;"
+        "if(!panel.hidden){ensurePlayer(function(){});connectWs();}"
+        "});"
+        "document.getElementById('jbclose').addEventListener('click',function(){panel.hidden=true;});"
+        "tabC.addEventListener('click',function(){switchMode('community');});"
+        "tabS.addEventListener('click',function(){switchMode('search');});"
+        "playPauseBtn.addEventListener('click',function(){"
+        "if(!ytPlayer)return;"
+        "if(ytPlayer.getPlayerState()===YT.PlayerState.PLAYING){ytPlayer.pauseVideo();}"
+        "else{if(mode==='community'&&lastCommunityId)ytPlayer.seekTo(lastCommunityElapsed,true);ytPlayer.playVideo();}"
+        "});"
+        "muteBtn.addEventListener('click',function(){"
+        "if(!ytPlayer)return;"
+        "muted=!muted;"
+        "if(muted){ytPlayer.mute();muteBtn.textContent='Unmute';}else{ytPlayer.unMute();muteBtn.textContent='Mute';}"
+        "});"
+        "volumeSlider.addEventListener('input',function(){"
+        "if(ytPlayer)ytPlayer.setVolume(Number(volumeSlider.value));"
+        "});"
+        "updateTabs();"
+        "})();</script>";
+}
+
 // In-browser drawing tool for the self-portrait. Draws to a <canvas>, exports
 // via canvas.toBlob('image/png') and POSTs it to the *same* /me/avatar route
 // as a file upload — the server can't tell a drawn PNG from an uploaded one,
@@ -862,14 +1169,19 @@ std::string jukebox_widget(const std::string& owner, bool owner_view, const std:
                 "var key="+js_string_literal(yt_key)+";"
                 "var input=document.getElementById('jinput'),out=document.getElementById('jsresults'),"
                 "qbtn=document.getElementById('jqueue');"
-                "var selected=null,timer=null,gen=0;"
+                "var lastTopId=null,timer=null,gen=0;"
                 "function esc(s){"
                 "var ta=document.createElement('textarea');ta.innerHTML=s;"
                 "var d=document.createElement('div');d.textContent=ta.value;return d.innerHTML;"
                 "}"
                 "function looksLikeUrl(s){return /^https?:\\/\\//i.test(s)||/youtu\\.?be/i.test(s);}"
+                "function queueUrl(url){"
+                "fetch('/me/jukebox/add',{method:'POST',"
+                "headers:{'Content-Type':'application/x-www-form-urlencoded'},"
+                "body:'url='+encodeURIComponent(url)}).then(function(r){window.location=r.url||location.href;});"
+                "}"
                 "function render(items){"
-                "out.innerHTML='';selected=null;"
+                "out.innerHTML='';lastTopId=null;"
                 "if(!items||!items.length)return;"
                 "items.forEach(function(it,idx){"
                 "var id=it.id.videoId,title=it.snippet.title,thumb=it.snippet.thumbnails.default.url;"
@@ -877,13 +1189,12 @@ std::string jukebox_widget(const std::string& owner, bool owner_view, const std:
                 "row.style.cssText='align-items:center;cursor:pointer;padding:.3rem;border-radius:var(--rsm)';"
                 "row.innerHTML='<img src=\"'+thumb+'\" width=\"60\" height=\"45\" alt=\"\" style=\"border-radius:4px\">"
                 "<span style=\"flex:1\">'+esc(title)+'</span>';"
+                "row.title='Click to queue this track';"
                 "row.addEventListener('click',function(){"
-                "selected=id;"
-                "Array.prototype.forEach.call(out.children,function(r){r.style.background='';});"
-                "row.style.background='var(--parchment)';"
+                "queueUrl('https://www.youtube.com/watch?v='+id);"
                 "});"
                 "out.appendChild(row);"
-                "if(idx===0){selected=id;row.style.background='var(--parchment)';}"
+                "if(idx===0){lastTopId=id;row.style.background='var(--parchment)';}"
                 "});"
                 "}"
                 "function search(term){"
@@ -898,15 +1209,12 @@ std::string jukebox_widget(const std::string& owner, bool owner_view, const std:
                 "input.addEventListener('input',function(){"
                 "var val=input.value.trim();"
                 "clearTimeout(timer);"
-                "if(!val||looksLikeUrl(val)){out.innerHTML='';selected=null;return;}"
+                "if(!val||looksLikeUrl(val)){out.innerHTML='';lastTopId=null;return;}"
                 "timer=setTimeout(function(){search(val);},300);"
                 "});"
                 "function doQueue(){"
                 "var val=input.value.trim();if(!val)return;"
-                "var url=selected?('https://www.youtube.com/watch?v='+selected):val;"
-                "fetch('/me/jukebox/add',{method:'POST',"
-                "headers:{'Content-Type':'application/x-www-form-urlencoded'},"
-                "body:'url='+encodeURIComponent(url)}).then(function(r){window.location=r.url||location.href;});"
+                "queueUrl(looksLikeUrl(val)?val:(lastTopId?('https://www.youtube.com/watch?v='+lastTopId):val));"
                 "}"
                 "qbtn.addEventListener('click',doQueue);"
                 "input.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();doQueue();}});"
@@ -1972,6 +2280,30 @@ int main() {
                     if (send(c, r.data(), r.size(), 0) > 0) {
                         std::thread(run_world_session, c, username).detach();
                         continue; // socket now owned by the world session thread
+                    }
+                }
+                close(c);
+                continue;
+            }
+            if (method == "GET" && rawpath == "/community/ws" &&
+                header_value(req, "Upgrade").find("websocket") != std::string::npos) {
+                std::string username;
+                {
+                    std::lock_guard<std::mutex> lock(g_mu);
+                    auto acc = account_from_req(req);
+                    if (acc) username = acc->username;
+                }
+                auto key = header_value(req, "Sec-WebSocket-Key");
+                if (!username.empty() && !key.empty()) {
+                    std::string accept_val = websocket_accept_value(key);
+                    std::ostringstream resp101;
+                    resp101 << "HTTP/1.1 101 Switching Protocols\r\n"
+                               "Upgrade: websocket\r\nConnection: Upgrade\r\n"
+                               "Sec-WebSocket-Accept: " << accept_val << "\r\n\r\n";
+                    std::string r = resp101.str();
+                    if (send(c, r.data(), r.size(), 0) > 0) {
+                        std::thread(run_community_session, c, username).detach();
+                        continue;
                     }
                 }
                 close(c);

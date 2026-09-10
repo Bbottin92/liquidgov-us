@@ -639,6 +639,7 @@ std::vector<Post> FileStore::feed_for(const std::string& user, std::size_t limit
         if (!it->community.empty()) continue;
         if (it->author == user || are_friends(user, it->author)) {
             if (is_blocked(user, it->author)) continue;
+            if (it->author != user && prefs_of(it->author).hide_posts_from_friends) continue;
             out.push_back(*it);
             if (out.size() >= limit) break;
         }
@@ -876,6 +877,7 @@ bool FileStore::delete_account(AccountId id) {
     canvas_timelapse_.erase(id);
     avatars_.erase(id);
     jukebox_.erase(name);
+    jukebox_history_.erase(name);
     by_username_.erase(name);
     accounts_.erase(it);
     flush();
@@ -909,6 +911,7 @@ void FileStore::load() {
     notices_.clear();
     avatars_.clear();
     jukebox_.clear();
+    jukebox_history_.clear();
     conversations_.clear();
     messages_.clear();
 
@@ -1044,7 +1047,7 @@ void FileStore::load() {
             if (f.size() != 3) throw std::runtime_error("LGP1: bad inner record");
             inner_[pct_decode(f[1])].insert(pct_decode(f[2]));
         } else if (tag == "pref") {
-            if (f.size() != 9) throw std::runtime_error("LGP1: bad pref record");
+            if (f.size() != 9 && f.size() != 14) throw std::runtime_error("LGP1: bad pref record");
             AccountPrefs p;
             const auto fv = parse_u64(f[2], "findability");
             if (fv > 2) throw std::runtime_error("LGP1: bad findability");
@@ -1055,6 +1058,15 @@ void FileStore::load() {
             p.notify_friend = parse_bit(f[6], "n_friend");
             p.notify_message = parse_bit(f[7], "n_message");
             p.notify_group = parse_bit(f[8], "n_group");
+            if (f.size() == 14) {
+                const auto jp = parse_u64(f[9], "jukebox_policy");
+                if (jp > 2) throw std::runtime_error("LGP1: bad jukebox_policy");
+                p.jukebox_policy = static_cast<JukeboxPolicy>(jp);
+                p.hide_profile_from_friends = parse_bit(f[10], "hide_profile_from_friends");
+                p.hide_profile_from_others = parse_bit(f[11], "hide_profile_from_others");
+                p.hide_posts_from_friends = parse_bit(f[12], "hide_posts_from_friends");
+                p.hide_posts_from_others = parse_bit(f[13], "hide_posts_from_others");
+            }
             prefs_[pct_decode(f[1])] = p;
         } else if (tag == "note") {
             if (f.size() != 8) throw std::runtime_error("LGP1: bad note record");
@@ -1100,15 +1112,27 @@ void FileStore::load() {
             if (av.owner == 0 || av.blob_id.empty()) throw std::runtime_error("LGP1: empty av record");
             avatars_[av.owner] = av;
         } else if (tag == "jt") {
-            if (f.size() != 4) throw std::runtime_error("LGP1: bad jt record");
+            if (f.size() != 4 && f.size() != 5) throw std::runtime_error("LGP1: bad jt record");
             JukeboxTrack t;
             t.owner = pct_decode(f[1]);
             t.video_id = pct_decode(f[2]);
             t.added_at = parse_i64(f[3], "jukebox added_at");
+            t.queued_by = f.size() == 5 ? pct_decode(f[4]) : t.owner;
             if (t.owner.empty() || !valid_youtube_id(t.video_id)) {
                 throw std::runtime_error("LGP1: bad jt video_id");
             }
             jukebox_[t.owner].push_back(t);
+        } else if (tag == "jh") {
+            if (f.size() != 5) throw std::runtime_error("LGP1: bad jh record");
+            JukeboxHistoryEntry h;
+            h.owner = pct_decode(f[1]);
+            h.video_id = pct_decode(f[2]);
+            h.queued_by = pct_decode(f[3]);
+            h.played_at = parse_i64(f[4], "jukebox history played_at");
+            if (h.owner.empty() || !valid_youtube_id(h.video_id)) {
+                throw std::runtime_error("LGP1: bad jh video_id");
+            }
+            jukebox_history_[h.owner].push_back(h);
         } else if (tag == "gcn") {
             if (f.size() != 2) throw std::runtime_error("LGP1: bad gcn record");
             next_conv_id_ = parse_u64(f[1], "next_conversation_id");
@@ -1265,7 +1289,10 @@ void FileStore::flush() {
         body << "pref\t" << pct_encode(name) << "\t" << static_cast<int>(p.findability) << "\t"
              << (p.friends_only_dm ? 1 : 0) << "\t" << (p.group_invite_confirm ? 1 : 0) << "\t"
              << (p.presence_hide ? 1 : 0) << "\t" << (p.notify_friend ? 1 : 0) << "\t"
-             << (p.notify_message ? 1 : 0) << "\t" << (p.notify_group ? 1 : 0) << "\n";
+             << (p.notify_message ? 1 : 0) << "\t" << (p.notify_group ? 1 : 0) << "\t"
+             << static_cast<int>(p.jukebox_policy) << "\t" << (p.hide_profile_from_friends ? 1 : 0) << "\t"
+             << (p.hide_profile_from_others ? 1 : 0) << "\t" << (p.hide_posts_from_friends ? 1 : 0) << "\t"
+             << (p.hide_posts_from_others ? 1 : 0) << "\n";
     }
     for (const auto& n : notices_) {
         body << "note\t" << n.id << "\t" << pct_encode(n.to) << "\t" << pct_encode(n.type) << "\t"
@@ -1296,7 +1323,14 @@ void FileStore::flush() {
         if (!by_username_.count(owner)) continue;
         for (const auto& t : list) {
             body << "jt\t" << pct_encode(t.owner) << "\t" << pct_encode(t.video_id) << "\t"
-                 << t.added_at << "\n";
+                 << t.added_at << "\t" << pct_encode(t.queued_by) << "\n";
+        }
+    }
+    for (const auto& [owner, list] : jukebox_history_) {
+        if (!by_username_.count(owner)) continue;
+        for (const auto& h : list) {
+            body << "jh\t" << pct_encode(h.owner) << "\t" << pct_encode(h.video_id) << "\t"
+                 << pct_encode(h.queued_by) << "\t" << h.played_at << "\n";
         }
     }
     // Conversations/messages are never pruned when an account is deleted —
@@ -1436,11 +1470,12 @@ std::vector<Message> FileStore::messages_in(ConversationId conv_id) const {
     return out;
 }
 
-bool FileStore::add_jukebox_track(const std::string& owner, const std::string& video_id) {
+bool FileStore::add_jukebox_track(const std::string& owner, const std::string& video_id,
+                                   const std::string& queued_by) {
     if (!by_username_.count(owner)) return false;
     if (!valid_youtube_id(video_id)) return false;
     if (jukebox_[owner].size() >= kJukeboxQueueCap) return false;
-    jukebox_[owner].push_back(JukeboxTrack{owner, video_id, now()});
+    jukebox_[owner].push_back(JukeboxTrack{owner, video_id, now(), queued_by});
     flush();
     return true;
 }
@@ -1462,6 +1497,30 @@ void FileStore::remove_jukebox_track(const std::string& owner, const std::string
 std::vector<JukeboxTrack> FileStore::jukebox_of(const std::string& owner) const {
     auto it = jukebox_.find(owner);
     if (it == jukebox_.end()) return {};
+    return it->second;
+}
+
+void FileStore::complete_jukebox_track(const std::string& owner, const std::string& video_id) {
+    auto it = jukebox_.find(owner);
+    if (it == jukebox_.end()) return;
+    auto& list = it->second;
+    for (std::size_t i = 0; i < list.size(); ++i) {
+        if (list[i].video_id != video_id) continue;
+        const std::string queued_by = list[i].queued_by;
+        auto& hist = jukebox_history_[owner];
+        hist.push_back(JukeboxHistoryEntry{owner, video_id, queued_by, now()});
+        if (hist.size() > kJukeboxHistoryCap) {
+            hist.erase(hist.begin(), hist.begin() + static_cast<std::ptrdiff_t>(hist.size() - kJukeboxHistoryCap));
+        }
+        if (queued_by != owner) list.erase(list.begin() + static_cast<std::ptrdiff_t>(i));
+        flush();
+        return;
+    }
+}
+
+std::vector<JukeboxHistoryEntry> FileStore::jukebox_history_of(const std::string& owner) const {
+    auto it = jukebox_history_.find(owner);
+    if (it == jukebox_history_.end()) return {};
     return it->second;
 }
 

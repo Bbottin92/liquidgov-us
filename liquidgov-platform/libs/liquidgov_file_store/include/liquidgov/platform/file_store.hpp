@@ -31,11 +31,17 @@
 //   inner  <owner> <friend>
 //   pref   <username> <findability 0-2> <friends_only_dm> <group_invite_confirm>
 //          <presence_hide> <n_friend> <n_message> <n_group>
+//          [<jukebox_policy 0-2> <hide_profile_from_friends> <hide_profile_from_others>
+//           <hide_posts_from_friends> <hide_posts_from_others>]  // trailing five fields
+//          optional -- an older 9-token line means all five are their defaults (0/false)
 //   note   <id> <to> <type> <from> <ts> <read 0|1> <extra>
 //   nn     <next_note_id>
 //   av     <account_id> <blob_id> <created_at>   // self-portrait; bytes live in the blob dir
-//   jt     <owner_username> <video_id> <added_at>  // jukebox queue entry; video_id is an
-//          11-char YouTube id already validated by extract_youtube_id, never a raw URL
+//   jt     <owner_username> <video_id> <added_at> [<queued_by>]  // jukebox queue entry;
+//          video_id is an 11-char YouTube id already validated by extract_youtube_id, never
+//          a raw URL. queued_by is who requested it -- absent (older lines) means the owner.
+//   jh     <owner_username> <video_id> <queued_by> <played_at>  // one past jukebox play,
+//          most-recent last; trimmed to kJukeboxHistoryCap on write
 //   gcn    <next_conversation_id>
 //   gmsn   <next_message_id>
 //   gc     <id> <is_group 0|1> <created_at>          // messenger.hpp Conversation, no roster
@@ -122,6 +128,15 @@ struct Community {
     std::int64_t created_at = 0;
 };
 
+// Who besides the owner may add tracks to an account's jukebox. The owner can
+// always curate their own queue (subject only to kJukeboxQueueCap) regardless
+// of this setting.
+enum class JukeboxPolicy : int {
+    OwnerOnly = 0,
+    Friends = 1,
+    Anyone = 2,
+};
+
 struct AccountPrefs {
     Findability findability = Findability::ExactMatch;
     bool friends_only_dm = true;
@@ -130,6 +145,11 @@ struct AccountPrefs {
     bool notify_friend = true;
     bool notify_message = true;
     bool notify_group = true;
+    JukeboxPolicy jukebox_policy = JukeboxPolicy::OwnerOnly;
+    bool hide_profile_from_friends = false;
+    bool hide_profile_from_others = false;
+    bool hide_posts_from_friends = false;
+    bool hide_posts_from_others = false;
 };
 
 struct Notice {
@@ -144,16 +164,34 @@ struct Notice {
 
 // Page-local jukebox queue entry for a profile (design: LIQUIDGOV_CONTEXT_HANDOFF.md
 // "Jukebox", navigation option A — MPA, no site-wide SPA, stop on navigate away).
-// Owner-curated: only the profile owner can add/remove; visitors play through the
-// queue read-only, independently per page load. No WebSocket sync — that is the
-// in-world jukebox, a separate, unbuilt slice.
+// The owner always curates their own queue; depending on the owner's
+// JukeboxPolicy, friends or anyone else may also queue a track (see
+// queued_by below). Only the owner can remove. No WebSocket sync — that is
+// the in-world jukebox, a separate, unbuilt slice.
 struct JukeboxTrack {
     std::string owner;      // username
     std::string video_id;   // validated 11-char YouTube id, never a raw URL
     std::int64_t added_at = 0;
+    // Who requested this track. Equal to owner for the owner's own curated
+    // additions, which stay queued after playing (today's behavior,
+    // unaffected). Anything else is a guest request: one shot, removed from
+    // the queue and logged to history the moment it finishes playing (see
+    // complete_jukebox_track), and limited to one outstanding request per
+    // guest at a time (enforced by the caller, same as policy/block checks).
+    std::string queued_by;
+};
+
+// One past play, kept so a profile can show "things played in the past"
+// even after a guest-requested track is gone from the live queue.
+struct JukeboxHistoryEntry {
+    std::string owner;
+    std::string video_id;
+    std::string queued_by;
+    std::int64_t played_at = 0;
 };
 
 inline constexpr std::size_t kJukeboxQueueCap = 50;
+inline constexpr std::size_t kJukeboxHistoryCap = 30;
 
 bool valid_username(const std::string& username);
 std::string fingerprint_phone(const std::string& e164);
@@ -304,13 +342,25 @@ public:
     std::vector<Message> messages_in(ConversationId conv_id) const;
 
     // Owner must be an existing account; video_id must already be a validated
-    // id (see extract_youtube_id). Returns false on unknown owner, invalid
-    // id, or a full queue (kJukeboxQueueCap) — caller renders the refusal.
-    bool add_jukebox_track(const std::string& owner, const std::string& video_id);
+    // id (see extract_youtube_id). queued_by is who's requesting it -- pass
+    // owner itself for the owner's own curated additions. Returns false on
+    // unknown owner, invalid id, or a full queue (kJukeboxQueueCap) — caller
+    // renders the refusal. Policy (who besides the owner may add), block,
+    // and one-outstanding-request-per-guest checks are the caller's job
+    // (http_server.cpp), same division extract_youtube_id validation already is.
+    bool add_jukebox_track(const std::string& owner, const std::string& video_id,
+                           const std::string& queued_by);
     // Removes the first matching (owner, video_id) entry, if any. No-op if
-    // absent — same shape as remove_inner.
+    // absent — same shape as remove_inner. Does not touch history.
     void remove_jukebox_track(const std::string& owner, const std::string& video_id);
     std::vector<JukeboxTrack> jukebox_of(const std::string& owner) const;
+    // Called when a track finishes playing. Always appends a history entry,
+    // using the track's own stored queued_by (never a caller-supplied one).
+    // A guest-requested track (queued_by != owner) is also removed from the
+    // queue -- one shot, then gone; an owner-curated track stays queued,
+    // unaffected. No-op if the track isn't currently queued.
+    void complete_jukebox_track(const std::string& owner, const std::string& video_id);
+    std::vector<JukeboxHistoryEntry> jukebox_history_of(const std::string& owner) const;
 
     const std::string& path() const { return path_; }
 
@@ -345,6 +395,7 @@ private:
     std::vector<Notice> notices_;
     std::map<AccountId, Avatar> avatars_;
     std::map<std::string, std::vector<JukeboxTrack>> jukebox_;
+    std::map<std::string, std::vector<JukeboxHistoryEntry>> jukebox_history_;
     ConversationId next_conv_id_ = 1;
     MessageId next_message_id_ = 1;
     std::map<ConversationId, Conversation> conversations_;

@@ -245,11 +245,11 @@ int main() {
         auto signup = create_account(store, breach, "juke", "correct-horse-battery-staple", "+15559999");
         assert(signup.error == AuthError::None);
 
-        assert(!store.add_jukebox_track("nobody-such-account", "dQw4w9WgXcQ"));
-        assert(!store.add_jukebox_track("juke", "too-short")); // defensive: not 11 chars
+        assert(!store.add_jukebox_track("nobody-such-account", "dQw4w9WgXcQ", "juke"));
+        assert(!store.add_jukebox_track("juke", "too-short", "juke")); // defensive: not 11 chars
 
-        assert(store.add_jukebox_track("juke", "dQw4w9WgXcQ"));
-        assert(store.add_jukebox_track("juke", "aaaaaaaaaaa"));
+        assert(store.add_jukebox_track("juke", "dQw4w9WgXcQ", "juke"));
+        assert(store.add_jukebox_track("juke", "aaaaaaaaaaa", "juke"));
         assert(store.jukebox_of("juke").size() == 2);
         assert(store.jukebox_of("juke")[0].video_id == "dQw4w9WgXcQ");
 
@@ -261,23 +261,73 @@ int main() {
         for (std::size_t i = store.jukebox_of("juke").size(); i < kJukeboxQueueCap; ++i) {
             std::string id(11, 'b');
             id[0] = static_cast<char>('a' + (i % 26));
-            assert(store.add_jukebox_track("juke", id));
+            assert(store.add_jukebox_track("juke", id, "juke"));
         }
         assert(store.jukebox_of("juke").size() == kJukeboxQueueCap);
-        assert(!store.add_jukebox_track("juke", "zzzzzzzzzzz")); // full
+        assert(!store.add_jukebox_track("juke", "zzzzzzzzzzz", "juke")); // full
         std::cout << "jukebox add/remove/cap ok\n";
+    }
+
+    {
+        FileStore store(path);
+        auto signup = create_account(store, breach, "jukeguest", "correct-horse-battery-staple", "+15558123");
+        assert(signup.error == AuthError::None);
+
+        assert(store.add_jukebox_track("jukeguest", "cccccccccc1", "jukeguest")); // owner's own
+        assert(store.add_jukebox_track("jukeguest", "ddddddddddd", "someguest")); // a guest request
+        assert(store.jukebox_of("jukeguest").size() == 2);
+        assert(store.jukebox_of("jukeguest")[1].queued_by == "someguest");
+
+        // A guest track is removed on completion and logged to history; an
+        // owner-curated one stays queued (unaffected) but still logs.
+        store.complete_jukebox_track("jukeguest", "cccccccccc1");
+        assert(store.jukebox_of("jukeguest").size() == 2); // owner's own track survives
+        store.complete_jukebox_track("jukeguest", "ddddddddddd");
+        assert(store.jukebox_of("jukeguest").size() == 1); // the guest's is gone
+        assert(store.jukebox_of("jukeguest")[0].video_id == "cccccccccc1");
+        store.complete_jukebox_track("jukeguest", "not-queued-x"); // no-op, doesn't throw
+
+        auto hist = store.jukebox_history_of("jukeguest");
+        assert(hist.size() == 2);
+        assert(hist[0].video_id == "cccccccccc1" && hist[0].queued_by == "jukeguest");
+        assert(hist[1].video_id == "ddddddddddd" && hist[1].queued_by == "someguest");
+        std::cout << "jukebox queued_by, complete, and history ok\n";
     }
 
     {
         const std::string on_disk = slurp(path);
         assert(on_disk.find("\njt\t") != std::string::npos);
+        assert(on_disk.find("\njh\t") != std::string::npos);
         FileStore store(path);
         assert(store.jukebox_of("juke").size() == kJukeboxQueueCap);
+        assert(store.jukebox_of("jukeguest").size() == 1);
+        assert(store.jukebox_of("jukeguest")[0].queued_by == "jukeguest");
+        assert(store.jukebox_history_of("jukeguest").size() == 2);
         auto acc = store.find_by_username("juke");
         assert(acc.has_value());
         assert(store.delete_account(acc->id));
         assert(store.jukebox_of("juke").empty());
         std::cout << "jukebox LGP1 tag survives reload; purged on account delete\n";
+    }
+
+    {
+        FileStore store(path);
+        auto signup = create_account(store, breach, "prefuser", "correct-horse-battery-staple", "+15557001");
+        assert(signup.error == AuthError::None);
+        auto pr = store.prefs_of("prefuser");
+        assert(pr.jukebox_policy == JukeboxPolicy::OwnerOnly); // default before any save
+        pr.jukebox_policy = JukeboxPolicy::Friends;
+        pr.hide_profile_from_others = true;
+        pr.hide_posts_from_friends = true;
+        store.set_prefs("prefuser", pr);
+    }
+    {
+        FileStore store(path); // reload
+        auto pr = store.prefs_of("prefuser");
+        assert(pr.jukebox_policy == JukeboxPolicy::Friends);
+        assert(pr.hide_profile_from_others && !pr.hide_profile_from_friends);
+        assert(pr.hide_posts_from_friends && !pr.hide_posts_from_others);
+        std::cout << "jukebox policy and hide-from prefs survive reload\n";
     }
 
     std::uint64_t conv_id = 0;

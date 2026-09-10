@@ -2305,18 +2305,113 @@ std::string jukebox_standalone_page(const std::string& yt_key) {
            + jukebox_script(yt_key, true);
 }
 
+// The "Add a track" input + live search box, shared between the owner's own
+// queue and a guest's one-shot request -- identical UI, different POST
+// target and different note underneath it.
+std::string jukebox_add_form(const std::string& post_target, const std::string& note) {
+    const char* yt_key = youtube_api_key_from_env();
+    const char* placeholder = yt_key[0]
+        ? "Paste a link, or type to search"
+        : "Paste a YouTube link (search is off — site operator hasn't set YOUTUBE_API_KEY)";
+    return "<div><label>Add a track</label>"
+            "<div class=\"row\" style=\"align-items:flex-start\">"
+            "<input id=\"jinput\" placeholder=\""+std::string(placeholder)+"\" autocomplete=\"off\" style=\"flex:1\">"
+            "<button type=\"button\" id=\"jqueue\">Queue</button>"
+            "</div>"
+            "<div id=\"jsresults\" style=\"margin-top:.4rem;display:flex;flex-direction:column;gap:.2rem\"></div>"
+            "</div>"
+            "<p class=\"muted\">"+note+"</p>"
+            "<script>(function(){"
+            "var key="+js_string_literal(yt_key)+";"
+            "var target="+js_string_literal(post_target)+";"
+            "var input=document.getElementById('jinput'),out=document.getElementById('jsresults'),"
+            "qbtn=document.getElementById('jqueue');"
+            "var lastTopId=null,timer=null,gen=0;"
+            "function esc(s){"
+            "var ta=document.createElement('textarea');ta.innerHTML=s;"
+            "var d=document.createElement('div');d.textContent=ta.value;return d.innerHTML;"
+            "}"
+            "function looksLikeUrl(s){return /^https?:\\/\\//i.test(s)||/youtu\\.?be/i.test(s);}"
+            "function queueUrl(url){"
+            "fetch(target,{method:'POST',"
+            "headers:{'Content-Type':'application/x-www-form-urlencoded'},"
+            "body:'url='+encodeURIComponent(url)}).then(function(r){window.location=r.url||location.href;});"
+            "}"
+            "function render(items){"
+            "out.innerHTML='';lastTopId=null;"
+            "if(!items||!items.length)return;"
+            "items.forEach(function(it,idx){"
+            "var id=it.id.videoId,title=it.snippet.title,thumb=it.snippet.thumbnails.default.url;"
+            "var row=document.createElement('div');row.className='row';"
+            "row.style.cssText='align-items:center;cursor:pointer;padding:.3rem;border-radius:var(--rsm)';"
+            "row.innerHTML='<img src=\"'+thumb+'\" width=\"60\" height=\"45\" alt=\"\" style=\"border-radius:4px\">"
+            "<span style=\"flex:1\">'+esc(title)+'</span>';"
+            "row.title='Click to queue this track';"
+            "row.addEventListener('click',function(){"
+            "queueUrl('https://www.youtube.com/watch?v='+id);"
+            "});"
+            "out.appendChild(row);"
+            "if(idx===0){lastTopId=id;row.style.background='var(--parchment)';}"
+            "});"
+            "}"
+            "function search(term){"
+            "if(!key||!term){out.innerHTML='';return;}"
+            "var my=++gen;"
+            "fetch('https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=6&q='"
+            "+encodeURIComponent(term)+'&key='+key)"
+            ".then(function(r){return r.json();})"
+            ".then(function(data){if(my!==gen)return;render(data.items);})"
+            ".catch(function(){if(my!==gen)return;out.innerHTML='';});"
+            "}"
+            "input.addEventListener('input',function(){"
+            "var val=input.value.trim();"
+            "clearTimeout(timer);"
+            "if(!val||looksLikeUrl(val)){out.innerHTML='';lastTopId=null;return;}"
+            "timer=setTimeout(function(){search(val);},300);"
+            "});"
+            "function doQueue(){"
+            "var val=input.value.trim();if(!val)return;"
+            "queueUrl(looksLikeUrl(val)?val:(lastTopId?('https://www.youtube.com/watch?v='+lastTopId):val));"
+            "}"
+            "qbtn.addEventListener('click',doQueue);"
+            "input.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();doQueue();}});"
+            "})();</script>";
+}
+
 // Page-local jukebox widget (navigation option A: MPA, own instance per
 // page, stops on navigate away — no site-wide SPA, no WebSocket sync).
-// Owner-curated: add/remove only render when owner_view is true; visitors
-// get Prev/Next over the same queue via ordinary links, nothing more.
-std::string jukebox_widget(const std::string& owner, bool owner_view, const std::map<std::string,std::string>& qs) {
+// The owner always curates their own queue -- persistent, Prev/Next
+// browsing, no cap beyond kJukeboxQueueCap. Depending on the owner's
+// JukeboxPolicy, a signed-in friend or anyone else may also queue one
+// track at a time: a one-shot guest request that's removed and logged to
+// history the moment the embedded player reports it ended (see
+// complete_jukebox_track). `viewer` is the signed-in username, or empty
+// for an anonymous visitor.
+std::string jukebox_widget(const std::string& owner, bool owner_view, const std::string& viewer,
+                            const std::map<std::string,std::string>& qs) {
     auto tracks = g_store.jukebox_of(owner);
+    auto owner_prefs = g_store.prefs_of(owner);
     std::string html = "<div class=\"card jukebox\"><h2>Jukebox</h2>";
     if (qs.count("jerr")) {
         const std::string& e = qs.at("jerr");
         if (e=="url") html += "<p class=\"warn\">That link wasn't recognized as a YouTube video.</p>";
         else if (e=="full") html += "<p class=\"warn\">Queue already holds "+std::to_string(kJukeboxQueueCap)+" tracks. Remove one first.</p>";
+        else if (e=="denied") html += "<p class=\"warn\">You can't queue a track here.</p>";
+        else if (e=="pending") html += "<p class=\"warn\">You already have a track queued. Wait for it to play first.</p>";
     }
+
+    const bool is_guest = !owner_view && !viewer.empty();
+    const bool is_friend = is_guest && g_store.are_friends(viewer, owner);
+    const bool blocked = is_guest && g_store.is_blocked(owner, viewer);
+    bool has_pending = false;
+    if (is_guest) for (const auto& t : tracks) if (t.queued_by == viewer) { has_pending = true; break; }
+    bool policy_allows = false;
+    if (is_guest && !blocked) {
+        if (owner_prefs.jukebox_policy == JukeboxPolicy::Anyone) policy_allows = true;
+        else if (owner_prefs.jukebox_policy == JukeboxPolicy::Friends) policy_allows = is_friend;
+    }
+    const bool guest_can_add = is_guest && policy_allows && !has_pending;
+
     if (tracks.empty()) {
         html += "<p class=\"empty\">No tracks queued.</p>";
     } else {
@@ -2326,10 +2421,12 @@ std::string jukebox_widget(const std::string& owner, bool owner_view, const std:
         if (idx < 0) idx = 0;
         if (idx >= static_cast<int>(tracks.size())) idx = static_cast<int>(tracks.size()) - 1;
         const auto& t = tracks[static_cast<std::size_t>(idx)];
-        html += "<iframe src=\"https://www.youtube-nocookie.com/embed/"+html_escape(t.video_id)+"?rel=0\" "
+        html += "<iframe id=\"jbplayer\" src=\"https://www.youtube-nocookie.com/embed/"+html_escape(t.video_id)+
+                "?rel=0&enablejsapi=1\" "
                 "title=\"Queued track\" allow=\"encrypted-media; picture-in-picture\" "
                 "referrerpolicy=\"strict-origin-when-cross-origin\" allowfullscreen></iframe>"
-                "<p class=\"muted\">Track "+std::to_string(idx+1)+" of "+std::to_string(tracks.size())+"</p>"
+                "<p class=\"muted\">Track "+std::to_string(idx+1)+" of "+std::to_string(tracks.size())+
+                (t.queued_by != owner ? " · queued by "+html_escape(t.queued_by) : "")+"</p>"
                 "<div class=\"row\">";
         if (idx > 0) html += "<a class=\"btn ghost\" href=\"?t="+std::to_string(idx-1)+"\">Prev</a>";
         if (idx+1 < static_cast<int>(tracks.size())) html += "<a class=\"btn ghost\" href=\"?t="+std::to_string(idx+1)+"\">Next</a>";
@@ -2339,75 +2436,66 @@ std::string jukebox_widget(const std::string& owner, bool owner_view, const std:
                     "<button class=\"ghost\" type=\"submit\">Remove this track</button></form>";
         }
         html += "</div>";
+        // Reports the currently playing track's real end (not just a click
+        // away) so a guest's one-shot request actually gets one shot,
+        // whoever is watching -- owner included. Requires being signed in;
+        // an anonymous visitor can still watch, just never triggers it.
+        if (!viewer.empty()) {
+            html += "<script>(function(){"
+                    "var owner="+js_string_literal(owner)+",videoId="+js_string_literal(t.video_id)+";"
+                    "function fireComplete(){"
+                    "fetch('/u/'+encodeURIComponent(owner)+'/jukebox/complete',{method:'POST',"
+                    "headers:{'Content-Type':'application/x-www-form-urlencoded'},"
+                    "body:'video_id='+encodeURIComponent(videoId)}).then(function(){location.reload();});"
+                    "}"
+                    "var tag=document.createElement('script');tag.src='https://www.youtube.com/iframe_api';"
+                    "document.head.appendChild(tag);"
+                    "window.onYouTubeIframeAPIReady=function(){"
+                    "new YT.Player('jbplayer',{events:{onStateChange:function(e){"
+                    "if(e.data===YT.PlayerState.ENDED)fireComplete();"
+                    "}}});"
+                    "};"
+                    "})();</script>";
+        }
     }
+
     if (owner_view) {
-        const char* yt_key = youtube_api_key_from_env();
-        const char* placeholder = yt_key[0]
-            ? "Paste a link, or type to search"
-            : "Paste a YouTube link (search is off — site operator hasn't set YOUTUBE_API_KEY)";
-        html += "<div><label>Add a track</label>"
-                "<div class=\"row\" style=\"align-items:flex-start\">"
-                "<input id=\"jinput\" placeholder=\""+std::string(placeholder)+"\" autocomplete=\"off\" style=\"flex:1\">"
-                "<button type=\"button\" id=\"jqueue\">Queue</button>"
-                "</div>"
-                "<div id=\"jsresults\" style=\"margin-top:.4rem;display:flex;flex-direction:column;gap:.2rem\"></div>"
-                "</div>"
-                "<p class=\"muted\">Owner-curated. Visitors listen; navigating away stops playback.</p>"
-                "<script>(function(){"
-                "var key="+js_string_literal(yt_key)+";"
-                "var input=document.getElementById('jinput'),out=document.getElementById('jsresults'),"
-                "qbtn=document.getElementById('jqueue');"
-                "var lastTopId=null,timer=null,gen=0;"
-                "function esc(s){"
-                "var ta=document.createElement('textarea');ta.innerHTML=s;"
-                "var d=document.createElement('div');d.textContent=ta.value;return d.innerHTML;"
-                "}"
-                "function looksLikeUrl(s){return /^https?:\\/\\//i.test(s)||/youtu\\.?be/i.test(s);}"
-                "function queueUrl(url){"
-                "fetch('/me/jukebox/add',{method:'POST',"
-                "headers:{'Content-Type':'application/x-www-form-urlencoded'},"
-                "body:'url='+encodeURIComponent(url)}).then(function(r){window.location=r.url||location.href;});"
-                "}"
-                "function render(items){"
-                "out.innerHTML='';lastTopId=null;"
-                "if(!items||!items.length)return;"
-                "items.forEach(function(it,idx){"
-                "var id=it.id.videoId,title=it.snippet.title,thumb=it.snippet.thumbnails.default.url;"
-                "var row=document.createElement('div');row.className='row';"
-                "row.style.cssText='align-items:center;cursor:pointer;padding:.3rem;border-radius:var(--rsm)';"
-                "row.innerHTML='<img src=\"'+thumb+'\" width=\"60\" height=\"45\" alt=\"\" style=\"border-radius:4px\">"
-                "<span style=\"flex:1\">'+esc(title)+'</span>';"
-                "row.title='Click to queue this track';"
-                "row.addEventListener('click',function(){"
-                "queueUrl('https://www.youtube.com/watch?v='+id);"
-                "});"
-                "out.appendChild(row);"
-                "if(idx===0){lastTopId=id;row.style.background='var(--parchment)';}"
-                "});"
-                "}"
-                "function search(term){"
-                "if(!key||!term){out.innerHTML='';return;}"
-                "var my=++gen;"
-                "fetch('https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=6&q='"
-                "+encodeURIComponent(term)+'&key='+key)"
-                ".then(function(r){return r.json();})"
-                ".then(function(data){if(my!==gen)return;render(data.items);})"
-                ".catch(function(){if(my!==gen)return;out.innerHTML='';});"
-                "}"
-                "input.addEventListener('input',function(){"
-                "var val=input.value.trim();"
-                "clearTimeout(timer);"
-                "if(!val||looksLikeUrl(val)){out.innerHTML='';lastTopId=null;return;}"
-                "timer=setTimeout(function(){search(val);},300);"
-                "});"
-                "function doQueue(){"
-                "var val=input.value.trim();if(!val)return;"
-                "queueUrl(looksLikeUrl(val)?val:(lastTopId?('https://www.youtube.com/watch?v='+lastTopId):val));"
-                "}"
-                "qbtn.addEventListener('click',doQueue);"
-                "input.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();doQueue();}});"
-                "})();</script>";
+        html += jukebox_add_form("/me/jukebox/add", "Visitors listen; navigating away stops playback.");
+        auto sel = [&](JukeboxPolicy pol) -> std::string { return owner_prefs.jukebox_policy==pol?" checked":""; };
+        html += "<form method=\"POST\" action=\"/me/jukebox/policy\" style=\"margin-top:.75rem\">"
+                "<label>Who else can queue a track here</label>"
+                "<p><label><input type=\"radio\" name=\"policy\" value=\"0\""+sel(JukeboxPolicy::OwnerOnly)+"> Just me</label></p>"
+                "<p><label><input type=\"radio\" name=\"policy\" value=\"1\""+sel(JukeboxPolicy::Friends)+"> Friends</label></p>"
+                "<p><label><input type=\"radio\" name=\"policy\" value=\"2\""+sel(JukeboxPolicy::Anyone)+"> Anyone signed in</label></p>"
+                "<p class=\"muted\">One request at a time per person; it plays once, then it's gone. "
+                "Anyone you've blocked can never queue, regardless. Manage blocks in "
+                "<a href=\"/settings\">Settings</a>.</p>"
+                "<button>Save</button></form>";
+    } else if (guest_can_add) {
+        html += jukebox_add_form("/u/"+owner+"/jukebox/add", "One request at a time. It plays once, then it's gone.");
+    } else if (is_guest && has_pending) {
+        html += "<p class=\"muted\">You already have a track queued here.</p>";
+    } else if (is_guest && !blocked && owner_prefs.jukebox_policy == JukeboxPolicy::Friends) {
+        html += "<p class=\"muted\">Only "+html_escape(owner)+"'s friends can queue a track here.</p>";
     }
+
+    auto hist = g_store.jukebox_history_of(owner);
+    if (!hist.empty()) {
+        std::reverse(hist.begin(), hist.end());
+        html += "<div style=\"margin-top:1rem\"><label>Recently played</label>";
+        std::size_t shown = 0;
+        for (const auto& h : hist) {
+            if (shown++ >= 10) break;
+            html += "<p class=\"muted\" style=\"display:flex;align-items:center;gap:.4rem;margin:.3rem 0\">"
+                    "<img src=\"https://img.youtube.com/vi/"+html_escape(h.video_id)+"/default.jpg\" "
+                    "width=\"40\" height=\"30\" alt=\"\" style=\"border-radius:4px\">"
+                    "<a href=\"https://www.youtube.com/watch?v="+html_escape(h.video_id)+"\" target=\"_blank\" rel=\"noopener\">watch again</a>"
+                    " · "+(h.queued_by==owner?std::string("owner's pick"):html_escape(h.queued_by))+
+                    " · "+html_escape(fmt_time(h.played_at))+"</p>";
+        }
+        html += "</div>";
+    }
+
     html += "</div>";
     return html;
 }
@@ -2791,7 +2879,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
                 "placeholder=\".lg-theme h1{color:#a23b3b}\">"+html_escape(current_css)+"</textarea>"
                 "<button>Save CSS</button></form></div>";
         }
-        html += jukebox_widget(user, true, qs);
+        html += jukebox_widget(user, true, user, qs);
         return pg("Profile", html);
     }
 
@@ -2845,6 +2933,16 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             return http_code("404 Not Found", wrap("Not found", user, unread, "<div class=\"card\"><p>No such profile.</p></div>"));
         if (acc && g_store.is_blocked(user, found->username))
             return http_code("404 Not Found", wrap("Not found", user, unread, "<div class=\"card\"><p>No such profile.</p></div>"));
+        const bool is_owner = acc && acc->username == found->username;
+        const bool is_friend = acc && !is_owner && g_store.are_friends(user, found->username);
+        auto target_prefs = g_store.prefs_of(found->username);
+        const bool profile_hidden = !is_owner &&
+            ((is_friend && target_prefs.hide_profile_from_friends) ||
+             (!is_friend && target_prefs.hide_profile_from_others));
+        if (profile_hidden) {
+            return http_code("200 OK", wrap(found->username, user, unread,
+                "<div class=\"card\"><p>This profile is private.</p></div>"));
+        }
         std::string html = "<div class=\"card\"><div class=\"who\">"+portrait_tag(found->username,"")+
             "<div><h1>"+html_escape(found->username)+"</h1>"
             "<p class=\"muted\">Public profile. Not a CitizenId. Not a seated office.</p></div></div>";
@@ -2880,11 +2978,14 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
                     html_escape(found->username)+"\"><button>Send friend request</button></form>";
         }
         html += "</div>";
-        html += jukebox_widget(found->username, acc && acc->username == found->username, qs);
+        html += jukebox_widget(found->username, is_owner, user, qs);
         {
-            auto theirPosts = g_store.posts_by(found->username);
-            std::reverse(theirPosts.begin(), theirPosts.end());
-            if (!theirPosts.empty()) {
+            const bool posts_hidden = !is_owner &&
+                ((is_friend && target_prefs.hide_posts_from_friends) ||
+                 (!is_friend && target_prefs.hide_posts_from_others));
+            if (!posts_hidden) {
+                auto theirPosts = g_store.posts_by(found->username);
+                std::reverse(theirPosts.begin(), theirPosts.end());
                 for (const auto& p : theirPosts) html += "<div class=\"card\">"+post_block(p, user)+"</div>";
             }
         }
@@ -3263,6 +3364,16 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             + "Hide presence (presence is not shown in this release)</label></p>"
             + "<p class=\"muted\">Direct messages are friends-only for everyone until age can be assured. "
             + "That is policy, not a self-reported minor toggle.</p>"
+            + "<label>Profile</label>"
+            + "<p><label><input type=\"checkbox\" name=\"hide_profile_from_friends\" value=\"1\"" + (p.hide_profile_from_friends?" checked":"") + "> "
+            + "Hide my profile from friends</label></p>"
+            + "<p><label><input type=\"checkbox\" name=\"hide_profile_from_others\" value=\"1\"" + (p.hide_profile_from_others?" checked":"") + "> "
+            + "Hide my profile from everyone else</label></p>"
+            + "<label>Posts</label>"
+            + "<p><label><input type=\"checkbox\" name=\"hide_posts_from_friends\" value=\"1\"" + (p.hide_posts_from_friends?" checked":"") + "> "
+            + "Hide my posts from friends</label></p>"
+            + "<p><label><input type=\"checkbox\" name=\"hide_posts_from_others\" value=\"1\"" + (p.hide_posts_from_others?" checked":"") + "> "
+            + "Hide my posts from everyone else</label></p>"
             + "<button>Save privacy</button></form><h2>Block list</h2>";
         auto bl = g_store.blocked_by(user);
         if (bl.empty()) html += "<p class=\"empty\">No one blocked.</p>";
@@ -3475,13 +3586,65 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         auto url = trim_ws(parse_form(body)["url"]);
         auto id = extract_youtube_id(url);
         if (!id) return http_redir("/me?jerr=url");
-        if (!g_store.add_jukebox_track(user, *id)) return http_redir("/me?jerr=full");
+        if (!g_store.add_jukebox_track(user, *id, user)) return http_redir("/me?jerr=full");
         return http_redir("/me");
     }
     if(method=="POST"&&path=="/me/jukebox/remove") {
         if(!acc) return http_redir("/login");
         g_store.remove_jukebox_track(user, parse_form(body)["video_id"]);
         return http_redir("/me");
+    }
+    if(method=="POST"&&path=="/me/jukebox/policy") {
+        if(!acc) return http_redir("/login");
+        auto f = parse_form(body);
+        int pv = 0;
+        try { pv = std::stoi(f["policy"]); } catch (...) { pv = 0; }
+        if (pv < 0 || pv > 2) pv = 0;
+        auto p = g_store.prefs_of(user);
+        p.jukebox_policy = static_cast<JukeboxPolicy>(pv);
+        g_store.set_prefs(user, p);
+        return http_redir("/me");
+    }
+    // A guest's one-shot request on someone else's jukebox. Gated by the
+    // owner's JukeboxPolicy, the owner's block list, and one outstanding
+    // request per guest -- add_jukebox_track itself only enforces the
+    // account/id/cap checks it always has. Also reachable by the owner
+    // themselves (posting from their own /u/<username> page rather than
+    // /me), in which case none of the guest gates apply -- same as /me/jukebox/add.
+    if(method=="POST"&&path.rfind("/u/",0)==0&&path.size()>15&&
+       path.compare(path.size()-12,12,"/jukebox/add")==0) {
+        const std::string who = path.substr(3, path.size()-3-12);
+        if(!acc) return http_redir("/login");
+        if (!valid_username(who)) return http_redir("/");
+        auto found = g_store.find_by_username(who);
+        if (!found) return http_redir("/");
+        if (who != user) {
+            if (g_store.is_blocked(who, user)) return http_redir("/u/"+who+"?jerr=denied");
+            auto policy = g_store.prefs_of(who).jukebox_policy;
+            bool allowed = policy == JukeboxPolicy::Anyone ||
+                           (policy == JukeboxPolicy::Friends && g_store.are_friends(user, who));
+            if (!allowed) return http_redir("/u/"+who+"?jerr=denied");
+            for (const auto& t : g_store.jukebox_of(who)) {
+                if (t.queued_by == user) return http_redir("/u/"+who+"?jerr=pending");
+            }
+        }
+        auto url = trim_ws(parse_form(body)["url"]);
+        auto id = extract_youtube_id(url);
+        if (!id) return http_redir("/u/"+who+"?jerr=url");
+        if (!g_store.add_jukebox_track(who, *id, user)) return http_redir("/u/"+who+"?jerr=full");
+        return http_redir("/u/"+who);
+    }
+    // Fired by the embedded player when the currently displayed track
+    // actually finishes -- see jukebox_widget's onStateChange script.
+    // complete_jukebox_track looks up the track's own stored queued_by
+    // itself (never trusts anything from the client beyond the video id),
+    // so this is safe to call from anyone signed in, owner or visitor.
+    if(method=="POST"&&path.rfind("/u/",0)==0&&path.size()>20&&
+       path.compare(path.size()-17,17,"/jukebox/complete")==0) {
+        const std::string who = path.substr(3, path.size()-3-17);
+        if(!acc) return http_redir("/login");
+        if (valid_username(who)) g_store.complete_jukebox_track(who, parse_form(body)["video_id"]);
+        return http_ok("ok");
     }
     if(method=="POST"&&path=="/feed") {
         if(!acc) return http_redir("/login");
@@ -3738,6 +3901,10 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         p.findability = static_cast<Findability>(fv);
         p.group_invite_confirm = f["group_invite_confirm"] == "1";
         p.presence_hide = f["presence_hide"] == "1";
+        p.hide_profile_from_friends = f["hide_profile_from_friends"] == "1";
+        p.hide_profile_from_others = f["hide_profile_from_others"] == "1";
+        p.hide_posts_from_friends = f["hide_posts_from_friends"] == "1";
+        p.hide_posts_from_others = f["hide_posts_from_others"] == "1";
         g_store.set_prefs(user, p);
         return http_redir("/settings");
     }

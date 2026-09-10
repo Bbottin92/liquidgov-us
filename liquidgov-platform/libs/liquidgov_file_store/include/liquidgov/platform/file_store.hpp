@@ -47,6 +47,12 @@
 //          gmsg line for message_id is always written before its gmh lines
 //   ac     <account_id> <css>   // author CSS for /u/<username>/theme, already sanitized
 //          (see sanitize_author_css in http_server.cpp) before it ever reaches here
+//   cvf    <account_id> <frame_index> <blob_id>   // one canvas snapshot, in draw order;
+//          bytes live in the blob dir, same as avatars. A fresh drawing clears all of an
+//          account's cvf lines first (see clear_canvas_frames), so index is always 0..N-1
+//          contiguous for whatever's currently stored.
+//   cvm    <account_id> <timelapse 0|1>   // profile background mode: 0 = last frame as a
+//          static image, 1 = loop through every frame. Absence = static (0).
 //
 // password_hash is argon2id from hash_password(). Never plaintext.
 // Phone number is not stored (signup binding only). Sessions are secrets;
@@ -176,6 +182,19 @@ public:
     void set_author_css(AccountId id, const std::string& css);
     std::string author_css(AccountId id) const;
 
+    // Canvas: an ordered sequence of blob-stored PNG snapshots captured
+    // while the account was drawing, used to set the profile theme's
+    // background (see theme_background_css in http_server.cpp) — either
+    // the last frame as a static image, or all of them as a CSS-only
+    // looping animation. clear_canvas_frames wipes the whole sequence
+    // (called before a fresh drawing starts); add_canvas_frame appends the
+    // next one.
+    void clear_canvas_frames(AccountId id);
+    void add_canvas_frame(AccountId id, const std::string& blob_id);
+    std::vector<std::string> canvas_frames(AccountId id) const; // blob ids, draw order
+    void set_canvas_timelapse(AccountId id, bool on);
+    bool canvas_timelapse(AccountId id) const;
+
     bool set_password_hash(AccountId id, const std::string& password_hash);
 
     bool are_friends(const std::string& a, const std::string& b) const;
@@ -290,6 +309,8 @@ private:
     std::map<SessionId, Session> sessions_;
     std::map<AccountId, std::string> blurbs_;
     std::map<AccountId, std::string> author_css_;
+    std::map<AccountId, std::vector<std::string>> canvas_frames_;
+    std::map<AccountId, bool> canvas_timelapse_;
     std::map<AccountId, std::string> phone_fp_;
     std::map<std::string, std::int64_t> quarantine_;
     std::set<std::pair<std::string, std::string>> friends_;

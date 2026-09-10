@@ -331,6 +331,31 @@ std::string FileStore::author_css(AccountId id) const {
     return it == author_css_.end() ? "" : it->second;
 }
 
+void FileStore::clear_canvas_frames(AccountId id) {
+    canvas_frames_.erase(id);
+    flush();
+}
+
+void FileStore::add_canvas_frame(AccountId id, const std::string& blob_id) {
+    canvas_frames_[id].push_back(blob_id);
+    flush();
+}
+
+std::vector<std::string> FileStore::canvas_frames(AccountId id) const {
+    auto it = canvas_frames_.find(id);
+    return it == canvas_frames_.end() ? std::vector<std::string>{} : it->second;
+}
+
+void FileStore::set_canvas_timelapse(AccountId id, bool on) {
+    canvas_timelapse_[id] = on;
+    flush();
+}
+
+bool FileStore::canvas_timelapse(AccountId id) const {
+    auto it = canvas_timelapse_.find(id);
+    return it == canvas_timelapse_.end() ? false : it->second;
+}
+
 bool FileStore::set_password_hash(AccountId id, const std::string& password_hash) {
     auto it = accounts_.find(id);
     if (it == accounts_.end()) return false;
@@ -817,6 +842,8 @@ bool FileStore::delete_account(AccountId id) {
     phone_fp_.erase(id);
     blurbs_.erase(id);
     author_css_.erase(id);
+    canvas_frames_.erase(id);
+    canvas_timelapse_.erase(id);
     avatars_.erase(id);
     jukebox_.erase(name);
     by_username_.erase(name);
@@ -836,6 +863,8 @@ void FileStore::load() {
     sessions_.clear();
     blurbs_.clear();
     author_css_.clear();
+    canvas_frames_.clear();
+    canvas_timelapse_.clear();
     phone_fp_.clear();
     quarantine_.clear();
     friends_.clear();
@@ -1001,6 +1030,20 @@ void FileStore::load() {
             AccountId id = parse_u64(f[1], "author_css account");
             if (id == 0) throw std::runtime_error("LGP1: empty ac record");
             author_css_[id] = pct_decode(f[2]);
+        } else if (tag == "cvf") {
+            if (f.size() != 4) throw std::runtime_error("LGP1: bad cvf record");
+            AccountId id = parse_u64(f[1], "canvas frame account");
+            int idx = static_cast<int>(parse_u64(f[2], "canvas frame index"));
+            std::string blob_id = pct_decode(f[3]);
+            if (id == 0 || blob_id.empty()) throw std::runtime_error("LGP1: empty cvf record");
+            auto& frames = canvas_frames_[id];
+            if (static_cast<int>(frames.size()) <= idx) frames.resize(idx + 1);
+            frames[idx] = blob_id;
+        } else if (tag == "cvm") {
+            if (f.size() != 3) throw std::runtime_error("LGP1: bad cvm record");
+            AccountId id = parse_u64(f[1], "canvas mode account");
+            if (id == 0) throw std::runtime_error("LGP1: empty cvm record");
+            canvas_timelapse_[id] = parse_bit(f[2], "canvas timelapse");
         } else if (tag == "av") {
             if (f.size() != 4) throw std::runtime_error("LGP1: bad av record");
             Avatar av;
@@ -1170,6 +1213,17 @@ void FileStore::flush() {
         if (!accounts_.count(id)) continue;
         if (css.empty()) continue;
         body << "ac\t" << id << "\t" << pct_encode(css) << "\n";
+    }
+    for (const auto& [id, frames] : canvas_frames_) {
+        if (!accounts_.count(id)) continue;
+        for (std::size_t i = 0; i < frames.size(); ++i) {
+            if (frames[i].empty()) continue; // a resize() gap; shouldn't happen via add_canvas_frame
+            body << "cvf\t" << id << "\t" << i << "\t" << pct_encode(frames[i]) << "\n";
+        }
+    }
+    for (const auto& [id, on] : canvas_timelapse_) {
+        if (!accounts_.count(id)) continue;
+        body << "cvm\t" << id << "\t" << (on ? 1 : 0) << "\n";
     }
     for (const auto& [owner, list] : jukebox_) {
         if (!by_username_.count(owner)) continue;

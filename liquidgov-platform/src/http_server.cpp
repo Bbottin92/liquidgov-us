@@ -225,6 +225,10 @@ std::string js_string_literal(const std::string& s) {
 // Lower severity here specifically because the sandboxed iframe has no
 // platform chrome/badges inside it to target in the first place.
 constexpr std::size_t kAuthorCssMaxBytes = 20000;
+// Caps how many snapshots one drawing session can capture -- keeps the
+// timelapse @keyframes CSS (one background-image per frame) and blob
+// storage bounded regardless of how long someone leaves the canvas open.
+constexpr std::size_t kCanvasMaxFrames = 24;
 
 struct CssCheckResult {
     bool ok = true;
@@ -280,6 +284,38 @@ CssCheckResult sanitize_author_css(const std::string& css_in) {
     return {true, ""};
 }
 
+// Server-generated (never sanitize_author_css'd -- it isn't user text)
+// background for the theme document's .lg-theme, from that account's
+// saved canvas frames. Static: the last frame, once. Timelapse: a
+// steps(1) @keyframes cycling background-image through every frame in
+// order -- CSS animating a discrete stop-motion sequence, which is the
+// only way to "replay" a drawing inside a document with zero script
+// execution allowed. Empty when there are no frames yet, so it never
+// clobbers the default look.
+std::string theme_background_css(const std::string& username, std::size_t frame_count, bool timelapse) {
+    if (frame_count == 0) return "";
+    auto frame_url = [&](std::size_t i) {
+        return "/canvas-frame/" + username + "/" + std::to_string(i);
+    };
+    std::ostringstream os;
+    os << ".lg-theme{background-repeat:no-repeat;background-size:cover;background-position:center}";
+    if (!timelapse || frame_count == 1) {
+        os << ".lg-theme{background-image:url(" << frame_url(frame_count - 1) << ")}";
+        return os.str();
+    }
+    const double step_seconds = 0.6;
+    os << "@keyframes lg-canvas-loop{";
+    for (std::size_t i = 0; i < frame_count; ++i) {
+        double pct = (static_cast<double>(i) / static_cast<double>(frame_count)) * 100.0;
+        os << pct << "%{background-image:url(" << frame_url(i) << ")}";
+    }
+    os << "100%{background-image:url(" << frame_url(0) << ")}";
+    os << "}";
+    os << ".lg-theme{animation:lg-canvas-loop " << (step_seconds * static_cast<double>(frame_count))
+       << "s steps(1) infinite}";
+    return os.str();
+}
+
 std::string css() {
     return
         ":root{--paper:#f7f1e4;--parchment:#efe8d8;--panel:#f3ecdd;--ink:#1a1814;"
@@ -325,6 +361,12 @@ std::string css() {
         "label{display:block;font-size:.82rem;color:var(--stone);margin:.4rem 0 .15rem;font-weight:500}"
         "input,textarea,select{width:100%;padding:.65rem .7rem;border-radius:var(--rsm);border:1px solid var(--rule);"
         "background:var(--paper);color:var(--ink);font:1rem var(--body);min-height:44px}"
+        // Checkboxes and radios are natively tiny; the width:100%/min-height:44px
+        // above (meant for text fields) stretches them into giant boxes if not
+        // overridden -- this bit us once already on input[type=color] (fixed
+        // with an inline style there), so fix it globally here instead of
+        // per-control at every future callsite.
+        "input[type=checkbox],input[type=radio]{width:1.1rem;min-height:0;height:1.1rem;padding:0;flex:0 0 auto}"
         "textarea{min-height:6rem;resize:vertical}button,.btn{display:inline-flex;align-items:center;justify-content:center;"
         "gap:.35rem;background:var(--navy);color:var(--paper);border:0;padding:.65rem 1.05rem;border-radius:var(--rsm);"
         "cursor:pointer;font:600 .95rem var(--body);min-height:44px;text-decoration:none}"
@@ -765,6 +807,355 @@ std::string portrait_tag(const std::string& username, const char* cls) {
         return std::string("<span class=\"portrait ")+cls+" ph\" aria-hidden=\"true\"></span>";
     return std::string("<img class=\"portrait ")+cls+"\" src=\"/portrait/"+html_escape(username)+
            "\" alt=\"\" width=\"96\" height=\"96\">";
+}
+
+// Drawing canvas: freehand brushes (pen, marker, spray, eraser, smudge),
+// shape tools (line, rectangle, circle, with an optional filled variant),
+// a paint-bucket flood fill, up to three independently-undoable layers,
+// and image/video/gif import (drawn in as a single still frame -- the
+// storage layer only ever holds flat PNGs, so there's no way to keep a
+// video or an animated gif "alive" inside a saved frame). Captures a PNG
+// snapshot after every completed action (capped, see kCanvasMaxFrames) by
+// flattening the layers together and uploading through /me/canvas/frame --
+// the exact same normalize/scan pipeline as the self-portrait upload, just
+// appending to an ordered list instead of replacing a single slot. Those
+// frames become the profile theme's background: last one as a static
+// image, or all of them as a CSS-only looping animation (see
+// theme_background_css) -- no JS runs inside the sandboxed theme document,
+// so the "replay" has to be a real image sequence, not a script driving a
+// canvas there.
+std::string canvas_page(const std::string& username, const std::string& err) {
+    std::string errHtml;
+    if (err=="image") errHtml = "<p class=\"warn\">That frame wasn't a usable image.</p>";
+    else if (err=="large") errHtml = "<p class=\"warn\">That frame was too large.</p>";
+    else if (err=="full") errHtml = "<p class=\"warn\">This drawing already has the max 24 frames.</p>";
+    std::string html =
+        "<div class=\"card\"><h1>Canvas</h1>"
+        "<p class=\"muted\">Draw, then save it as your profile background &mdash; a still image, "
+        "or a loop of the drawing as it happened.</p>"+errHtml+
+        "<div class=\"row\" style=\"flex-wrap:wrap;gap:.4rem 1rem;align-items:center;margin-bottom:.4rem\">"
+        "<label style=\"display:flex;align-items:center;gap:.3rem\">Tool"
+        "<select id=\"ctool\">"
+        "<option value=\"pen\">Pen</option>"
+        "<option value=\"marker\">Marker</option>"
+        "<option value=\"spray\">Spray</option>"
+        "<option value=\"smudge\">Smudge</option>"
+        "<option value=\"eraser\">Eraser</option>"
+        "<option value=\"line\">Line</option>"
+        "<option value=\"rect\">Rectangle</option>"
+        "<option value=\"circle\">Circle</option>"
+        "<option value=\"bucket\">Paint bucket</option>"
+        "</select></label>"
+        "<input type=\"color\" id=\"ccolor\" value=\"#1a1814\" aria-label=\"Color\" "
+        "style=\"width:36px;min-height:36px;padding:2px;flex:0 0 auto\">"
+        "<label style=\"display:flex;align-items:center;gap:.3rem\">Size"
+        "<input type=\"range\" id=\"csize\" min=\"1\" max=\"48\" value=\"8\" style=\"width:6rem\"></label>"
+        "<label style=\"display:flex;align-items:center;gap:.3rem\">Opacity"
+        "<input type=\"range\" id=\"copacity\" min=\"5\" max=\"100\" value=\"100\" style=\"width:6rem\"></label>"
+        "<label><input type=\"checkbox\" id=\"cglow\"> Glow</label>"
+        "<label><input type=\"checkbox\" id=\"csymmetry\"> Mirror</label>"
+        "<label><input type=\"checkbox\" id=\"cfill\"> Fill shape</label>"
+        "</div>"
+        "<div class=\"row\" style=\"flex-wrap:wrap;gap:.4rem 1rem;align-items:center;margin-bottom:.6rem\">"
+        "<div class=\"row\" style=\"gap:.3rem\">"
+        "<span class=\"muted\">Layer</span>"
+        "<button type=\"button\" class=\"ghost layerbtn\" data-layer=\"0\">1</button>"
+        "<button type=\"button\" class=\"ghost layerbtn\" data-layer=\"1\">2</button>"
+        "<button type=\"button\" class=\"ghost layerbtn\" data-layer=\"2\">3</button>"
+        "</div>"
+        "<label class=\"ghost\" style=\"cursor:pointer;padding:.3rem .6rem;border-radius:var(--rsm)\">"
+        "Import image/video<input type=\"file\" id=\"cimport\" accept=\"image/*,video/*\" "
+        "style=\"display:none\"></label>"
+        "</div>"
+        "<div id=\"ccanvaswrap\" style=\"position:relative;width:100%;max-width:640px;"
+        "aspect-ratio:640/440;background:#fff;border:1px solid var(--rule);"
+        "border-radius:var(--rsm);overflow:hidden;touch-action:none\">"
+        "<canvas id=\"clayer0\" width=\"640\" height=\"440\" "
+        "style=\"position:absolute;inset:0;width:100%;height:100%\"></canvas>"
+        "<canvas id=\"clayer1\" width=\"640\" height=\"440\" "
+        "style=\"position:absolute;inset:0;width:100%;height:100%\"></canvas>"
+        "<canvas id=\"clayer2\" width=\"640\" height=\"440\" "
+        "style=\"position:absolute;inset:0;width:100%;height:100%\"></canvas>"
+        "<canvas id=\"coverlay\" width=\"640\" height=\"440\" "
+        "style=\"position:absolute;inset:0;width:100%;height:100%;cursor:crosshair\"></canvas>"
+        "</div>"
+        "<div class=\"row\" style=\"margin-top:.6rem;gap:.4rem\">"
+        "<button type=\"button\" class=\"ghost\" id=\"cundo\">Undo</button>"
+        "<button type=\"button\" class=\"ghost\" id=\"credo\">Redo</button>"
+        "<button type=\"button\" class=\"ghost\" id=\"cclear\">Clear layer</button>"
+        "</div>"
+        "<p class=\"muted\" id=\"cframecount\" style=\"margin-top:.6rem\">0/24 frames captured</p>"
+        "<label style=\"display:block;margin-top:.4rem\"><input type=\"checkbox\" id=\"ctimelapse\"> "
+        "Loop the drawing as my background instead of a still image</label>"
+        "<div class=\"row\" style=\"margin-top:.6rem\">"
+        "<button type=\"button\" id=\"csave\">Save to profile</button>"
+        "</div>"
+        "<p class=\"muted\" id=\"cstatus\"></p></div>"
+        "<script>(function(){"
+        "var LAYN=3,layers=[];"
+        "for(var li=0;li<LAYN;li++){"
+        "var lc=document.getElementById('clayer'+li);"
+        "layers.push({cv:lc,ctx:lc.getContext('2d'),undo:[],redo:[]});"
+        "}"
+        "var activeLayer=0;"
+        "function acv(){return layers[activeLayer].cv;}"
+        "function actx(){return layers[activeLayer].ctx;}"
+        "var overlay=document.getElementById('coverlay'),octx=overlay.getContext('2d');"
+        "function clearOverlay(){octx.clearRect(0,0,overlay.width,overlay.height);}"
+        "var drawing=false,lastX=0,lastY=0,shapeStart=null;"
+        "function snap(){"
+        "var L=layers[activeLayer];"
+        "L.undo.push(L.ctx.getImageData(0,0,L.cv.width,L.cv.height));"
+        "if(L.undo.length>20)L.undo.shift();"
+        "L.redo=[];"
+        "}"
+        "function pos(e){"
+        "var r=overlay.getBoundingClientRect();var p=e.touches?e.touches[0]:e;"
+        "return{x:(p.clientX-r.left)*overlay.width/r.width,y:(p.clientY-r.top)*overlay.height/r.height};"
+        "}"
+        "function toolVal(){return document.getElementById('ctool').value;}"
+        "function drawSeg(ax,ay,bx,by){"
+        "var b=toolVal(),color=document.getElementById('ccolor').value;"
+        "var size=Number(document.getElementById('csize').value);"
+        "var opacity=Number(document.getElementById('copacity').value)/100;"
+        "var glow=document.getElementById('cglow').checked;"
+        "var cx=actx();"
+        "cx.save();"
+        "if(glow){cx.shadowColor=color;cx.shadowBlur=size*1.4;}"
+        "if(b==='eraser'){"
+        "cx.globalCompositeOperation='destination-out';cx.globalAlpha=1;"
+        "cx.lineCap='round';cx.lineJoin='round';cx.lineWidth=size*2;"
+        "cx.beginPath();cx.moveTo(ax,ay);cx.lineTo(bx,by);cx.stroke();"
+        "}else if(b==='spray'){"
+        "cx.globalAlpha=opacity;cx.fillStyle=color;"
+        "var n=Math.max(6,Math.floor(size));"
+        "for(var i=0;i<n;i++){"
+        "var ang=Math.random()*Math.PI*2,rad=Math.random()*size;"
+        "cx.beginPath();cx.arc(bx+Math.cos(ang)*rad,by+Math.sin(ang)*rad,1,0,Math.PI*2);cx.fill();"
+        "}"
+        "}else{"
+        "cx.lineCap='round';cx.lineJoin='round';cx.strokeStyle=color;"
+        "if(b==='marker'){cx.lineWidth=size*1.6;cx.globalAlpha=Math.min(opacity,.45);}"
+        "else{cx.lineWidth=size;cx.globalAlpha=opacity;}"
+        "cx.beginPath();cx.moveTo(ax,ay);cx.lineTo(bx,by);cx.stroke();"
+        "}"
+        "cx.restore();"
+        "}"
+        "function strokeAt(x0,y0,x1,y1){"
+        "drawSeg(x0,y0,x1,y1);"
+        "if(document.getElementById('csymmetry').checked)"
+        "drawSeg(acv().width-x0,y0,acv().width-x1,y1);"
+        "}"
+        // Shared by the live drag preview (drawn onto the overlay) and the
+        // final commit (drawn onto the active layer) -- same geometry
+        // either way, only the target context differs.
+        "function drawShape(x0,y0,x1,y1,targetCtx){"
+        "var t=toolVal(),color=document.getElementById('ccolor').value;"
+        "var size=Number(document.getElementById('csize').value);"
+        "var opacity=Number(document.getElementById('copacity').value)/100;"
+        "var fill=document.getElementById('cfill').checked;"
+        "var glow=document.getElementById('cglow').checked;"
+        "targetCtx.save();"
+        "targetCtx.globalAlpha=opacity;targetCtx.strokeStyle=color;targetCtx.fillStyle=color;"
+        "targetCtx.lineWidth=size;targetCtx.lineCap='round';targetCtx.lineJoin='round';"
+        "if(glow){targetCtx.shadowColor=color;targetCtx.shadowBlur=size*1.4;}"
+        "if(t==='line'){"
+        "targetCtx.beginPath();targetCtx.moveTo(x0,y0);targetCtx.lineTo(x1,y1);targetCtx.stroke();"
+        "}else if(t==='rect'){"
+        "var rx=Math.min(x0,x1),ry=Math.min(y0,y1),rw=Math.abs(x1-x0),rh=Math.abs(y1-y0);"
+        "if(fill)targetCtx.fillRect(rx,ry,rw,rh);else targetCtx.strokeRect(rx,ry,rw,rh);"
+        "}else if(t==='circle'){"
+        "var mx=(x0+x1)/2,my=(y0+y1)/2,rxr=Math.abs(x1-x0)/2,ryr=Math.abs(y1-y0)/2;"
+        "targetCtx.beginPath();targetCtx.ellipse(mx,my,rxr,ryr,0,0,Math.PI*2);"
+        "if(fill)targetCtx.fill();else targetCtx.stroke();"
+        "}"
+        "targetCtx.restore();"
+        "}"
+        // Iterative 4-way flood fill on the active layer only, with a small
+        // colour-distance tolerance so anti-aliased stroke edges don't
+        // leave a ring of unfilled pixels around the bucket click.
+        "function floodFill(fx,fy){"
+        "var c=acv(),cx=actx();fx=Math.floor(fx);fy=Math.floor(fy);"
+        "if(fx<0||fy<0||fx>=c.width||fy>=c.height)return;"
+        "var img=cx.getImageData(0,0,c.width,c.height),data=img.data,w=c.width,h=c.height;"
+        "var startI=(fy*w+fx)*4;"
+        "var tr=data[startI],tg=data[startI+1],tb=data[startI+2],ta=data[startI+3];"
+        "var hex=document.getElementById('ccolor').value;"
+        "var opacity=Number(document.getElementById('copacity').value)/100;"
+        "var fr=parseInt(hex.slice(1,3),16),fg=parseInt(hex.slice(3,5),16),fb=parseInt(hex.slice(5,7),16);"
+        "var fa=Math.round(opacity*255);"
+        "if(tr===fr&&tg===fg&&tb===fb&&ta===fa)return;"
+        "var tol=32,tol2=tol*tol*4;"
+        "function matches(i){"
+        "var dr=data[i]-tr,dg=data[i+1]-tg,db=data[i+2]-tb,da=data[i+3]-ta;"
+        "return dr*dr+dg*dg+db*db+da*da<=tol2;"
+        "}"
+        "var visited=new Uint8Array(w*h);visited[fy*w+fx]=1;"
+        "var stack=[startI];"
+        "while(stack.length){"
+        "var i=stack.pop();data[i]=fr;data[i+1]=fg;data[i+2]=fb;data[i+3]=fa;"
+        "var px=(i/4)|0,x=px%w,y=(px/w)|0;"
+        "var nbrs=[[x-1,y],[x+1,y],[x,y-1],[x,y+1]];"
+        "for(var k=0;k<4;k++){"
+        "var nx=nbrs[k][0],ny=nbrs[k][1];"
+        "if(nx<0||ny<0||nx>=w||ny>=h)continue;"
+        "var vi=ny*w+nx;if(visited[vi])continue;"
+        "var ni=vi*4;"
+        "if(matches(ni)){visited[vi]=1;stack.push(ni);}"
+        "}"
+        "}"
+        "cx.putImageData(img,0,0);"
+        "}"
+        // Smudge: sample a small patch of the active layer around the
+        // stroke's previous point and re-draw it, partially transparent,
+        // at the new point -- dragging existing pixels along the path
+        // instead of laying down a fresh colour.
+        "var smudgeBuf=document.createElement('canvas');"
+        "function smudgeAt(x,y){"
+        "var cx=actx(),c=acv();"
+        "var r=Math.max(4,Number(document.getElementById('csize').value));"
+        "var sx=Math.max(0,Math.floor(lastX-r)),sy=Math.max(0,Math.floor(lastY-r));"
+        "var sw=Math.min(c.width-sx,r*2),sh=Math.min(c.height-sy,r*2);"
+        "if(sw<=0||sh<=0)return;"
+        "smudgeBuf.width=sw;smudgeBuf.height=sh;"
+        "var sctx=smudgeBuf.getContext('2d');sctx.clearRect(0,0,sw,sh);"
+        "sctx.drawImage(c,sx,sy,sw,sh,0,0,sw,sh);"
+        "cx.save();cx.globalAlpha=.45;"
+        "cx.drawImage(smudgeBuf,0,0,sw,sh,x-r,y-r,sw,sh);"
+        "cx.restore();"
+        "}"
+        "overlay.addEventListener('pointerdown',function(e){"
+        "var t=toolVal(),p=pos(e);"
+        "if(t==='bucket'){snap();floodFill(p.x,p.y);captureFrame(false);e.preventDefault();return;}"
+        "if(t==='line'||t==='rect'||t==='circle'){snap();shapeStart=p;e.preventDefault();return;}"
+        "snap();drawing=true;lastX=p.x;lastY=p.y;"
+        "if(t!=='smudge')strokeAt(p.x,p.y,p.x+.1,p.y+.1);"
+        "e.preventDefault();"
+        "});"
+        "overlay.addEventListener('pointermove',function(e){"
+        "var t=toolVal(),p=pos(e);"
+        "if(shapeStart){clearOverlay();drawShape(shapeStart.x,shapeStart.y,p.x,p.y,octx);e.preventDefault();return;}"
+        "if(!drawing)return;"
+        "if(t==='smudge')smudgeAt(p.x,p.y);else strokeAt(lastX,lastY,p.x,p.y);"
+        "lastX=p.x;lastY=p.y;e.preventDefault();"
+        "});"
+        "window.addEventListener('pointerup',function(e){"
+        "if(shapeStart){"
+        "var p=pos(e);clearOverlay();drawShape(shapeStart.x,shapeStart.y,p.x,p.y,actx());"
+        "shapeStart=null;captureFrame(false);return;"
+        "}"
+        "if(!drawing)return;drawing=false;captureFrame(false);"
+        "});"
+        "var layerBtns=document.querySelectorAll('.layerbtn');"
+        "function refreshLayerBtns(){"
+        "layerBtns.forEach(function(b){"
+        "b.style.background=Number(b.dataset.layer)===activeLayer?'var(--rule)':'';"
+        "});"
+        "}"
+        "layerBtns.forEach(function(b){"
+        "b.addEventListener('click',function(){activeLayer=Number(b.dataset.layer);refreshLayerBtns();});"
+        "});"
+        "refreshLayerBtns();"
+        "document.getElementById('cimport').addEventListener('change',function(e){"
+        "var f=e.target.files[0];if(!f)return;"
+        "var status=document.getElementById('cstatus');"
+        "function place(imgLike,iw,ih){"
+        "if(!iw||!ih){status.textContent='Could not read that file.';return;}"
+        "snap();"
+        "var cvw=acv().width,cvh=acv().height;"
+        "var scale=Math.min(cvw/iw,cvh/ih);"
+        "var dw=iw*scale,dh=ih*scale,dx=(cvw-dw)/2,dy=(cvh-dh)/2;"
+        "actx().drawImage(imgLike,dx,dy,dw,dh);"
+        "captureFrame(false);status.textContent='';"
+        "}"
+        "if(f.type.indexOf('video')===0){"
+        "status.textContent='Reading video frame\\u2026';"
+        "var url=URL.createObjectURL(f);"
+        "var vid=document.createElement('video');"
+        "vid.muted=true;vid.playsInline=true;vid.src=url;"
+        "vid.addEventListener('loadeddata',function(){"
+        "try{vid.currentTime=Math.min(.1,vid.duration||0);}catch(err){}"
+        "});"
+        "vid.addEventListener('seeked',function(){"
+        "place(vid,vid.videoWidth,vid.videoHeight);URL.revokeObjectURL(url);"
+        "});"
+        "vid.addEventListener('error',function(){"
+        "status.textContent='Could not read that video.';URL.revokeObjectURL(url);"
+        "});"
+        "}else{"
+        "status.textContent='Loading image\\u2026';"
+        "var reader=new FileReader();"
+        "reader.onload=function(ev){"
+        "var img=new Image();"
+        "img.onload=function(){place(img,img.naturalWidth,img.naturalHeight);};"
+        "img.onerror=function(){status.textContent='That file is not a usable image.';};"
+        "img.src=ev.target.result;"
+        "};"
+        "reader.readAsDataURL(f);"
+        "}"
+        "e.target.value='';"
+        "});"
+        "var clearedOnce=false,frameCount=0;"
+        "function updateCounter(){"
+        "document.getElementById('cframecount').textContent=frameCount+'/24 frames captured';"
+        "}"
+        // Flattens all layers onto a fresh white-backed canvas -- storage
+        // only ever holds one flat PNG per frame, so layers are purely a
+        // client-side editing convenience that collapses down at capture
+        // time, same as an image editor's "flatten" export.
+        "function flatten(){"
+        "var out=document.createElement('canvas');"
+        "out.width=layers[0].cv.width;out.height=layers[0].cv.height;"
+        "var octx2=out.getContext('2d');"
+        "octx2.fillStyle='#fff';octx2.fillRect(0,0,out.width,out.height);"
+        "for(var i=0;i<layers.length;i++)octx2.drawImage(layers[i].cv,0,0);"
+        "return out;"
+        "}"
+        // done() always fires, whether this capture actually uploaded or
+        // was skipped (cap hit, no force) -- callers that need to know the
+        // frame really landed (Save, below) depend on that.
+        "function captureFrame(force,done){"
+        "if(frameCount>=23&&!force){if(done)done();return;}"
+        "flatten().toBlob(function(blob){"
+        "var fd=new FormData();fd.append('frame',blob,'frame.png');"
+        "function go(){"
+        "fetch('/me/canvas/frame',{method:'POST',body:fd}).then(function(r){"
+        "if(r.ok){frameCount++;updateCounter();}"
+        "if(done)done();"
+        "}).catch(function(){if(done)done();});"
+        "}"
+        "if(!clearedOnce){"
+        "clearedOnce=true;"
+        "fetch('/me/canvas/clear',{method:'POST'}).then(go).catch(go);"
+        "}else{go();}"
+        "},'image/png');"
+        "}"
+        "document.getElementById('cundo').addEventListener('click',function(){"
+        "var L=layers[activeLayer];if(!L.undo.length)return;"
+        "L.redo.push(L.ctx.getImageData(0,0,L.cv.width,L.cv.height));"
+        "L.ctx.putImageData(L.undo.pop(),0,0);"
+        "});"
+        "document.getElementById('credo').addEventListener('click',function(){"
+        "var L=layers[activeLayer];if(!L.redo.length)return;"
+        "L.undo.push(L.ctx.getImageData(0,0,L.cv.width,L.cv.height));"
+        "L.ctx.putImageData(L.redo.pop(),0,0);"
+        "});"
+        "document.getElementById('cclear').addEventListener('click',function(){"
+        "snap();var L=layers[activeLayer];L.ctx.clearRect(0,0,L.cv.width,L.cv.height);"
+        "});"
+        "document.getElementById('csave').addEventListener('click',function(){"
+        "var status=document.getElementById('cstatus');status.textContent='Saving\\u2026';"
+        "var timelapse=document.getElementById('ctimelapse').checked?'1':'0';"
+        "captureFrame(true,function(){"
+        "fetch('/me/canvas/mode',{method:'POST',"
+        "headers:{'Content-Type':'application/x-www-form-urlencoded'},"
+        "body:'timelapse='+timelapse}).then(function(){"
+        "window.location='/u/'+"+js_string_literal(username)+";"
+        "});"
+        "});"
+        "});"
+        "})();</script>";
+    return html;
 }
 
 // World client page: a <canvas>, WASD/arrow movement, one WebSocket to
@@ -1620,6 +2011,10 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         if(!acc) return http_redir("/login");
         return pg("World", world_page(user));
     }
+    if(method=="GET"&&path=="/me/canvas") {
+        if(!acc) return http_redir("/login");
+        return pg("Canvas", canvas_page(user, qs["err"]));
+    }
     if(method=="GET"&&path=="/listen") {
         // Deliberately not wrap()/pg(): this window IS the player, full-page
         // nav chrome and a second (redundant) floating-widget toggle would
@@ -1659,6 +2054,32 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             "Cache-Control: private, max-age=300\r\nContent-Disposition: inline; filename=\"portrait.png\"\r\n");
     }
 
+    // /canvas-frame/<username>/<index> -- one saved drawing snapshot.
+    // Requested by the sandboxed theme document's own background-image
+    // CSS (server-generated, not user CSS -- see theme_background_css),
+    // so this has to be reachable without needing script access.
+    if(method=="GET"&&path.rfind("/canvas-frame/",0)==0) {
+        auto rest = path.substr(14);
+        auto slash = rest.find('/');
+        std::string body404 = "not found";
+        if (slash == std::string::npos) return http_raw("404 Not Found", "text/plain; charset=utf-8", body404);
+        const std::string who = rest.substr(0, slash);
+        int idx = -1;
+        try { idx = std::stoi(rest.substr(slash + 1)); } catch (...) { idx = -1; }
+        if (!valid_username(who) || idx < 0) return http_raw("404 Not Found", "text/plain; charset=utf-8", body404);
+        auto found = g_store.find_by_username(who);
+        if (!found) return http_raw("404 Not Found", "text/plain; charset=utf-8", body404);
+        if (acc && g_store.is_blocked(user, found->username))
+            return http_raw("404 Not Found", "text/plain; charset=utf-8", body404);
+        auto frames = g_store.canvas_frames(found->id);
+        if (static_cast<std::size_t>(idx) >= frames.size()) return http_raw("404 Not Found", "text/plain; charset=utf-8", body404);
+        auto bytes = g_blobs.get(frames[static_cast<std::size_t>(idx)]);
+        if (!bytes) return http_raw("404 Not Found", "text/plain; charset=utf-8", body404);
+        std::string png(bytes->begin(), bytes->end());
+        return http_raw("200 OK", "image/png", png,
+            "Cache-Control: private, max-age=300\r\nContent-Disposition: inline; filename=\"frame.png\"\r\n");
+    }
+
     if(method=="GET"&&path=="/me") {
         if(!acc) return http_redir("/login");
         auto b = g_store.blurb(acc->id);
@@ -1681,6 +2102,16 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             "<form method=\"POST\" action=\"/me\"><label>Blurb</label><textarea name=\"blurb\" rows=\"4\" maxlength=\"2000\">"+html_escape(b)+
             "</textarea><button>Save</button></form>"
             "<p class=\"muted\">A platform account is not a CitizenId.</p></div>";
+        {
+            auto n_frames = g_store.canvas_frames(acc->id).size();
+            std::string canvas_status = n_frames == 0
+                ? "No drawing yet &mdash; your profile uses the default background."
+                : (std::to_string(n_frames) + " frame" + (n_frames==1?"":"s") + " saved, "
+                   + (g_store.canvas_timelapse(acc->id) ? "looping as your background." : "last one shown as your background."));
+            html += "<div class=\"card\"><h2>Canvas</h2>"
+                "<p class=\"muted\">"+canvas_status+"</p>"
+                "<p class=\"row\"><a class=\"btn\" href=\"/me/canvas\">Open the canvas</a></p></div>";
+        }
         {
             auto current_css = g_store.author_css(acc->id);
             std::string css_msg;
@@ -1729,17 +2160,25 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
                     avatar_tag = "<img class=\"lg-avatar\" src=\"/portrait/" + html_escape(found->username) +
                                  "\" alt=\"\" width=\"64\" height=\"64\">";
                 }
+                auto canvas_frames = g_store.canvas_frames(found->id);
+                std::string canvas_css = theme_background_css(
+                    found->username, canvas_frames.size(), g_store.canvas_timelapse(found->id));
                 // Deliberately not wrap()/page_wrap(): no nav, no jukebox
                 // widget, no session cookie context, no scripts at all --
                 // this document only ever renders inside the sandboxed,
                 // scriptless iframe below. See sanitize_author_css's
                 // comment for what's actually defended here and why a gap
                 // in the text filter still can't reach anything.
+                // canvas_css sits between the base style and author_css --
+                // server-generated, not sanitized (it isn't user text),
+                // and ordered so a user's own .lg-theme background: rule
+                // still wins on the normal cascade if they set one.
                 body = "<!doctype html><html><head><meta charset=\"utf-8\">"
                        "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
                        "<style>body{margin:0;padding:1rem;font:16px/1.5 system-ui,sans-serif;"
                        "background:#fff;color:#1a1814}h1{margin:.2rem 0}"
                        "p{white-space:pre-wrap}.lg-avatar{border-radius:50%;display:block}</style>"
+                       "<style>" + canvas_css + "</style>"
                        "<style>" + author_css + "</style></head>"
                        "<body><div class=\"lg-theme\">" + avatar_tag + "<h1>" + html_escape(found->username) + "</h1>"
                        "<p>" + html_escape(b.empty() ? "No blurb yet." : b) + "</p></div></body></html>";
@@ -2296,6 +2735,43 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         if(!acc) return http_redir("/login");
         clear_avatar(g_blobs, g_store, acc->id);
         return http_redir("/me");
+    }
+    if(method=="POST"&&path=="/me/canvas/clear") {
+        if(!acc) return http_redir("/login");
+        g_store.clear_canvas_frames(acc->id);
+        return http_redir("/me/canvas");
+    }
+    if(method=="POST"&&path=="/me/canvas/frame") {
+        if(!acc) return http_redir("/login");
+        // Reuses save_avatar's exact normalize/scan/size-cap pipeline (the
+        // security-relevant part) via a throwaway AvatarStore that just
+        // captures the resulting blob id instead of writing the account's
+        // real single avatar slot -- canvas frames are an ordered list,
+        // not a single value, so FileStore's own AvatarStore side can't be
+        // reused directly for this.
+        struct CaptureBlobId : AvatarStore {
+            std::optional<Avatar> get(AccountId) const override { return std::nullopt; }
+            void set(const Avatar& a) override { blob_id = a.blob_id; }
+            void erase(AccountId) override {}
+            std::string blob_id;
+        } capture;
+        auto hdr_end = req.find("\r\n\r\n");
+        std::string hdrs = hdr_end==std::string::npos ? req : req.substr(0, hdr_end);
+        auto file = multipart_file(header_value(hdrs, "Content-Type"), body, "frame");
+        if (!file || file->empty()) return http_redir("/me/canvas?err=image");
+        if (g_store.canvas_frames(acc->id).size() >= kCanvasMaxFrames)
+            return http_redir("/me/canvas?err=full");
+        auto r = save_avatar(g_blobs, capture, g_scanner, acc->id, *file);
+        if (r.error == SaveAvatarError::TooLarge) return http_redir("/me/canvas?err=large");
+        if (r.error != SaveAvatarError::None) return http_redir("/me/canvas?err=image");
+        g_store.add_canvas_frame(acc->id, capture.blob_id);
+        return http_ok("ok");
+    }
+    if(method=="POST"&&path=="/me/canvas/mode") {
+        if(!acc) return http_redir("/login");
+        auto f = parse_form(body);
+        g_store.set_canvas_timelapse(acc->id, f["timelapse"]=="1");
+        return http_redir("/me/canvas?ok=1");
     }
     if(method=="POST"&&path=="/me/jukebox/add") {
         if(!acc) return http_redir("/login");

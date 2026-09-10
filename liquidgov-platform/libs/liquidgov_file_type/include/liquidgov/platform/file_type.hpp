@@ -27,6 +27,11 @@ enum class DetectedType {
     // document — see inspect_ooxml_container below. Detection alone
     // does not clear this type; the container inspection must also pass.
     OoxmlZipContainer,
+    // ISO base media container (MP4/MOV/M4V) — matched on the "ftyp" box
+    // at byte offset 4, regardless of the specific brand that follows.
+    Mp4,
+    // WebM/Matroska — matched on the EBML header magic.
+    WebM,
 };
 
 DetectedType detect_type(const std::vector<std::uint8_t>& bytes);

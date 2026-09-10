@@ -29,6 +29,14 @@
 // already refused for raw CSS; general archives because the outer type
 // says nothing about what's inside, and full recursive validation is a
 // separate, larger project.
+//
+// Video (MP4/WebM) gets the same treatment as PDF/PlainText, not images:
+// a real content-signature match (see file_type.hpp), then stored as-is.
+// There is no re-encode step for video the way there is for images —
+// transcoding is a separate, much larger project — so this is a stated,
+// narrower guarantee than the image case: the container's outer magic is
+// verified, not its full internal structure. The malware scan still runs
+// against whatever gets stored, same as every other type here.
 
 namespace liquidgov::platform {
 
@@ -55,6 +63,7 @@ struct FileTransferResult {
 struct SizeCaps {
     std::uint64_t image_bytes = 10ull * 1024 * 1024;
     std::uint64_t document_bytes = 25ull * 1024 * 1024;
+    std::uint64_t video_bytes = 50ull * 1024 * 1024;
     std::uint64_t protocol_max_bytes = 100ull * 1024 * 1024;
 };
 

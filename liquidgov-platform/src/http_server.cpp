@@ -1948,11 +1948,72 @@ std::string post_block(const Post& p, const std::string& viewer) {
         repostForm = "<form class=\"inline\" method=\"POST\" action=\"/me/repost\">"
                      "<input type=\"hidden\" name=\"post_id\" value=\""+std::to_string(p.id)+"\">"
                      "<button class=\"ghost\" type=\"submit\">Repost</button></form>";
+    std::string mediaHtml;
+    if (!p.attachment_blob_id.empty()) {
+        std::string src = "/post-media/"+html_escape(p.attachment_blob_id);
+        mediaHtml = (p.attachment_mime.rfind("video/",0)==0)
+            ? "<video controls preload=\"metadata\" style=\"max-width:100%;border-radius:var(--rsm);margin-top:.4rem\" src=\""+src+"\"></video>"
+            : "<img style=\"max-width:100%;border-radius:var(--rsm);margin-top:.4rem\" src=\""+src+"\" alt=\"\">";
+    }
     return "<article class=\"post\"><div class=\"who\">"+portrait_tag(p.author,"sm")+"<div><a href=\"/u/"+html_escape(p.author)+"\"><strong>"+
            html_escape(p.author)+"</strong></a>"+where+
            (when.empty()?"":" <span class=\"muted\">"+html_escape(when)+"</span>")+
            repostLine+
-           "<p>"+html_escape(p.text)+"</p>"+repostForm+"</div></div></article>";
+           "<p>"+html_escape(p.text)+"</p>"+mediaHtml+repostForm+"</div></div></article>";
+}
+
+// Shared by every post composer (/me/post, /feed, /c/<slug>): pulls the
+// text field and an optional media file out of either a multipart or
+// urlencoded body, and -- if a file was attached -- ingests it through the
+// exact same pipeline as a mail attachment (content-sniffed, malware
+// scanned, images normalized; video stored as-is after a real container
+// signature match, see file_transfer.hpp). ok==false means the media
+// itself failed and no post should be created at all, rather than
+// silently dropping the attachment and posting text-only.
+struct ComposerPost {
+    bool ok = true;
+    std::string text;
+    std::string attachment_blob_id;
+    std::string attachment_mime;
+    const char* err = nullptr; // "large" | "type" | "active" | "scan"
+};
+ComposerPost read_composer_post(const std::string& hdrs, const std::string& body) {
+    ComposerPost r;
+    std::string ctype = header_value(hdrs, "Content-Type");
+    std::optional<std::vector<std::uint8_t>> file;
+    if (ctype.find("multipart/form-data") != std::string::npos) {
+        r.text = multipart_field(ctype, body, "text");
+        file = multipart_file(ctype, body, "media");
+    } else {
+        r.text = parse_form(body)["text"];
+    }
+    if (r.text.size() > 2000) r.text.resize(2000);
+    if (file && !file->empty()) {
+        auto res = ingest_file(g_blobs, g_mail_scanner, g_mail_caps, *file);
+        if (res.error != FileTransferError::None || !res.blob_id) {
+            r.ok = false;
+            switch (res.error) {
+                case FileTransferError::TooLarge: r.err = "large"; break;
+                case FileTransferError::ActiveContentBlocked: r.err = "active"; break;
+                case FileTransferError::FailedScan: r.err = "scan"; break;
+                default: r.err = "type"; break;
+            }
+            return r;
+        }
+        r.attachment_blob_id = *res.blob_id;
+        r.attachment_mime = res.stored_mime_type.value_or("");
+    }
+    return r;
+}
+
+// Human copy for a composer's ?perr= media-error code, shared by /me,
+// /feed and /c/<slug> so the three pages stay consistent.
+std::string composer_media_error(const std::string& perr) {
+    if (perr=="large") return "<p class=\"warn\">That file was too large (images 10&nbsp;MiB, video 50&nbsp;MiB).</p>";
+    if (perr=="active") return "<p class=\"warn\">That document contains active content and was rejected.</p>";
+    if (perr=="scan") return "<p class=\"warn\">That file could not be stored.</p>";
+    if (perr=="type") return "<p class=\"warn\">That file wasn't a supported image or video type.</p>";
+    return "";
 }
 
 std::string handle(const std::string& req, const std::string& peer_ip) {
@@ -2036,10 +2097,11 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
     }
     if(method=="GET"&&path=="/feed") {
         if(!acc) return http_redir("/login");
-        std::string html = "<h1>Feed</h1>"
-            "<div class=\"card\"><form method=\"POST\" action=\"/feed\">"
+        std::string html = "<h1>Feed</h1>"+composer_media_error(qs["perr"])+
+            "<div class=\"card\"><form method=\"POST\" action=\"/feed\" enctype=\"multipart/form-data\">"
             "<label>Write to people who know you</label>"
-            "<textarea name=\"text\" maxlength=\"2000\" required placeholder=\"Plain text. Friends see this.\"></textarea>"
+            "<textarea name=\"text\" maxlength=\"2000\" placeholder=\"Plain text. Friends see this.\"></textarea>"
+            "<label>Photo or video (optional)</label><input type=\"file\" name=\"media\" accept=\"image/*,video/*\">"
             "<button>Post</button></form>"
             "<p class=\"muted\">Personal posts reach you and your friends. Communities have their own pages. "
             "This is not a civic act.</p></div>";
@@ -2091,6 +2153,33 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             "Cache-Control: private, max-age=300\r\nContent-Disposition: inline; filename=\"frame.png\"\r\n");
     }
 
+    // /post-media/<blob_id> -- an image or video attached to a post.
+    // Public and unauthenticated, same posture as /portrait/ and
+    // /canvas-frame/: a post's own visibility is already decided by
+    // wherever it renders (feed, group, profile), and the blob id itself
+    // is a content hash, not a secret. blob_id comes straight from the
+    // URL, though, so it's validated as a bare hex sha256 digest before
+    // ever reaching BlobStore -- FilesystemBlobStore::path_for()
+    // concatenates the id directly into a filesystem path with no
+    // sanitization of its own, so anything looser here would be a real
+    // path-traversal hole, not just a style nit.
+    if(method=="GET"&&path.rfind("/post-media/",0)==0) {
+        const std::string blob_id = path.substr(12);
+        bool valid_hex = blob_id.size() == 64;
+        if (valid_hex) {
+            for (unsigned char c : blob_id) {
+                if (!std::isxdigit(c)) { valid_hex = false; break; }
+            }
+        }
+        if (!valid_hex) return http_raw("404 Not Found", "text/plain; charset=utf-8", "not found");
+        auto meta = g_blobs.meta(blob_id);
+        auto bytes = g_blobs.get(blob_id);
+        if (!meta || !bytes) return http_raw("404 Not Found", "text/plain; charset=utf-8", "not found");
+        std::string data(bytes->begin(), bytes->end());
+        return http_raw("200 OK", meta->mime_type.c_str(), data,
+            "Cache-Control: private, max-age=300\r\nContent-Disposition: inline\r\n");
+    }
+
     if(method=="GET"&&path=="/me") {
         if(!acc) return http_redir("/login");
         std::string err;
@@ -2106,9 +2195,11 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             html += "<form method=\"POST\" action=\"/me/avatar/clear\"><button class=\"ghost\" type=\"submit\">Remove portrait</button></form>";
         html += "<p class=\"muted\">A platform account is not a CitizenId.</p></div>";
         {
-            html += "<div class=\"card\"><form method=\"POST\" action=\"/me/post\">"
+            html += composer_media_error(qs["perr"]);
+            html += "<div class=\"card\"><form method=\"POST\" action=\"/me/post\" enctype=\"multipart/form-data\">"
                 "<label>Post to your profile</label>"
-                "<textarea name=\"text\" maxlength=\"2000\" required placeholder=\"What's on your mind?\"></textarea>"
+                "<textarea name=\"text\" maxlength=\"2000\" placeholder=\"What's on your mind?\"></textarea>"
+                "<label>Photo or video (optional)</label><input type=\"file\" name=\"media\" accept=\"image/*,video/*\">"
                 "<button>Post</button></form></div>";
             auto myposts = g_store.posts_by(user);
             std::reverse(myposts.begin(), myposts.end());
@@ -2516,6 +2607,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             "<p class=\"muted\">/"+html_escape(c->slug)+" · started by "+html_escape(c->owner)+
             " · a platform community, not a locality</p>";
         if (qs["err"]=="invite") html += "<p class=\"warn\">Conflicts with another member’s contact settings.</p>";
+        html += composer_media_error(qs["perr"]);
         html += "<div class=\"card\"><p>"+html_escape(c->about.empty()?"No description.":c->about)+"</p>";
         if (!member) {
             html += "<form method=\"POST\" action=\"/c/"+html_escape(slug)+"/join\"><button>Join</button></form>";
@@ -2527,9 +2619,11 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         }
         html += "</div>";
         if (member) {
-            html += "<div class=\"card\"><form method=\"POST\" action=\"/c/"+html_escape(slug)+"\">"
+            html += "<div class=\"card\"><form method=\"POST\" action=\"/c/"+html_escape(slug)+"\" enctype=\"multipart/form-data\">"
                     "<label>Post in "+html_escape(c->name)+"</label>"
-                    "<textarea name=\"text\" required maxlength=\"2000\"></textarea><button>Post</button></form></div>";
+                    "<textarea name=\"text\" maxlength=\"2000\"></textarea>"
+                    "<label>Photo or video (optional)</label><input type=\"file\" name=\"media\" accept=\"image/*,video/*\">"
+                    "<button>Post</button></form></div>";
             html += "<div class=\"card\"><h2>Invite</h2>"
                     "<form method=\"POST\" action=\"/c/"+html_escape(slug)+"/invite\">"
                     "<label>Username</label><div class=\"row\"><input name=\"who\" required><button>Invite</button></div></form>"
@@ -2724,9 +2818,12 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
     }
     if(method=="POST"&&path=="/me/post") {
         if(!acc) return http_redir("/login");
-        auto f=parse_form(body);
-        auto text=f["text"]; if(text.size()>2000) text.resize(2000);
-        if (!text.empty()) g_store.add_post(user, text, "");
+        auto hdr_end = req.find("\r\n\r\n");
+        std::string hdrs = hdr_end==std::string::npos ? req : req.substr(0, hdr_end);
+        auto c = read_composer_post(hdrs, body);
+        if (!c.ok) return http_redir(std::string("/me?perr=")+c.err);
+        if (!c.text.empty() || !c.attachment_blob_id.empty())
+            g_store.add_post(user, c.text, "", "", 0, c.attachment_blob_id, c.attachment_mime);
         return http_redir("/me");
     }
     if(method=="POST"&&path=="/me/repost") {
@@ -2742,7 +2839,18 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         const std::string& origAuthor = target->repost_of_author.empty() ? target->author : target->repost_of_author;
         std::uint64_t origId = target->repost_of_author.empty() ? target->id : target->repost_of_id;
         if (g_store.is_blocked(user, origAuthor)) return http_redir("/me");
-        g_store.add_post(user, target->text, "", origAuthor, origId);
+        std::string blob_id, mime;
+        if (!target->attachment_blob_id.empty()) {
+            // put() is content-addressed and idempotent -- re-putting the
+            // same bytes lands on the exact same blob id while correctly
+            // incrementing its refcount for this new post referencing it.
+            auto bytes = g_blobs.get(target->attachment_blob_id);
+            if (bytes) {
+                blob_id = g_blobs.put(*bytes, target->attachment_mime);
+                mime = target->attachment_mime;
+            }
+        }
+        g_store.add_post(user, target->text, "", origAuthor, origId, blob_id, mime);
         return http_redir("/me");
     }
     if(method=="POST"&&path=="/me/css") {
@@ -2823,11 +2931,13 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
     }
     if(method=="POST"&&path=="/feed") {
         if(!acc) return http_redir("/login");
-        auto text=trim_ws(parse_form(body)["text"]);
-        if(!text.empty()) {
-            if(text.size()>2000) text.resize(2000);
-            g_store.add_post(user, text, "");
-        }
+        auto hdr_end = req.find("\r\n\r\n");
+        std::string hdrs = hdr_end==std::string::npos ? req : req.substr(0, hdr_end);
+        auto c = read_composer_post(hdrs, body);
+        if (!c.ok) return http_redir(std::string("/feed?perr=")+c.err);
+        auto text = trim_ws(c.text);
+        if (!text.empty() || !c.attachment_blob_id.empty())
+            g_store.add_post(user, text, "", "", 0, c.attachment_blob_id, c.attachment_mime);
         return http_redir("/feed");
     }
     if(method=="POST"&&path=="/friends") {
@@ -3025,11 +3135,14 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             return http_redir("/c/"+slug);
         }
         if (action=="post") {
-            auto text=trim_ws(parse_form(body)["text"]);
-            if (!text.empty() && g_store.is_member(slug, user)) {
-                if (text.size()>2000) text.resize(2000);
-                g_store.add_post(user, text, slug);
-            }
+            if (!g_store.is_member(slug, user)) return http_redir("/c/"+slug);
+            auto hdr_end = req.find("\r\n\r\n");
+            std::string hdrs = hdr_end==std::string::npos ? req : req.substr(0, hdr_end);
+            auto c = read_composer_post(hdrs, body);
+            if (!c.ok) return http_redir("/c/"+slug+"?perr="+c.err);
+            auto text = trim_ws(c.text);
+            if (!text.empty() || !c.attachment_blob_id.empty())
+                g_store.add_post(user, text, slug, "", 0, c.attachment_blob_id, c.attachment_mime);
             return http_redir("/c/"+slug);
         }
         return http_redir("/c/"+slug);

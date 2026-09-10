@@ -608,7 +608,8 @@ std::vector<std::string> FileStore::typeahead(const std::string& requester, cons
 
 std::uint64_t FileStore::add_post(const std::string& author, const std::string& text,
                                   const std::string& community,
-                                  const std::string& repost_of_author, std::uint64_t repost_of_id) {
+                                  const std::string& repost_of_author, std::uint64_t repost_of_id,
+                                  const std::string& attachment_blob_id, const std::string& attachment_mime) {
     Post p;
     p.id = next_post_id_++;
     p.author = author;
@@ -617,6 +618,8 @@ std::uint64_t FileStore::add_post(const std::string& author, const std::string& 
     p.community = community;
     p.repost_of_author = repost_of_author;
     p.repost_of_id = repost_of_id;
+    p.attachment_blob_id = attachment_blob_id;
+    p.attachment_mime = attachment_mime;
     posts_.push_back(p);
     flush();
     return p.id;
@@ -904,6 +907,7 @@ void FileStore::load() {
     }
 
     std::map<std::uint64_t, std::pair<std::string, std::uint64_t>> pending_reposts;
+    std::map<std::uint64_t, std::pair<std::string, std::string>> pending_attachments;
     while (std::getline(in, line)) {
         if (!line.empty() && line.back() == '\r') line.pop_back();
         if (line.empty()) continue;
@@ -999,6 +1003,12 @@ void FileStore::load() {
             if (f.size() != 4) throw std::runtime_error("LGP1: bad rp record");
             pending_reposts[parse_u64(f[1], "rp post id")] =
                 {pct_decode(f[2]), parse_u64(f[3], "rp origin id")};
+        } else if (tag == "pa") {
+            // Same reasoning as "rp": a separate tag so a "post" record
+            // without an attachment never changes shape.
+            if (f.size() != 4) throw std::runtime_error("LGP1: bad pa record");
+            pending_attachments[parse_u64(f[1], "pa post id")] =
+                {pct_decode(f[2]), pct_decode(f[3])};
         } else if (tag == "comm") {
             if (f.size() != 6) throw std::runtime_error("LGP1: bad comm record");
             Community c;
@@ -1141,10 +1151,15 @@ void FileStore::load() {
         }
     }
     for (auto& p : posts_) {
-        auto it = pending_reposts.find(p.id);
-        if (it != pending_reposts.end()) {
-            p.repost_of_author = it->second.first;
-            p.repost_of_id = it->second.second;
+        auto rit = pending_reposts.find(p.id);
+        if (rit != pending_reposts.end()) {
+            p.repost_of_author = rit->second.first;
+            p.repost_of_id = rit->second.second;
+        }
+        auto ait = pending_attachments.find(p.id);
+        if (ait != pending_attachments.end()) {
+            p.attachment_blob_id = ait->second.first;
+            p.attachment_mime = ait->second.second;
         }
     }
 }
@@ -1207,6 +1222,10 @@ void FileStore::flush() {
         if (!p.repost_of_author.empty()) {
             body << "rp\t" << p.id << "\t" << pct_encode(p.repost_of_author) << "\t"
                  << p.repost_of_id << "\n";
+        }
+        if (!p.attachment_blob_id.empty()) {
+            body << "pa\t" << p.id << "\t" << pct_encode(p.attachment_blob_id) << "\t"
+                 << pct_encode(p.attachment_mime) << "\n";
         }
     }
     for (const auto& [slug, c] : communities_) {

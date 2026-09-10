@@ -50,6 +50,19 @@ FileTransferResult ingest_file(BlobStore& blobs, MalwareScanner& scanner,
             break;
         }
 
+        case DetectedType::Mp4:
+        case DetectedType::WebM: {
+            if (bytes.size() > caps.video_bytes) {
+                return {FileTransferError::TooLarge, std::nullopt, std::nullopt};
+            }
+            // No re-encode/transcode attempted -- same posture as
+            // PDF/PlainText below: the content-signature match plus the
+            // malware scan are the defense here, not a normalize step.
+            to_store = bytes;
+            mime = (type == DetectedType::Mp4) ? "video/mp4" : "video/webm";
+            break;
+        }
+
         case DetectedType::OoxmlZipContainer: {
             if (bytes.size() > caps.document_bytes) {
                 return {FileTransferError::TooLarge, std::nullopt, std::nullopt};

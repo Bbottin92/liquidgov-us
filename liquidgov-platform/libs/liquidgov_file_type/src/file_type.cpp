@@ -64,6 +64,13 @@ DetectedType detect_type(const std::vector<std::uint8_t>& bytes) {
     if (starts_with(bytes, {0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A})) return DetectedType::Png;
     if (starts_with(bytes, {0xFF, 0xD8, 0xFF})) return DetectedType::Jpeg;
     if (starts_with(bytes, {'G', 'I', 'F', '8'})) return DetectedType::Gif;
+    // ISO base media (MP4/MOV/M4V): a 4-byte box-size field then the
+    // literal box type "ftyp" at offset 4 -- true for every brand
+    // (isom/mp42/qt  /avc1/...), so this checks the box type only, not
+    // any specific brand string.
+    if (bytes.size() >= 8 && bytes[4] == 'f' && bytes[5] == 't' && bytes[6] == 'y' && bytes[7] == 'p')
+        return DetectedType::Mp4;
+    if (starts_with(bytes, {0x1A, 0x45, 0xDF, 0xA3})) return DetectedType::WebM;
     // PDF magic is allowed within the first 1KB, not only at offset 0 —
     // some real-world PDFs are preceded by junk bytes some tools insert.
     {

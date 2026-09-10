@@ -106,6 +106,12 @@ struct Post {
     // resharing an already-shared post.
     std::string repost_of_author; // empty = not a repost
     std::uint64_t repost_of_id = 0;
+    // Optional single image/video attachment, already normalized/ingested
+    // through liquidgov_file_transfer and living in the shared blob store
+    // by the time it lands here -- this struct just carries the id/mime,
+    // the same shape as Message's attachment fields.
+    std::string attachment_blob_id; // empty = no attachment
+    std::string attachment_mime;
 };
 
 struct Community {
@@ -244,7 +250,8 @@ public:
     std::vector<std::string> typeahead(const std::string& requester, const std::string& prefix) const;
 
     std::uint64_t add_post(const std::string& author, const std::string& text, const std::string& community,
-                           const std::string& repost_of_author = "", std::uint64_t repost_of_id = 0);
+                           const std::string& repost_of_author = "", std::uint64_t repost_of_id = 0,
+                           const std::string& attachment_blob_id = "", const std::string& attachment_mime = "");
     std::vector<Post> feed_for(const std::string& user, std::size_t limit) const;
     std::vector<Post> posts_in(const std::string& community, std::size_t limit) const;
     std::vector<Post> posts_by(const std::string& author) const;

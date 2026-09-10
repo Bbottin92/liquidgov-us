@@ -977,6 +977,22 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "<svg viewBox=\"0 0 16 16\" width=\"100%\" height=\"100%\" fill=\"currentColor\" aria-hidden=\"true\">"
         "<circle cx=\"12\" cy=\"4\" r=\"1.1\"/><circle cx=\"12\" cy=\"8\" r=\"1.1\"/><circle cx=\"12\" cy=\"12\" r=\"1.1\"/>"
         "<circle cx=\"8\" cy=\"8\" r=\"1.1\"/><circle cx=\"8\" cy=\"12\" r=\"1.1\"/><circle cx=\"4\" cy=\"12\" r=\"1.1\"/></svg>";
+    // Glow/Mirror/Fill were the last checkbox-plus-label modifiers left --
+    // converted to the same toggle-button pattern as Bold/Italic/Underline
+    // now, for the same reason: faster to scan as a row of symbols than a
+    // row of checkboxes each needing its own word read next to it.
+    const std::string kIconGlow =
+        "<svg viewBox=\"0 0 16 16\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" "
+        "stroke-width=\"1.2\" aria-hidden=\"true\"><path d=\"M8 1.5v2.4M8 12.1v2.4M1.5 8h2.4M12.1 8h2.4\"/>"
+        "<path d=\"M3.8 3.8l1.7 1.7M10.5 10.5l1.7 1.7M12.2 3.8l-1.7 1.7M5.5 10.5l-1.7 1.7\"/>"
+        "<circle cx=\"8\" cy=\"8\" r=\"1.8\"/></svg>";
+    const std::string kIconMirror =
+        "<svg viewBox=\"0 0 16 16\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" "
+        "stroke-width=\"1.2\" aria-hidden=\"true\"><path d=\"M8 1v14\" stroke-dasharray=\"2 1.6\"/>"
+        "<path d=\"M4 5 2 8l2 3M12 5l2 3-2 3\"/></svg>";
+    const std::string kIconFillShape =
+        "<svg viewBox=\"0 0 16 16\" width=\"16\" height=\"16\" fill=\"currentColor\" aria-hidden=\"true\">"
+        "<rect x=\"3\" y=\"3\" width=\"10\" height=\"10\" rx=\"1.5\"/></svg>";
     std::string title = portrait ? "Self-portrait" : (post_mode ? "Compose a post" : "Canvas");
     std::string intro = portrait
         ? "Draw your self-portrait with the same tools as the profile-background canvas &mdash; "
@@ -988,6 +1004,15 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
     std::string html =
         "<div class=\"card\"><h1>"+title+"</h1>"
         "<p class=\"muted\">"+intro+"</p>"+errHtml+
+        // Everything about "what am I about to draw with" lives in one
+        // bounded panel -- tool, then that tool's own properties, then
+        // (only for Text) that tool's extra properties -- separate from
+        // the panel below it for "what can I do to the canvas as a
+        // whole", and separate again from the canvas itself. Three
+        // questions, three visually distinct answers, instead of one
+        // long run of rows a reader has to parse to find which control
+        // belongs to which question.
+        "<div class=\"card\">"
         "<div class=\"row\" style=\"flex-wrap:wrap;gap:.3rem;align-items:center;margin-bottom:.4rem\">"
         "<button type=\"button\" class=\"ghost toolbtn\" data-tool=\"pen\" title=\"Pen\" "
         "style=\"padding:.5rem .55rem\">"+kIconPen+"</button>"
@@ -1042,9 +1067,12 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "touch-action:none;flex:0 0 auto\">"+kIconDial+"</div>"
         "<input type=\"number\" id=\"copacity\" min=\"5\" max=\"100\" value=\"100\" style=\"width:4rem\">"
         "</div>"
-        "<label><input type=\"checkbox\" id=\"cglow\"> Glow</label>"
-        "<label><input type=\"checkbox\" id=\"csymmetry\"> Mirror</label>"
-        "<label><input type=\"checkbox\" id=\"cfill\"> Fill shape</label>"
+        "<button type=\"button\" class=\"ghost fmtbtn\" id=\"cglow\" data-on=\"0\" title=\"Glow\" "
+        "style=\"padding:.5rem .55rem\">"+kIconGlow+"</button>"
+        "<button type=\"button\" class=\"ghost fmtbtn\" id=\"csymmetry\" data-on=\"0\" title=\"Mirror\" "
+        "style=\"padding:.5rem .55rem\">"+kIconMirror+"</button>"
+        "<button type=\"button\" class=\"ghost fmtbtn\" id=\"cfill\" data-on=\"0\" title=\"Fill shape\" "
+        "style=\"padding:.5rem .55rem\">"+kIconFillShape+"</button>"
         "</div>"
         // Text tool controls -- font/weight/style/underline/background all
         // apply at commit time (see addTextBox), read the same way colour
@@ -1080,7 +1108,13 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "style=\"width:36px;min-height:36px;padding:2px;flex:0 0 auto\">"
         "</div>"
         "</div>"
-        "<div class=\"row\" style=\"flex-wrap:wrap;gap:.4rem 1rem;align-items:center;margin-bottom:.6rem\">"
+        "</div>"
+        // Second panel, one clear step down in how often it gets touched:
+        // bring something in, or act on a selection -- both operate on the
+        // canvas as a whole rather than being "what the next stroke looks
+        // like", which is why they're not in the Brush panel above.
+        "<div class=\"card\">"
+        "<div class=\"row\" style=\"flex-wrap:wrap;gap:.4rem 1rem;align-items:center\">"
         "<label class=\"ghost\" style=\"cursor:pointer;padding:.3rem .6rem;border-radius:var(--rsm)\">"
         "Import image/video<input type=\"file\" id=\"cimport\" accept=\"image/*,video/*\" "
         "style=\"display:none\"></label>"
@@ -1102,8 +1136,9 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "style=\"padding:.5rem .55rem\">"+kIconCrop+"</button>"
         "</div>"
         "</div>"
-        "<p class=\"muted\" style=\"margin:-.3rem 0 .6rem\">Ctrl+V also pastes an image straight from your "
-        "OS clipboard onto the active layer. Drag the corner grip to resize the whole canvas.</p>"
+        "<p class=\"muted\" style=\"margin:.5rem 0 0\">Ctrl+V also pastes an image straight from your "
+        "OS clipboard onto the active layer.</p>"
+        "</div>"
         // Layers as a vertical tab strip down the canvas's own left edge --
         // physically attached to the surface they control, the way layer
         // panels normally sit next to (not above) the thing being layered.
@@ -1226,7 +1261,7 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "var b=toolVal(),color=document.getElementById('ccolor').value;"
         "var size=Number(document.getElementById('csize').value);"
         "var opacity=Number(document.getElementById('copacity').value)/100;"
-        "var glow=document.getElementById('cglow').checked;"
+        "var glow=document.getElementById('cglow').dataset.on==='1';"
         "var cx=actx();"
         "cx.save();"
         "if(glow){cx.shadowColor=color;cx.shadowBlur=size*1.4;}"
@@ -1251,7 +1286,7 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "}"
         "function strokeAt(x0,y0,x1,y1){"
         "drawSeg(x0,y0,x1,y1);"
-        "if(document.getElementById('csymmetry').checked)"
+        "if(document.getElementById('csymmetry').dataset.on==='1')"
         "drawSeg(acv().width-x0,y0,acv().width-x1,y1);"
         "}"
         // Shared by the live drag preview (drawn onto the overlay) and the
@@ -1261,8 +1296,8 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "var t=toolVal(),color=document.getElementById('ccolor').value;"
         "var size=Number(document.getElementById('csize').value);"
         "var opacity=Number(document.getElementById('copacity').value)/100;"
-        "var fill=document.getElementById('cfill').checked;"
-        "var glow=document.getElementById('cglow').checked;"
+        "var fill=document.getElementById('cfill').dataset.on==='1';"
+        "var glow=document.getElementById('cglow').dataset.on==='1';"
         "targetCtx.save();"
         "targetCtx.globalAlpha=opacity;targetCtx.strokeStyle=color;targetCtx.fillStyle=color;"
         "targetCtx.lineWidth=size;targetCtx.lineCap='round';targetCtx.lineJoin='round';"

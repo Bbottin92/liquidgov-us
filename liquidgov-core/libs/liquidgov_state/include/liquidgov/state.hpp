@@ -1,6 +1,6 @@
 #pragma once
 
-#include "events.hpp"
+#include "liquidgov/events.hpp"
 
 #include <optional>
 #include <string>

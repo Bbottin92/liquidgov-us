@@ -1,7 +1,7 @@
 #pragma once
 
-#include "hash.hpp"
-#include "ids.hpp"
+#include "liquidgov/hash.hpp"
+#include "liquidgov/ids.hpp"
 
 #include <cstdint>
 #include <optional>

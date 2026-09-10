@@ -320,6 +320,17 @@ std::string FileStore::blurb(AccountId id) const {
     return it == blurbs_.end() ? "" : it->second;
 }
 
+void FileStore::set_author_css(AccountId id, const std::string& css) {
+    if (css.empty()) author_css_.erase(id);
+    else author_css_[id] = css;
+    flush();
+}
+
+std::string FileStore::author_css(AccountId id) const {
+    auto it = author_css_.find(id);
+    return it == author_css_.end() ? "" : it->second;
+}
+
 bool FileStore::set_password_hash(AccountId id, const std::string& password_hash) {
     auto it = accounts_.find(id);
     if (it == accounts_.end()) return false;
@@ -805,6 +816,7 @@ bool FileStore::delete_account(AccountId id) {
     for (const auto& sid : drop) sessions_.erase(sid);
     phone_fp_.erase(id);
     blurbs_.erase(id);
+    author_css_.erase(id);
     avatars_.erase(id);
     jukebox_.erase(name);
     by_username_.erase(name);
@@ -823,6 +835,7 @@ void FileStore::load() {
     accounts_.clear();
     sessions_.clear();
     blurbs_.clear();
+    author_css_.clear();
     phone_fp_.clear();
     quarantine_.clear();
     friends_.clear();
@@ -983,6 +996,11 @@ void FileStore::load() {
             if (f.size() != 2) throw std::runtime_error("LGP1: bad nn record");
             next_note_id_ = parse_u64(f[1], "next_note_id");
             if (next_note_id_ == 0) next_note_id_ = 1;
+        } else if (tag == "ac") {
+            if (f.size() != 3) throw std::runtime_error("LGP1: bad ac record");
+            AccountId id = parse_u64(f[1], "author_css account");
+            if (id == 0) throw std::runtime_error("LGP1: empty ac record");
+            author_css_[id] = pct_decode(f[2]);
         } else if (tag == "av") {
             if (f.size() != 4) throw std::runtime_error("LGP1: bad av record");
             Avatar av;
@@ -1147,6 +1165,11 @@ void FileStore::flush() {
     for (const auto& [id, av] : avatars_) {
         if (!accounts_.count(id)) continue;
         body << "av\t" << av.owner << "\t" << pct_encode(av.blob_id) << "\t" << av.created_at << "\n";
+    }
+    for (const auto& [id, css] : author_css_) {
+        if (!accounts_.count(id)) continue;
+        if (css.empty()) continue;
+        body << "ac\t" << id << "\t" << pct_encode(css) << "\n";
     }
     for (const auto& [owner, list] : jukebox_) {
         if (!by_username_.count(owner)) continue;

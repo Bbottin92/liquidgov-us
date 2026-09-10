@@ -16,6 +16,7 @@
 #include <unistd.h>
 #include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
@@ -199,6 +200,84 @@ std::string js_string_literal(const std::string& s) {
     }
     o += "'";
     return o;
+}
+
+// Author CSS for /u/<username>/theme. This is a deliberately narrow v1 of
+// the "Author CSS isolation" design in LIQUIDGOV_CONTEXT_HANDOFF.md, not
+// the full spec (no CSSOM-walking parser, no compute budget, no gallery) --
+// see that doc's "Still open on this layer" note. What this v1 keeps from
+// the spec, because skipping it would be a real hole, not a shortcut:
+//   - Reject outright rather than best-effort strip. A rejected save with
+//     a clear reason beats a silently mangled stylesheet.
+//   - Deny @import, @font-face, @namespace, @layer, @scope, url(),
+//     expression(), -moz-binding, behavior:, javascript: -- the constructs
+//     that let CSS alone exfiltrate data, load arbitrary resources, or run
+//     script. url() is denied outright (no "already in the upload
+//     pipeline" allowance yet -- that needs the blob pipeline wired in,
+//     not just a text filter).
+//   - The theme document itself renders in a sandboxed iframe with no
+//     allow-same-origin and no allow-scripts (see /u/<username>/theme and
+//     its embedding below), so even a gap in this text filter can't reach
+//     cookies, storage, or script execution -- belt and suspenders, not
+//     the only defense.
+// Not defended against in this v1 (named, not hidden): :has()/sibling
+// combinators aimed at platform-injected nodes inside the themed document.
+// Lower severity here specifically because the sandboxed iframe has no
+// platform chrome/badges inside it to target in the first place.
+constexpr std::size_t kAuthorCssMaxBytes = 20000;
+
+struct CssCheckResult {
+    bool ok = true;
+    std::string code; // short token, safe to carry in a redirect query string as-is
+};
+
+// code -> human-readable reason, rendered server-side on the settings page.
+// Codes only ever come from sanitize_author_css below, never user input, so
+// this lookup is a fixed, closed set (a missing code just falls back to a
+// generic message).
+std::string css_reject_message(const std::string& code) {
+    static const std::map<std::string, std::string> kMessages = {
+        {"size", "That's over the " + std::to_string(kAuthorCssMaxBytes / 1000) + "KB limit."},
+        {"import", "Not allowed in profile CSS: @import."},
+        {"font-face", "Not allowed in profile CSS: @font-face."},
+        {"namespace", "Not allowed in profile CSS: @namespace."},
+        {"layer", "Not allowed in profile CSS: @layer."},
+        {"scope", "Not allowed in profile CSS: @scope."},
+        {"url", "Not allowed in profile CSS: url()."},
+        {"expression", "Not allowed in profile CSS: expression()."},
+        {"moz-binding", "Not allowed in profile CSS: -moz-binding."},
+        {"behavior", "Not allowed in profile CSS: behavior:."},
+        {"javascript", "Not allowed in profile CSS: javascript:."},
+        {"style-tag", "Not allowed in profile CSS: a style tag."},
+        {"script-tag", "Not allowed in profile CSS: a script tag."},
+    };
+    auto it = kMessages.find(code);
+    return it == kMessages.end() ? "That wasn't accepted." : it->second;
+}
+
+CssCheckResult sanitize_author_css(const std::string& css_in) {
+    if (css_in.size() > kAuthorCssMaxBytes) return {false, "size"};
+    std::string lower = css_in;
+    for (auto& c : lower) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    static const std::pair<const char*, const char*> kDenied[] = {
+        {"@import", "import"},
+        {"@font-face", "font-face"},
+        {"@namespace", "namespace"},
+        {"@layer", "layer"},
+        {"@scope", "scope"},
+        {"url(", "url"},
+        {"expression(", "expression"},
+        {"-moz-binding", "moz-binding"},
+        {"behavior:", "behavior"},
+        {"javascript:", "javascript"},
+        {"</style", "style-tag"},
+        {"<style", "style-tag"},
+        {"<script", "script-tag"},
+    };
+    for (const auto& [needle, code] : kDenied) {
+        if (lower.find(needle) != std::string::npos) return {false, code};
+    }
+    return {true, ""};
 }
 
 std::string css() {
@@ -1583,6 +1662,40 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         return pg("Profile", html);
     }
 
+    // Checked before the general /u/ handler below, since that one treats
+    // everything after "/u/" as a bare username.
+    if(method=="GET"&&path.rfind("/u/",0)==0&&path.size()>7&&path.compare(path.size()-6,6,"/theme")==0) {
+        const std::string who = path.substr(3, path.size()-3-6);
+        std::string body;
+        if (!valid_username(who)) {
+            body = "<!doctype html><html><head><meta charset=\"utf-8\"></head>"
+                   "<body><p>No such profile.</p></body></html>";
+        } else {
+            auto found = g_store.find_by_username(who);
+            if (!found) {
+                body = "<!doctype html><html><head><meta charset=\"utf-8\"></head>"
+                       "<body><p>No such profile.</p></body></html>";
+            } else {
+                auto b = g_store.blurb(found->id);
+                auto author_css = g_store.author_css(found->id);
+                // Deliberately not wrap()/page_wrap(): no nav, no jukebox
+                // widget, no session cookie context, no scripts at all --
+                // this document only ever renders inside the sandboxed,
+                // scriptless iframe below. See sanitize_author_css's
+                // comment for what's actually defended here and why a gap
+                // in the text filter still can't reach anything.
+                body = "<!doctype html><html><head><meta charset=\"utf-8\">"
+                       "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+                       "<style>body{margin:0;padding:1rem;font:16px/1.5 system-ui,sans-serif;"
+                       "background:#fff;color:#1a1814}h1{margin:.2rem 0}"
+                       "p{white-space:pre-wrap}</style>"
+                       "<style>" + author_css + "</style></head>"
+                       "<body><div class=\"lg-theme\"><h1>" + html_escape(found->username) + "</h1>"
+                       "<p>" + html_escape(b.empty() ? "No blurb yet." : b) + "</p></div></body></html>";
+            }
+        }
+        return http_raw("200 OK", "text/html; charset=utf-8", body);
+    }
     if(method=="GET"&&path.rfind("/u/",0)==0) {
         const std::string who = path.substr(3);
         if (!valid_username(who))
@@ -1597,6 +1710,12 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             "<div><h1>"+html_escape(found->username)+"</h1>"
             "<p>"+html_escape(b.empty()?"No blurb yet.":b)+"</p>"
             "<p class=\"muted\">Public profile. Not a CitizenId. Not a seated office.</p></div></div>";
+        if (!g_store.author_css(found->id).empty()) {
+            html += "<iframe src=\"/u/"+html_escape(found->username)+"/theme\" sandbox=\"\" "
+                    "title=\"Profile theme\" loading=\"lazy\" "
+                    "style=\"width:100%;min-height:220px;border:1px solid var(--rule);"
+                    "border-radius:var(--rsm);background:#fff\"></iframe>";
+        }
         if (acc && acc->username == found->username) {
             html += "<p><a href=\"/me\">Edit profile</a></p>";
         } else if (acc && g_store.are_friends(user, found->username)) {
@@ -1990,9 +2109,27 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             "Unlink would drop voting access until re-verified; it would not resign citizenship. "
             "This page does not write CitizenId, GrantCitizenship, points, seats, or parcels.</p></div>";
 
+        {
+            auto current_css = g_store.author_css(acc->id);
+            std::string css_msg;
+            if (qs["ok"]=="css") css_msg = "<p class=\"ok\">Saved. See it at <a href=\"/u/"+html_escape(user)+"\">your public profile</a>.</p>";
+            else if (qs["err"]=="css") css_msg = "<p class=\"warn\">"+html_escape(css_reject_message(qs["reason"]))+"</p>";
+            html += "<div class=\"card\"><h2>Profile CSS</h2>"
+                "<p class=\"muted\">Restyles your public profile page (/u/"+html_escape(user)+
+                "), shown inside a sandboxed frame with no scripts and no access to this site's cookies or data. "
+                "@import, url(), and anything script-adjacent are rejected outright, not silently stripped. "
+                "Limit " + std::to_string(kAuthorCssMaxBytes/1000) + "KB. Leave empty to use the default look.</p>"
+                + css_msg +
+                "<form method=\"POST\" action=\"/settings/css\">"
+                "<textarea name=\"css\" rows=\"8\" spellcheck=\"false\" "
+                "style=\"font-family:ui-monospace,Consolas,monospace;font-size:.85rem\" "
+                "placeholder=\".lg-theme h1{color:#a23b3b}\">"+html_escape(current_css)+"</textarea>"
+                "<button>Save CSS</button></form></div>";
+        }
+
         html += "<div class=\"card\"><h2>Data</h2>"
             "<p><a class=\"btn ghost\" href=\"/export\">Download your export</a></p>"
-            "<p class=\"muted\">Export includes username, blurb, your friend list, communities you started or joined, "
+            "<p class=\"muted\">Export includes username, blurb, profile CSS, your friend list, communities you started or joined, "
             "posts you wrote, settings, and messages you sent. It does not include other people’s text or your password hash.</p>"
             "<form method=\"POST\" action=\"/settings/delete\">"
             "<label>Delete account — type your username</label>"
@@ -2018,7 +2155,8 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         o << "This is platform data. It is not the governance kernel.\n\n";
         o << "username: " << user << "\n";
         o << "created_at: " << fmt_time(acc->created_at) << "\n";
-        o << "blurb: " << g_store.blurb(acc->id) << "\n\n";
+        o << "blurb: " << g_store.blurb(acc->id) << "\n";
+        o << "profile css:\n" << g_store.author_css(acc->id) << "\n\n";
         o << "friends:\n";
         for (auto& n : g_store.friends_of(user)) o << "  " << n << "\n";
         o << "\ncommunities:\n";
@@ -2352,6 +2490,15 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             return http_redir("/settings?err=password");
         g_store.set_password_hash(acc->id, hash_password(f["next"]));
         return http_redir("/settings?ok=password");
+    }
+    if(method=="POST"&&path=="/settings/css") {
+        if(!acc) return http_redir("/login");
+        auto f = parse_form(body);
+        const std::string& raw_css = f["css"];
+        auto check = sanitize_author_css(raw_css);
+        if (!check.ok) return http_redir("/settings?err=css&reason=" + check.code);
+        g_store.set_author_css(acc->id, raw_css);
+        return http_redir("/settings?ok=css");
     }
     if(method=="POST"&&path=="/settings/privacy") {
         if(!acc) return http_redir("/login");

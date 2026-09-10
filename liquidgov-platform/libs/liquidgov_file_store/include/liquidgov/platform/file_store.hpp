@@ -45,6 +45,8 @@
 //          <under_review 0|1> <text>                 // messenger.hpp Message, no edit_history
 //   gmh    <message_id> <text>                       // one prior version, oldest first; the
 //          gmsg line for message_id is always written before its gmh lines
+//   ac     <account_id> <css>   // author CSS for /u/<username>/theme, already sanitized
+//          (see sanitize_author_css in http_server.cpp) before it ever reaches here
 //
 // password_hash is argon2id from hash_password(). Never plaintext.
 // Phone number is not stored (signup binding only). Sessions are secrets;
@@ -167,6 +169,13 @@ public:
     void set_blurb(AccountId id, const std::string& blurb);
     std::string blurb(AccountId id) const;
 
+    // Sanitized (see sanitize_author_css in http_server.cpp) CSS for the
+    // account's own /u/<username>/theme document — never the site's own
+    // pages. Storage layer trusts the caller already sanitized; it just
+    // persists the value.
+    void set_author_css(AccountId id, const std::string& css);
+    std::string author_css(AccountId id) const;
+
     bool set_password_hash(AccountId id, const std::string& password_hash);
 
     bool are_friends(const std::string& a, const std::string& b) const;
@@ -280,6 +289,7 @@ private:
     std::map<AccountId, PlatformAccount> accounts_;
     std::map<SessionId, Session> sessions_;
     std::map<AccountId, std::string> blurbs_;
+    std::map<AccountId, std::string> author_css_;
     std::map<AccountId, std::string> phone_fp_;
     std::map<std::string, std::int64_t> quarantine_;
     std::set<std::pair<std::string, std::string>> friends_;

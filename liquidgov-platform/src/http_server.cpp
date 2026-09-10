@@ -337,8 +337,20 @@ std::string css() {
         "--warn:#7a4a12;--ok:#1e3d32;--rsm:8px;--rmd:14px;--rlg:22px;"
         "--display:\"Iowan Old Style\",Palatino,\"Palatino Linotype\",Georgia,serif;"
         "--body:\"Segoe UI\",system-ui,-apple-system,sans-serif}"
+        // Same tokens, ink warmed rather than pure black -- system dark
+        // mode applies automatically unless an explicit choice (data-theme,
+        // set by the header toggle, see page_wrap) overrides it either way.
+        "@media (prefers-color-scheme:dark){:root:not([data-theme=\"light\"]){"
+        "--paper:#14120f;--parchment:#241f18;--panel:#1b1813;--ink:#f2ead8;"
+        "--navy:#8fa8c8;--stone:#a89c88;--rule:rgba(242,234,216,.14);"
+        "--danger:#c9776a;--warn:#d9a866;--ok:#7fa891}}"
+        ":root[data-theme=\"dark\"]{"
+        "--paper:#14120f;--parchment:#241f18;--panel:#1b1813;--ink:#f2ead8;"
+        "--navy:#8fa8c8;--stone:#a89c88;--rule:rgba(242,234,216,.14);"
+        "--danger:#c9776a;--warn:#d9a866;--ok:#7fa891}"
         "*{box-sizing:border-box}html{-webkit-font-smoothing:antialiased}"
-        "body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.5 var(--body)}"
+        "body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.5 var(--body);"
+        "transition:background .15s ease,color .15s ease}"
         "a{color:var(--navy)}a:hover{color:var(--ink)}"
         "h1,h2,h3{font-family:var(--display);font-weight:600;letter-spacing:-.02em;"
         "text-wrap:balance;line-height:1.2}h1{font-size:clamp(1.6rem,1.2rem + 1.6vw,2.2rem);margin:.2rem 0 .8rem}"
@@ -359,6 +371,9 @@ std::string css() {
         "border:1px solid var(--rule);background:var(--paper);border-radius:var(--rsm);color:var(--ink);"
         "font:600 .85rem var(--body);cursor:pointer}"
         "nav{display:flex;flex-wrap:wrap;gap:.1rem .85rem;align-items:center;flex:1 1 16rem}"
+        ".themebtn{min-height:36px;min-width:36px;display:inline-flex;align-items:center;justify-content:center;"
+        "border:1px solid var(--rule);border-radius:50%;color:var(--ink);text-decoration:none;"
+        "font-size:1rem;margin-left:.4rem;flex-shrink:0}"
         "nav a{color:var(--navy);text-decoration:none;font-size:.92rem;padding:.35rem 0;min-height:44px;"
         "display:inline-flex;align-items:center}nav a:hover{text-decoration:underline}"
         ".badge{display:inline-flex;align-items:center;justify-content:center;min-width:1.3rem;height:1.3rem;"
@@ -446,8 +461,18 @@ std::string favicon_svg() {
            "<path d=\"M10 13h12M10 16h12M10 19h12\" stroke=\"#1a1814\" stroke-width=\"1.3\"/></svg>";
 }
 
+// "dark", "light", or "" (no explicit choice -- prefers-color-scheme
+// decides). Set once per request in handle() (the whole site's single-
+// threaded synchronous entry point), read here at render time.
+thread_local std::string g_theme_mode;
+
 std::string page_wrap(const std::string& title, const std::string& navhtml, const std::string& body) {
-    return "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
+    const std::string theme_attr = g_theme_mode.empty() ? "" : " data-theme=\""+g_theme_mode+"\"";
+    const std::string next_theme = g_theme_mode == "dark" ? "light" : "dark";
+    const std::string toggle = "<a class=\"themebtn\" href=\"/theme/"+next_theme+
+        "\" aria-label=\"Switch to "+next_theme+"\" title=\"Switch to "+next_theme+"\">"+
+        (g_theme_mode == "dark" ? "&#9728;" : "&#9789;")+"</a>";
+    return "<!doctype html><html lang=\"en\""+theme_attr+"><head><meta charset=\"utf-8\">"
            "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
            "<title>"+html_escape(title)+" — LiquidGov.US</title>"
            "<link rel=\"icon\" href=\"/favicon.svg\" type=\"image/svg+xml\">"
@@ -455,7 +480,7 @@ std::string page_wrap(const std::string& title, const std::string& navhtml, cons
            "<header class=\"top\"><div class=\"topinner\">"
            "<a class=\"brand\" href=\"/\"><span class=\"mark\" aria-hidden=\"true\"><i></i><i></i><i></i></span>"
            "<div><strong>LiquidGov</strong><span>.US</span></div></a>"
-           +navhtml+"</div></header>"
+           +navhtml+toggle+"</div></header>"
            "<main class=\"wrap\">"+body+"</main>"
            "<footer class=\"site\"><a href=\"/\">Genesis</a> · <a href=\"/laws\">Laws</a> · "
            "<a href=\"/control\">Who holds control</a><br>"
@@ -522,6 +547,21 @@ std::string cookie_of(const std::string& headers) {
     auto end=headers.find("\r\n",pos); std::string line=headers.substr(pos,end-pos);
     auto k=line.find("lg_session="); if(k==std::string::npos) return {};
     k+=11; auto sc=line.find(';',k); return line.substr(k, sc==std::string::npos?std::string::npos:sc-k);
+}
+// "dark", "light", or "" -- "" means no explicit choice was ever saved, so
+// the page stamps no data-theme attribute at all and prefers-color-scheme
+// alone decides (see css()'s dark block). Set once per request (handle()
+// is the whole site's single-threaded synchronous entry point, so a
+// thread_local read at render time is exactly one request's worth of
+// state, never shared or stale across requests).
+std::string theme_of(const std::string& headers) {
+    auto pos=headers.find("Cookie:"); if(pos==std::string::npos) pos=headers.find("cookie:");
+    if(pos==std::string::npos) return {};
+    auto end=headers.find("\r\n",pos); std::string line=headers.substr(pos,end-pos);
+    auto k=line.find("lg_theme="); if(k==std::string::npos) return {};
+    k+=9; auto sc=line.find(';',k);
+    std::string v = line.substr(k, sc==std::string::npos?std::string::npos:sc-k);
+    return (v=="dark"||v=="light") ? v : std::string{};
 }
 std::string header_value(const std::string& headers, const std::string& name) {
     std::string key = name + ":";
@@ -2738,12 +2778,21 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
     std::string user = acc ? acc->username : "";
     const std::string sid = cookie_of(req);
     const int unread = acc ? g_store.unread_count(user) : 0;
+    g_theme_mode = theme_of(req);
     auto pg = [&](const std::string& title, const std::string& b) {
         return http_ok(wrap(title, user, unread, b));
     };
 
     if(method=="GET"&&path=="/favicon.svg")
         return http_raw("200 OK","image/svg+xml", favicon_svg());
+
+    if(method=="GET"&&(path=="/theme/dark"||path=="/theme/light")) {
+        const std::string mode = path.substr(7);
+        std::string back = header_value(req, "Referer");
+        if (back.empty() || back.rfind("http",0)!=0) back = "/";
+        return http_redir(back, "Set-Cookie: lg_theme="+mode+
+            "; Path=/; SameSite=Lax; Max-Age=31536000\r\n");
+    }
 
     if(method=="GET"&&path=="/") {
         std::string extra;

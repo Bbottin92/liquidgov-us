@@ -22,6 +22,7 @@
 #include <cstring>
 #include <ctime>
 #include <deque>
+#include <fstream>
 #include <iostream>
 #include <map>
 #include <mutex>
@@ -466,6 +467,39 @@ std::string favicon_svg() {
 // threaded synchronous entry point), read here at render time.
 thread_local std::string g_theme_mode;
 
+// A full-bleed, muted, autoplaying clip shown the first time a browser
+// ever lands on the site -- gated entirely client-side (localStorage),
+// since "have I seen this before" is per-browser state with no reason to
+// touch the account store or work for a logged-out visitor differently
+// from a member. Skippable; ends by fading out and removing itself,
+// revealing the page underneath (already rendered, not reloaded). Storage
+// being blocked (private mode, some browsers) fails safe by just never
+// showing it, rather than showing it on every single load.
+std::string intro_overlay_html() {
+    return "<div id=\"lgintro\" style=\"position:fixed;inset:0;z-index:999;background:#14120f;"
+           "display:flex;align-items:center;justify-content:center;overflow:hidden\">"
+           "<video id=\"lgintrovid\" autoplay muted playsinline "
+           "style=\"width:100%;height:100%;object-fit:cover\" src=\"/assets/intro.mp4\"></video>"
+           "<button id=\"lgintroskip\" type=\"button\" style=\"position:absolute;bottom:1.25rem;right:1.25rem;"
+           "background:rgba(20,18,15,.78);color:#f2ead8;border:1px solid rgba(242,234,216,.3);"
+           "border-radius:999px;padding:.5rem 1rem;font:600 .75rem \"Segoe UI\",system-ui,sans-serif;"
+           "letter-spacing:.08em;text-transform:uppercase;cursor:pointer\">Skip &middot; shown once</button>"
+           "</div>"
+           "<script>(function(){"
+           "var el=document.getElementById('lgintro');"
+           "try{if(localStorage.getItem('liquidgov.intro.seen')){el.remove();return;}}"
+           "catch(e){el.remove();return;}"
+           "var vid=document.getElementById('lgintrovid'),skip=document.getElementById('lgintroskip');"
+           "function finish(){"
+           "try{localStorage.setItem('liquidgov.intro.seen','1');}catch(e){}"
+           "el.style.transition='opacity .7s ease';el.style.opacity='0';"
+           "setTimeout(function(){el.remove();},720);"
+           "}"
+           "vid.addEventListener('ended',finish);"
+           "skip.addEventListener('click',finish);"
+           "})();</script>";
+}
+
 std::string page_wrap(const std::string& title, const std::string& navhtml, const std::string& body) {
     const std::string theme_attr = g_theme_mode.empty() ? "" : " data-theme=\""+g_theme_mode+"\"";
     const std::string next_theme = g_theme_mode == "dark" ? "light" : "dark";
@@ -477,6 +511,7 @@ std::string page_wrap(const std::string& title, const std::string& navhtml, cons
            "<title>"+html_escape(title)+" — LiquidGov.US</title>"
            "<link rel=\"icon\" href=\"/favicon.svg\" type=\"image/svg+xml\">"
            "<style>"+css()+"</style></head><body>"
+           +intro_overlay_html()+
            "<header class=\"top\"><div class=\"topinner\">"
            "<a class=\"brand\" href=\"/\"><span class=\"mark\" aria-hidden=\"true\"><i></i><i></i><i></i></span>"
            "<div><strong>LiquidGov</strong><span>.US</span></div></a>"
@@ -2785,6 +2820,19 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
 
     if(method=="GET"&&path=="/favicon.svg")
         return http_raw("200 OK","image/svg+xml", favicon_svg());
+
+    if(method=="GET"&&path=="/assets/intro.mp4") {
+        static std::string cached;
+        static bool tried = false;
+        if (!tried) {
+            tried = true;
+            std::ifstream in("assets/intro.mp4", std::ios::binary);
+            if (in) { std::ostringstream ss; ss << in.rdbuf(); cached = ss.str(); }
+        }
+        if (cached.empty()) return http_raw("404 Not Found", "text/plain; charset=utf-8", "not found");
+        return http_raw("200 OK", "video/mp4", cached,
+            "Cache-Control: public, max-age=31536000, immutable\r\n");
+    }
 
     if(method=="GET"&&(path=="/theme/dark"||path=="/theme/light")) {
         const std::string mode = path.substr(7);

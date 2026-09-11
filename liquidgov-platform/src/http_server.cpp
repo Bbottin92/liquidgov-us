@@ -377,9 +377,7 @@ std::string css() {
         ".topinner{max-width:58rem;margin:0 auto;padding:.7rem 1.1rem;display:flex;"
         "align-items:center;flex-wrap:wrap;gap:.45rem 1rem}"
         ".brand{display:flex;align-items:center;gap:.65rem;text-decoration:none;color:var(--ink);margin-right:auto}"
-        ".mark{width:28px;height:28px;border:1.5px solid var(--accent);display:grid;"
-        "grid-template-rows:1fr 1fr 1fr;padding:6px 5px;gap:3px;flex-shrink:0}"
-        ".mark i{display:block;height:1.5px;background:var(--ink)}"
+        ".mark{flex-shrink:0;display:block}"
         ".brand strong{font-family:var(--display);font-weight:600;font-size:1.35rem;letter-spacing:-.03em}"
         ".brand .tld{color:var(--stone);font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;margin-left:.15rem}"
         ".brand .tagline{color:var(--stone);font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;"
@@ -512,10 +510,14 @@ std::string css() {
 }
 
 std::string favicon_svg() {
-    return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 32 32\">"
-           "<rect width=\"32\" height=\"32\" fill=\"#efe8d8\"/>"
-           "<rect x=\"6\" y=\"6\" width=\"20\" height=\"20\" fill=\"none\" stroke=\"#1e2d42\" stroke-width=\"1.5\"/>"
-           "<path d=\"M10 13h12M10 16h12M10 19h12\" stroke=\"#1a1814\" stroke-width=\"1.3\"/></svg>";
+    // Same ring-and-droplet mark as the header .mark, in literal colors
+    // -- a standalone favicon document has no page CSS to read
+    // var(--accent) from.
+    return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 48 48\">"
+           "<rect width=\"48\" height=\"48\" fill=\"#14120f\"/>"
+           "<circle cx=\"24\" cy=\"24\" r=\"21\" fill=\"none\" stroke=\"#6b6458\" stroke-width=\"1.5\"/>"
+           "<circle cx=\"24\" cy=\"24\" r=\"17.5\" fill=\"none\" stroke=\"#d1a85c\" stroke-width=\"2\"/>"
+           "<path d=\"M24 9c0 0 9.5 12.2 9.5 17.2a9.5 9.5 0 0 1-19 0C14.5 21.2 24 9 24 9z\" fill=\"#d1a85c\"/></svg>";
 }
 
 // "dark", "light", or "" (no explicit choice -- prefers-color-scheme
@@ -572,7 +574,12 @@ std::string page_wrap(const std::string& title, const std::string& navhtml, cons
            "<style>"+css()+"</style></head><body>"
            +intro_overlay_html()+
            "<header class=\"top\"><div class=\"topinner\">"
-           "<a class=\"brand\" href=\"/\"><span class=\"mark\" aria-hidden=\"true\"><i></i><i></i><i></i></span>"
+           "<a class=\"brand\" href=\"/\">"
+           "<svg class=\"mark\" viewBox=\"0 0 48 48\" width=\"28\" height=\"28\" aria-hidden=\"true\">"
+           "<circle cx=\"24\" cy=\"24\" r=\"22.5\" fill=\"none\" style=\"stroke:var(--stone)\" stroke-width=\"1\"/>"
+           "<circle cx=\"24\" cy=\"24\" r=\"19\" fill=\"none\" style=\"stroke:var(--accent)\" stroke-width=\"1.2\"/>"
+           "<path d=\"M24 9c0 0 9.5 12.2 9.5 17.2a9.5 9.5 0 0 1-19 0C14.5 21.2 24 9 24 9z\" style=\"fill:var(--accent)\"/>"
+           "</svg>"
            "<div><div><strong>LiquidGov</strong><span class=\"tld\">.US</span></div>"
            "<div class=\"tagline\">Civic association &middot; Genesis phase</div></div></a>"
            +navhtml+toggle+"</div></header>"
@@ -2931,7 +2938,23 @@ std::string genesis_body() {
         "<div class=\"card quote centered\"><p class=\"stars\">&#9733;&#9733;&#9733;&#9733;&#9733;</p>"
         "<p>&ldquo;It's like a ballot box and Myspace had a baby.&rdquo;</p>"
         "<p class=\"attrib muted\">&mdash; Anonymous</p></div>";
-    return "<p class=\"eyebrow\" style=\"color:var(--accent)\">A Voluntary Natural Democracy</p>"
+    // The decorative emblem from the top of the design's own welcome
+    // screen -- a triangle (the three laws) with a droplet at its
+    // center and a ringed node at each vertex, wrapped in a faint
+    // circle. Pure SVG with no text content, which is why it never
+    // showed up in an accessibility-tree read of the design -- found by
+    // reading the .dc.html's raw markup instead.
+    std::string emblem =
+        "<div style=\"text-align:center\"><svg viewBox=\"0 0 180 172\" width=\"140\" height=\"134\" aria-hidden=\"true\">"
+        "<circle cx=\"90\" cy=\"96\" r=\"54\" fill=\"none\" style=\"stroke:var(--rule)\" stroke-width=\"1\"/>"
+        "<path d=\"M90 30 L32 130 L148 130 Z\" fill=\"none\" style=\"stroke:var(--stone)\" stroke-width=\"1\"/>"
+        "<path d=\"M90 70c0 0 13 17.5 13 24.5a13 13 0 0 1-26 0C77 87.5 90 70 90 70z\" style=\"fill:var(--accent)\"/>"
+        "<circle cx=\"90\" cy=\"30\" r=\"6\" style=\"fill:var(--paper);stroke:var(--accent)\" stroke-width=\"1.4\"/>"
+        "<circle cx=\"32\" cy=\"130\" r=\"6\" style=\"fill:var(--paper);stroke:var(--accent)\" stroke-width=\"1.4\"/>"
+        "<circle cx=\"148\" cy=\"130\" r=\"6\" style=\"fill:var(--paper);stroke:var(--accent)\" stroke-width=\"1.4\"/>"
+        "</svg></div>";
+    return emblem +
+           "<p class=\"eyebrow\" style=\"color:var(--accent)\">A Voluntary Natural Democracy</p>"
            "<h1>This is genesis, not a government.</h1>"
            "<p class=\"lede\">LiquidGov.US is a voluntary association and working software for "
            "liquid, natural-law democracy. Anyone here is a guest or a member of that association.</p>" +

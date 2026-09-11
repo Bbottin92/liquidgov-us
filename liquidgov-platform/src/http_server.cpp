@@ -2956,7 +2956,14 @@ std::string control_body() {
            "It is not an office. It is not a claim that the association already governs anyone.</p>"
            "<p class=\"warn\">Control of the website is meant to end when a working election exists among enrolled citizens. "
            "Governmental authority is a later landslide, not this page.</p>"
-           "<p class=\"muted\">This preview is a working copy of the association’s door. It is not liquidgov.us in production.</p></div>";
+           "<p class=\"muted\">This preview is a working copy of the association’s door. It is not liquidgov.us in production.</p></div>"
+           "<div class=\"card\"><p class=\"eyebrow\">Voting</p><h3>Nothing is awaiting your vote.</h3>"
+           "<p class=\"muted\">No election has been held. This exists so the mechanism is testable, not "
+           "because anyone here holds a seat.</p>"
+           "<p class=\"muted\">Your account is a platform account. It is not a citizen identity and it "
+           "casts no vote.</p>"
+           "<p><a href=\"/proposals\">Proposals</a> are the one real mechanism live today — an unofficial "
+           "straw poll any member can open or vote on, explicitly not a binding vote.</p></div>";
 }
 
 std::string signup_page(const std::string& navuser, int unread, const std::string& err,

@@ -372,7 +372,9 @@ std::string css() {
         "grid-template-rows:1fr 1fr 1fr;padding:6px 5px;gap:3px;flex-shrink:0}"
         ".mark i{display:block;height:1.5px;background:var(--ink)}"
         ".brand strong{font-family:var(--display);font-weight:600;font-size:1.35rem;letter-spacing:-.03em}"
-        ".brand span{color:var(--stone);font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;margin-left:.15rem}"
+        ".brand .tld{color:var(--stone);font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;margin-left:.15rem}"
+        ".brand .tagline{color:var(--stone);font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;"
+        "margin-top:.1rem}"
         "#navc{position:absolute;left:-999px}"
         ".navbtn{display:none;min-height:44px;min-width:44px;align-items:center;justify-content:center;"
         "border:1px solid var(--rule);background:var(--paper);border-radius:var(--rsm);color:var(--ink);"
@@ -420,6 +422,12 @@ std::string css() {
         "table.register select{width:auto;min-height:auto;padding:.3rem .5rem}"
         ".eyebrow{font-family:var(--display);font-weight:400;font-size:.75rem;letter-spacing:.12em;"
         "text-transform:uppercase;color:var(--stone);margin:0 0 .3rem}"
+        ".chip{display:inline-block;border:1px solid var(--rule);background:var(--parchment);"
+        "border-radius:999px;padding:.25rem .7rem;font-size:.78rem;color:var(--ink)}"
+        "table.record{border-collapse:collapse;margin:.6rem 0}"
+        "table.record td{padding:.2rem .6rem .2rem 0;border:0;font-size:.9rem}"
+        "table.record td:first-child{color:var(--stone);font-size:.72rem;letter-spacing:.08em;"
+        "text-transform:uppercase;white-space:nowrap}"
         ".portrait{width:96px;height:96px;border-radius:50%;object-fit:cover;border:1px solid var(--rule);"
         "background:var(--parchment);flex-shrink:0;display:inline-block;vertical-align:middle}"
         ".portrait.sm{width:36px;height:36px}"
@@ -521,7 +529,8 @@ std::string page_wrap(const std::string& title, const std::string& navhtml, cons
            +intro_overlay_html()+
            "<header class=\"top\"><div class=\"topinner\">"
            "<a class=\"brand\" href=\"/\"><span class=\"mark\" aria-hidden=\"true\"><i></i><i></i><i></i></span>"
-           "<div><strong>LiquidGov</strong><span>.US</span></div></a>"
+           "<div><div><strong>LiquidGov</strong><span class=\"tld\">.US</span></div>"
+           "<div class=\"tagline\">Civic association &middot; Genesis phase</div></div></a>"
            +navhtml+toggle+"</div></header>"
            "<main class=\"wrap\">"+body+"</main>"
            "<footer class=\"site\"><a href=\"/\">Genesis</a> · <a href=\"/laws\">Laws</a> · "
@@ -2494,7 +2503,10 @@ std::string jukebox_widget(const std::string& owner, bool owner_view, const std:
                             const std::map<std::string,std::string>& qs) {
     auto tracks = g_store.jukebox_of(owner);
     auto owner_prefs = g_store.prefs_of(owner);
-    std::string html = "<div class=\"card jukebox\"><h2>Jukebox</h2>";
+    const char* policy_badge = owner_prefs.jukebox_policy==JukeboxPolicy::Anyone ? "anyone may queue"
+        : owner_prefs.jukebox_policy==JukeboxPolicy::Friends ? "friends may queue" : "owner curated";
+    std::string html = "<div class=\"card jukebox\"><h2>Jukebox</h2>"
+                        "<p class=\"muted eyebrow\">"+std::string(policy_badge)+"</p>";
     if (qs.count("jerr")) {
         const std::string& e = qs.at("jerr");
         if (e=="url") html += "<p class=\"warn\">That link wasn't recognized as a YouTube video.</p>";
@@ -3126,19 +3138,20 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         auto committees = g_store.communities_of(found->username);
         std::string committees_html;
         if (!committees.empty()) {
-            std::vector<std::string> names;
-            for (const auto& c : committees) names.push_back(html_escape(c.name));
-            committees_html = "<p class=\"muted eyebrow\">Committees</p><p>";
-            for (std::size_t i = 0; i < names.size(); ++i) {
-                if (i) committees_html += " · ";
-                committees_html += names[i];
+            committees_html = "<p class=\"eyebrow\" style=\"margin-top:1rem\">Committees</p>"
+                               "<div style=\"display:flex;flex-wrap:wrap;gap:.4rem\">";
+            for (const auto& c : committees) {
+                committees_html += "<a class=\"chip\" href=\"/c/"+html_escape(c.slug)+"\" style=\"text-decoration:none\">"+
+                                    html_escape(c.name)+"</a>";
             }
-            committees_html += "</p>";
+            committees_html += "</div>";
         }
         std::string html = "<div class=\"card\"><div class=\"who\">"+portrait_tag(found->username,"")+
             "<div><h1>"+html_escape(found->username)+"</h1>"
-            "<p class=\"muted\">Associate · good standing · enrolled "+html_escape(fmt_time(found->created_at))+
-            "</p></div></div>"+committees_html;
+            "<table class=\"record\">"
+            "<tr><td>Standing</td><td>Associate &middot; good</td></tr>"
+            "<tr><td>Enrolled</td><td>"+html_escape(fmt_time(found->created_at))+"</td></tr>"
+            "</table></div></div>"+committees_html;
         if (!g_store.author_css(found->id).empty()) {
             // sandbox="allow-same-origin", not sandbox="" (opaque origin):
             // confirmed live that opaque-origin sandboxed iframes get
@@ -3176,6 +3189,9 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             if (visible_to(target_prefs.posts_visibility, is_owner, acc.has_value(), is_friend)) {
                 auto theirPosts = g_store.posts_by(found->username);
                 std::reverse(theirPosts.begin(), theirPosts.end());
+                html += "<h2>Posts</h2><p class=\"muted eyebrow\">"+std::to_string(theirPosts.size())+
+                        (theirPosts.size()==1?" entry":" entries")+
+                        (target_prefs.posts_visibility==Visibility::Public?" &middot; public":"")+"</p>";
                 for (const auto& p : theirPosts) html += "<div class=\"card\">"+post_block(p, user)+"</div>";
             }
         }
@@ -3575,6 +3591,8 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
                 "</table>"
                 "<button>Save privacy</button></form><h2>Block list</h2>";
         auto bl = g_store.block_entries_of(user);
+        html += "<p class=\"muted eyebrow\">"+std::to_string(bl.size())+
+                (bl.size()==1?" member":" members")+" &middot; not visible to them</p>";
         if (bl.empty()) html += "<p class=\"empty\">No one blocked.</p>";
         for (auto& b : bl) {
             html += "<div class=\"person\"><div><span>"+html_escape(b.other)+"</span>"

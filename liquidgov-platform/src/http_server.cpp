@@ -482,6 +482,18 @@ std::string css() {
         "font-weight:600;flex-shrink:0}"
         ".roomname{flex:1;font-weight:600;min-width:0}.roomname .muted{display:block;font-weight:400;font-size:.78rem}"
         ".roomlive{color:var(--stone);font-size:.8rem;white-space:nowrap;flex-shrink:0}"
+        ".ticker-wrap{margin-top:.6rem;height:12rem;overflow:hidden;"
+        "-webkit-mask-image:linear-gradient(180deg,transparent,#000 20%,#000 80%,transparent);"
+        "mask-image:linear-gradient(180deg,transparent,#000 20%,#000 80%,transparent)}"
+        ".ticker-roll{animation:lg-roll 26s linear infinite}"
+        ".ticker-roll div{font-family:var(--display);font-size:1rem;line-height:1.9;color:var(--ink)}"
+        "@keyframes lg-roll{0%{transform:translateY(0)}100%{transform:translateY(-50%)}}"
+        "@media(prefers-reduced-motion:reduce){.ticker-roll{animation:none}}"
+        ".quote{text-align:center}"
+        ".quote p:not(.attrib):not(.stars){font-family:var(--display);font-size:1.15rem;line-height:1.5}"
+        ".quote .stars{color:var(--accent);letter-spacing:.12em;margin:.3rem 0}"
+        ".quote .attrib{font-size:.68rem;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);margin:.5rem 0 0}"
+        ".quote .attrib.muted{color:var(--stone)}"
         // nav used to expand in normal document flow, inside the sticky
         // header -- fine until the link list itself got taller than a
         // small viewport, at which point the whole (now very tall)
@@ -2872,11 +2884,52 @@ std::string genesis_body() {
         "<div class=\"stattile\"><strong>" + std::to_string(g_store.all_communities().size()) + "</strong><span>Communities</span></div>"
         "<div class=\"stattile\"><strong>0</strong><span>Elections held</span></div>"
         "</div>";
+    // The scrolling problems ticker and the two pull-quotes, pulled from
+    // the actual authored content in the mobile design's own source (its
+    // PROBLEMS array and its two quote blocks) -- not from the rendered
+    // preview, which never resolved its {{ }} bindings locally. Same list
+    // doubled back-to-back so the CSS loop has no visible seam.
+    static const std::vector<std::string> problems = {
+        "Tax-funded pedophilia", "Propaganda", "Overclassification", "Corporate lobbying",
+        "Bureaucracy", "Foreign wars", "Land lock-up", "Ag mismanagement", "Two-tier law",
+        "Qualified immunity", "Emergency powers",
+    };
+    std::string ticker;
+    for (int rep = 0; rep < 2; ++rep)
+        for (const auto& p : problems)
+            ticker += "<div>" + html_escape(p) + "</div>";
+    std::string solution =
+        "<div class=\"row\" style=\"align-items:flex-start;gap:1rem;flex-wrap:wrap\">"
+        "<div style=\"flex:1;min-width:12rem\">"
+        "<p class=\"eyebrow\" style=\"color:var(--accent)\">A legitimate solution to:</p>"
+        "<div class=\"ticker-wrap\"><div class=\"ticker-roll\">" + ticker + "</div></div>"
+        "</div>"
+        "<div style=\"flex:0 0 12rem\" class=\"card\">"
+        "<p class=\"eyebrow\" style=\"color:var(--accent)\">What it is not</p>"
+        "<p style=\"margin:.6rem 0\"><strong>Not a party</strong><br>"
+        "<span class=\"muted\">Nothing here asks you to pick a side, and no side owns it.</span></p>"
+        "<p style=\"margin:.6rem 0\"><strong>Not a government</strong><br>"
+        "<span class=\"muted\">No election has been held. Nothing here binds you to anything.</span></p>"
+        "<p style=\"margin:.6rem 0\"><strong>Not a protest</strong><br>"
+        "<span class=\"muted\">It is a structure you can test, argue with, and walk away from.</span></p>"
+        "<p style=\"margin:.6rem 0\"><strong>Not for sale</strong><br>"
+        "<span class=\"muted\">Your account is not a product and it is not anyone else's leverage.</span></p>"
+        "</div></div>";
+    std::string quotes =
+        "<div class=\"clocks\">"
+        "<div class=\"card quote\"><p>&ldquo;These aren't &lsquo;people problems.&rsquo; They're structural "
+        "problems. Good people placed inside broken structures produce broken outcomes. Broken people placed "
+        "inside well-designed structures are naturally corrected by them.&rdquo;</p>"
+        "<p class=\"attrib\">&mdash; Brandon Bottin</p><p class=\"stars\">&#9733;&#9733;&#9733;&#9733;&#9733;</p></div>"
+        "<div class=\"card quote\"><p class=\"stars\">&#9733;&#9733;&#9733;&#9733;&#9733;</p>"
+        "<p>&ldquo;It's like a ballot box and Myspace had a baby.&rdquo;</p>"
+        "<p class=\"attrib muted\">&mdash; Anonymous</p></div>"
+        "</div>";
     return "<p class=\"eyebrow\" style=\"color:var(--accent)\">A Voluntary Natural Democracy</p>"
            "<h1>This is genesis, not a government.</h1>"
            "<p class=\"lede\">LiquidGov.US is a voluntary association and working software for "
            "liquid, natural-law democracy. Anyone here is a guest or a member of that association.</p>" +
-           stats +
+           stats + solution + quotes +
            "<div class=\"card\"><p>Nobody on this site is your city, state, or federal government. "
            "No office seated from these pages has legal authority over anyone who did not choose to associate.</p>"
            "<p>Website control is temporary. When a working election exists among enrolled citizens, "

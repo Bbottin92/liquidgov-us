@@ -3066,9 +3066,10 @@ std::string post_block(const Post& p, const std::string& viewer) {
         std::string list;
         for (const auto& r : replies) {
             std::string rwhen = fmt_time(r.ts);
-            list += "<p style=\"margin:.4rem 0\"><a href=\"/u/"+html_escape(r.author)+"\"><strong>"+
-                    html_escape(r.author)+"</strong></a> <span class=\"muted\">"+html_escape(rwhen)+
-                    "</span><br>"+html_escape(r.text)+"</p>";
+            list += "<div class=\"who\" style=\"margin:.5rem 0\">"+portrait_tag(r.author,"sm")+
+                    "<div><a href=\"/u/"+html_escape(r.author)+"\"><strong>"+html_escape(r.author)+
+                    "</strong></a> <span class=\"muted\">"+html_escape(rwhen)+"</span>"
+                    "<p style=\"margin:.2rem 0 0\">"+html_escape(r.text)+"</p></div></div>";
         }
         std::string replyForm;
         if (!viewer.empty()) {
@@ -3398,8 +3399,10 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             tab("all","All")+tab("friends","Friends")+tab("committees","Committees")+tab("drawings","Drawings")+
             "</div>"+
             composer_media_error(qs["perr"])+
-            "<div class=\"card\"><form method=\"POST\" action=\"/feed\" enctype=\"multipart/form-data\">"
-            "<label>Write to people who know you</label>"
+            "<div class=\"card\"><p class=\"row\" style=\"justify-content:space-between;margin:0 0 .3rem\">"
+            "<label style=\"margin:0\">Write to people who know you</label>"
+            "<span class=\"chip\">Friends only</span></p>"
+            "<form method=\"POST\" action=\"/feed\" enctype=\"multipart/form-data\">"
             "<textarea name=\"text\" maxlength=\"2000\" placeholder=\"Plain text. Friends see this.\"></textarea>"
             "<label>Photo or video (optional)</label><input type=\"file\" name=\"media\" accept=\"image/*,video/*\">"
             "<button>Post</button></form>"

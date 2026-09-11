@@ -700,6 +700,46 @@ std::vector<Post> FileStore::all_posts_with_attachments() const {
     return out;
 }
 
+std::uint64_t FileStore::add_reply(std::uint64_t post_id, const std::string& author, const std::string& text) {
+    PostReply r;
+    r.id = next_reply_id_++;
+    r.post_id = post_id;
+    r.author = author;
+    r.ts = now();
+    r.text = text;
+    replies_.push_back(r);
+    flush();
+    return r.id;
+}
+
+std::vector<PostReply> FileStore::replies_of(std::uint64_t post_id) const {
+    std::vector<PostReply> out;
+    for (const auto& r : replies_) {
+        if (r.post_id == post_id) out.push_back(r);
+    }
+    return out;
+}
+
+void FileStore::toggle_second(std::uint64_t post_id, const std::string& user) {
+    if (user.empty()) return;
+    auto key = std::make_pair(post_id, user);
+    if (seconds_.count(key)) seconds_.erase(key);
+    else seconds_.insert(key);
+    flush();
+}
+
+bool FileStore::has_seconded(std::uint64_t post_id, const std::string& user) const {
+    return seconds_.count({post_id, user}) > 0;
+}
+
+int FileStore::second_count(std::uint64_t post_id) const {
+    int n = 0;
+    for (const auto& s : seconds_) {
+        if (s.first == post_id) ++n;
+    }
+    return n;
+}
+
 std::uint64_t FileStore::add_proposal(const std::string& author, const std::string& title, const std::string& body) {
     Proposal p;
     p.id = next_proposal_id_++;
@@ -935,6 +975,15 @@ bool FileStore::delete_account(AccountId id) {
         keep_posts.push_back(p);
     }
     posts_.swap(keep_posts);
+    for (auto& r : replies_) {
+        if (r.author == name) r.author = "[deleted account]";
+    }
+    std::set<std::pair<std::uint64_t, std::string>> keep_seconds;
+    for (const auto& s : seconds_) {
+        if (s.second == name) continue;
+        keep_seconds.insert(s);
+    }
+    seconds_.swap(keep_seconds);
     for (auto& p : proposals_) {
         if (p.author == name) p.author = "[deleted account]";
     }
@@ -961,6 +1010,7 @@ bool FileStore::delete_account(AccountId id) {
 void FileStore::load() {
     next_id_ = 1;
     next_post_id_ = 1;
+    next_reply_id_ = 1;
     next_proposal_id_ = 1;
     next_note_id_ = 1;
     next_conv_id_ = 1;
@@ -982,6 +1032,8 @@ void FileStore::load() {
     inner_.clear();
     prefs_.clear();
     posts_.clear();
+    replies_.clear();
+    seconds_.clear();
     proposals_.clear();
     proposal_votes_.clear();
     communities_.clear();
@@ -1091,6 +1143,23 @@ void FileStore::load() {
             if (f.size() != 2) throw std::runtime_error("LGP1: bad pn record");
             next_post_id_ = parse_u64(f[1], "next_post_id");
             if (next_post_id_ == 0) next_post_id_ = 1;
+        } else if (tag == "reply") {
+            if (f.size() != 6) throw std::runtime_error("LGP1: bad reply record");
+            PostReply r;
+            r.id = parse_u64(f[1], "reply id");
+            r.post_id = parse_u64(f[2], "reply post_id");
+            r.author = pct_decode(f[3]);
+            r.ts = parse_i64(f[4], "reply ts");
+            r.text = pct_decode(f[5]);
+            replies_.push_back(r);
+            if (r.id >= next_reply_id_) next_reply_id_ = r.id + 1;
+        } else if (tag == "repln") {
+            if (f.size() != 2) throw std::runtime_error("LGP1: bad repln record");
+            next_reply_id_ = parse_u64(f[1], "next_reply_id");
+            if (next_reply_id_ == 0) next_reply_id_ = 1;
+        } else if (tag == "sec") {
+            if (f.size() != 3) throw std::runtime_error("LGP1: bad sec record");
+            seconds_.insert({parse_u64(f[1], "sec post_id"), pct_decode(f[2])});
         } else if (tag == "prop") {
             if (f.size() != 6) throw std::runtime_error("LGP1: bad prop record");
             Proposal p;
@@ -1394,6 +1463,14 @@ void FileStore::flush() {
             body << "pa\t" << p.id << "\t" << pct_encode(p.attachment_blob_id) << "\t"
                  << pct_encode(p.attachment_mime) << "\n";
         }
+    }
+    body << "repln\t" << next_reply_id_ << "\n";
+    for (const auto& r : replies_) {
+        body << "reply\t" << r.id << "\t" << r.post_id << "\t" << pct_encode(r.author) << "\t"
+             << r.ts << "\t" << pct_encode(r.text) << "\n";
+    }
+    for (const auto& s : seconds_) {
+        body << "sec\t" << s.first << "\t" << pct_encode(s.second) << "\n";
     }
     body << "propn\t" << next_proposal_id_ << "\n";
     for (const auto& p : proposals_) {

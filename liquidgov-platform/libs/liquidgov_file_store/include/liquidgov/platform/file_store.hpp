@@ -25,6 +25,10 @@
 //   pq     <phone_fp> <until>         // 90-day quarantine after delete
 //   post   <id> <author> <ts> <text> <community_slug-or-empty>
 //   pn     <next_post_id>
+//   reply  <id> <post_id> <author> <ts> <text>
+//   repln  <next_reply_id>
+//   sec    <post_id> <username>   // one line per (post, account) that has
+//          seconded it; toggling off just means the line stops being written
 //   prop   <id> <author> <ts> <title> <body>   // unofficial site-wide straw poll,
 //          see Proposal's comment -- not a CitizenId vote
 //   propn  <next_proposal_id>
@@ -127,6 +131,14 @@ struct Post {
     // the same shape as Message's attachment fields.
     std::string attachment_blob_id; // empty = no attachment
     std::string attachment_mime;
+};
+
+struct PostReply {
+    std::uint64_t id = 0;
+    std::uint64_t post_id = 0;
+    std::string author;
+    std::int64_t ts = 0;
+    std::string text;
 };
 
 struct Community {
@@ -354,6 +366,17 @@ public:
     // For BlobStore::adopt() at process startup -- see main()'s comment.
     std::vector<Post> all_posts_with_attachments() const;
 
+    std::uint64_t add_reply(std::uint64_t post_id, const std::string& author, const std::string& text);
+    std::vector<PostReply> replies_of(std::uint64_t post_id) const; // oldest first
+
+    // A lightweight "I support this" mark, separate from a reply -- one
+    // per (post, account), toggled on/off, never a running log the way
+    // proposal votes are (there's no "second" choice to change between,
+    // just on or off).
+    void toggle_second(std::uint64_t post_id, const std::string& user);
+    bool has_seconded(std::uint64_t post_id, const std::string& user) const;
+    int second_count(std::uint64_t post_id) const;
+
     std::uint64_t add_proposal(const std::string& author, const std::string& title, const std::string& body);
     std::vector<Proposal> all_proposals() const; // oldest first, same as posts_by
     std::optional<Proposal> proposal_by_id(std::uint64_t id) const;
@@ -455,6 +478,9 @@ private:
     std::map<std::string, std::set<std::string>> inner_;
     std::map<std::string, AccountPrefs> prefs_;
     std::vector<Post> posts_;
+    std::uint64_t next_reply_id_ = 1;
+    std::vector<PostReply> replies_;
+    std::set<std::pair<std::uint64_t, std::string>> seconds_;
     std::uint64_t next_proposal_id_ = 1;
     std::vector<Proposal> proposals_;
     std::map<std::uint64_t, std::map<std::string, ProposalVote>> proposal_votes_;

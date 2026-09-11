@@ -2894,6 +2894,43 @@ std::string post_block(const Post& p, const std::string& viewer) {
         repostForm = "<form class=\"inline\" method=\"POST\" action=\"/me/repost\">"
                      "<input type=\"hidden\" name=\"post_id\" value=\""+std::to_string(p.id)+"\">"
                      "<button class=\"ghost\" type=\"submit\">&#8635; Repost</button></form>";
+    const int seconds = g_store.second_count(p.id);
+    std::string secondForm;
+    if (!viewer.empty()) {
+        const bool seconded = g_store.has_seconded(p.id, viewer);
+        secondForm = "<form class=\"inline\" method=\"POST\" action=\"/post/"+std::to_string(p.id)+"/second\">"
+                     "<button class=\""+std::string(seconded?"":"ghost")+"\" type=\"submit\">"+
+                     std::to_string(seconds)+(seconds==1?" second":" seconded")+
+                     (seconded?" &#10003;":"")+"</button></form>";
+    } else if (seconds > 0) {
+        secondForm = "<p class=\"muted\">"+std::to_string(seconds)+(seconds==1?" second":" seconded")+"</p>";
+    }
+    std::string actionsRow;
+    if (!repostForm.empty() || !secondForm.empty())
+        actionsRow = "<div class=\"row\" style=\"margin-top:.3rem\">"+repostForm+secondForm+"</div>";
+    std::string repliesBlock;
+    {
+        auto replies = g_store.replies_of(p.id);
+        std::string list;
+        for (const auto& r : replies) {
+            std::string rwhen = fmt_time(r.ts);
+            list += "<p style=\"margin:.4rem 0\"><a href=\"/u/"+html_escape(r.author)+"\"><strong>"+
+                    html_escape(r.author)+"</strong></a> <span class=\"muted\">"+html_escape(rwhen)+
+                    "</span><br>"+html_escape(r.text)+"</p>";
+        }
+        std::string replyForm;
+        if (!viewer.empty()) {
+            replyForm = "<form method=\"POST\" action=\"/post/"+std::to_string(p.id)+"/reply\" style=\"margin-top:.3rem\">"
+                        "<textarea name=\"text\" maxlength=\"1000\" placeholder=\"Write a reply\"></textarea>"
+                        "<button class=\"ghost\" type=\"submit\">Reply</button></form>";
+        }
+        if (!replies.empty() || !viewer.empty()) {
+            repliesBlock = "<details style=\"margin-top:.4rem\"><summary class=\"muted\" style=\"cursor:pointer\">"+
+                std::to_string(replies.size())+(replies.size()==1?" reply":" replies")+"</summary>"
+                "<div style=\"padding-left:.8rem;border-left:2px solid var(--rule);margin-top:.3rem\">"+
+                list+replyForm+"</div></details>";
+        }
+    }
     std::string mediaHtml;
     if (!p.attachment_blob_id.empty()) {
         std::string src = "/post-media/"+html_escape(p.attachment_blob_id);
@@ -2911,7 +2948,7 @@ std::string post_block(const Post& p, const std::string& viewer) {
            html_escape(p.author)+"</strong></a>"+where+
            (when.empty()?"":" <span class=\"muted\">"+html_escape(when)+"</span>")+
            repostLine+
-           "<p>"+html_escape(p.text)+"</p>"+mediaHtml+repostForm+"</div></div></article>";
+           "<p>"+html_escape(p.text)+"</p>"+mediaHtml+actionsRow+repliesBlock+"</div></div></article>";
 }
 
 // A proportional Yes/No/Abstain bar plus one-click vote buttons, the
@@ -3930,6 +3967,34 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         }
         g_store.add_post(user, target->text, "", origAuthor, origId, blob_id, mime);
         return http_redir("/me");
+    }
+    // Reply and second both need to land back on whatever page the post was
+    // actually being viewed on (feed, a profile, a community) -- post_block
+    // renders in all of those, so unlike most POST handlers here a fixed
+    // redirect target would be wrong more often than not. Referer, same
+    // pattern the theme toggle already uses, falling back to /feed.
+    if(method=="POST"&&path.rfind("/post/",0)==0&&path.size()>12&&
+       path.compare(path.size()-6,6,"/reply")==0) {
+        if(!acc) return http_redir("/login");
+        std::string back = header_value(req, "Referer");
+        if (back.empty() || back.rfind("http",0)!=0) back = "/feed";
+        std::uint64_t pid = 0;
+        try { pid = std::stoull(path.substr(6, path.size()-6-6)); } catch (...) { return http_redir(back); }
+        if (!g_store.post_by_id(pid)) return http_redir(back);
+        auto text = trim_ws(parse_form(body)["text"]);
+        if (!text.empty()) g_store.add_reply(pid, user, text);
+        return http_redir(back);
+    }
+    if(method=="POST"&&path.rfind("/post/",0)==0&&path.size()>13&&
+       path.compare(path.size()-7,7,"/second")==0) {
+        if(!acc) return http_redir("/login");
+        std::string back = header_value(req, "Referer");
+        if (back.empty() || back.rfind("http",0)!=0) back = "/feed";
+        std::uint64_t pid = 0;
+        try { pid = std::stoull(path.substr(6, path.size()-6-7)); } catch (...) { return http_redir(back); }
+        if (!g_store.post_by_id(pid)) return http_redir(back);
+        g_store.toggle_second(pid, user);
+        return http_redir(back);
     }
     if(method=="POST"&&path=="/me/css") {
         if(!acc) return http_redir("/login");

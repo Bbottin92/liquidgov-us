@@ -445,6 +445,42 @@ int main() {
         std::cout << "proposal LGP1 tags survive reload; author relabeled on delete\n";
     }
 
+    std::uint64_t reply_post_id = 0;
+    {
+        FileStore store(path);
+        auto a = create_account(store, breach, "reply-a", "correct-horse-battery-staple", "+15559200000");
+        auto b = create_account(store, breach, "reply-b", "correct-horse-battery-staple", "+15559200001");
+        assert(a.error == AuthError::None && b.error == AuthError::None);
+        reply_post_id = store.add_post("reply-a", "a post worth replying to", "");
+
+        auto rid = store.add_reply(reply_post_id, "reply-b", "well said");
+        assert(store.replies_of(reply_post_id).size() == 1);
+        assert(store.replies_of(reply_post_id)[0].id == rid);
+        assert(store.replies_of(reply_post_id)[0].text == "well said");
+        assert(store.replies_of(999999).empty());
+
+        assert(!store.has_seconded(reply_post_id, "reply-b"));
+        store.toggle_second(reply_post_id, "reply-b");
+        assert(store.has_seconded(reply_post_id, "reply-b"));
+        assert(store.second_count(reply_post_id) == 1);
+        store.toggle_second(reply_post_id, "reply-a");
+        assert(store.second_count(reply_post_id) == 2);
+        store.toggle_second(reply_post_id, "reply-b"); // toggle off
+        assert(!store.has_seconded(reply_post_id, "reply-b"));
+        assert(store.second_count(reply_post_id) == 1);
+        std::cout << "reply add/list and second toggle/count ok\n";
+    }
+    {
+        FileStore store(path); // reload
+        assert(store.replies_of(reply_post_id).size() == 1);
+        assert(store.second_count(reply_post_id) == 1);
+        assert(store.has_seconded(reply_post_id, "reply-a"));
+        auto acc = store.find_by_username("reply-b");
+        assert(store.delete_account(acc->id));
+        assert(store.replies_of(reply_post_id)[0].author == "[deleted account]");
+        std::cout << "reply/second LGP1 tags survive reload; author relabeled, seconds pruned on delete\n";
+    }
+
     unlink(path.c_str());
     unlink((path + ".tmp").c_str());
     std::cout << "\nall file_store tests passed\n";

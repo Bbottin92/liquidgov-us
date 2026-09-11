@@ -2930,21 +2930,64 @@ std::string home_dashboard(const std::string& user) {
         "<div class=\"card\"><h2>Rooms open now</h2>" + rooms + "</div>";
 }
 
+// The mobile design reads the charter as a chaptered, one-screen-at-a-time
+// flow ("Chapter 2 of 8 · 6 min", a "You can stop here" closer). The real
+// content here is exactly three sections, already written as three cards --
+// not eight, and this doesn't invent filler to hit that number. Same text
+// as the old single-page laws_body(), just split at its own existing <h2>
+// boundaries so each becomes its own chapter.
+struct LawChapter { std::string title; int minutes; std::string body; };
+
+const std::vector<LawChapter>& law_chapters() {
+    static const std::vector<LawChapter> chapters = {
+        {"The three laws", 2,
+         "<p>Do not steal. Do not damage. Do not deprive of liberty. "
+         "Those are the laws. They are not slogans on a landing page — they are the only hard limits this project will encode as law.</p>"
+         "<p>Direct voting is the posture. Delegation exists as a capability, not a default. "
+         "There is no sortition in the governance kernel. Seats, case thresholds, land-pool sizes, and the shape of the executive are not numbers we invent here.</p>"},
+        {"What this site is not", 1,
+         "<p>It is not a government. It is not a seated legislature. It does not issue CitizenIds. "
+         "Unverified visitors can look around. One combined verification is meant to unlock civic acts when that path exists. "
+         "We will not treat a checkbox as age. Minors, when age can be assured, are friends-and-family only.</p>"},
+        {"Kernel, not this process", 1,
+         "<p>Identity, citizenship, land, business, judgment, and genesis authority live in <code>liquidgov-core</code>. "
+         "This website does not write those records. Linking a platform account to a kernel identity is a later, explicit step — and it is not citizenship.</p>"},
+    };
+    return chapters;
+}
+
 std::string laws_body() {
-    return "<h1>Three laws</h1>"
-           "<p class=\"lede\">The association is built around three prohibitions. Everything else is mechanism, and most of that is still a citizen vote.</p>"
-           "<div class=\"card\"><p>Do not steal. Do not damage. Do not deprive of liberty. "
-           "Those are the laws. They are not slogans on a landing page — they are the only hard limits this project will encode as law.</p>"
-           "<p>Direct voting is the posture. Delegation exists as a capability, not a default. "
-           "There is no sortition in the governance kernel. Seats, case thresholds, land-pool sizes, and the shape of the executive are not numbers we invent here.</p></div>"
-           "<div class=\"card\"><h2>What this site is not</h2>"
-           "<p>It is not a government. It is not a seated legislature. It does not issue CitizenIds. "
-           "Unverified visitors can look around. One combined verification is meant to unlock civic acts when that path exists. "
-           "We will not treat a checkbox as age. Minors, when age can be assured, are friends-and-family only.</p></div>"
-           "<div class=\"card\"><h2>Kernel, not this process</h2>"
-           "<p>Identity, citizenship, land, business, judgment, and genesis authority live in <code>liquidgov-core</code>. "
-           "This website does not write those records. Linking a platform account to a kernel identity is a later, explicit step — and it is not citizenship.</p>"
-           "<p class=\"muted\"><a href=\"/control\">Who holds control of this site</a> · <a href=\"/\">Genesis disclosure</a></p></div>";
+    const auto& chapters = law_chapters();
+    std::string list;
+    for (size_t i = 0; i < chapters.size(); ++i) {
+        list += "<a class=\"roomrow\" href=\"/laws/" + std::to_string(i+1) + "\">"
+                "<span class=\"roomini\">" + std::to_string(i+1) + "</span>"
+                "<span class=\"roomname\">" + html_escape(chapters[i].title) + "</span>"
+                "<span class=\"roomlive\">~" + std::to_string(chapters[i].minutes) +
+                (chapters[i].minutes==1?" min":" min") + "</span></a>";
+    }
+    return "<h1>Three rules</h1>"
+           "<p class=\"lede\">Whoever you are, wherever you are starting from, the rest is your call.</p>"
+           "<div class=\"card\"><h2>Chapters</h2>" + list + "</div>"
+           "<p class=\"muted\"><a href=\"/control\">Who holds control of this site</a> · <a href=\"/\">Genesis disclosure</a></p>";
+}
+
+std::string laws_chapter_body(size_t n) {
+    const auto& chapters = law_chapters();
+    const auto& ch = chapters[n-1];
+    std::string nav = "<p class=\"row\"><a class=\"btn ghost\" href=\"/laws\">&larr; Back to overview</a>";
+    if (n < chapters.size())
+        nav += " <a class=\"btn\" href=\"/laws/" + std::to_string(n+1) + "\">Next: " +
+               html_escape(chapters[n].title) + " &rarr;</a>";
+    nav += "</p>";
+    return "<p class=\"eyebrow\">Chapter " + std::to_string(n) + " of " + std::to_string(chapters.size()) + "</p>"
+           "<h1>" + html_escape(ch.title) + "</h1>"
+           "<div class=\"card\">" + ch.body + "</div>" +
+           (n == chapters.size()
+             ? "<p class=\"muted\">You can stop here. Most people do, and that's fine — the rest is mechanism, "
+               "and most of that is still a citizen vote.</p>"
+             : "") +
+           nav;
 }
 
 std::string control_body() {
@@ -3278,6 +3321,14 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         return pg("Genesis", genesis_body()+extra);
     }
     if(method=="GET"&&path=="/laws") return pg("Laws", laws_body());
+    if(method=="GET"&&path.rfind("/laws/",0)==0) {
+        size_t n = 0;
+        try { n = std::stoull(path.substr(6)); } catch (...) {}
+        const auto& chapters = law_chapters();
+        if (n < 1 || n > chapters.size())
+            return http_code("404 Not Found", pg("Not found", "<div class=\"card\"><p>No such chapter.</p></div>"));
+        return pg("Laws · " + chapters[n-1].title, laws_chapter_body(n));
+    }
     if(method=="GET"&&path=="/control") return pg("Who holds control", control_body());
     if(method=="GET"&&path=="/signup") return http_ok(signup_page(user, unread, "", "", ""));
     if(method=="GET"&&path=="/login") {

@@ -1261,6 +1261,25 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "<p class=\"muted\" style=\"margin:.5rem 0 0\">Ctrl+V also pastes an image straight from your "
         "OS clipboard onto the active layer.</p>"
         "</div>"
+        // A starting texture under whatever gets drawn, the way real paper
+        // has a grain before any ink touches it -- four options, Plain
+        // (today's blank default) among them, exactly one active at a
+        // time like the tool row's own .toolbtn pattern. Lives on
+        // #ccanvaswrap's own CSS background (layers stay untouched, fully
+        // transparent as always), so it's visible while editing and
+        // switchable freely, but NOT yet part of flatten()'s output: a
+        // save/post still composites the transparent layers onto a plain
+        // white backing, same as before this control existed. Baking a
+        // choice into the actual saved pixels is a separate, larger change
+        // (drawing real texture onto layer 0 at canvas-open time) --
+        // this is deliberately just the live, switchable preview of the idea.
+        "<div class=\"row\" style=\"margin-bottom:.5rem;align-items:center;gap:.4rem;flex-wrap:wrap\">"
+        "<label class=\"muted\" style=\"font-size:.8rem\">Canvas background</label>"
+        "<button type=\"button\" class=\"ghost cbgbtn\" data-bg=\"hatch\">Hatch</button>"
+        "<button type=\"button\" class=\"ghost cbgbtn\" data-bg=\"plain\" data-on=\"1\">Plain</button>"
+        "<button type=\"button\" class=\"ghost cbgbtn\" data-bg=\"wash\">Wash</button>"
+        "<button type=\"button\" class=\"ghost cbgbtn\" data-bg=\"ruled\">Ruled</button>"
+        "</div>"
         // Layers as a vertical tab strip down the canvas's own left edge --
         // physically attached to the surface they control, the way layer
         // panels normally sit next to (not above) the thing being layered.
@@ -1342,6 +1361,23 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "L.opacity=Number(s.value)/100;L.cv.style.opacity=L.opacity;"
         "});"
         "});"
+        "var CBG={"
+        "plain:'#fff',"
+        "wash:\"radial-gradient(circle at 30% 35%,rgba(201,168,106,.35) 0%,rgba(201,168,106,0) 65%),\""
+        "+\"radial-gradient(circle at 75% 70%,rgba(162,130,59,.28) 0%,rgba(162,130,59,0) 55%),\""
+        "+\"radial-gradient(circle at 60% 15%,rgba(110,59,162,.10) 0%,rgba(110,59,162,0) 45%),#f7f1e4\","
+        "hatch:\"repeating-linear-gradient(45deg,rgba(26,24,20,.16) 0,rgba(26,24,20,.16) 1px,transparent 1px,transparent 9px),#f7f1e4\","
+        "ruled:\"repeating-linear-gradient(to bottom,transparent 0,transparent 17px,rgba(26,24,20,.22) 17px,rgba(26,24,20,.22) 18px),#f7f1e4\""
+        "};"
+        "var cbgBtns=document.querySelectorAll('.cbgbtn');"
+        "cbgBtns.forEach(function(b){"
+        "b.addEventListener('click',function(){"
+        "cbgBtns.forEach(function(o){o.dataset.on='0';o.style.background='';});"
+        "b.dataset.on='1';b.style.background='var(--rule)';"
+        "document.getElementById('ccanvaswrap').style.background=CBG[b.dataset.bg];"
+        "});"
+        "});"
+        "cbgBtns.forEach(function(b){if(b.dataset.on==='1')b.style.background='var(--rule)';});"
         "var activeLayer=0;"
         "function acv(){return layers[activeLayer].cv;}"
         "function actx(){return layers[activeLayer].ctx;}"

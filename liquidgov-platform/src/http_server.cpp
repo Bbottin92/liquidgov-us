@@ -463,6 +463,20 @@ std::string css() {
         ".jbstation-name{flex:1;font-size:.85rem;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}"
         ".jbstation-remove{background:none;border:0;color:var(--stone);cursor:pointer;font-size:.9rem;padding:0 .2rem}"
         ".jukebox .row{margin-top:.5rem}"
+        ".stattiles{display:grid;grid-template-columns:repeat(3,1fr);gap:.6rem;margin:.7rem 0}"
+        ".stattile{background:var(--paper);border:1px solid var(--rule);border-radius:var(--rmd);"
+        "padding:.7rem .5rem;text-align:center}"
+        ".stattile strong{display:block;font-family:var(--display);font-size:1.3rem;line-height:1.2}"
+        ".stattile span{display:block;font-size:.65rem;letter-spacing:.08em;text-transform:uppercase;"
+        "color:var(--stone);margin-top:.2rem}"
+        ".roomrow{display:flex;align-items:center;gap:.7rem;padding:.6rem 0;border-top:1px solid var(--rule);"
+        "text-decoration:none;color:var(--ink)}.roomrow:first-of-type{border-top:0}"
+        ".roomrow:hover .roomname{text-decoration:underline}"
+        ".roomini{width:34px;height:34px;border-radius:50%;background:var(--parchment);border:1px solid var(--rule);"
+        "display:inline-flex;align-items:center;justify-content:center;font-family:var(--display);"
+        "font-weight:600;flex-shrink:0}"
+        ".roomname{flex:1;font-weight:600;min-width:0}.roomname .muted{display:block;font-weight:400;font-size:.78rem}"
+        ".roomlive{color:var(--stone);font-size:.8rem;white-space:nowrap;flex-shrink:0}"
         // nav used to expand in normal document flow, inside the sticky
         // header -- fine until the link list itself got taller than a
         // small viewport, at which point the whole (now very tall)
@@ -2868,6 +2882,54 @@ std::string genesis_body() {
            "</div>";
 }
 
+// A real dashboard for a returning user, in the spirit of the mobile
+// design's home screen (stat tiles, a live "rooms open now" list) --
+// built from data the site already has (posts_by/friends_of/communities_of,
+// the live /world player map, per-station jukebox now-playing state)
+// rather than any of that design's new, unbuilt concepts (Studio, geolocated
+// "people near you").
+std::string home_dashboard(const std::string& user) {
+    const auto posts = g_store.posts_by(user).size();
+    const auto friends = g_store.friends_of(user).size();
+    const auto committees = g_store.communities_of(user);
+
+    size_t world_here = 0;
+    {
+        std::lock_guard<std::mutex> lock(g_world_mu);
+        world_here = g_world_players.size();
+    }
+
+    std::string rooms =
+        "<a class=\"roomrow\" href=\"/world\"><span class=\"roomini\">Q</span>"
+        "<span class=\"roomname\">The Quad<br><span class=\"muted\">A shared, walkable space</span></span>"
+        "<span class=\"roomlive\">" + std::to_string(world_here) + " here</span></a>";
+    for (const auto& c : committees) {
+        bool on_air = false;
+        {
+            std::lock_guard<std::mutex> lock(g_community_mu);
+            auto it = g_community_now_by_station.find(c.slug);
+            on_air = (it != g_community_now_by_station.end() && it->second.active);
+        }
+        char ini_c = c.name.empty() ? '?' : static_cast<char>(std::toupper(static_cast<unsigned char>(c.name[0])));
+        rooms += "<a class=\"roomrow\" href=\"/c/" + html_escape(c.slug) + "\"><span class=\"roomini\">" +
+                 html_escape(std::string(1, ini_c)) + "</span>"
+                 "<span class=\"roomname\">" + html_escape(c.name) + "<br><span class=\"muted\">/" +
+                 html_escape(c.slug) + "</span></span>"
+                 "<span class=\"roomlive\">" + (on_air ? "on air" : "quiet") + "</span></a>";
+    }
+
+    return
+        "<div class=\"card\"><p class=\"eyebrow\">Welcome back</p><h1>@" + html_escape(user) + "</h1>"
+        "<div class=\"stattiles\">"
+        "<div class=\"stattile\"><strong>" + std::to_string(posts) + "</strong><span>Posts</span></div>"
+        "<div class=\"stattile\"><strong>" + std::to_string(friends) + "</strong><span>Friends</span></div>"
+        "<div class=\"stattile\"><strong>" + std::to_string(committees.size()) + "</strong><span>Communities</span></div>"
+        "</div>"
+        "<p class=\"row\"><a class=\"btn\" href=\"/feed\">Open the feed</a> "
+        "<a class=\"btn ghost\" href=\"/me\">Your profile</a></p></div>"
+        "<div class=\"card\"><h2>Rooms open now</h2>" + rooms + "</div>";
+}
+
 std::string laws_body() {
     return "<h1>Three laws</h1>"
            "<p class=\"lede\">The association is built around three prohibitions. Everything else is mechanism, and most of that is still a citizen vote.</p>"
@@ -3198,14 +3260,14 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
     }
 
     if(method=="GET"&&path=="/") {
-        std::string extra;
         if(acc)
-            extra = "<div class=\"card\"><p>Signed in as <strong>"+html_escape(user)+
-                "</strong>. <a href=\"/feed\">Open the feed</a>.</p>"
-                "<p class=\"muted\">Session from platform login(). Not seating. Not a CitizenId.</p></div>";
-        else
-            extra = "<div class=\"card\"><p class=\"row\"><a class=\"btn\" href=\"/signup\">Create an account</a> "
-                    "<a class=\"btn ghost\" href=\"/login\">Log in</a></p></div>";
+            return pg("Home", home_dashboard(user)+
+                "<div class=\"card\"><h2>What this is</h2>"
+                "<p class=\"muted\">Genesis, not a government. Three rules, and the rest is up to you.</p>"
+                "<p class=\"muted\"><a href=\"/laws\">Read the disclosure</a></p></div>");
+        std::string extra =
+            "<div class=\"card\"><p class=\"row\"><a class=\"btn\" href=\"/signup\">Create an account</a> "
+            "<a class=\"btn ghost\" href=\"/login\">Log in</a></p></div>";
         return pg("Genesis", genesis_body()+extra);
     }
     if(method=="GET"&&path=="/laws") return pg("Laws", laws_body());

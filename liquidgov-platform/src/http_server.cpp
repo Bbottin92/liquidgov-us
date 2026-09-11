@@ -63,12 +63,15 @@ std::string world_color_for(const std::string& username) {
     return kPalette[h % 8];
 }
 
-// --- Community jukebox: one shared, site-wide queue everyone connected to
-// /community/ws hears "live" (new joiners seek to the current track's
-// elapsed position). Separate mutex, separate ephemeral state, same
-// one-thread-per-connection pattern as /world/ws — nothing else on the
-// server changes. Open queue: any logged-in visitor can add a track, same
-// posture as the rest of the platform (open messaging, etc).
+// --- Live jukebox "stations": one shared, synced-elapsed-position queue
+// per station that everyone connected to that station's socket hears
+// "live" (new joiners seek to the current track's elapsed position).
+// Stations are keyed by slug -- "" is the one original site-wide station
+// (still /community/ws, unchanged for existing callers), any other slug
+// is that community's own jukebox (/c/<slug>/jukebox/ws), gated to
+// members of that community since "everyone in the group can hear" means
+// the group, not the whole site the way the site-wide one is. One mutex,
+// one pair of maps, same one-thread-per-connection pattern as /world/ws.
 struct CommunityTrack {
     std::string video_id;
     std::string queued_by;
@@ -80,18 +83,19 @@ struct CommunityNowPlaying {
     bool active = false;
 };
 std::mutex g_community_mu;
-CommunityNowPlaying g_community_now;
-std::deque<CommunityTrack> g_community_upcoming;
+std::map<std::string, CommunityNowPlaying> g_community_now_by_station;
+std::map<std::string, std::deque<CommunityTrack>> g_community_upcoming_by_station;
 
 // Caller must hold g_community_mu.
-void community_advance_locked(std::int64_t now) {
-    if (g_community_upcoming.empty()) {
-        g_community_now = CommunityNowPlaying{};
+void community_advance_locked(const std::string& station, std::int64_t now) {
+    auto& upcoming = g_community_upcoming_by_station[station];
+    if (upcoming.empty()) {
+        g_community_now_by_station[station] = CommunityNowPlaying{};
         return;
     }
-    auto next = g_community_upcoming.front();
-    g_community_upcoming.pop_front();
-    g_community_now = CommunityNowPlaying{next.video_id, next.queued_by, now, true};
+    auto next = upcoming.front();
+    upcoming.pop_front();
+    g_community_now_by_station[station] = CommunityNowPlaying{next.video_id, next.queued_by, now, true};
 }
 
 class NeverBreached : public BreachChecker {
@@ -452,6 +456,12 @@ std::string css() {
         "form.inline{display:inline}form.stack{margin:0}"
         ".clocks{display:grid;gap:.7rem}@media(min-width:640px){.clocks{grid-template-columns:1fr 1fr}}"
         ".jukebox iframe{width:100%;max-width:480px;aspect-ratio:16/9;border:0;border-radius:var(--rsm);display:block}"
+        ".jbstation-row{display:flex;align-items:center;gap:.4rem;background:var(--paper);"
+        "border:1px solid var(--rule);border-radius:var(--rsm);padding:.35rem .5rem;touch-action:none}"
+        ".jbstation-row.active{border-color:var(--navy);background:var(--parchment)}"
+        ".jbdraghandle{cursor:grab;color:var(--stone);font-size:1rem;line-height:1;user-select:none;padding:0 .2rem}"
+        ".jbstation-name{flex:1;font-size:.85rem;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}"
+        ".jbstation-remove{background:none;border:0;color:var(--stone);cursor:pointer;font-size:.9rem;padding:0 .2rem}"
         ".jukebox .row{margin-top:.5rem}"
         // nav used to expand in normal document flow, inside the sticky
         // header -- fine until the link list itself got taller than a
@@ -825,7 +835,7 @@ bool read_http_request(int fd, std::string& req) {
     return true;
 }
 
-std::string global_jukebox_widget(const std::string& yt_key); // defined below, needed here for wrap()
+std::string global_jukebox_widget(const std::string& yt_key, const std::string& user); // defined below, needed here for wrap()
 
 std::string wrap(const std::string& title, const std::string& user, int unread, const std::string& body) {
     std::string page = page_wrap(title, nav(user, unread), body);
@@ -834,7 +844,7 @@ std::string wrap(const std::string& title, const std::string& user, int unread, 
     // contents, so a sibling widget's live WebSocket/YT player survive a
     // page-to-page click untouched instead of being torn down and rebuilt.
     if (!user.empty()) {
-        std::string widget = global_jukebox_widget(youtube_api_key_from_env());
+        std::string widget = global_jukebox_widget(youtube_api_key_from_env(), user);
         auto pos = page.find("</main>");
         if (pos != std::string::npos) page.insert(pos + 7, widget);
     }
@@ -1159,10 +1169,10 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         // jog/shuttle pair, so which is which never needs explaining.
         "<label>Size</label>"
         "<div class=\"row\" style=\"gap:.3rem;align-items:center\">"
-        "<div class=\"wheel\" id=\"csizec\" data-target=\"csize\" data-step=\"5\" title=\"Size, coarse (drag or scroll, \\u00b15)\" "
+        "<div class=\"wheel\" id=\"csizec\" data-target=\"csize\" data-step=\"5\" title=\"Size, coarse (drag or scroll, &plusmn;5)\" "
         "style=\"width:30px;height:30px;border-radius:50%;border:1px solid var(--rule);cursor:ns-resize;"
         "touch-action:none;flex:0 0 auto\">"+kIconDial+"</div>"
-        "<div class=\"wheel\" id=\"csizef\" data-target=\"csize\" data-step=\"1\" title=\"Size, fine (drag or scroll, \\u00b11)\" "
+        "<div class=\"wheel\" id=\"csizef\" data-target=\"csize\" data-step=\"1\" title=\"Size, fine (drag or scroll, &plusmn;1)\" "
         "style=\"width:20px;height:20px;border-radius:50%;border:1px solid var(--rule);cursor:ns-resize;"
         "touch-action:none;flex:0 0 auto\">"+kIconDial+"</div>"
         "<input type=\"number\" id=\"csize\" min=\"1\" max=\"48\" value=\"8\" style=\"width:4rem\">"
@@ -1170,11 +1180,11 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "<label>Opacity</label>"
         "<div class=\"row\" style=\"gap:.3rem;align-items:center\">"
         "<div class=\"wheel\" id=\"copacityc\" data-target=\"copacity\" data-step=\"20\" "
-        "title=\"Opacity, coarse (drag or scroll, \\u00b120)\" "
+        "title=\"Opacity, coarse (drag or scroll, &plusmn;20)\" "
         "style=\"width:30px;height:30px;border-radius:50%;border:1px solid var(--rule);cursor:ns-resize;"
         "touch-action:none;flex:0 0 auto\">"+kIconDial+"</div>"
         "<div class=\"wheel\" id=\"copacityf\" data-target=\"copacity\" data-step=\"5\" "
-        "title=\"Opacity, fine (drag or scroll, \\u00b15)\" "
+        "title=\"Opacity, fine (drag or scroll, &plusmn;5)\" "
         "style=\"width:20px;height:20px;border-radius:50%;border:1px solid var(--rule);cursor:ns-resize;"
         "touch-action:none;flex:0 0 auto\">"+kIconDial+"</div>"
         "<input type=\"number\" id=\"copacity\" min=\"5\" max=\"100\" value=\"100\" style=\"width:4rem\">"
@@ -1881,7 +1891,7 @@ std::string world_page(const std::string& username) {
         "<canvas id=\"wcanvas\" width=\"800\" height=\"500\" "
         "style=\"border:1px solid var(--rule);border-radius:var(--rsm);background:#eee7d6;"
         "max-width:100%;touch-action:none\"></canvas>"
-        "<p class=\"muted\" id=\"wstatus\">Connecting\\u2026</p></div>"
+        "<p class=\"muted\" id=\"wstatus\">Connecting&hellip;</p></div>"
         "<script>(function(){"
         "var me="+js_string_literal(username)+";"
         "var cv=document.getElementById('wcanvas'),ctx=cv.getContext('2d');"
@@ -2015,12 +2025,15 @@ std::optional<std::string> extract_json_string_field(const std::string& s, const
     return s.substr(open + 1, close_pos - open - 1);
 }
 
-// One thread per connected /community/ws client — same shape as
-// run_world_session, entirely separate shared state (g_community_mu).
-// Any logged-in visitor can add a track (open queue, same posture as the
-// rest of the platform); the queue auto-advances when any connected
-// client's player reports the current track ended.
-void run_community_session(int fd, const std::string& username) {
+// One thread per connected station client (/community/ws for the "" site-
+// wide station, /c/<slug>/jukebox/ws for a community's own) — same shape
+// as run_world_session, entirely separate shared state (g_community_mu).
+// Membership (for a real station) was already checked before this thread
+// was spawned, same as everything else here trusts the caller. Any
+// connected member can add a track (open queue within the station, same
+// posture the site-wide one always had); the queue auto-advances when any
+// connected client's player reports the current track ended.
+void run_community_session(int fd, const std::string& username, const std::string& station) {
     timeval tv{}; tv.tv_sec = 0; tv.tv_usec = 500000; // 500ms — a shared queue doesn't need world's 100ms cadence
     setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
@@ -2034,19 +2047,21 @@ void run_community_session(int fd, const std::string& username) {
                 if (auto raw = extract_json_string_field(s, "\"add\"")) {
                     if (auto id = extract_youtube_id(trim_ws(*raw))) {
                         std::lock_guard<std::mutex> lock(g_community_mu);
-                        if (!g_community_now.active && g_community_upcoming.empty()) {
-                            g_community_now = CommunityNowPlaying{*id, username,
+                        auto& now_playing = g_community_now_by_station[station];
+                        auto& upcoming = g_community_upcoming_by_station[station];
+                        if (!now_playing.active && upcoming.empty()) {
+                            now_playing = CommunityNowPlaying{*id, username,
                                 std::chrono::duration_cast<std::chrono::seconds>(
                                     std::chrono::system_clock::now().time_since_epoch()).count(),
                                 true};
                         } else {
-                            g_community_upcoming.push_back(CommunityTrack{*id, username});
+                            upcoming.push_back(CommunityTrack{*id, username});
                         }
                     }
                 } else if (s.find("\"ended\"") != std::string::npos) {
                     std::lock_guard<std::mutex> lock(g_community_mu);
-                    if (g_community_now.active) {
-                        community_advance_locked(std::chrono::duration_cast<std::chrono::seconds>(
+                    if (g_community_now_by_station[station].active) {
+                        community_advance_locked(station, std::chrono::duration_cast<std::chrono::seconds>(
                             std::chrono::system_clock::now().time_since_epoch()).count());
                     }
                 }
@@ -2058,16 +2073,17 @@ void run_community_session(int fd, const std::string& username) {
             std::lock_guard<std::mutex> lock(g_community_mu);
             const auto now = std::chrono::duration_cast<std::chrono::seconds>(
                 std::chrono::system_clock::now().time_since_epoch()).count();
+            const auto& now_playing = g_community_now_by_station[station];
             std::ostringstream os;
             os << "{";
-            if (g_community_now.active) {
-                os << "\"now\":{\"video_id\":\"" << g_community_now.video_id
-                   << "\",\"queued_by\":\"" << g_community_now.queued_by
-                   << "\",\"elapsed\":" << std::max<std::int64_t>(0, now - g_community_now.started_at) << "}";
+            if (now_playing.active) {
+                os << "\"now\":{\"video_id\":\"" << now_playing.video_id
+                   << "\",\"queued_by\":\"" << now_playing.queued_by
+                   << "\",\"elapsed\":" << std::max<std::int64_t>(0, now - now_playing.started_at) << "}";
             } else {
                 os << "\"now\":null";
             }
-            os << ",\"upcoming\":" << g_community_upcoming.size() << "}";
+            os << ",\"upcoming\":" << g_community_upcoming_by_station[station].size() << "}";
             snapshot = os.str();
         }
         if (!ws_write_frame(fd, WsOpcode::Text, snapshot)) break;
@@ -2096,13 +2112,13 @@ std::string jukebox_panel_body(bool standalone) {
     return
         "<div class=\"row\" style=\"justify-content:space-between;align-items:center\">"
         "<div class=\"row\" style=\"gap:.3rem\">"
-        "<button type=\"button\" class=\"ghost\" id=\"jbtab-community\">Community</button>"
+        "<button type=\"button\" class=\"ghost\" id=\"jbtab-community\">Stations</button>"
         "<button type=\"button\" class=\"ghost\" id=\"jbtab-search\">My search</button>"
         "</div>"
         "<div class=\"row\" style=\"gap:.3rem\">"
         + std::string(standalone
             ? "<button type=\"button\" class=\"ghost\" id=\"jbfloat\" hidden>Float above</button>"
-            : "<button type=\"button\" class=\"ghost\" id=\"jbpopout\" title=\"Open in its own window \\u2014 keeps playing while you browse\">Pop out</button>")
+            : "<button type=\"button\" class=\"ghost\" id=\"jbpopout\" title=\"Open in its own window &mdash; keeps playing while you browse\">Pop out</button>")
         + "<button type=\"button\" class=\"ghost\" id=\"jbclose\" aria-label=\"Close\">\xE2\x9C\x95</button>"
         "</div>"
         "</div>"
@@ -2114,9 +2130,19 @@ std::string jukebox_panel_body(bool standalone) {
         "<input type=\"range\" id=\"jbvolume\" min=\"0\" max=\"100\" value=\"70\" style=\"flex:1\">"
         "</div>"
         "<div id=\"jbcommunity-ui\">"
-        "<p class=\"muted\" id=\"jbnow\" style=\"margin:.5rem 0 0\">Connecting\\u2026</p>"
+        // Priority-ordered, drag-to-reorder list of stations tuned in on
+        // *this* widget -- see jukebox_script's stations block for the
+        // reorder/click-to-temporarily-prioritize logic. Deliberately not
+        // an account preference: "on the phone" is this device's own
+        // widget config, in localStorage, same as it staying collapsed
+        // across a soft-nav is this tab's own state.
+        "<p class=\"muted\" style=\"margin:.5rem 0 .15rem;font-size:.72rem;letter-spacing:.08em;"
+        "text-transform:uppercase\">Stations &mdash; drag to reorder, tap to tune in now</p>"
+        "<div id=\"jbstationlist\" style=\"display:flex;flex-direction:column;gap:.2rem\"></div>"
+        "<select id=\"jbstationadd\" style=\"margin-top:.35rem\"><option value=\"\">Add a station&hellip;</option></select>"
+        "<p class=\"muted\" id=\"jbnow\" style=\"margin:.6rem 0 0\">Connecting&hellip;</p>"
         "<p class=\"muted\" id=\"jbupcoming\" style=\"margin:.1rem 0 0\"></p>"
-        "<input id=\"jbadd\" placeholder=\"Add to the community queue\" autocomplete=\"off\" "
+        "<input id=\"jbadd\" placeholder=\"Add to the queue\" autocomplete=\"off\" "
         "style=\"margin-top:.4rem;width:100%\">"
         "<div id=\"jbaddresults\" style=\"margin-top:.3rem;display:flex;flex-direction:column;gap:.15rem\"></div>"
         "</div>"
@@ -2134,7 +2160,7 @@ std::string jukebox_panel_body(bool standalone) {
 // navigates away as long as it stays open — a working "Float above" button
 // using the real Document Picture-in-Picture API, moving the whole panel
 // into an always-on-top OS-level window for as long as this tab stays open).
-std::string jukebox_script(const std::string& yt_key, bool standalone) {
+std::string jukebox_script(const std::string& yt_key, bool standalone, const std::string& stations_js) {
     std::string s =
         "<script>(function(){"
         "var key="+js_string_literal(yt_key)+";"
@@ -2147,8 +2173,40 @@ std::string jukebox_script(const std::string& yt_key, bool standalone) {
         "var addInput=document.getElementById('jbadd'),addResults=document.getElementById('jbaddresults');"
         "var searchInput=document.getElementById('jbsearch'),searchResults=document.getElementById('jbsearchresults');"
         "var communityUi=document.getElementById('jbcommunity-ui'),searchUi=document.getElementById('jbsearch-ui');"
+        "var stationList=document.getElementById('jbstationlist'),stationAdd=document.getElementById('jbstationadd');"
         "var mode='community',ytPlayer=null,ws=null,muted=false;"
         "var lastCommunityId=null,lastCommunityElapsed=0;"
+        // Stations: which live jukeboxes (the site-wide one, id "", plus any
+        // community this account belongs to) are tuned in on *this* widget,
+        // in priority order (index 0 = plays). This is the device's own
+        // widget config -- localStorage, not an account setting -- same
+        // reasoning as the panel's own open/closed state never being saved
+        // server-side. tempOverride is a click-to-listen-now override: set
+        // by tapping a station's name, cleared by tapping it again or
+        // choosing a different one, never persisted (it's explicitly
+        // temporary -- see jukebox_panel_body's station row markup).
+        "var STATIONS_AVAILABLE="+stations_js+";"
+        "var STATIONS_KEY='liquidgov.jukebox.stations';"
+        "var enabledOrder=[''];"
+        "try{"
+        "var saved=JSON.parse(localStorage.getItem(STATIONS_KEY)||'null');"
+        "if(saved&&saved.length){"
+        "var filtered=saved.filter(function(id){"
+        "return STATIONS_AVAILABLE.some(function(s){return s.id===id;});"
+        "});"
+        "if(filtered.length)enabledOrder=filtered;"
+        "}"
+        "}catch(e){}"
+        "var tempOverride=null,currentConnectedStation=undefined;"
+        "function saveStations(){try{localStorage.setItem(STATIONS_KEY,JSON.stringify(enabledOrder));}catch(e){}}"
+        "function stationName(id){"
+        "var found=STATIONS_AVAILABLE.filter(function(s){return s.id===id;})[0];"
+        "return found?found.name:id;"
+        "}"
+        "function activeStationId(){"
+        "if(tempOverride!==null)return tempOverride;"
+        "return enabledOrder.length?enabledOrder[0]:null;"
+        "}"
         "function esc(s){var ta=document.createElement('textarea');ta.innerHTML=s;"
         "var d=document.createElement('div');d.textContent=ta.value;return d.innerHTML;}"
         "function looksLikeUrl(s){return /^https?:\\/\\//i.test(s)||/youtu\\.?be/i.test(s);}"
@@ -2179,19 +2237,23 @@ std::string jukebox_script(const std::string& yt_key, bool standalone) {
         "}});"
         "});"
         "}"
-        "function teardown(){"
+        "function teardownWs(){"
         "if(ws){try{ws.close();}catch(e){}ws=null;}"
-        "if(ytPlayer){try{ytPlayer.destroy();}catch(e){}ytPlayer=null;}"
         "lastCommunityId=null;"
         "}"
-        "function connectWs(){"
+        "function teardown(){"
+        "teardownWs();"
+        "if(ytPlayer){try{ytPlayer.destroy();}catch(e){}ytPlayer=null;}"
+        "}"
+        "function connectWs(stationId){"
         "if(ws)return;"
         "var proto=location.protocol==='https:'?'wss:':'ws:';"
-        "ws=new WebSocket(proto+'//'+location.host+'/community/ws');"
+        "var path=stationId?('/c/'+encodeURIComponent(stationId)+'/jukebox/ws'):'/community/ws';"
+        "ws=new WebSocket(proto+'//'+location.host+path);"
         "ws.onmessage=function(ev){"
         "var data;try{data=JSON.parse(ev.data);}catch(e){return;}"
         "if(data.now){"
-        "nowEl.textContent='Now playing \\u2014 queued by '+data.now.queued_by;"
+        "nowEl.textContent='Now playing on '+esc(stationName(stationId))+' \\u2014 queued by '+esc(data.now.queued_by);"
         "if(data.now.video_id!==lastCommunityId){"
         "lastCommunityId=data.now.video_id;lastCommunityElapsed=data.now.elapsed;"
         "if(mode==='community')ensurePlayer(function(){"
@@ -2199,18 +2261,123 @@ std::string jukebox_script(const std::string& yt_key, bool standalone) {
         "});"
         "}else{lastCommunityElapsed=data.now.elapsed;}"
         "}else{"
-        "nowEl.textContent='Nothing playing \\u2014 add a track below.';"
+        "nowEl.textContent=esc(stationName(stationId))+': nothing playing \\u2014 add a track below.';"
         "lastCommunityId=null;"
         "if(mode==='community'&&ytPlayer)ytPlayer.stopVideo();"
         "}"
         "upcomingEl.textContent=data.upcoming?(data.upcoming+' track'+(data.upcoming===1?'':'s')+' queued next'):'';"
         "};"
         "}"
+        // Called after enabledOrder or tempOverride changes: re-renders the
+        // station list (so the active one's highlight is right) and, only
+        // when the *actual* active station changed, tears down and
+        // reconnects the live socket to it -- a reorder that doesn't move
+        // anything above the active one, or a temp-override toggle back to
+        // the same station that was already playing, is a no-op here.
+        "function onStationsChanged(persist){"
+        "if(persist)saveStations();"
+        "renderStations();renderStationAdd();"
+        "var id=activeStationId();"
+        "if(id===currentConnectedStation)return;"
+        "currentConnectedStation=id;"
+        "if(mode==='community'){"
+        "teardownWs();"
+        "if(id!==null){connectWs(id);}"
+        "else{nowEl.textContent='No station selected \\u2014 add one below.';upcomingEl.textContent='';if(ytPlayer)ytPlayer.stopVideo();}"
+        "}"
+        "}"
+        "function renderStations(){"
+        "var active=activeStationId();"
+        "stationList.innerHTML='';"
+        "enabledOrder.forEach(function(id){"
+        "var row=document.createElement('div');"
+        "row.className='jbstation-row'+(id===active?' active':'');"
+        "row.dataset.id=id;"
+        "var handle=document.createElement('span');handle.className='jbdraghandle';"
+        "handle.textContent='\\u283F';handle.setAttribute('aria-hidden','true');"
+        "var name=document.createElement('span');name.className='jbstation-name';"
+        "name.textContent=stationName(id);name.title='Tap to listen to this now';"
+        "name.addEventListener('click',function(){"
+        "tempOverride=(tempOverride===id)?null:id;"
+        "onStationsChanged(false);"
+        "});"
+        "var remove=document.createElement('button');remove.type='button';remove.className='jbstation-remove';"
+        "remove.setAttribute('aria-label','Remove station');remove.textContent='\\u2715';"
+        "remove.addEventListener('click',function(e){"
+        "e.stopPropagation();"
+        "enabledOrder=enabledOrder.filter(function(x){return x!==id;});"
+        "if(tempOverride===id)tempOverride=null;"
+        "onStationsChanged(true);"
+        "});"
+        "row.appendChild(handle);row.appendChild(name);row.appendChild(remove);"
+        "stationList.appendChild(row);"
+        "});"
+        "}"
+        "function renderStationAdd(){"
+        "stationAdd.innerHTML='';"
+        "var ph=document.createElement('option');ph.value='__placeholder__';ph.textContent='Add a station\\u2026';"
+        "stationAdd.appendChild(ph);"
+        "STATIONS_AVAILABLE.forEach(function(s){"
+        "if(enabledOrder.indexOf(s.id)!==-1)return;"
+        "var opt=document.createElement('option');opt.value=s.id;opt.textContent=s.name;"
+        "stationAdd.appendChild(opt);"
+        "});"
+        "stationAdd.value='__placeholder__';"
+        "}"
+        "stationAdd.addEventListener('change',function(){"
+        "var id=stationAdd.value;"
+        "if(id==='__placeholder__')return;"
+        "if(enabledOrder.indexOf(id)===-1){enabledOrder.push(id);onStationsChanged(true);}"
+        "});"
+        // Pointer-based reorder (not native HTML5 drag, which doesn't work
+        // on touch): drag the handle, the row under the pointer's midpoint
+        // is where it lands, dropped position becomes the new saved order.
+        "(function attachStationDrag(){"
+        "var dragRow=null;"
+        "function rowUnder(clientY){"
+        "var rows=Array.prototype.slice.call(stationList.querySelectorAll('.jbstation-row'));"
+        "var after=null;"
+        "rows.forEach(function(r){"
+        "if(r===dragRow)return;"
+        "var box=r.getBoundingClientRect();"
+        "if(clientY>box.top+box.height/2)after=r;"
+        "});"
+        "return after;"
+        "}"
+        "stationList.addEventListener('pointerdown',function(e){"
+        "var row=e.target.closest&&e.target.closest('.jbstation-row');"
+        "var handle=e.target.closest&&e.target.closest('.jbdraghandle');"
+        "if(!row||!handle)return;"
+        "dragRow=row;"
+        "try{row.setPointerCapture(e.pointerId);}catch(err){}"
+        "row.style.zIndex='5';row.style.opacity='.85';"
+        "});"
+        "stationList.addEventListener('pointermove',function(e){"
+        "if(!dragRow)return;"
+        "var after=rowUnder(e.clientY);"
+        "var target=after?after.nextSibling:stationList.firstChild;"
+        "if(target!==dragRow)stationList.insertBefore(dragRow,target);"
+        "});"
+        "function drop(){"
+        "if(!dragRow)return;"
+        "dragRow.style.zIndex='';dragRow.style.opacity='';"
+        "dragRow=null;"
+        "enabledOrder=Array.prototype.slice.call(stationList.querySelectorAll('.jbstation-row'))"
+        ".map(function(r){return r.dataset.id;});"
+        "onStationsChanged(true);"
+        "}"
+        "stationList.addEventListener('pointerup',drop);"
+        "stationList.addEventListener('pointercancel',drop);"
+        "})();"
         "function switchMode(m){"
         "mode=m;updateTabs();"
         "communityUi.hidden=(m!=='community');searchUi.hidden=(m!=='search');"
         "if(m==='community'){"
-        "connectWs();"
+        "var id=activeStationId();"
+        "if(id!==currentConnectedStation||!ws){"
+        "currentConnectedStation=id;teardownWs();"
+        "if(id!==null)connectWs(id);"
+        "}"
         "if(lastCommunityId)ensurePlayer(function(){"
         "ytPlayer.loadVideoById({videoId:lastCommunityId,startSeconds:lastCommunityElapsed});"
         "});"
@@ -2265,7 +2432,9 @@ std::string jukebox_script(const std::string& yt_key, bool standalone) {
         "var toggle=document.getElementById('jbtoggle'),panel=document.getElementById('jbpanel');"
         "toggle.addEventListener('click',function(){"
         "panel.hidden=!panel.hidden;"
-        "if(!panel.hidden){ensurePlayer(function(){});connectWs();}"
+        "if(!panel.hidden){ensurePlayer(function(){});"
+        "if(mode==='community'&&!ws){currentConnectedStation=activeStationId();connectWs(currentConnectedStation);}"
+        "}"
         "});"
         // Closing the panel is a minimize, not a stop: audio keeps playing
         // in the background on this page, same as e.g. a music site's
@@ -2322,7 +2491,8 @@ std::string jukebox_script(const std::string& yt_key, bool standalone) {
         "}"
         "}else{"
         "document.getElementById('jbclose').addEventListener('click',function(){window.close();});"
-        "ensurePlayer(function(){});connectWs();"
+        "ensurePlayer(function(){});"
+        "currentConnectedStation=activeStationId();connectWs(currentConnectedStation);"
         "var floatBtn=document.getElementById('jbfloat');"
         "if('documentPictureInPicture' in window){"
         "floatBtn.hidden=false;"
@@ -2377,9 +2547,26 @@ std::string jukebox_script(const std::string& yt_key, bool standalone) {
         "}"
         "}"
         "});"
-        "updateTabs();"
+        "updateTabs();renderStations();renderStationAdd();"
         "})();</script>";
     return s;
+}
+
+// The site-wide station (id "") plus every community this account belongs
+// to, as a JS array-literal source -- not strict JSON, embedded directly
+// into jukebox_script's <script> via string concatenation, so each field
+// goes through js_string_literal the same way every other server string
+// gets safely embedded into inline JS on this site.
+std::string jukebox_stations_js(const std::string& user) {
+    std::ostringstream os;
+    os << "[{id:" << js_string_literal("") << ",name:" << js_string_literal("Site-wide") << "}";
+    if (!user.empty()) {
+        for (const auto& c : g_store.communities_of(user)) {
+            os << ",{id:" << js_string_literal(c.slug) << ",name:" << js_string_literal(c.name) << "}";
+        }
+    }
+    os << "]";
+    return os.str();
 }
 
 // Floating embedded widget: phone-icon toggle + collapsible panel, injected
@@ -2387,7 +2574,7 @@ std::string jukebox_script(const std::string& yt_key, bool standalone) {
 // separate window — see jukebox_script's comment for why that, and not
 // requestPictureInPicture, is what actually survives navigating this
 // (deliberately multi-page) site.
-std::string global_jukebox_widget(const std::string& yt_key) {
+std::string global_jukebox_widget(const std::string& yt_key, const std::string& user) {
     return
         "<button id=\"jbtoggle\" type=\"button\" aria-label=\"Jukebox\" "
         "style=\"position:fixed;right:1rem;bottom:1rem;z-index:30;width:52px;height:52px;"
@@ -2400,7 +2587,7 @@ std::string global_jukebox_widget(const std::string& yt_key) {
         "border-radius:var(--rlg);padding:.9rem;box-shadow:0 6px 24px rgba(0,0,0,.35)\">"
         "<div id=\"jbroot\">" + jukebox_panel_body(false) + "</div>"
         "</div>"
-        + jukebox_script(yt_key, false);
+        + jukebox_script(yt_key, false, jukebox_stations_js(user));
 }
 
 // The /listen popout: a real, independent top-level window. Once open, it
@@ -2411,10 +2598,10 @@ std::string global_jukebox_widget(const std::string& yt_key) {
 // opener document's lifetime — closes on real navigation, not just this
 // site's choice). From inside *this* window, Float above uses Document PiP
 // for real, since this window's own document doesn't navigate away.
-std::string jukebox_standalone_page(const std::string& yt_key) {
+std::string jukebox_standalone_page(const std::string& yt_key, const std::string& user) {
     return "<div id=\"jbroot\" style=\"max-width:400px;margin:0 auto\">"
            + jukebox_panel_body(true) + "</div>"
-           + jukebox_script(yt_key, true);
+           + jukebox_script(yt_key, true, jukebox_stations_js(user));
 }
 
 // The "Add a track" input + live search box, shared between the owner's own
@@ -2923,7 +3110,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         // just be noise in a small popout.
         if(!acc) return http_redir("/login");
         return http_ok(page_wrap("Listen", "",
-            "<div style=\"padding:.75rem\">" + jukebox_standalone_page(youtube_api_key_from_env()) + "</div>"));
+            "<div style=\"padding:.75rem\">" + jukebox_standalone_page(youtube_api_key_from_env(), user) + "</div>"));
     }
     if(method=="GET"&&path=="/feed") {
         if(!acc) return http_redir("/login");
@@ -4281,7 +4468,42 @@ int main() {
                                "Sec-WebSocket-Accept: " << accept_val << "\r\n\r\n";
                     std::string r = resp101.str();
                     if (send(c, r.data(), r.size(), 0) > 0) {
-                        std::thread(run_community_session, c, username).detach();
+                        std::thread(run_community_session, c, username, std::string("")).detach();
+                        continue;
+                    }
+                }
+                close(c);
+                continue;
+            }
+            // A group's own live jukebox -- same real-time station as
+            // /community/ws above, just keyed by this community's slug
+            // instead of the "" site-wide one, and gated to members (the
+            // site-wide station stays open to anyone logged in; a group's
+            // own station is for the group).
+            if (method == "GET" && rawpath.rfind("/c/",0)==0 && rawpath.size()>11 &&
+                rawpath.compare(rawpath.size()-11,11,"/jukebox/ws")==0 &&
+                header_value(req, "Upgrade").find("websocket") != std::string::npos) {
+                const std::string slug = rawpath.substr(3, rawpath.size()-3-11);
+                std::string username;
+                bool member = false;
+                {
+                    std::lock_guard<std::mutex> lock(g_mu);
+                    auto acc = account_from_req(req);
+                    if (acc) {
+                        username = acc->username;
+                        member = valid_username(slug) && g_store.is_member(slug, username);
+                    }
+                }
+                auto key = header_value(req, "Sec-WebSocket-Key");
+                if (!username.empty() && member && !key.empty()) {
+                    std::string accept_val = websocket_accept_value(key);
+                    std::ostringstream resp101;
+                    resp101 << "HTTP/1.1 101 Switching Protocols\r\n"
+                               "Upgrade: websocket\r\nConnection: Upgrade\r\n"
+                               "Sec-WebSocket-Accept: " << accept_val << "\r\n\r\n";
+                    std::string r = resp101.str();
+                    if (send(c, r.data(), r.size(), 0) > 0) {
+                        std::thread(run_community_session, c, username, slug).detach();
                         continue;
                     }
                 }

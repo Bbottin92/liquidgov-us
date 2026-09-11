@@ -248,6 +248,10 @@ bool FileStore::username_exists(const std::string& username) const {
     return by_username_.count(username) > 0;
 }
 
+std::size_t FileStore::account_count() const {
+    return accounts_.size();
+}
+
 std::optional<PlatformAccount> FileStore::find_by_username(const std::string& username) const {
     auto it = by_username_.find(username);
     if (it == by_username_.end()) return std::nullopt;

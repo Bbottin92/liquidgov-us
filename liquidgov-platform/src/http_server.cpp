@@ -2927,7 +2927,8 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
     }
     if(method=="GET"&&path=="/feed") {
         if(!acc) return http_redir("/login");
-        std::string html = "<h1>Feed</h1>"+composer_media_error(qs["perr"])+
+        std::string html = "<h1>Feed</h1><p class=\"muted eyebrow\">"+html_escape(fmt_time(now()))+
+            " &middot; "+std::to_string(g_store.account_count())+" members</p>"+composer_media_error(qs["perr"])+
             "<div class=\"card\"><form method=\"POST\" action=\"/feed\" enctype=\"multipart/form-data\">"
             "<label>Write to people who know you</label>"
             "<textarea name=\"text\" maxlength=\"2000\" placeholder=\"Plain text. Friends see this.\"></textarea>"
@@ -3213,6 +3214,8 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         auto pals = g_store.friends_of(user);
         auto inner = g_store.inner_of(user);
         std::set<std::string> inner_set(inner.begin(), inner.end());
+        html += "<p class=\"muted eyebrow\">"+std::to_string(pals.size())+
+                (pals.size()==1?" friend":" friends")+" &middot; "+std::to_string(inner_set.size())+" inner</p>";
         if(pals.empty()) html += "<p class=\"empty\">None yet.</p>";
         for (auto& other : pals) {
             const bool inn = inner_set.count(other);

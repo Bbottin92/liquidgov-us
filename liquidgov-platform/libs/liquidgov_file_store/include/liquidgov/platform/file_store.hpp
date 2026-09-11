@@ -266,6 +266,7 @@ public:
     FileStore& operator=(const FileStore&) = delete;
 
     bool username_exists(const std::string& username) const override;
+    std::size_t account_count() const;
     std::optional<PlatformAccount> find_by_username(const std::string& username) const override;
     AccountId create(const PlatformAccount& account) override;
     void save_session(const Session& session) override;

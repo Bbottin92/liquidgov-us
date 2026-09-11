@@ -193,6 +193,15 @@ enum class Visibility : int {
     OnlyMe = 3,
 };
 
+// Which slice of activity /feed shows -- see feed_view's comment for what
+// each one actually pulls in.
+enum class FeedFilter : int {
+    All = 0,
+    Friends = 1,
+    Committees = 2,
+    Drawings = 3,
+};
+
 struct AccountPrefs {
     Findability findability = Findability::ExactMatch;
     bool friends_only_dm = true;
@@ -360,6 +369,14 @@ public:
                            const std::string& repost_of_author = "", std::uint64_t repost_of_id = 0,
                            const std::string& attachment_blob_id = "", const std::string& attachment_mime = "");
     std::vector<Post> feed_for(const std::string& user, std::size_t limit) const;
+    // Friends is exactly feed_for. All and Committees additionally pull in
+    // posts from communities `user` actually belongs to (feed_for never
+    // includes community posts at all) -- "committees," not every
+    // community on the site, same personal-feed posture feed_for already
+    // has. Drawings is whichever of those carries a media attachment;
+    // there's no separate "hand-drawn" flag anywhere in Post, so this is
+    // the closest honest reading of "drawings" the data model supports.
+    std::vector<Post> feed_view(const std::string& user, std::size_t limit, FeedFilter filter) const;
     std::vector<Post> posts_in(const std::string& community, std::size_t limit) const;
     std::vector<Post> posts_by(const std::string& author) const;
     std::optional<Post> post_by_id(std::uint64_t id) const;

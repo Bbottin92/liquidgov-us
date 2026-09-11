@@ -3151,8 +3151,22 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
     }
     if(method=="GET"&&path=="/feed") {
         if(!acc) return http_redir("/login");
+        std::string filter_key = qs.count("filter") ? qs.at("filter") : "all";
+        FeedFilter filter = FeedFilter::All;
+        if (filter_key == "friends") filter = FeedFilter::Friends;
+        else if (filter_key == "committees") filter = FeedFilter::Committees;
+        else if (filter_key == "drawings") filter = FeedFilter::Drawings;
+        else filter_key = "all";
+        auto tab = [&](const char* key, const char* label) {
+            const bool active = filter_key == key;
+            return "<a class=\"btn"+std::string(active?"":" ghost")+"\" href=\"/feed?filter="+key+"\">"+label+"</a>";
+        };
         std::string html = "<h1>Feed</h1><p class=\"muted eyebrow\">"+html_escape(fmt_time(now()))+
-            " &middot; "+std::to_string(g_store.account_count())+" members</p>"+composer_media_error(qs["perr"])+
+            " &middot; "+std::to_string(g_store.account_count())+" members</p>"
+            "<div class=\"row\" style=\"margin:.5rem 0 1rem\">"+
+            tab("all","All")+tab("friends","Friends")+tab("committees","Committees")+tab("drawings","Drawings")+
+            "</div>"+
+            composer_media_error(qs["perr"])+
             "<div class=\"card\"><form method=\"POST\" action=\"/feed\" enctype=\"multipart/form-data\">"
             "<label>Write to people who know you</label>"
             "<textarea name=\"text\" maxlength=\"2000\" placeholder=\"Plain text. Friends see this.\"></textarea>"
@@ -3162,7 +3176,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             "to draw, crop, layer, or paste one together first.</p>"
             "<p class=\"muted\">Personal posts reach you and your friends. Communities have their own pages. "
             "This is not a civic act.</p></div>";
-        auto posts = g_store.feed_for(user, 80);
+        auto posts = g_store.feed_view(user, 80, filter);
         if (posts.empty()) html += "<p class=\"empty\">Nothing yet. Write something, or add a friend.</p>";
         for (const auto& p : posts) html += "<div class=\"card\">"+post_block(p, user)+"</div>";
         return pg("Feed", html);

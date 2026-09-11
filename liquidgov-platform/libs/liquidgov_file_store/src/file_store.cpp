@@ -666,6 +666,28 @@ std::vector<Post> FileStore::feed_for(const std::string& user, std::size_t limit
     return out;
 }
 
+std::vector<Post> FileStore::feed_view(const std::string& user, std::size_t limit, FeedFilter filter) const {
+    if (filter == FeedFilter::Friends) return feed_for(user, limit);
+    std::set<std::string> my_slugs;
+    for (const auto& c : communities_of(user)) my_slugs.insert(c.slug);
+    std::vector<Post> out;
+    for (auto it = posts_.rbegin(); it != posts_.rend(); ++it) {
+        const bool personal = it->community.empty() &&
+            (it->author == user || are_friends(user, it->author)) &&
+            !is_blocked(user, it->author) &&
+            !(it->author != user && prefs_of(it->author).posts_visibility == Visibility::OnlyMe);
+        const bool committee_post = !it->community.empty() && my_slugs.count(it->community) > 0;
+        bool include;
+        if (filter == FeedFilter::Committees) include = committee_post;
+        else if (filter == FeedFilter::Drawings) include = (personal || committee_post) && !it->attachment_blob_id.empty();
+        else include = personal || committee_post; // All
+        if (!include) continue;
+        out.push_back(*it);
+        if (out.size() >= limit) break;
+    }
+    return out;
+}
+
 std::vector<Post> FileStore::posts_in(const std::string& community, std::size_t limit) const {
     std::vector<Post> out;
     for (auto it = posts_.rbegin(); it != posts_.rend(); ++it) {

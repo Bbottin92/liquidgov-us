@@ -338,25 +338,30 @@ std::string theme_background_css(const std::string& username, std::size_t frame_
 std::string css() {
     return
         ":root{--paper:#f7f1e4;--parchment:#efe8d8;--panel:#f3ecdd;--ink:#1a1814;"
-        "--navy:#1e2d42;--stone:#6b6458;--rule:rgba(26,24,20,.14);--danger:#6b2424;"
+        "--accent:#8a6620;--stone:#6b6458;--rule:rgba(26,24,20,.14);--danger:#6b2424;"
         "--warn:#7a4a12;--ok:#1e3d32;--rsm:6px;--rmd:8px;--rlg:10px;"
         "--display:\"Iowan Old Style\",Palatino,\"Palatino Linotype\",Georgia,serif;"
         "--body:\"Segoe UI\",system-ui,-apple-system,sans-serif}"
         // Same tokens, ink warmed rather than pure black -- system dark
         // mode applies automatically unless an explicit choice (data-theme,
         // set by the header toggle, see page_wrap) overrides it either way.
+        // --accent was --navy (a cool blue) until this project's real,
+        // separately-deployed liquidgov.us site turned up in the mobile
+        // design's own reference uploads -- same near-black/parchment
+        // structure this theme already had, but a warm brass/gold accent
+        // instead of blue. Recolored to match rather than invented fresh.
         "@media (prefers-color-scheme:dark){:root:not([data-theme=\"light\"]){"
         "--paper:#14120f;--parchment:#241f18;--panel:#1b1813;--ink:#f2ead8;"
-        "--navy:#8fa8c8;--stone:#a89c88;--rule:rgba(242,234,216,.14);"
+        "--accent:#d1a85c;--stone:#a89c88;--rule:rgba(242,234,216,.14);"
         "--danger:#c9776a;--warn:#d9a866;--ok:#7fa891}}"
         ":root[data-theme=\"dark\"]{"
         "--paper:#14120f;--parchment:#241f18;--panel:#1b1813;--ink:#f2ead8;"
-        "--navy:#8fa8c8;--stone:#a89c88;--rule:rgba(242,234,216,.14);"
+        "--accent:#d1a85c;--stone:#a89c88;--rule:rgba(242,234,216,.14);"
         "--danger:#c9776a;--warn:#d9a866;--ok:#7fa891}"
         "*{box-sizing:border-box}html{-webkit-font-smoothing:antialiased}"
         "body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.5 var(--body);"
         "transition:background .15s ease,color .15s ease}"
-        "a{color:var(--navy)}a:hover{color:var(--ink)}"
+        "a{color:var(--accent)}a:hover{color:var(--ink)}"
         "h1,h3{font-family:var(--display);font-weight:600;letter-spacing:-.02em;"
         "text-wrap:balance;line-height:1.2}h1{font-size:clamp(1.6rem,1.2rem + 1.6vw,2.2rem);margin:.2rem 0 .8rem}"
         "h3{font-size:1.15rem;margin:0 0 .3rem}"
@@ -372,7 +377,7 @@ std::string css() {
         ".topinner{max-width:58rem;margin:0 auto;padding:.7rem 1.1rem;display:flex;"
         "align-items:center;flex-wrap:wrap;gap:.45rem 1rem}"
         ".brand{display:flex;align-items:center;gap:.65rem;text-decoration:none;color:var(--ink);margin-right:auto}"
-        ".mark{width:28px;height:28px;border:1.5px solid var(--navy);display:grid;"
+        ".mark{width:28px;height:28px;border:1.5px solid var(--accent);display:grid;"
         "grid-template-rows:1fr 1fr 1fr;padding:6px 5px;gap:3px;flex-shrink:0}"
         ".mark i{display:block;height:1.5px;background:var(--ink)}"
         ".brand strong{font-family:var(--display);font-weight:600;font-size:1.35rem;letter-spacing:-.03em}"
@@ -387,14 +392,14 @@ std::string css() {
         ".themebtn{min-height:36px;min-width:36px;display:inline-flex;align-items:center;justify-content:center;"
         "border:1px solid var(--rule);border-radius:50%;color:var(--ink);text-decoration:none;"
         "font-size:1rem;margin-left:.4rem;flex-shrink:0}"
-        "nav a{color:var(--navy);text-decoration:none;font-size:.92rem;padding:.35rem 0;min-height:44px;"
+        "nav a{color:var(--accent);text-decoration:none;font-size:.92rem;padding:.35rem 0;min-height:44px;"
         "display:inline-flex;align-items:center}nav a:hover{text-decoration:underline}"
         ".badge{display:inline-flex;align-items:center;justify-content:center;min-width:1.3rem;height:1.3rem;"
-        "padding:0 .35rem;border-radius:999px;background:var(--navy);color:var(--paper);font-size:.7rem;"
+        "padding:0 .35rem;border-radius:999px;background:var(--accent);color:var(--paper);font-size:.7rem;"
         "margin-left:.25rem;font-variant-numeric:tabular-nums}"
         ".card{background:var(--panel);border:1px solid var(--rule);border-radius:var(--rlg);padding:1.15rem 1.25rem;margin:1rem 0}"
         ".card .card{border-radius:var(--rmd)}"
-        ".lede{font-family:var(--display);font-size:1.15rem;line-height:1.4;color:var(--navy)}"
+        ".lede{font-family:var(--display);font-size:1.15rem;line-height:1.4;color:var(--accent)}"
         ".muted{color:var(--stone);font-size:.9rem}.warn{color:var(--warn)}.ok{color:var(--ok)}"
         ".laws{display:grid;gap:.7rem;margin:1rem 0}"
         "@media(min-width:640px){.laws{grid-template-columns:1fr 1fr 1fr}}"
@@ -410,10 +415,10 @@ std::string css() {
         // per-control at every future callsite.
         "input[type=checkbox],input[type=radio]{width:1.1rem;min-height:0;height:1.1rem;padding:0;flex:0 0 auto}"
         "textarea{min-height:6rem;resize:vertical}button,.btn{display:inline-flex;align-items:center;justify-content:center;"
-        "gap:.35rem;background:var(--navy);color:var(--paper);border:0;padding:.65rem 1.05rem;border-radius:var(--rsm);"
+        "gap:.35rem;background:var(--accent);color:var(--paper);border:0;padding:.65rem 1.05rem;border-radius:var(--rsm);"
         "cursor:pointer;font:600 .95rem var(--body);min-height:44px;text-decoration:none}"
         "button:hover,.btn:hover{filter:brightness(1.08)}button:active,.btn:active{transform:scale(.98)}"
-        "button.ghost,.btn.ghost{background:transparent;color:var(--navy);border:1px solid var(--rule)}"
+        "button.ghost,.btn.ghost{background:transparent;color:var(--accent);border:1px solid var(--rule)}"
         "button.danger,.btn.danger{background:var(--danger);color:#f7f1e4}"
         ".row{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}"
         ".person,.sess,.msg,.post{border-top:1px solid var(--rule);padding:.7rem 0;display:flex;"
@@ -458,7 +463,7 @@ std::string css() {
         ".jukebox iframe{width:100%;max-width:480px;aspect-ratio:16/9;border:0;border-radius:var(--rsm);display:block}"
         ".jbstation-row{display:flex;align-items:center;gap:.4rem;background:var(--paper);"
         "border:1px solid var(--rule);border-radius:var(--rsm);padding:.35rem .5rem;touch-action:none}"
-        ".jbstation-row.active{border-color:var(--navy);background:var(--parchment)}"
+        ".jbstation-row.active{border-color:var(--accent);background:var(--parchment)}"
         ".jbdraghandle{cursor:grab;color:var(--stone);font-size:1rem;line-height:1;user-select:none;padding:0 .2rem}"
         ".jbstation-name{flex:1;font-size:.85rem;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}"
         ".jbstation-remove{background:none;border:0;color:var(--stone);cursor:pointer;font-size:.9rem;padding:0 .2rem}"
@@ -2261,8 +2266,8 @@ std::string jukebox_script(const std::string& yt_key, bool standalone, const std
         "var d=document.createElement('div');d.textContent=ta.value;return d.innerHTML;}"
         "function looksLikeUrl(s){return /^https?:\\/\\//i.test(s)||/youtu\\.?be/i.test(s);}"
         "function updateTabs(){"
-        "tabC.style.background=mode==='community'?'var(--navy)':'';tabC.style.color=mode==='community'?'var(--paper)':'';"
-        "tabS.style.background=mode==='search'?'var(--navy)':'';tabS.style.color=mode==='search'?'var(--paper)':'';"
+        "tabC.style.background=mode==='community'?'var(--accent)':'';tabC.style.color=mode==='community'?'var(--paper)':'';"
+        "tabS.style.background=mode==='search'?'var(--accent)':'';tabS.style.color=mode==='search'?'var(--paper)':'';"
         "}"
         "function ensureYT(cb){"
         "if(window.YT&&window.YT.Player){cb();return;}"
@@ -2628,7 +2633,7 @@ std::string global_jukebox_widget(const std::string& yt_key, const std::string& 
     return
         "<button id=\"jbtoggle\" type=\"button\" aria-label=\"Jukebox\" "
         "style=\"position:fixed;right:1rem;bottom:1rem;z-index:30;width:52px;height:52px;"
-        "border-radius:50%;background:var(--navy);color:var(--paper);border:0;"
+        "border-radius:50%;background:var(--accent);color:var(--paper);border:0;"
         "font-size:1.4rem;line-height:52px;text-align:center;cursor:pointer;"
         "box-shadow:0 2px 10px rgba(0,0,0,.3)\">\xF0\x9F\x93\xB1</button>"
         "<div id=\"jbpanel\" hidden style=\"position:fixed;right:1rem;bottom:4.5rem;z-index:30;"
@@ -2867,7 +2872,8 @@ std::string genesis_body() {
         "<div class=\"stattile\"><strong>" + std::to_string(g_store.all_communities().size()) + "</strong><span>Communities</span></div>"
         "<div class=\"stattile\"><strong>0</strong><span>Elections held</span></div>"
         "</div>";
-    return "<h1>This is genesis, not a government.</h1>"
+    return "<p class=\"eyebrow\" style=\"color:var(--accent)\">A Voluntary Natural Democracy</p>"
+           "<h1>This is genesis, not a government.</h1>"
            "<p class=\"lede\">LiquidGov.US is a voluntary association and working software for "
            "liquid, natural-law democracy. Anyone here is a guest or a member of that association.</p>" +
            stats +

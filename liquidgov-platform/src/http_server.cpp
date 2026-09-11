@@ -340,7 +340,7 @@ std::string css() {
         ":root{--paper:#f7f1e4;--parchment:#efe8d8;--panel:#f3ecdd;--ink:#1a1814;"
         "--accent:#8a6620;--stone:#6b6458;--rule:rgba(26,24,20,.14);--danger:#6b2424;"
         "--warn:#7a4a12;--ok:#1e3d32;--rsm:6px;--rmd:8px;--rlg:10px;"
-        "--display:\"Iowan Old Style\",Palatino,\"Palatino Linotype\",Georgia,serif;"
+        "--display:\"Playfair Display\",\"Iowan Old Style\",Palatino,\"Palatino Linotype\",Georgia,serif;"
         "--body:\"Segoe UI\",system-ui,-apple-system,sans-serif}"
         // Same tokens, ink warmed rather than pure black -- system dark
         // mode applies automatically unless an explicit choice (data-theme,
@@ -489,7 +489,7 @@ std::string css() {
         ".ticker-roll div{font-family:var(--display);font-size:1rem;line-height:1.9;color:var(--ink)}"
         "@keyframes lg-roll{0%{transform:translateY(0)}100%{transform:translateY(-50%)}}"
         "@media(prefers-reduced-motion:reduce){.ticker-roll{animation:none}}"
-        ".quote{text-align:center}"
+        ".quote.centered{text-align:center;background:var(--parchment)}"
         ".quote p:not(.attrib):not(.stars){font-family:var(--display);font-size:1.15rem;line-height:1.5}"
         ".quote .stars{color:var(--accent);letter-spacing:.12em;margin:.3rem 0}"
         ".quote .attrib{font-size:.68rem;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);margin:.5rem 0 0}"
@@ -566,6 +566,9 @@ std::string page_wrap(const std::string& title, const std::string& navhtml, cons
            "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
            "<title>"+html_escape(title)+" — LiquidGov.US</title>"
            "<link rel=\"icon\" href=\"/favicon.svg\" type=\"image/svg+xml\">"
+           "<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">"
+           "<link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>"
+           "<link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&display=swap\">"
            "<style>"+css()+"</style></head><body>"
            +intro_overlay_html()+
            "<header class=\"top\"><div class=\"topinner\">"
@@ -2915,16 +2918,19 @@ std::string genesis_body() {
         "<p style=\"margin:.6rem 0\"><strong>Not for sale</strong><br>"
         "<span class=\"muted\">Your account is not a product and it is not anyone else's leverage.</span></p>"
         "</div></div>";
+    // Two full-width cards, stacked -- not side by side. Matches the
+    // source exactly: only the second (anonymous) quote is centered and
+    // carries stars; the first (attributed) quote is left-aligned,
+    // unstarred, on a plain card, same as the design's own two different
+    // treatments for a named vs. an anonymous testimonial.
     std::string quotes =
-        "<div class=\"clocks\">"
         "<div class=\"card quote\"><p>&ldquo;These aren't &lsquo;people problems.&rsquo; They're structural "
         "problems. Good people placed inside broken structures produce broken outcomes. Broken people placed "
         "inside well-designed structures are naturally corrected by them.&rdquo;</p>"
-        "<p class=\"attrib\">&mdash; Brandon Bottin</p><p class=\"stars\">&#9733;&#9733;&#9733;&#9733;&#9733;</p></div>"
-        "<div class=\"card quote\"><p class=\"stars\">&#9733;&#9733;&#9733;&#9733;&#9733;</p>"
+        "<p class=\"attrib\">&mdash; Brandon Bottin</p></div>"
+        "<div class=\"card quote centered\"><p class=\"stars\">&#9733;&#9733;&#9733;&#9733;&#9733;</p>"
         "<p>&ldquo;It's like a ballot box and Myspace had a baby.&rdquo;</p>"
-        "<p class=\"attrib muted\">&mdash; Anonymous</p></div>"
-        "</div>";
+        "<p class=\"attrib muted\">&mdash; Anonymous</p></div>";
     return "<p class=\"eyebrow\" style=\"color:var(--accent)\">A Voluntary Natural Democracy</p>"
            "<h1>This is genesis, not a government.</h1>"
            "<p class=\"lede\">LiquidGov.US is a voluntary association and working software for "

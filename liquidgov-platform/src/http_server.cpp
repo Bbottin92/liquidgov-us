@@ -2764,7 +2764,11 @@ std::string jukebox_widget(const std::string& owner, bool owner_view, const std:
     if (owner_view) {
         html += jukebox_add_form("/me/jukebox/add", "Visitors listen; navigating away stops playback.");
         auto sel = [&](JukeboxPolicy pol) -> std::string { return owner_prefs.jukebox_policy==pol?" checked":""; };
-        html += "<form method=\"POST\" action=\"/me/jukebox/policy\" style=\"margin-top:.75rem\">"
+        // data-draft here is inert unless draft_publish_script() is also on
+        // the page (only /me appends it) -- this same widget renders
+        // unchanged, Save button and all, when owner_view is true on the
+        // owner's own /u/<username> page, which has no draft bar to defer to.
+        html += "<form method=\"POST\" action=\"/me/jukebox/policy\" data-draft=\"1\" style=\"margin-top:.75rem\">"
                 "<label>Who else can queue a track here</label>"
                 "<p><label><input type=\"radio\" name=\"policy\" value=\"0\""+sel(JukeboxPolicy::OwnerOnly)+"> Just me</label></p>"
                 "<p><label><input type=\"radio\" name=\"policy\" value=\"1\""+sel(JukeboxPolicy::Friends)+"> Friends</label></p>"
@@ -3040,6 +3044,77 @@ std::string composer_media_error(const std::string& perr) {
     return "";
 }
 
+// Wires up /me's "Editing /me" bar (#medraftbar/#medraftcount/#mediscard/
+// #mepublish, see the GET /me handler) against every form[data-draft] on
+// the page -- currently Profile CSS and the Jukebox permissions form.
+// Nothing here writes anything; it defers each form's own submit (already
+// wired to its real, unchanged endpoint) until Publish revision is
+// clicked, sending whichever forms actually changed from what the page
+// loaded with, in order, then reloading -- so the reload shows the true
+// saved state rather than trusting the client's own idea of it. Discard
+// is just a reload too: nothing was written, so there's nothing to
+// actually roll back, only unsaved input to throw away.
+std::string draft_publish_script() {
+    return
+        "<script>(function(){"
+        "var bar=document.getElementById('medraftbar');if(!bar)return;"
+        "var countEl=document.getElementById('medraftcount');"
+        "var discardBtn=document.getElementById('mediscard'),publishBtn=document.getElementById('mepublish');"
+        "var forms=Array.prototype.slice.call(document.querySelectorAll('form[data-draft]'));"
+        "function serialize(f){"
+        "var fd=new FormData(f),parts=[];"
+        "fd.forEach(function(v,k){parts.push(k+'='+(typeof v==='string'?v:'[file]'));});"
+        "return parts.sort().join('&');"
+        "}"
+        "var initial=forms.map(serialize);"
+        // The form's own submit button (still there, still real, for the
+        // one other context this same markup renders in unscripted) would
+        // otherwise fire a real navigation right past the draft bar --
+        // hidden here, not removed, so nothing else about the form changes.
+        "forms.forEach(function(f){"
+        "var btn=f.querySelector('button[type=submit],button:not([type])');"
+        "if(btn)btn.hidden=true;"
+        "});"
+        "function dirtyIndexes(){"
+        "var out=[];"
+        "forms.forEach(function(f,i){if(serialize(f)!==initial[i])out.push(i);});"
+        "return out;"
+        "}"
+        "function refresh(){"
+        "var n=dirtyIndexes().length;"
+        "countEl.textContent=n?(n+' unsaved change'+(n===1?'':'s')):'No unsaved changes';"
+        "discardBtn.disabled=publishBtn.disabled=(n===0);"
+        "}"
+        "forms.forEach(function(f){"
+        "f.addEventListener('input',refresh);"
+        "f.addEventListener('change',refresh);"
+        "f.addEventListener('submit',function(e){e.preventDefault();});"
+        "});"
+        "discardBtn.addEventListener('click',function(){location.reload();});"
+        "publishBtn.addEventListener('click',function(){"
+        "var idx=dirtyIndexes();"
+        "if(!idx.length)return;"
+        "publishBtn.disabled=true;discardBtn.disabled=true;"
+        "publishBtn.textContent='Publishing\\u2026';"
+        "function next(i){"
+        "if(i>=idx.length){location.reload();return;}"
+        "var f=forms[idx[i]];"
+        // These forms have no enctype, so a normal submit sends url-encoded
+        // -- the body parse_form() everywhere else in this app expects. A
+        // raw FormData body on fetch() always sends multipart instead,
+        // regardless of the form's own enctype, which parse_form() can't
+        // read at all (silently parses as empty rather than erroring).
+        "fetch(f.getAttribute('action'),{method:'POST',"
+        "headers:{'Content-Type':'application/x-www-form-urlencoded'},"
+        "body:new URLSearchParams(new FormData(f)).toString()})"
+        ".then(function(){next(i+1);}).catch(function(){next(i+1);});"
+        "}"
+        "next(0);"
+        "});"
+        "refresh();"
+        "})();</script>";
+}
+
 std::string handle(const std::string& req, const std::string& peer_ip) {
     auto line_end=req.find("\r\n");
     if(line_end==std::string::npos) line_end=req.find('\n');
@@ -3280,6 +3355,21 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         else if (qs["err"]=="large") err = "<p class=\"warn\">That file is too large. Cap is 2&nbsp;MiB and 1024 pixels on the long edge.</p>";
         else if (qs["err"]=="scan") err = "<p class=\"warn\">That file could not be stored.</p>";
         std::string html;
+        // Draft/publish: the two forms directly on this page (Profile CSS,
+        // Jukebox permissions) no longer save themselves on their own
+        // submit -- draftScript below intercepts them, tracks which are
+        // actually changed from what the page loaded with, and only this
+        // bar's Publish button sends them (sequentially, to their existing
+        // endpoints -- no new storage, this is purely a review-before-
+        // committing step in front of what was already there). Discard is
+        // just a reload: nothing is written until Publish, so there is
+        // nothing to actually roll back.
+        html += "<div id=\"medraftbar\" class=\"card\" style=\"position:sticky;top:0;z-index:8;"
+                "display:flex;align-items:center;justify-content:space-between;gap:.6rem;flex-wrap:wrap\">"
+                "<div><p class=\"eyebrow\" style=\"margin:0\">Editing /me</p>"
+                "<p id=\"medraftcount\" class=\"muted\" style=\"margin:.1rem 0 0\">No unsaved changes</p></div>"
+                "<div class=\"row\"><button type=\"button\" id=\"mediscard\" class=\"ghost\" disabled>Discard</button>"
+                "<button type=\"button\" id=\"mepublish\" disabled>Publish revision</button></div></div>";
         html += "<div class=\"card\"><div class=\"who\">"+portrait_tag(user,"")+"<div><h1>"+html_escape(user)+"</h1>"
             "<p class=\"muted\">Platform profile · <a href=\"/u/"+html_escape(user)+"\">public page</a> · member since "+
             html_escape(fmt_time(acc->created_at))+"</p></div></div>"+err+
@@ -3307,13 +3397,14 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
                 "@import, url(), and anything script-adjacent are rejected outright, not silently stripped. "
                 "Limit " + std::to_string(kAuthorCssMaxBytes/1000) + "KB. Leave empty to use the default look.</p>"
                 + css_msg +
-                "<form method=\"POST\" action=\"/me/css\">"
+                "<form method=\"POST\" action=\"/me/css\" data-draft=\"1\">"
                 "<textarea name=\"css\" rows=\"8\" spellcheck=\"false\" "
                 "style=\"font-family:ui-monospace,Consolas,monospace;font-size:.85rem\" "
                 "placeholder=\".lg-theme h1{color:#a23b3b}\">"+html_escape(current_css)+"</textarea>"
-                "<button>Save CSS</button></form></div>";
+                "</form></div>";
         }
         html += jukebox_widget(user, true, user, qs);
+        html += draft_publish_script();
         return pg("Profile", html);
     }
 

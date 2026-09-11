@@ -2857,9 +2857,20 @@ std::string jukebox_widget(const std::string& owner, bool owner_view, const std:
 }
 
 std::string genesis_body() {
+    // A public stats strip, seen in the mobile design's landing screen --
+    // real counts (account_count/all_communities), not the design's own
+    // placeholder "1,284"; elections held stays honestly 0, same posture
+    // as the /control voting card.
+    std::string stats =
+        "<div class=\"stattiles\">"
+        "<div class=\"stattile\"><strong>" + std::to_string(g_store.account_count()) + "</strong><span>Accounts</span></div>"
+        "<div class=\"stattile\"><strong>" + std::to_string(g_store.all_communities().size()) + "</strong><span>Communities</span></div>"
+        "<div class=\"stattile\"><strong>0</strong><span>Elections held</span></div>"
+        "</div>";
     return "<h1>This is genesis, not a government.</h1>"
            "<p class=\"lede\">LiquidGov.US is a voluntary association and working software for "
-           "liquid, natural-law democracy. Anyone here is a guest or a member of that association.</p>"
+           "liquid, natural-law democracy. Anyone here is a guest or a member of that association.</p>" +
+           stats +
            "<div class=\"card\"><p>Nobody on this site is your city, state, or federal government. "
            "No office seated from these pages has legal authority over anyone who did not choose to associate.</p>"
            "<p>Website control is temporary. When a working election exists among enrolled citizens, "
@@ -3403,7 +3414,9 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             "<label style=\"margin:0\">Write to people who know you</label>"
             "<span class=\"chip\">Friends only</span></p>"
             "<form method=\"POST\" action=\"/feed\" enctype=\"multipart/form-data\">"
-            "<textarea name=\"text\" maxlength=\"2000\" placeholder=\"Plain text. Friends see this.\"></textarea>"
+            "<textarea name=\"text\" maxlength=\"2000\" placeholder=\"Plain text. Friends see this.\" "
+            "oninput=\"document.getElementById('feedchars').textContent=(2000-this.value.length)+' left'\"></textarea>"
+            "<p class=\"muted\" id=\"feedchars\" style=\"margin:.2rem 0 0;text-align:right\">2000 left</p>"
             "<label>Photo or video (optional)</label><input type=\"file\" name=\"media\" accept=\"image/*,video/*\">"
             "<button>Post</button></form>"
             "<p class=\"muted\" style=\"margin-top:.5rem\">Or <a href=\"/feed/canvas\">open the canvas</a> "

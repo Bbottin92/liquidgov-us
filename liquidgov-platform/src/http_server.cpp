@@ -492,6 +492,11 @@ std::string css() {
         ".quote .stars{color:var(--accent);letter-spacing:.12em;margin:.3rem 0}"
         ".quote .attrib{font-size:.68rem;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);margin:.5rem 0 0}"
         ".quote .attrib.muted{color:var(--stone)}"
+        ".lawstrip{display:flex}"
+        ".lawstrip>div{flex:1;text-align:center;padding:0 .5rem;border-left:1px solid var(--rule)}"
+        ".lawstrip>div:first-child{border-left:0}"
+        ".lawstrip .n{margin:0;font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--accent)}"
+        ".lawstrip .t{margin:.4rem 0 0;font-size:.85rem;line-height:1.3}"
         // nav used to expand in normal document flow, inside the sticky
         // header -- fine until the link list itself got taller than a
         // small viewport, at which point the whole (now very tall)
@@ -2953,11 +2958,27 @@ std::string genesis_body() {
         "<circle cx=\"32\" cy=\"130\" r=\"6\" style=\"fill:var(--paper);stroke:var(--accent)\" stroke-width=\"1.4\"/>"
         "<circle cx=\"148\" cy=\"130\" r=\"6\" style=\"fill:var(--paper);stroke:var(--accent)\" stroke-width=\"1.4\"/>"
         "</svg></div>";
+    // The punchy three-word law strip directly under the hero divider,
+    // real content from the design's own `laws` array (01 Do not take /
+    // 02 Do not wreck / 03 Do not force) -- a different, shorter phrasing
+    // than the longer "Do not steal/damage/deprive of liberty" cards
+    // further down the page, which is how the source itself uses them:
+    // a punchy strip up top, the fuller explanation later.
+    std::string lawstrip =
+        "<div class=\"lawstrip\">"
+        "<div><p class=\"n\">01</p><p class=\"t\">Do not take</p></div>"
+        "<div><p class=\"n\">02</p><p class=\"t\">Do not wreck</p></div>"
+        "<div><p class=\"n\">03</p><p class=\"t\">Do not force</p></div>"
+        "</div>"
+        "<p class=\"muted\" style=\"text-align:center;max-width:22rem;margin:.7rem auto 0\">"
+        "Three rules hold. Whoever you are, wherever you are starting from, the rest is your call.</p>";
     return emblem +
            "<p class=\"eyebrow\" style=\"color:var(--accent)\">A Voluntary Natural Democracy</p>"
            "<h1>This is genesis, not a government.</h1>"
            "<p class=\"lede\">LiquidGov.US is a voluntary association and working software for "
-           "liquid, natural-law democracy. Anyone here is a guest or a member of that association.</p>" +
+           "liquid, natural-law democracy. Anyone here is a guest or a member of that association.</p>"
+           "<hr style=\"border:0;border-top:1px solid var(--rule);margin:1rem 0\">" +
+           lawstrip +
            stats + solution + quotes +
            "<div class=\"card\"><p>Nobody on this site is your city, state, or federal government. "
            "No office seated from these pages has legal authority over anyone who did not choose to associate.</p>"

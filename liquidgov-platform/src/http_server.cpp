@@ -738,7 +738,19 @@ std::string clear_cookie() {
 // revealing the page underneath (already rendered, not reloaded). Storage
 // being blocked (private mode, some browsers) fails safe by just never
 // showing it, rather than showing it on every single load.
-std::string intro_overlay_html() {
+//
+// always_play (Settings > Notifications, off by default) skips the
+// localStorage gate entirely, so a logged-in account that's opted in sees
+// it on every visit instead of just the first -- computed server-side from
+// that account's own prefs (see wrap()), so it's still just this one bool
+// baked into the page, not a second client-side code path to keep in sync.
+// Only reachable at all when show_intro is true (the Genesis page -- see
+// page_wrap), so this never fires on an internal page regardless.
+std::string intro_overlay_html(bool always_play) {
+    const char* skip_label = always_play ? "Skip" : "Skip &middot; shown once";
+    std::string gate = always_play ? "" :
+           "try{if(localStorage.getItem('liquidgov.intro.seen')){el.remove();return;}}"
+           "catch(e){el.remove();return;}";
     return "<div id=\"lgintro\" style=\"position:fixed;inset:0;z-index:999;background:#14120f;"
            "display:flex;align-items:center;justify-content:center;overflow:hidden\">"
            "<video id=\"lgintrovid\" autoplay muted playsinline "
@@ -746,12 +758,11 @@ std::string intro_overlay_html() {
            "<button id=\"lgintroskip\" type=\"button\" style=\"position:absolute;bottom:1.25rem;right:1.25rem;"
            "background:rgba(20,18,15,.78);color:#f2ead8;border:1px solid rgba(242,234,216,.3);"
            "border-radius:999px;padding:.5rem 1rem;font:600 .75rem \"Segoe UI\",system-ui,sans-serif;"
-           "letter-spacing:.08em;text-transform:uppercase;cursor:pointer\">Skip</button>"
+           "letter-spacing:.08em;text-transform:uppercase;cursor:pointer\">"+std::string(skip_label)+"</button>"
            "</div>"
            "<script>(function(){"
            "var el=document.getElementById('lgintro');"
-           "try{if(localStorage.getItem('liquidgov.intro.seen')){el.remove();return;}}"
-           "catch(e){el.remove();return;}"
+           +gate+
            "var vid=document.getElementById('lgintrovid'),skip=document.getElementById('lgintroskip');"
            "function finish(){"
            "try{localStorage.setItem('liquidgov.intro.seen','1');}catch(e){}"
@@ -763,7 +774,8 @@ std::string intro_overlay_html() {
            "})();</script>";
 }
 
-std::string page_wrap(const std::string& title, const std::string& navhtml, const std::string& body, bool show_intro = false) {
+std::string page_wrap(const std::string& title, const std::string& navhtml, const std::string& body,
+                       bool show_intro = false, bool intro_always_play = false) {
     const std::string theme_attr = g_theme_mode.empty() ? "" : " data-theme=\""+g_theme_mode+"\"";
     const std::string next_theme = g_theme_mode == "dark" ? "light" : "dark";
     std::string toggle = "<a class=\"themebtn\" id=\"themetoggle\" href=\"/theme/"+next_theme+
@@ -812,7 +824,7 @@ std::string page_wrap(const std::string& title, const std::string& navhtml, cons
            "<link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>"
            "<link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&display=swap\">"
            "<style>"+css()+"</style></head><body>"
-           +(show_intro ? intro_overlay_html() : std::string())+
+           +(show_intro ? intro_overlay_html(intro_always_play) : std::string())+
            "<header class=\"top\"><div class=\"topinner\">"
            "<a class=\"brand\" href=\"/\">"
            "<svg class=\"mark\" viewBox=\"0 0 48 48\" width=\"28\" height=\"28\" aria-hidden=\"true\">"
@@ -1202,7 +1214,11 @@ bool read_http_request(int fd, std::string& req) {
 std::string global_jukebox_widget(const std::string& yt_key, const std::string& user); // defined below, needed here for wrap()
 
 std::string wrap(const std::string& title, const std::string& user, int unread, const std::string& body, bool show_intro = false) {
-    std::string page = page_wrap(title, nav(user, unread), body, show_intro);
+    // Anonymous visitors have no prefs to consult -- they always get the
+    // plain first-time-only (localStorage) behavior, same as before this
+    // setting existed.
+    const bool intro_always_play = show_intro && !user.empty() && g_store.prefs_of(user).intro_every_visit;
+    std::string page = page_wrap(title, nav(user, unread), body, show_intro, intro_always_play);
     // Widget goes *after* </main>, not inside it: soft-navigation (see
     // jukebox_script's nav-interception) only ever replaces <main>'s
     // contents, so a sibling widget's live WebSocket/YT player survive a
@@ -4487,11 +4503,19 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
     }
 
     if(method=="GET"&&path=="/") {
-        if(acc)
-            return pg("Home", home_dashboard(user)+
+        if(acc) {
+            // A returning member's "landing page" is here, not the
+            // logged-out Genesis page below -- so that's where the opted-in
+            // replay actually has to happen for the Settings toggle to mean
+            // anything for someone who can reach Settings at all. Bypasses
+            // pg() (which never shows the intro) specifically for this;
+            // show_intro is otherwise only ever true for the Genesis path.
+            const bool replay_intro = g_store.prefs_of(user).intro_every_visit;
+            return http_ok(wrap("Home", user, unread, home_dashboard(user)+
                 "<div class=\"card\"><h2>What this is</h2>"
                 "<p class=\"muted\">Genesis, not a government. Three rules, and the rest is up to you.</p>"
-                "<p class=\"muted\"><a href=\"/laws\">Read the disclosure</a></p></div>");
+                "<p class=\"muted\"><a href=\"/laws\">Read the disclosure</a></p></div>", replay_intro));
+        }
         std::string extra =
             "<div class=\"card\"><p class=\"row\"><a class=\"btn\" href=\"/signup\">Create an account</a> "
             "<a class=\"btn ghost\" href=\"/login\">Log in</a></p></div>";
@@ -5363,6 +5387,8 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             + "<p><label><input type=\"checkbox\" name=\"notify_message\" value=\"1\"" + (p.notify_message?" checked":"") + "> New mail</label></p>"
             + "<p><label><input type=\"checkbox\" name=\"notify_group\" value=\"1\"" + (p.notify_group?" checked":"") + "> Community invites</label></p>"
             + "<p class=\"muted\">Login alerts stay on.</p>"
+            + "<p><label><input type=\"checkbox\" name=\"intro_every_visit\" value=\"1\"" + (p.intro_every_visit?" checked":"") + "> Play the landing intro every visit</label></p>"
+            + "<p class=\"muted\">Off plays it just the first time you land on the site, on this browser.</p>"
             + "<button>Save notifications</button></form></div>";
         return pg("Settings", html);
     }
@@ -5973,6 +5999,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         p.notify_friend = f["notify_friend"]=="1";
         p.notify_message = f["notify_message"]=="1";
         p.notify_group = f["notify_group"]=="1";
+        p.intro_every_visit = f["intro_every_visit"]=="1";
         g_store.set_prefs(user, p);
         return http_redir("/settings");
     }

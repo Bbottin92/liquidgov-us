@@ -4225,11 +4225,14 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
                 "<p class=\"muted\">Phone change with delay is not in this slice. Passkeys are later.</p></div>";
 
         html += std::string("<div class=\"card\"><h2>Privacy</h2><form method=\"POST\" action=\"/settings/privacy\">")
-            + "<label>Findability</label>"
+            + "<label>Who can find you</label>"
             + "<p class=\"muted\">One axis, three states. Each level includes the one above it.</p>"
-            + "<p><label><input type=\"radio\" name=\"findability\" value=\"0\"" + find_sel(Findability::FriendsOnly) + "> Friends only</label></p>"
-            + "<p><label><input type=\"radio\" name=\"findability\" value=\"1\"" + find_sel(Findability::ExactMatch) + "> Exact match</label></p>"
-            + "<p><label><input type=\"radio\" name=\"findability\" value=\"2\"" + find_sel(Findability::Typeahead) + "> Typeahead</label></p>"
+            + "<p><label><input type=\"radio\" name=\"findability\" value=\"0\"" + find_sel(Findability::FriendsOnly) + "> Friends only</label>"
+            + "<br><span class=\"muted\">Only people who are already your friends can find you. Strangers can't search you up at all.</span></p>"
+            + "<p><label><input type=\"radio\" name=\"findability\" value=\"1\"" + find_sel(Findability::ExactMatch) + "> Exact match</label>"
+            + "<br><span class=\"muted\">Anyone who types your exact username can find you, but you won't show up as they type.</span></p>"
+            + "<p><label><input type=\"radio\" name=\"findability\" value=\"2\"" + find_sel(Findability::Typeahead) + "> Typeahead</label>"
+            + "<br><span class=\"muted\">Anyone can find you, including as a partial match while they're still typing.</span></p>"
             + "<p><label><input type=\"checkbox\" name=\"group_invite_confirm\" value=\"1\"" + (p.group_invite_confirm?" checked":"") + "> "
             + "Don't add me to groups without asking</label></p>"
             + "<p><label><input type=\"checkbox\" name=\"presence_hide\" value=\"1\"" + (p.presence_hide?" checked":"") + "> "

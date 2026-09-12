@@ -590,13 +590,13 @@ std::string page_wrap(const std::string& title, const std::string& navhtml, cons
            "<path d=\"M24 9c0 0 9.5 12.2 9.5 17.2a9.5 9.5 0 0 1-19 0C14.5 21.2 24 9 24 9z\" style=\"fill:var(--accent)\"/>"
            "</svg>"
            "<div><div><strong>LiquidGov</strong><span class=\"tld\">.US</span></div>"
-           "<div class=\"tagline\">Civic association &middot; Genesis phase</div></div></a>"
+           "<div class=\"tagline\">Civic association &middot; Beta</div></div></a>"
            +navhtml+toggle+"</div></header>"
            "<main class=\"wrap\">"+body+"</main>"
            "<footer class=\"site\"><a href=\"/\">Genesis</a> · <a href=\"/laws\">Laws</a> · "
            "<a href=\"/control\">Who holds control</a><br>"
            "Not a government. A platform account is not a CitizenId. "
-           "This copy is working software, not liquidgov.us in production.</footer></body></html>";
+           "LiquidGov.US is in Beta — some of what's here is still being built.</footer></body></html>";
 }
 
 std::string nav(const std::string& user, int unread) {
@@ -3165,7 +3165,7 @@ std::string control_body() {
            "It is not an office. It is not a claim that the association already governs anyone.</p>"
            "<p class=\"warn\">Control of the website is meant to end when a working election exists among enrolled citizens. "
            "Governmental authority is a later landslide, not this page.</p>"
-           "<p class=\"muted\">This preview is a working copy of the association’s door. It is not liquidgov.us in production.</p></div>"
+           "<p class=\"muted\">This is a Beta build of the association’s door — some of what's described here is still being built.</p></div>"
            "<div class=\"card\"><p class=\"eyebrow\">Who runs this</p>"
            "<table class=\"record\">"
            "<tr><td>This site</td><td>Held by one person. Temporary, and replaced the moment there is anything to replace it with.</td></tr>"

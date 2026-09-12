@@ -569,6 +569,12 @@ std::string css() {
         "background:var(--parchment);flex-shrink:0;display:inline-block;vertical-align:middle}"
         ".portrait.sm{width:36px;height:36px}"
         ".portrait.ph{box-sizing:border-box}"
+        ".hit{display:flex;gap:.7rem;align-items:flex-start;border-top:1px solid var(--rule);padding:.75rem 0;flex-wrap:wrap}"
+        ".hit:first-child{border-top:0}"
+        ".hit .hitinfo{flex:1;min-width:8rem}"
+        ".hit .hitinfo strong{display:block}"
+        ".hit .hitacts{display:flex;gap:.4rem;flex-wrap:wrap;align-items:center}"
+        "#peoplehits{margin-top:.6rem}"
         // The info div next to the avatar is a flex item with no
         // flex-grow, so by default it only ever sizes to fit its own
         // text (a short "name · timestamp" line) -- fine until a post's
@@ -1385,6 +1391,117 @@ std::string portrait_tag(const std::string& username, const char* cls) {
     // same picture.
     return std::string("<img class=\"portrait ")+cls+"\" src=\"/portrait/"+html_escape(username)+
            "?v="+html_escape(av->blob_id)+"\" alt=\"\" width=\"96\" height=\"96\">";
+}
+
+std::vector<std::string> people_hits(const std::string& viewer, const std::string& term) {
+    std::vector<std::string> hits;
+    if (term.empty()) return hits;
+    if (g_store.is_findable_exact(viewer, term)) {
+        if (auto found = g_store.find_by_username(term)) hits.push_back(found->username);
+    }
+    if (term.size() >= 3) {
+        for (auto& n : g_store.typeahead(viewer, term)) {
+            if (std::find(hits.begin(), hits.end(), n) == hits.end()) hits.push_back(n);
+        }
+    }
+    return hits;
+}
+
+size_t mutual_friend_count(const std::string& a, const std::string& b) {
+    auto fa = g_store.friends_of(a);
+    std::set<std::string> sa(fa.begin(), fa.end());
+    size_t n = 0;
+    for (auto& x : g_store.friends_of(b)) if (sa.count(x)) ++n;
+    return n;
+}
+
+std::string person_result_html(const std::string& viewer, const std::string& name) {
+    auto found = g_store.find_by_username(name);
+    const bool self = viewer == name;
+    const bool pals = !self && g_store.are_friends(viewer, name);
+    auto outg = g_store.outgoing_requests(viewer);
+    auto inc = g_store.incoming_requests(viewer);
+    const bool pending_out = std::find(outg.begin(), outg.end(), name) != outg.end();
+    const bool pending_in = std::find(inc.begin(), inc.end(), name) != inc.end();
+
+    std::string meta;
+    if (self) meta = "That's you";
+    else if (pals) meta = "Friends";
+    else if (pending_out) meta = "Request sent";
+    else if (pending_in) meta = "Wants to be friends";
+    else if (found) meta = "Member since " + fmt_time(found->created_at);
+    auto mutual = (self || !found) ? 0 : mutual_friend_count(viewer, name);
+    if (mutual) meta += (meta.empty() ? "" : " · ") + std::to_string(mutual) +
+                        (mutual == 1 ? " mutual friend" : " mutual friends");
+    std::string blurb;
+    if (found) {
+        blurb = g_store.blurb(found->id);
+        if (blurb.size() > 100) blurb = blurb.substr(0, 97) + "...";
+    }
+
+    std::string acts;
+    if (self) {
+        acts = "<a class=\"btn ghost\" href=\"/u/" + html_escape(name) + "\">Your profile</a>";
+    } else {
+        if (pending_in) {
+            acts += "<form class=\"inline\" method=\"POST\" action=\"/friends/accept\">"
+                    "<input type=\"hidden\" name=\"who\" value=\"" + html_escape(name) + "\">"
+                    "<button type=\"submit\">Accept</button></form>";
+        } else if (pals) {
+            /* already friends */
+        } else if (pending_out) {
+            acts += "<span class=\"muted\">Request sent</span>";
+        } else {
+            acts += "<form class=\"inline\" method=\"POST\" action=\"/friends\">"
+                    "<input type=\"hidden\" name=\"who\" value=\"" + html_escape(name) + "\">"
+                    "<input type=\"hidden\" name=\"next\" value=\"/search?q=" + html_escape(name) + "\">"
+                    "<button type=\"submit\">Add friend</button></form>";
+        }
+        if (pals) {
+            acts += "<a class=\"btn\" href=\"/mail?with=" + html_escape(name) + "\">Message</a>";
+        } else {
+            acts += "<button class=\"ghost\" type=\"button\" disabled "
+                    "title=\"Mail is friends-only until they accept\">Message</button>";
+        }
+        acts += "<a class=\"btn ghost\" href=\"/u/" + html_escape(name) + "\">Profile</a>";
+    }
+
+    return "<div class=\"hit\">" + portrait_tag(name, "sm") +
+           "<div class=\"hitinfo\"><a href=\"/u/" + html_escape(name) + "\"><strong>" +
+           html_escape(name) + "</strong></a>"
+           "<span class=\"muted\">" + html_escape(meta) + "</span>" +
+           (blurb.empty() ? "" : "<p class=\"muted\" style=\"margin:.2rem 0 0\">" + html_escape(blurb) + "</p>") +
+           "</div><div class=\"hitacts\">" + acts + "</div></div>";
+}
+
+std::string people_results_html(const std::string& viewer, const std::string& term) {
+    if (term.empty())
+        return "<p class=\"muted\">Type a name. Matches update as you type. "
+               "Typeahead needs three letters unless the name is exact.</p>";
+    auto hits = people_hits(viewer, term);
+    if (hits.empty())
+        return "<p class=\"muted\">No match. A miss is a miss &mdash; missing, opted out, and blocked look the same.</p>";
+    std::string html;
+    for (auto& n : hits) html += person_result_html(viewer, n);
+    return html;
+}
+
+std::string people_search_script() {
+    return "<script>(function(){"
+           "var q=document.getElementById('peopleq'),box=document.getElementById('peoplehits');"
+           "if(!q||!box)return;"
+           "var t=null,last='';"
+           "function go(){"
+           "var v=q.value.trim();if(v===last)return;last=v;"
+           "if(!v){box.innerHTML='';return;}"
+           "fetch('/search?q='+encodeURIComponent(v)+'&partial=1',{credentials:'same-origin'})"
+           ".then(function(r){return r.text();})"
+           ".then(function(h){if(q.value.trim()===v)box.innerHTML=h;})"
+           ".catch(function(){});"
+           "}"
+           "q.addEventListener('input',function(){clearTimeout(t);t=setTimeout(go,180);});"
+           "if(q.value.trim())go();"
+           "})();</script>";
 }
 
 // Shared by /notices (full page) and GET /notices/panel (the fragment the
@@ -4937,8 +5054,13 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         if (qs["err"]=="inner") err = "<p class=\"warn\">Inner circle holds twelve. Take someone out first.</p>";
         std::string html = "<h1>People</h1>"+err+
             "<div class=\"card\"><h2>Find someone</h2>"
-            "<form method=\"GET\" action=\"/search\"><label>Exact username, or three letters for typeahead</label>"
-            "<div class=\"row\"><input name=\"q\" required><button>Search</button></div></form></div>"
+            "<form method=\"GET\" action=\"/search\"><label>Type a name</label>"
+            "<div class=\"row\"><input name=\"q\" id=\"peopleq\" autocomplete=\"off\" "
+            "placeholder=\"Starts matching as you type\"><button>Search</button></div></form>"
+            "<div id=\"peoplehits\"></div>"
+            "<p class=\"muted\">Friends always appear. Everyone else follows their findability. "
+            "Mail is friends-only until they accept.</p></div>"
+            + people_search_script() +
             "<div class=\"card\"><h2>Add by exact name</h2>"
             "<form method=\"POST\" action=\"/friends\"><input name=\"who\" placeholder=\"username\" required>"
             "<button>Send request</button></form></div>";
@@ -4991,27 +5113,18 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
     if(method=="GET"&&path=="/search") {
         if(!acc) return need_login();
         auto term = trim_ws(qs["q"]);
-        std::string html = "<h1>Search</h1><div class=\"card\"><form method=\"GET\" action=\"/search\">"
-            "<label>Find a person</label><div class=\"row\"><input name=\"q\" value=\""+html_escape(term)+"\">"
-            "<button>Search</button></div></form><p class=\"muted\">Friends always appear. "
-            "Everyone else follows their findability. A miss is a miss — missing, opted out, and blocked look the same.</p><ul class=\"plain\">";
-        std::vector<std::string> hits;
-        if (!term.empty()) {
-            if (g_store.is_findable_exact(user, term)) {
-                if (auto found = g_store.find_by_username(term)) hits.push_back(found->username);
-            }
-            if (term.size() >= 3) {
-                for (auto& n : g_store.typeahead(user, term)) {
-                    if (std::find(hits.begin(), hits.end(), n)==hits.end()) hits.push_back(n);
-                }
-            }
-        }
-        if (term.empty()) html += "<li class=\"muted\">Type a name.</li>";
-        else if (hits.empty()) html += "<li class=\"muted\">No match.</li>";
-        for (auto& n : hits) {
-            html += "<li class=\"who\">"+portrait_tag(n,"sm")+"<a href=\"/u/"+html_escape(n)+"\">"+html_escape(n)+"</a></li>";
-        }
-        html += "</ul></div>";
+        if (qs["partial"]=="1")
+            return http_raw("200 OK", "text/html; charset=utf-8", people_results_html(user, term),
+                "Cache-Control: no-store\r\n");
+        std::string html = "<h1>Search</h1><div class=\"card\">"
+            "<form method=\"GET\" action=\"/search\"><label>Find a person</label>"
+            "<div class=\"row\"><input name=\"q\" id=\"peopleq\" value=\""+html_escape(term)+"\" autocomplete=\"off\">"
+            "<button>Search</button></div></form>"
+            "<p class=\"muted\">Friends always appear. Everyone else follows their findability. "
+            "A miss is a miss &mdash; missing, opted out, and blocked look the same. "
+            "Mail is friends-only until they accept.</p>"
+            "<div id=\"peoplehits\">"+people_results_html(user, term)+"</div></div>"
+            + people_search_script();
         return pg("Search", html);
     }
 
@@ -5737,12 +5850,15 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
     }
     if(method=="POST"&&path=="/friends") {
         if(!acc) return need_login();
-        auto who=trim_ws(parse_form(body)["who"]);
+        auto f=parse_form(body);
+        auto who=trim_ws(f["who"]);
         if(valid_username(who) && who!=user && g_store.find_by_username(who)
            && !g_store.is_blocked(user, who) && !g_store.is_blocked(who, user)) {
             g_store.add_friend_request(user, who);
         }
-        return http_redir("/friends");
+        auto dest = safe_next_path(trim_ws(f["next"]));
+        if (dest.empty()) dest = "/friends";
+        return http_redir(dest);
     }
     if(method=="POST"&&path=="/friends/accept") {
         if(!acc) return need_login();

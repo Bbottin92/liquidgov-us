@@ -43,12 +43,15 @@
 //   inner  <owner> <friend>
 //   pref   <username> <findability 0-2> <friends_only_dm> <group_invite_confirm>
 //          <presence_hide> <n_friend> <n_message> <n_group>
-//          [<jukebox_policy 0-2> <profile_visibility 0-3> <posts_visibility 0-3>]
+//          [<jukebox_policy 0-2> <profile_visibility 0-3> <posts_visibility 0-3>
+//          [<intro_every_visit 0|1>]]
 //          -- trailing three fields optional; an older 9-token line means all three
-//          are their defaults (0/Public). A since-superseded 14-token shape (this
-//          release's own earlier dev build: jukebox_policy plus four now-removed
-//          hide_profile/posts_from_friends/others bools) is still accepted and
-//          translated to the closest Visibility on load -- see the loader.
+//          are their defaults (0/Public). intro_every_visit is a further-trailing
+//          fourth optional field; a 12-token line (without it) means its own
+//          default (0). A since-superseded 14-token shape (this release's own
+//          earlier dev build: jukebox_policy plus four now-removed hide_profile/
+//          posts_from_friends/others bools) is still accepted and translated to
+//          the closest Visibility on load -- see the loader.
 //   note   <id> <to> <type> <from> <ts> <read 0|1> <extra>
 //   nn     <next_note_id>
 //   av     <account_id> <blob_id> <created_at>   // self-portrait; bytes live in the blob dir
@@ -234,7 +237,15 @@ enum class FeedFilter : int {
 };
 
 struct AccountPrefs {
-    Findability findability = Findability::ExactMatch;
+    // Most open by default (Brandon: "all of the settings should be set to
+    // the highest amount of visibility by default... I want people to
+    // network, not isolate"). profile_visibility/posts_visibility were
+    // already Public, the most open point on their own ladder; findability
+    // was the one still defaulting to the middle setting. There's no
+    // age-based exception here because there's nothing to condition it on
+    // yet -- is_minor() is hardcoded false everywhere (see http_server.cpp)
+    // until real age assurance exists.
+    Findability findability = Findability::Typeahead;
     bool friends_only_dm = true;
     bool group_invite_confirm = true;
     bool presence_hide = false;
@@ -244,6 +255,10 @@ struct AccountPrefs {
     JukeboxPolicy jukebox_policy = JukeboxPolicy::OwnerOnly;
     Visibility profile_visibility = Visibility::Public;
     Visibility posts_visibility = Visibility::Public;
+    // Off by default: the landing intro plays once per browser (see
+    // intro_overlay_html), tracked client-side in localStorage. Turning
+    // this on makes it play on every visit instead.
+    bool intro_every_visit = false;
 };
 
 // One block, with the context a settings page actually wants to show back

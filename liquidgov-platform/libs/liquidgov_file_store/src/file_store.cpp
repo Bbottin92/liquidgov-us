@@ -1297,7 +1297,7 @@ void FileStore::load() {
             if (f.size() != 3) throw std::runtime_error("LGP1: bad inner record");
             inner_[pct_decode(f[1])].insert(pct_decode(f[2]));
         } else if (tag == "pref") {
-            if (f.size() != 9 && f.size() != 12 && f.size() != 14) throw std::runtime_error("LGP1: bad pref record");
+            if (f.size() != 9 && f.size() != 12 && f.size() != 13 && f.size() != 14) throw std::runtime_error("LGP1: bad pref record");
             AccountPrefs p;
             const auto fv = parse_u64(f[2], "findability");
             if (fv > 2) throw std::runtime_error("LGP1: bad findability");
@@ -1308,7 +1308,7 @@ void FileStore::load() {
             p.notify_friend = parse_bit(f[6], "n_friend");
             p.notify_message = parse_bit(f[7], "n_message");
             p.notify_group = parse_bit(f[8], "n_group");
-            if (f.size() == 12) {
+            if (f.size() == 12 || f.size() == 13) {
                 const auto jp = parse_u64(f[9], "jukebox_policy");
                 if (jp > 2) throw std::runtime_error("LGP1: bad jukebox_policy");
                 p.jukebox_policy = static_cast<JukeboxPolicy>(jp);
@@ -1317,6 +1317,7 @@ void FileStore::load() {
                 if (pv > 3 || ov > 3) throw std::runtime_error("LGP1: bad visibility");
                 p.profile_visibility = static_cast<Visibility>(pv);
                 p.posts_visibility = static_cast<Visibility>(ov);
+                if (f.size() == 13) p.intro_every_visit = parse_bit(f[12], "intro_every_visit");
             } else if (f.size() == 14) {
                 // Superseded shape from this release's own earlier dev build:
                 // jukebox_policy plus four independent hide_from_friends/others
@@ -1586,7 +1587,7 @@ void FileStore::flush() {
              << (p.presence_hide ? 1 : 0) << "\t" << (p.notify_friend ? 1 : 0) << "\t"
              << (p.notify_message ? 1 : 0) << "\t" << (p.notify_group ? 1 : 0) << "\t"
              << static_cast<int>(p.jukebox_policy) << "\t" << static_cast<int>(p.profile_visibility) << "\t"
-             << static_cast<int>(p.posts_visibility) << "\n";
+             << static_cast<int>(p.posts_visibility) << "\t" << (p.intro_every_visit ? 1 : 0) << "\n";
     }
     for (const auto& n : notices_) {
         body << "note\t" << n.id << "\t" << pct_encode(n.to) << "\t" << pct_encode(n.type) << "\t"

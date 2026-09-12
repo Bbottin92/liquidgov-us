@@ -371,10 +371,20 @@ std::string css() {
         "h2{font-family:var(--display);font-weight:400;font-size:.75rem;letter-spacing:.12em;"
         "text-transform:uppercase;color:var(--stone);margin:1.5rem 0 .7rem;line-height:1.3}"
         "p{text-wrap:pretty}"
-        ".wrap{max-width:72rem;margin:0 auto;padding:0 1.1rem 3.5rem}"
+        // A single fixed max-width (928px, then 1152px) kept falling
+        // short on an actually wide monitor -- every bump just moved
+        // where the complaint landed, since a fixed value is either too
+        // narrow on a big screen or too wide on a normal one. clamp()
+        // scales with the real viewport instead of guessing one number:
+        // 58rem (928px) is the floor, so mobile/normal windows are
+        // untouched (max-width alone never forces something wider than
+        // its actual container); 96rem (1536px) is the ceiling, so even
+        // an ultrawide monitor doesn't stretch prose to unreadable line
+        // lengths; 88vw fills the space between.
+        ".wrap{max-width:clamp(58rem,88vw,96rem);margin:0 auto;padding:0 1.1rem 3.5rem}"
         "header.top{border-bottom:1px solid var(--rule);background:var(--parchment);"
         "position:sticky;top:0;z-index:5}"
-        ".topinner{max-width:72rem;margin:0 auto;padding:.7rem 1.1rem;display:flex;"
+        ".topinner{max-width:clamp(58rem,88vw,96rem);margin:0 auto;padding:.7rem 1.1rem;display:flex;"
         "align-items:center;flex-wrap:wrap;gap:.45rem 1rem}"
         ".brand{display:flex;align-items:center;gap:.65rem;text-decoration:none;color:var(--ink);margin-right:auto}"
         ".mark{flex-shrink:0;display:block}"
@@ -482,7 +492,7 @@ std::string css() {
         ".who>div{flex:1;min-width:0}"
         ".post p{margin:.25rem 0 0;white-space:pre-wrap}"
         "ul.plain{list-style:none;padding:0;margin:0}ul.plain li{border-top:1px solid var(--rule);padding:.65rem 0}"
-        "footer.site{max-width:72rem;margin:0 auto;padding:1.2rem 1.1rem 2.5rem;color:var(--stone);font-size:.82rem;"
+        "footer.site{max-width:clamp(58rem,88vw,96rem);margin:0 auto;padding:1.2rem 1.1rem 2.5rem;color:var(--stone);font-size:.82rem;"
         "border-top:1px solid var(--rule)}"
         "footer.site a{color:var(--stone)}"
         ".empty{color:var(--stone);padding:.4rem 0}"

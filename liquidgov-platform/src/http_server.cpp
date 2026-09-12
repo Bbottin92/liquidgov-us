@@ -437,16 +437,21 @@ std::string css() {
         // bottom-right, the same corner arrangement Photoshop/Procreate/
         // every real paint app uses, without moving any of the underlying
         // markup (so DOM/tab/reading order is identical at every width).
+        // A fourth edge (undo/redo/clear plus the selection actions)
+        // closes out the frame along the canvas's bottom, so the tool
+        // column now spans three rows instead of two to stay one
+        // continuous edge alongside all of them.
         "@media(min-width:900px){.canvas-frame{display:grid;"
-        "grid-template-columns:auto 1fr;grid-template-rows:auto auto;gap:.6rem;align-items:stretch}"
+        "grid-template-columns:auto 1fr;grid-template-rows:auto auto auto;gap:.6rem;align-items:stretch}"
         // A single-file column, one icon wide -- not a 2-up grid, which
         // read as a block of icons rather than a strip wrapping the
         // canvas's edge.
-        ".canvas-frame>:nth-child(1){grid-column:1;grid-row:1/3;display:flex;"
+        ".canvas-frame>:nth-child(1){grid-column:1;grid-row:1/4;display:flex;"
         "flex-direction:column;flex-wrap:nowrap;justify-content:space-between}"
         ".canvas-frame>:nth-child(1) .toolgroup-sep{width:100%;height:1px;margin:.2rem 0}"
         ".canvas-frame>:nth-child(2){grid-column:2;grid-row:1}"
         ".canvas-frame>:nth-child(3){grid-column:2;grid-row:2}"
+        ".canvas-frame>:nth-child(4){grid-column:2;grid-row:3}"
         "}"
         ".person,.sess,.msg,.post{border-top:1px solid var(--rule);padding:.7rem 0;display:flex;"
         "justify-content:space-between;gap:.8rem;flex-wrap:wrap;align-items:flex-start}"
@@ -1392,6 +1397,33 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "</div>"
         "</div>"
         "</div>"
+        // Undo/redo/clear and the selection actions (copy/cut/paste/crop)
+        // complete the frame with a third edge along the canvas's bottom,
+        // one row thick like the other two -- both groups act on the
+        // canvas as a whole rather than being "what the next stroke looks
+        // like", which is why they're grouped apart from the tool/
+        // properties edges above rather than mixed into them.
+        "<div class=\"row\" style=\"flex-wrap:wrap;gap:.4rem;align-items:center\">"
+        "<button type=\"button\" class=\"ghost\" id=\"cundo\" title=\"Undo\">&#8617;</button>"
+        "<button type=\"button\" class=\"ghost\" id=\"credo\" title=\"Redo\">&#8618;</button>"
+        "<button type=\"button\" class=\"ghost\" id=\"cclear\">Clear layer</button>"
+        "<span class=\"toolgroup-sep\" aria-hidden=\"true\"></span>"
+        // Drag a rectangle with the Select tool first -- these four
+        // buttons all act on that same selection (copy/cut sample it,
+        // paste drops the last-copied piece at your next click, crop
+        // trims the whole canvas down to it). Icons, not labels: each of
+        // these already has a symbol everyone recognizes from every other
+        // editor (clipboard stack, scissors, crop corners) -- a text
+        // label would just be slower to scan than the glyph itself.
+        "<button type=\"button\" class=\"ghost\" id=\"ccopy\" title=\"Copy selection\" "
+        "style=\"padding:.5rem .55rem\">"+kIconCopy+"</button>"
+        "<button type=\"button\" class=\"ghost\" id=\"ccut\" title=\"Cut selection\" "
+        "style=\"padding:.5rem .55rem\">"+kIconCut+"</button>"
+        "<button type=\"button\" class=\"ghost\" id=\"cpaste\" title=\"Paste\" "
+        "style=\"padding:.5rem .55rem\">"+kIconPaste+"</button>"
+        "<button type=\"button\" class=\"ghost\" id=\"ccrop\" title=\"Apply crop to selection\" "
+        "style=\"padding:.5rem .55rem\">"+kIconCrop+"</button>"
+        "</div>"
         "</div>"
         // Second panel, one clear step down in how often it gets touched:
         // bring something in, or act on a selection -- both operate on the
@@ -1403,23 +1435,6 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "<label class=\"ghost\" style=\"cursor:pointer;padding:.3rem .6rem;border-radius:var(--rsm)\">"
         "Import image/video<input type=\"file\" id=\"cimport\" accept=\"image/*,video/*\" "
         "style=\"display:none\"></label>"
-        // Drag a rectangle with the Select tool first -- these four
-        // buttons all act on that same selection (copy/cut sample it,
-        // paste drops the last-copied piece at your next click, crop
-        // trims the whole canvas down to it). Icons, not labels: each of
-        // these already has a symbol everyone recognizes from every other
-        // editor (clipboard stack, scissors, crop corners) -- a text
-        // label would just be slower to scan than the glyph itself.
-        "<div class=\"row\" style=\"gap:.3rem\">"
-        "<button type=\"button\" class=\"ghost\" id=\"ccopy\" title=\"Copy selection\" "
-        "style=\"padding:.5rem .55rem\">"+kIconCopy+"</button>"
-        "<button type=\"button\" class=\"ghost\" id=\"ccut\" title=\"Cut selection\" "
-        "style=\"padding:.5rem .55rem\">"+kIconCut+"</button>"
-        "<button type=\"button\" class=\"ghost\" id=\"cpaste\" title=\"Paste\" "
-        "style=\"padding:.5rem .55rem\">"+kIconPaste+"</button>"
-        "<button type=\"button\" class=\"ghost\" id=\"ccrop\" title=\"Apply crop to selection\" "
-        "style=\"padding:.5rem .55rem\">"+kIconCrop+"</button>"
-        "</div>"
         "</div>"
         "<p class=\"muted\" style=\"margin:.5rem 0 0\">Ctrl+V also pastes an image straight from your "
         "OS clipboard onto the active layer.</p>"
@@ -1442,11 +1457,6 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "<button type=\"button\" class=\"ghost cbgbtn\" data-bg=\"plain\" data-on=\"1\">Plain</button>"
         "<button type=\"button\" class=\"ghost cbgbtn\" data-bg=\"wash\">Wash</button>"
         "<button type=\"button\" class=\"ghost cbgbtn\" data-bg=\"ruled\">Ruled</button>"
-        "</div>"
-        "<div class=\"row\" style=\"margin-top:.6rem;gap:.4rem\">"
-        "<button type=\"button\" class=\"ghost\" id=\"cundo\" title=\"Undo\">&#8617;</button>"
-        "<button type=\"button\" class=\"ghost\" id=\"credo\" title=\"Redo\">&#8618;</button>"
-        "<button type=\"button\" class=\"ghost\" id=\"cclear\">Clear layer</button>"
         "</div>";
     if (!portrait && !post_mode) {
         html +=

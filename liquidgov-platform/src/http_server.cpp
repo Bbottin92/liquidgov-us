@@ -18,6 +18,7 @@
 #include <atomic>
 #include <cctype>
 #include <chrono>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
@@ -4692,10 +4693,38 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
     if(method=="GET"&&path=="/jukebox/search") {
         if(!acc) return http_raw("401 Unauthorized", "application/json", "{\"items\":[]}");
         // Type-to-search used to embed YOUTUBE_API_KEY in every logged-in
-        // page. The key stays on the server now. A real search.list proxy
-        // is not in this slice (no TLS HTTP client in this binary); paste
-        // a YouTube link still queues. Empty items is honest, not a hang.
-        return http_raw("200 OK", "application/json", "{\"items\":[]}",
+        // page. The key stays on the server now, read straight from the
+        // environment and never placed in any response body or log line.
+        // Proxied via the system curl binary (popen), not a new HTTP/TLS
+        // stack -- this binary doesn't link libcurl, and curl is already
+        // on the box. term is run through url_encode() before it ever
+        // touches the shell string, which leaves only
+        // [A-Za-z0-9._~%-] -- none of those can break out of the
+        // single-quoted argument, so this is not shell-injectable.
+        auto term = trim_ws(qs["q"]);
+        const char* key = youtube_api_key_from_env();
+        if (term.empty() || !key[0])
+            return http_raw("200 OK", "application/json", "{\"items\":[]}",
+                "Cache-Control: no-store\r\n");
+        std::string url = "https://www.googleapis.com/youtube/v3/search"
+            "?part=snippet&type=video&videoEmbeddable=true&maxResults=8&order=relevance"
+            "&q=" + url_encode(term) + "&key=" + url_encode(key);
+        std::string cmd = "curl -sS --max-time 8 '" + url + "'";
+        std::string resp;
+        if (FILE* p = popen(cmd.c_str(), "r")) {
+            char buf[4096];
+            size_t n;
+            while ((n = fread(buf, 1, sizeof(buf), p)) > 0) resp.append(buf, n);
+            pclose(p);
+        }
+        // Anything that doesn't look like the shape attachLiveSearch()
+        // expects (a curl/network failure, an API error body, quota
+        // exhaustion, an HTML error page) degrades to empty items rather
+        // than passing through garbage or 500ing the widget.
+        if (resp.empty() || resp[0] != '{' || resp.find("\"items\"") == std::string::npos)
+            return http_raw("200 OK", "application/json", "{\"items\":[]}",
+                "Cache-Control: no-store\r\n");
+        return http_raw("200 OK", "application/json", resp,
             "Cache-Control: no-store\r\n");
     }
     if(method=="GET"&&path=="/mail/group/new") {
@@ -5121,7 +5150,16 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             }
             committees_html += "</div>";
         }
-        std::string html = "<div class=\"card\"><div class=\"who\">"+portrait_tag(found->username,"")+
+        // A real button, centered at the top of the page -- not the old
+        // underlined text link buried under the portrait, easy to miss
+        // and inconsistent with every other primary action on the site.
+        // Owner-only: is_owner is the same check the rest of this page
+        // already uses to decide what a stranger versus the account
+        // itself gets to see here.
+        std::string html = !is_owner ? "" :
+            "<p class=\"row\" style=\"justify-content:center;margin:0 0 1rem\">"
+            "<a class=\"btn\" href=\"/me\">Edit profile</a></p>";
+        html += "<div class=\"card\"><div class=\"who\">"+portrait_tag(found->username,"")+
             "<div><h1>"+html_escape(found->username)+"</h1>";
         {
             auto pr = g_store.profile_of(found->username);
@@ -5162,8 +5200,9 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
                     "style=\"width:100%;min-height:220px;border:1px solid var(--rule);"
                     "border-radius:var(--rsm);background:#fff\"></iframe>";
         }
-        if (acc && acc->username == found->username) {
-            html += "<p><a href=\"/me\">Edit profile</a></p>";
+        if (is_owner) {
+            // Edit profile is now the centered button at the top of the
+            // page (see above) -- nothing further needed here.
         } else if (acc && g_store.are_friends(user, found->username)) {
             html += "<p class=\"row\"><a class=\"btn\" href=\"/mail?with="+html_escape(found->username)+"\">Message</a>"
                     "<form class=\"inline\" method=\"POST\" action=\"/friends/unfriend\">"

@@ -34,7 +34,9 @@
 //   propn  <next_proposal_id>
 //   pvote  <proposal_id> <voter> <choice 0-2>   // one line per (proposal, voter);
 //          re-voting overwrites the prior line for that pair on the next flush
-//   comm   <slug> <name> <owner> <about> <created_at>
+//   comm   <slug> <name> <owner> <about> <created_at> [<category 0-10> <subcategory>]
+//          -- trailing two fields optional; an older 6-token line means category
+//          General (10) and an empty subcategory
 //   cm     <slug> <username>
 //   blk    <blocker> <blocked> [<at> <reason>]  // trailing two fields optional -- an
 //          older 3-token line means an unknown time (0) and no reason
@@ -144,12 +146,38 @@ struct PostReply {
     std::string text;
 };
 
+// A fixed, curated top level for browsing communities -- fixed so the
+// directory stays navigable as the platform grows instead of accumulating
+// near-duplicate categories ("Gaming" vs "gaming" vs "Games") the way a
+// fully open list would. Subcategory (below) is deliberately not an enum:
+// that's the axis meant to stay open for people to actually name.
+enum class CommunityCategory : int {
+    LocalCivic = 0,
+    PolicyGovernment = 1,
+    ArtsCulture = 2,
+    HobbiesInterests = 3,
+    SportsRecreation = 4,
+    Technology = 5,
+    BusinessTrade = 6,
+    LearningEducation = 7,
+    SupportWellbeing = 8,
+    FaithSpirituality = 9,
+    General = 10,
+};
+
 struct Community {
     std::string slug;
     std::string name;
     std::string owner;
     std::string about;
     std::int64_t created_at = 0;
+    CommunityCategory category = CommunityCategory::General;
+    // Free text, not an enum -- e.g. "Neighborhood Watch" under Local &
+    // Civic. Deliberately open for whoever creates a community to name
+    // (see CommunityCategory's own comment); subcategories_of() surfaces
+    // whatever's already in use under a category so a new community can
+    // reuse an existing name instead of always minting a new one.
+    std::string subcategory;
 };
 
 // A site-wide, unofficial straw poll -- explicitly not a binding vote (the
@@ -409,6 +437,11 @@ public:
     bool create_community(const Community& c);
     std::optional<Community> community(const std::string& slug) const;
     std::vector<Community> all_communities() const;
+    // Distinct, non-empty subcategory names already in use under a
+    // category, sorted -- for suggesting an existing one back to whoever's
+    // creating the next community there instead of always minting a new
+    // subcategory name for the same idea.
+    std::vector<std::string> subcategories_of(CommunityCategory category) const;
     bool is_member(const std::string& slug, const std::string& username) const;
     bool join_community(const std::string& slug, const std::string& username);
     bool invite_community(const std::string& slug, const std::string& actor, const std::string& target);

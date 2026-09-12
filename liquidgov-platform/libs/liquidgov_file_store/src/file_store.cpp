@@ -834,6 +834,14 @@ std::vector<Community> FileStore::all_communities() const {
     return out;
 }
 
+std::vector<std::string> FileStore::subcategories_of(CommunityCategory category) const {
+    std::set<std::string> seen;
+    for (const auto& [slug, c] : communities_) {
+        if (c.category == category && !c.subcategory.empty()) seen.insert(c.subcategory);
+    }
+    return std::vector<std::string>(seen.begin(), seen.end());
+}
+
 bool FileStore::is_member(const std::string& slug, const std::string& username) const {
     auto it = members_.find(slug);
     if (it == members_.end()) return false;
@@ -1256,13 +1264,20 @@ void FileStore::load() {
             pending_attachments[parse_u64(f[1], "pa post id")] =
                 {pct_decode(f[2]), pct_decode(f[3])};
         } else if (tag == "comm") {
-            if (f.size() != 6) throw std::runtime_error("LGP1: bad comm record");
+            if (f.size() != 6 && f.size() != 8) throw std::runtime_error("LGP1: bad comm record");
             Community c;
             c.slug = pct_decode(f[1]);
             c.name = pct_decode(f[2]);
             c.owner = pct_decode(f[3]);
             c.about = pct_decode(f[4]);
             c.created_at = parse_i64(f[5], "comm created");
+            if (f.size() == 8) {
+                int cat = 10;
+                try { cat = std::stoi(f[6]); } catch (...) { cat = 10; }
+                if (cat < 0 || cat > 10) cat = 10;
+                c.category = static_cast<CommunityCategory>(cat);
+                c.subcategory = pct_decode(f[7]);
+            }
             communities_[c.slug] = c;
         } else if (tag == "cm") {
             if (f.size() != 3) throw std::runtime_error("LGP1: bad cm record");
@@ -1546,7 +1561,8 @@ void FileStore::flush() {
     }
     for (const auto& [slug, c] : communities_) {
         body << "comm\t" << pct_encode(c.slug) << "\t" << pct_encode(c.name) << "\t"
-             << pct_encode(c.owner) << "\t" << pct_encode(c.about) << "\t" << c.created_at << "\n";
+             << pct_encode(c.owner) << "\t" << pct_encode(c.about) << "\t" << c.created_at << "\t"
+             << static_cast<int>(c.category) << "\t" << pct_encode(c.subcategory) << "\n";
     }
     for (const auto& [slug, set] : members_) {
         for (const auto& u : set) {

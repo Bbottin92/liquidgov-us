@@ -1254,6 +1254,55 @@ std::string group_label(const Conversation& conv, AccountId viewer) {
     return label.empty() ? "(just you)" : label;
 }
 
+// The fixed top-level list a community's creator picks from -- see
+// CommunityCategory's own comment in file_store.hpp for why this list is
+// closed while subcategory (free text) stays open. Order here is display
+// order everywhere the list is rendered.
+struct CategoryInfo { CommunityCategory value; const char* label; };
+constexpr CategoryInfo kCommunityCategories[] = {
+    {CommunityCategory::LocalCivic, "Local & Civic"},
+    {CommunityCategory::PolicyGovernment, "Policy & Government"},
+    {CommunityCategory::ArtsCulture, "Arts & Culture"},
+    {CommunityCategory::HobbiesInterests, "Hobbies & Interests"},
+    {CommunityCategory::SportsRecreation, "Sports & Recreation"},
+    {CommunityCategory::Technology, "Technology"},
+    {CommunityCategory::BusinessTrade, "Business & Trade"},
+    {CommunityCategory::LearningEducation, "Learning & Education"},
+    {CommunityCategory::SupportWellbeing, "Support & Wellbeing"},
+    {CommunityCategory::FaithSpirituality, "Faith & Spirituality"},
+    {CommunityCategory::General, "General"},
+};
+const char* category_label(CommunityCategory c) {
+    for (const auto& ci : kCommunityCategories) if (ci.value == c) return ci.label;
+    return "General";
+}
+
+// Every category's currently-used subcategory names, as a JS object literal
+// ({0:['Neighborhood Watch',...], ...}) embedded into the creation form's
+// own inline script -- lets picking a category filter the subcategory
+// datalist to just that category's existing names, entirely client-side,
+// no fetch needed. Same js_string_literal used for every other inline-JS
+// string on this site (see jukebox_stations_js for the identical shape).
+std::string community_subcats_js() {
+    std::ostringstream os;
+    os << "{";
+    bool first_cat = true;
+    for (const auto& ci : kCommunityCategories) {
+        if (!first_cat) os << ",";
+        first_cat = false;
+        os << static_cast<int>(ci.value) << ":[";
+        bool first_sub = true;
+        for (const auto& s : g_store.subcategories_of(ci.value)) {
+            if (!first_sub) os << ",";
+            first_sub = false;
+            os << js_string_literal(s);
+        }
+        os << "]";
+    }
+    os << "}";
+    return os.str();
+}
+
 // Suggested download name only (the browser lets the user rename); no
 // original filename is stored, so this is derived from the mime that
 // ingest_file actually assigned after content sniffing.
@@ -4958,20 +5007,63 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         if(!acc) return http_redir("/login");
         std::string err;
         if (qs["err"]=="address") err = "<p class=\"warn\">Need a free address: letters, numbers, dots, underscores, hyphens.</p>";
+        else if (qs["err"]=="subcategory") err = "<p class=\"warn\">Pick or name a subcategory.</p>";
         std::string html = "<h1>Communities</h1>"+err+
             "<p class=\"lede\">These are platform groups. They are not AVND localities and they do not confer standing.</p>"
             "<div class=\"card\"><h2>Start one</h2><form method=\"POST\" action=\"/communities\">"
             "<label>Address</label><input name=\"slug\" required maxlength=\"32\" pattern=\"[A-Za-z0-9._-]+\" placeholder=\"town-hall\">"
             "<p class=\"muted\" style=\"margin-top:-.3rem\">Your community's web address -- for example, /c/town-hall.</p>"
             "<label>Name</label><input name=\"name\" required maxlength=\"80\">"
+            "<label>Category</label><select name=\"category\" id=\"catselect\">";
+        for (const auto& ci : kCommunityCategories) {
+            html += "<option value=\""+std::to_string(static_cast<int>(ci.value))+"\">"+ci.label+"</option>";
+        }
+        html += "</select>"
+            "<label>Subcategory</label>"
+            "<input name=\"subcategory\" id=\"subcatinput\" required maxlength=\"60\" list=\"subcatlist\" "
+            "placeholder=\"e.g. Neighborhood Watch\" autocomplete=\"off\">"
+            "<datalist id=\"subcatlist\"></datalist>"
+            "<p class=\"muted\" style=\"margin-top:-.3rem\">Pick an existing one from the list for this category, or type a new one.</p>"
             "<label>About</label><textarea name=\"about\" maxlength=\"2000\"></textarea>"
-            "<button>Create</button></form></div><div class=\"card\"><h2>All communities</h2>";
+            "<button>Create</button></form>"
+            "<script>(function(){"
+            "var SUB="+community_subcats_js()+";"
+            "var sel=document.getElementById('catselect'),dl=document.getElementById('subcatlist');"
+            "function refresh(){"
+            "dl.innerHTML='';"
+            "(SUB[sel.value]||[]).forEach(function(s){"
+            "var o=document.createElement('option');o.value=s;dl.appendChild(o);"
+            "});"
+            "}"
+            "sel.addEventListener('change',refresh);refresh();"
+            "})();</script>"
+            "</div><div class=\"card\"><h2>All communities</h2>";
         auto all = g_store.all_communities();
         if (all.empty()) html += "<p class=\"empty\">None yet.</p>";
-        for (auto& c : all) {
-            html += "<div class=\"person\"><div><a href=\"/c/"+html_escape(c.slug)+"\"><strong>"+html_escape(c.name)+
-                    "</strong></a> <span class=\"muted\">/"+html_escape(c.slug)+"</span>"
-                    "<p class=\"muted\">"+html_escape(c.about)+"</p></div></div>";
+        else {
+            // Grouped category -> subcategory -> communities, in that
+            // fixed category order, so the directory reads as an actual
+            // hierarchy instead of one long flat list.
+            std::map<int, std::map<std::string, std::vector<Community>>> grouped;
+            for (auto& c : all) grouped[static_cast<int>(c.category)][c.subcategory].push_back(c);
+            for (const auto& ci : kCommunityCategories) {
+                auto git = grouped.find(static_cast<int>(ci.value));
+                if (git == grouped.end()) continue;
+                std::size_t total = 0;
+                for (auto& [subcat, list] : git->second) total += list.size();
+                html += "<details><summary>"+std::string(ci.label)+" &middot; "+std::to_string(total)+"</summary>";
+                for (auto& [subcat, list] : git->second) {
+                    html += "<div style=\"margin:.5rem 0 .5rem 1rem\">"
+                            "<p class=\"eyebrow\">"+html_escape(subcat.empty() ? "General" : subcat)+"</p><ul class=\"plain\">";
+                    for (auto& c : list) {
+                        html += "<li><a href=\"/c/"+html_escape(c.slug)+"\"><strong>"+html_escape(c.name)+
+                                "</strong></a> <span class=\"muted\">/"+html_escape(c.slug)+"</span>"
+                                "<p class=\"muted\">"+html_escape(c.about)+"</p></li>";
+                    }
+                    html += "</ul></div>";
+                }
+                html += "</details>";
+            }
         }
         html += "</div>";
         return pg("Communities", html);
@@ -4993,7 +5085,9 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         const bool member = g_store.is_member(slug, user);
         const bool owner = c->owner == user;
         std::string html = "<h1>"+html_escape(c->name)+"</h1>"
-            "<p class=\"muted\">/"+html_escape(c->slug)+" · started by "+html_escape(c->owner)+
+            "<p class=\"muted\">"+html_escape(category_label(c->category))+" &middot; "+
+            html_escape(c->subcategory.empty() ? "General" : c->subcategory)+
+            " · /"+html_escape(c->slug)+" · started by "+html_escape(c->owner)+
             " · a platform community, not a locality</p>";
         if (qs["err"]=="invite") html += "<p class=\"warn\">Conflicts with another member’s contact settings.</p>";
         html += composer_media_error(qs["perr"]);
@@ -5678,8 +5772,16 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         auto slug=trim_ws(f["slug"]);
         auto name=trim_ws(f["name"]);
         auto about=f["about"]; if(about.size()>2000) about.resize(2000);
+        int cat = 10;
+        try { cat = std::stoi(f["category"]); } catch (...) { cat = 10; }
+        if (cat < 0 || cat > 10) cat = 10;
+        auto subcategory = trim_ws(f["subcategory"]);
+        if (subcategory.size() > 60) subcategory.resize(60);
+        if (subcategory.empty()) return http_redir("/communities?err=subcategory");
         Community c;
         c.slug = slug; c.name = name.empty()?slug:name; c.owner = user; c.about = about; c.created_at = now();
+        c.category = static_cast<CommunityCategory>(cat);
+        c.subcategory = subcategory;
         if (!g_store.create_community(c)) return http_redir("/communities?err=address");
         return http_redir("/c/"+slug);
     }

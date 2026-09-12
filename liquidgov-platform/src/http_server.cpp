@@ -1393,7 +1393,7 @@ std::string portrait_tag(const std::string& username, const char* cls) {
 std::string notices_list_html(const std::string& user) {
     std::string html = "<div class=\"card\">";
     auto notes = g_store.notices_for(user, 50);
-    if (notes.empty()) html += "<p class=\"empty\">None.</p>";
+    if (notes.empty()) html += "<p class=\"empty\">Nothing waiting.</p>";
     for (auto& n : notes) {
         std::string line;
         if (n.type=="friend_request") line = html_escape(n.from)+" sent a friend request.";

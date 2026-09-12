@@ -1505,6 +1505,11 @@ void FileStore::load() {
             p.career = pct_decode(f[7]);
             p.school = pct_decode(f[8]);
             if (!name.empty()) profiles_[name] = p;
+        } else if (tag == "em") {
+            // Dropped parallel schema: email fingerprint used to be its own
+            // tag. Current Profile.email_fp lives on prof. Ignore leftover
+            // lines so an older store still boots.
+            continue;
         } else {
             throw std::runtime_error("LGP1: unknown record type '" + tag + "'");
         }

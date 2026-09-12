@@ -510,7 +510,11 @@ std::string css() {
         "font-weight:600;flex-shrink:0}"
         ".roomname{flex:1;font-weight:600;min-width:0}.roomname .muted{display:block;font-weight:400;font-size:.78rem}"
         ".roomlive{color:var(--stone);font-size:.8rem;white-space:nowrap;flex-shrink:0}"
-        ".ticker-wrap{margin-top:.6rem;height:12rem;overflow:hidden;"
+        // 28rem, not the original 12rem: tall enough to roughly match the
+        // "what it is not" card beside it (four labeled items), so the
+        // pair reads as two same-height columns instead of a short one
+        // leaving visible dead air below it beside a taller one.
+        ".ticker-wrap{margin-top:.6rem;height:28rem;overflow:hidden;"
         "-webkit-mask-image:linear-gradient(180deg,transparent,#000 20%,#000 80%,transparent);"
         "mask-image:linear-gradient(180deg,transparent,#000 20%,#000 80%,transparent)}"
         ".ticker-roll{animation:lg-roll 26s linear infinite}"
@@ -530,7 +534,16 @@ std::string css() {
         // gave up. Full width by default; the narrow fixed sidebar shape
         // only above the width where it actually sits beside the ticker.
         ".isnt-card{flex:1 1 100%}"
-        "@media(min-width:34rem){.isnt-card{flex:0 0 12rem}}"
+        // .row{display:flex} is a block-level element, so left alone it
+        // stretches to the full content column regardless of whether its
+        // two children (the width-capped ticker, the fixed-width card)
+        // actually need that space -- on a wide screen that left a large
+        // unclaimed strip to the right of the card, inside the row but
+        // outside both children. Capped to roughly what the pair needs
+        // side by side (ticker's own 22rem cap + the card's 12rem + gap),
+        // so the row's own edge stops well short of stretching past its
+        // two children once they're side by side.
+        "@media(min-width:34rem){.isnt-card{flex:0 0 12rem}.solution-row{max-width:37rem}}"
         ".lawstrip{display:flex}"
         ".lawstrip>div{flex:1;text-align:center;padding:0 .5rem;border-left:1px solid var(--rule)}"
         ".lawstrip>div:first-child{border-left:0}"
@@ -3094,7 +3107,7 @@ std::string genesis_body() {
         "<div><p class=\"n\">03</p><p class=\"t\">Do not force</p></div>"
         "</div>"
         "<p class=\"muted\" style=\"text-align:center;max-width:22rem;margin:.7rem auto 0\">"
-        "Three rules hold. Whoever you are, wherever you are starting from, the rest is your call.</p>";
+        "Three rules hold. Whoever you are, wherever you're starting from, the rest is your call.</p>";
     // "What is inside" in the source is a 2x2 grid of feature cards --
     // Live rooms, People near you, Meetups, and a fourth. Only Live rooms
     // maps to something real (/world plus the jukebox stations); the

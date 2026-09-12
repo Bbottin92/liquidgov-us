@@ -522,6 +522,15 @@ std::string css() {
         ".quote .stars{color:var(--accent);letter-spacing:.12em;margin:.3rem 0}"
         ".quote .attrib{font-size:.68rem;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);margin:.5rem 0 0}"
         ".quote .attrib.muted{color:var(--stone)}"
+        // Below the breakpoint, the ticker and this card can't both fit
+        // at their intended widths, so .row's flex-wrap already drops the
+        // card to its own line -- but a bare flex:0 0 12rem keeps it
+        // pinned at that fixed width even alone on a full-width line,
+        // leaving dead space beside it exactly as wide as the room it
+        // gave up. Full width by default; the narrow fixed sidebar shape
+        // only above the width where it actually sits beside the ticker.
+        ".isnt-card{flex:1 1 100%}"
+        "@media(min-width:34rem){.isnt-card{flex:0 0 12rem}}"
         ".lawstrip{display:flex}"
         ".lawstrip>div{flex:1;text-align:center;padding:0 .5rem;border-left:1px solid var(--rule)}"
         ".lawstrip>div:first-child{border-left:0}"
@@ -3028,12 +3037,12 @@ std::string genesis_body() {
         for (const auto& p : problems)
             ticker += "<div>" + html_escape(p) + "</div>";
     std::string solution =
-        "<div class=\"row\" style=\"align-items:flex-start;gap:1rem;flex-wrap:wrap\">"
+        "<div class=\"row solution-row\" style=\"align-items:flex-start;gap:1rem;flex-wrap:wrap\">"
         "<div style=\"flex:1;min-width:12rem\">"
         "<p class=\"eyebrow\" style=\"color:var(--accent)\">A legitimate solution to:</p>"
         "<div class=\"ticker-wrap\"><div class=\"ticker-roll\">" + ticker + "</div></div>"
         "</div>"
-        "<div style=\"flex:0 0 12rem\" class=\"card\">"
+        "<div class=\"card isnt-card\">"
         "<p class=\"eyebrow\" style=\"color:var(--accent)\">What it is not</p>"
         "<p style=\"margin:.6rem 0\"><strong>Not a party</strong><br>"
         "<span class=\"muted\">Nothing here asks you to pick a side, and no side owns it.</span></p>"

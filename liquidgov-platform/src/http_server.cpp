@@ -304,34 +304,38 @@ CssCheckResult sanitize_author_css(const std::string& css_in) {
     return {true, ""};
 }
 
-// Server-generated (never sanitize_author_css'd -- it isn't user text)
-// background for the theme document's .lg-theme, from that account's
-// saved canvas frames. Static: the last frame, once. Timelapse: a
-// steps(1) @keyframes cycling background-image through every frame in
-// order -- CSS animating a discrete stop-motion sequence, which is the
-// only way to "replay" a drawing inside a document with zero script
-// execution allowed. Empty when there are no frames yet, so it never
-// clobbers the default look.
-std::string theme_background_css(const std::string& username, std::size_t frame_count, bool timelapse) {
+// A profile-background drawing's CSS, for the real /u/<username> page's
+// own identity card (portrait, name, bio, standing) -- not the sandboxed
+// /theme iframe, which only ever shows a custom author_css theme now.
+// Each background-image value is two layers: a translucent parchment
+// wash (color-mix against --panel, so it themes light/dark for free)
+// painted on top of the frame image via CSS's own multi-layer background
+// stacking, so the card's text stays readable over whatever got drawn
+// underneath without needing a separate overlay element.
+std::string profile_canvas_css(const std::string& username, std::size_t frame_count, bool timelapse) {
     if (frame_count == 0) return "";
     auto frame_url = [&](std::size_t i) {
         return "/canvas-frame/" + username + "/" + std::to_string(i);
     };
+    const std::string wash = "color-mix(in srgb, var(--panel) 78%, transparent)";
+    auto layered = [&](std::size_t i) {
+        return "linear-gradient(" + wash + "," + wash + "),url(" + frame_url(i) + ")";
+    };
     std::ostringstream os;
-    os << ".lg-theme{background-repeat:no-repeat;background-size:cover;background-position:center}";
+    os << "#profilecard{background-size:cover;background-position:center;background-repeat:no-repeat}";
     if (!timelapse || frame_count == 1) {
-        os << ".lg-theme{background-image:url(" << frame_url(frame_count - 1) << ")}";
+        os << "#profilecard{background-image:" << layered(frame_count - 1) << "}";
         return os.str();
     }
     const double step_seconds = 0.6;
-    os << "@keyframes lg-canvas-loop{";
+    os << "@keyframes lg-profile-canvas-loop{";
     for (std::size_t i = 0; i < frame_count; ++i) {
         double pct = (static_cast<double>(i) / static_cast<double>(frame_count)) * 100.0;
-        os << pct << "%{background-image:url(" << frame_url(i) << ")}";
+        os << pct << "%{background-image:" << layered(i) << "}";
     }
-    os << "100%{background-image:url(" << frame_url(0) << ")}";
+    os << "100%{background-image:" << layered(0) << "}";
     os << "}";
-    os << ".lg-theme{animation:lg-canvas-loop " << (step_seconds * static_cast<double>(frame_count))
+    os << "#profilecard{animation:lg-profile-canvas-loop " << (step_seconds * static_cast<double>(frame_count))
        << "s steps(1) infinite}";
     return os.str();
 }
@@ -1736,10 +1740,11 @@ std::string mail_widget_script() {
 //     /me/canvas/frame -- the exact same normalize/scan pipeline as an
 //     avatar upload, just appending to an ordered list instead of
 //     replacing a single slot. Save turns that list into the profile
-//     theme's background: last frame as a static image, or all of them as
-//     a CSS-only looping animation (see theme_background_css) -- no JS
-//     runs inside the sandboxed theme document, so the "replay" has to be
-//     a real image sequence.
+//     page's own identity-card background: last frame as a static image,
+//     or all of them as a CSS-only looping animation (see
+//     profile_canvas_css) -- no JS-driven replay, just background-image
+//     keyframes, same reasoning a sandboxed document would have forced
+//     anyway had this stayed there.
 //   portrait=true -- /me/portrait, the self-portrait tool. No frame
 //     history needed (an avatar isn't a sequence): Save just flattens the
 //     current layers and POSTs the one image straight to /me/avatar.
@@ -1757,6 +1762,18 @@ std::string mail_widget_script() {
 std::string canvas_tool_page(const std::string& username, const std::string& err, bool portrait,
                              const std::string& post_target = "") {
     bool post_mode = !post_target.empty();
+    // Reopening the profile-background tool used to always start from a
+    // blank canvas, even when a drawing was already saved -- the only way
+    // to "edit" it was to redraw from scratch. Looked up once here so both
+    // the frame-count label and the actual pixel reload below can use it.
+    std::size_t existing_frames = 0;
+    bool existing_timelapse = false;
+    if (!portrait && post_target.empty()) {
+        if (auto owner = g_store.find_by_username(username)) {
+            existing_frames = g_store.canvas_frames(owner->id).size();
+            existing_timelapse = g_store.canvas_timelapse(owner->id);
+        }
+    }
     int cw = portrait ? 400 : (post_mode ? 640 : 640);
     int ch = portrait ? 400 : (post_mode ? 480 : 440);
     std::string cws = std::to_string(cw), chs = std::to_string(ch);
@@ -2146,8 +2163,10 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "</div>";
     if (!portrait && !post_mode) {
         html +=
-            "<p class=\"muted\" id=\"cframecount\" style=\"margin-top:.6rem\">0/24 frames captured</p>"
-            "<label style=\"display:block;margin-top:.4rem\"><input type=\"checkbox\" id=\"ctimelapse\"> "
+            "<p class=\"muted\" id=\"cframecount\" style=\"margin-top:.6rem\">"+std::to_string(existing_frames)+
+            "/24 frames captured</p>"
+            "<label style=\"display:block;margin-top:.4rem\"><input type=\"checkbox\" id=\"ctimelapse\""+
+            (existing_timelapse ? " checked" : "")+"> "
             "Loop the drawing as my background instead of a still image</label>";
     }
     if (post_mode) {
@@ -2167,6 +2186,20 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "var lc=document.getElementById('clayer'+li);"
         "layers.push({cv:lc,ctx:lc.getContext('2d'),undo:[],redo:[],opacity:1});"
         "}"
+        + (existing_frames == 0 ? "" : std::string(
+        // Reopening with a drawing already saved: paint its last frame
+        // onto the bottom layer before anything else runs, so editing
+        // continues the existing picture instead of starting blank. The
+        // eventual Save/first-capture still clears old frame history on
+        // the server (see captureFrame's clearedOnce below) -- flatten()
+        // by then already includes these loaded pixels plus whatever new
+        // marks were added, so nothing already drawn is lost.
+        "(function(){"
+        "var img=new Image();"
+        "img.onload=function(){layers[0].ctx.drawImage(img,0,0,layers[0].cv.width,layers[0].cv.height);};"
+        "img.src='/canvas-frame/'+"+js_string_literal(username)+"+'/"+std::to_string(existing_frames-1)+"';"
+        "})();"
+        )) +
         "document.querySelectorAll('.layeropacity').forEach(function(s){"
         "s.addEventListener('input',function(){"
         "var L=layers[Number(s.dataset.layer)];"
@@ -2697,7 +2730,7 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
             "});";
     } else {
         html +=
-            "var clearedOnce=false,frameCount=0;"
+            "var clearedOnce=false,frameCount="+std::to_string(existing_frames)+";"
             "function updateCounter(){"
             "document.getElementById('cframecount').textContent=frameCount+'/24 frames captured';"
             "}"
@@ -4949,9 +4982,10 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
     }
 
     // /canvas-frame/<username>/<index> -- one saved drawing snapshot.
-    // Requested by the sandboxed theme document's own background-image
-    // CSS (server-generated, not user CSS -- see theme_background_css),
-    // so this has to be reachable without needing script access.
+    // Requested by the profile page's own background-image CSS
+    // (server-generated, not user CSS -- see profile_canvas_css), and
+    // by /me/canvas itself to reload a saved drawing back onto the
+    // editing layer -- public either way, same as /portrait/.
     if(method=="GET"&&path.rfind("/canvas-frame/",0)==0) {
         auto rest = path.substr(14);
         auto slash = rest.find('/');
@@ -5092,25 +5126,22 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
                        "<body><p>No such profile.</p></body></html>";
             } else {
                 auto author_css = g_store.author_css(found->id);
-                auto canvas_frames = g_store.canvas_frames(found->id);
-                std::string canvas_css = theme_background_css(
-                    found->username, canvas_frames.size(), g_store.canvas_timelapse(found->id));
                 // Deliberately not wrap()/page_wrap(): no nav, no jukebox
                 // widget, no session cookie context, no scripts at all --
                 // this document only ever renders inside the sandboxed,
                 // scriptless iframe below. See sanitize_author_css's
                 // comment for what's actually defended here and why a gap
                 // in the text filter still can't reach anything.
-                // canvas_css sits between the base style and author_css --
-                // server-generated, not sanitized (it isn't user text),
-                // and ordered so a user's own .lg-theme background: rule
-                // still wins on the normal cascade if they set one.
+                // No canvas background here anymore -- a profile-background
+                // drawing renders directly on the real /u/<username> page
+                // now (see profile_canvas_css), not through this document.
+                // This route/iframe exists purely for a custom .lg-theme
+                // author_css, so it's only ever reached when that's set.
                 body = "<!doctype html><html><head><meta charset=\"utf-8\">"
                        "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
                        "<style>body{margin:0;padding:1rem;font:16px/1.5 system-ui,sans-serif;"
                        "background:#fff;color:#1a1814}h1{margin:.2rem 0}"
                        "p{white-space:pre-wrap}</style>"
-                       "<style>" + canvas_css + "</style>"
                        "<style>" + author_css + "</style></head>"
                        "<body><div class=\"lg-theme\"><h1>" + html_escape(found->username) + "</h1>"
                        "</div></body></html>";
@@ -5189,7 +5220,19 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         std::string html = !is_owner ? "" :
             "<p class=\"row\" style=\"justify-content:center;margin:0 0 1rem\">"
             "<a class=\"btn\" href=\"/me\">Edit profile</a></p>";
-        html += "<div class=\"card\"><div class=\"who\">"+portrait_tag(found->username,"")+
+        // A profile-background drawing is the identity card's own
+        // background now, not a separate sandboxed iframe (that iframe
+        // used to show a near-empty white box -- just a duplicate
+        // username heading plus the drawing bleeding through -- for
+        // anyone with frames but no custom theme). #profilecard only
+        // gets the id (and the <style> block only gets emitted) when
+        // there's actually a drawing to show.
+        auto canvas_frame_ids = g_store.canvas_frames(found->id);
+        std::string card_css = profile_canvas_css(found->username, canvas_frame_ids.size(),
+                                                    g_store.canvas_timelapse(found->id));
+        html += card_css.empty() ? "" : "<style>"+card_css+"</style>";
+        html += std::string("<div class=\"card\"") + (canvas_frame_ids.empty() ? "" : " id=\"profilecard\"") +
+            "><div class=\"who\">"+portrait_tag(found->username,"")+
             "<div><h1>"+html_escape(found->username)+"</h1>";
         {
             auto pr = g_store.profile_of(found->username);
@@ -5210,12 +5253,10 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             "<tr><td>Standing</td><td>Associate &middot; good</td></tr>"
             "<tr><td>Enrolled</td><td>"+html_escape(fmt_time(found->created_at))+"</td></tr>"
             "</table></div></div>"+committees_html;
-        if (!g_store.author_css(found->id).empty() || !g_store.canvas_frames(found->id).empty()) {
-            // Shown for a custom theme (author_css) OR a drawn background
-            // (canvas frames) -- either alone is enough content for this
-            // iframe to be worth rendering; /u/<user>/theme already
-            // handles emitting theme_background_css from the frames when
-            // there's no author_css at all, so nothing else changes there.
+        if (!g_store.author_css(found->id).empty()) {
+            // Custom theme only -- a profile-background drawing renders
+            // directly on this page now (see profile_canvas_css above),
+            // not through this iframe at all.
             // sandbox="allow-same-origin", not sandbox="" (opaque origin):
             // confirmed live that opaque-origin sandboxed iframes get
             // silently dropped by real-world browser privacy/tracking

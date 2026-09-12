@@ -5454,6 +5454,14 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         }
         if(r.error==AuthError::UsernameTaken)
             return http_ok(signup_page(user, unread, "That username is taken. Pick another.", uname, phone));
+        // Same message as the pass.size()<8 pre-check above -- that one
+        // fires first for the common case (skips ever calling
+        // create_account), this covers create_account's own
+        // AuthError::PasswordTooShort in case the two thresholds ever
+        // drift apart instead of silently falling into the generic
+        // "Could not create that account." below.
+        if(r.error==AuthError::PasswordTooShort)
+            return http_ok(signup_page(user, unread, "Password needs at least eight characters.", uname, phone));
         if(r.error!=AuthError::None||!r.session)
             return http_ok(signup_page(user, unread, "Could not create that account.", uname, phone));
         return http_redir("/", set_cookie(r.session->id));

@@ -497,6 +497,10 @@ std::string css() {
         ".lawstrip>div:first-child{border-left:0}"
         ".lawstrip .n{margin:0;font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--accent)}"
         ".lawstrip .t{margin:.4rem 0 0;font-size:.85rem;line-height:1.3}"
+        ".quadcard{display:block;text-decoration:none;color:var(--ink);"
+        "background:linear-gradient(160deg,var(--parchment),var(--panel))}"
+        ".quadcard:hover{filter:brightness(1.05)}"
+        ".quadcard .quadhead{font-family:var(--display);font-size:1.3rem;line-height:1.2;margin:.5rem 0 0;color:var(--ink)}"
         // nav used to expand in normal document flow, inside the sticky
         // header -- fine until the link list itself got taller than a
         // small viewport, at which point the whole (now very tall)
@@ -3044,10 +3048,26 @@ std::string home_dashboard(const std::string& user) {
         world_here = g_world_players.size();
     }
 
-    std::string rooms =
-        "<a class=\"roomrow\" href=\"/world\"><span class=\"roomini\">Q</span>"
-        "<span class=\"roomname\">The Quad<br><span class=\"muted\">A shared, walkable space</span></span>"
-        "<span class=\"roomlive\">" + std::to_string(world_here) + " here</span></a>";
+    // The design's home screen leads with a prominent Quad callout card
+    // (gradient card, live headline, "Walk in" CTA) above the plain rooms
+    // list, not just another row in it -- found in the raw source since
+    // an accessibility-tree read shows the same text either way and
+    // doesn't distinguish "one row among several" from "the lead card."
+    // The design's own copy ("2 here now", "Somebody is in the Quad.")
+    // was a static example, not template-bound -- built here with real
+    // conditional copy off the actual live world_here count instead.
+    std::string quadHeadline = world_here == 0 ? "Nobody's in the Quad right now."
+        : world_here == 1 ? "Somebody is in the Quad."
+        : std::to_string(world_here) + " people are in the Quad.";
+    std::string quadCard =
+        "<a class=\"card quadcard\" href=\"/world\">"
+        "<p class=\"eyebrow\" style=\"color:var(--accent)\">The Quad &middot; " +
+        (world_here == 0 ? std::string("quiet") : std::to_string(world_here) + " here now") + "</p>"
+        "<p class=\"quadhead\">" + quadHeadline + "</p>"
+        "<p class=\"muted\">Walk in and see who is around. No call to join, no scheduling.</p>"
+        "<span class=\"btn\" style=\"margin-top:.6rem\">Walk in &rarr;</span></a>";
+
+    std::string rooms;
     for (const auto& c : committees) {
         bool on_air = false;
         {
@@ -3071,8 +3091,9 @@ std::string home_dashboard(const std::string& user) {
         "<div class=\"stattile\"><strong>" + std::to_string(committees.size()) + "</strong><span>Communities</span></div>"
         "</div>"
         "<p class=\"row\"><a class=\"btn\" href=\"/feed\">Open the feed</a> "
-        "<a class=\"btn ghost\" href=\"/me\">Your profile</a></p></div>"
-        "<div class=\"card\"><h2>Rooms open now</h2>" + rooms + "</div>";
+        "<a class=\"btn ghost\" href=\"/me\">Your profile</a></p></div>" +
+        quadCard +
+        (rooms.empty() ? "" : "<div class=\"card\"><h2>Rooms open now</h2>" + rooms + "</div>");
 }
 
 // The mobile design reads the charter as a chaptered, one-screen-at-a-time

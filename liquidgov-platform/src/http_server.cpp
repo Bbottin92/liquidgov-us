@@ -747,7 +747,7 @@ std::string clear_cookie() {
 // Only reachable at all when show_intro is true (the Genesis page -- see
 // page_wrap), so this never fires on an internal page regardless.
 std::string intro_overlay_html(bool always_play) {
-    const char* skip_label = always_play ? "Skip" : "Skip &middot; shown once";
+    const char* skip_label = "Skip";
     std::string gate = always_play ? "" :
            "try{if(localStorage.getItem('liquidgov.intro.seen')){el.remove();return;}}"
            "catch(e){el.remove();return;}";
@@ -838,7 +838,7 @@ std::string page_wrap(const std::string& title, const std::string& navhtml, cons
            "<main class=\"wrap\">"+body+"</main>"
            "<footer class=\"site\"><a href=\"/\">Genesis</a> · <a href=\"/laws\">Laws</a> · "
            "<a href=\"/control\">Who holds control</a><br>"
-           "Not a government. A platform account is not a CitizenId. "
+           "Not a government. A platform account is not a citizen identity. "
            "LiquidGov.US is in Beta — some of what's here is still being built.</footer></body></html>";
 }
 
@@ -1415,7 +1415,7 @@ std::string notices_list_html(const std::string& user) {
 std::string mail_friends_list_html(const std::string& user) {
     std::string html = "<div class=\"mailsection\"><p class=\"eyebrow\">Direct</p><ul class=\"plain mailfriends\">";
     auto pals = g_store.friends_of(user);
-    if (pals.empty()) html += "<li class=\"muted\">Friend someone first.</li>";
+    if (pals.empty()) html += "<li class=\"muted\">Friend someone first. <a href=\"/friends\">Find people</a></li>";
     for (auto& n : pals) {
         html += "<li><a class=\"mailwith\" data-with=\""+html_escape(n)+"\" href=\"/mail?with="+html_escape(n)+"\">"+
                 portrait_tag(n, "sm")+"<span>"+html_escape(n)+"</span></a></li>";
@@ -2881,7 +2881,7 @@ std::string jukebox_panel_body(bool standalone) {
         "<div id=\"jbaddresults\" style=\"margin-top:.3rem;display:flex;flex-direction:column;gap:.15rem\"></div>"
         "</div>"
         "<div id=\"jbsearch-ui\" hidden>"
-        "<input id=\"jbsearch\" placeholder=\"Search or paste a link\" autocomplete=\"off\" "
+        "<input id=\"jbsearch\" placeholder=\"Paste a YouTube link\" autocomplete=\"off\" "
         "style=\"margin-top:.5rem;width:100%\">"
         "<div id=\"jbsearchresults\" style=\"margin-top:.3rem;display:flex;flex-direction:column;gap:.15rem\"></div>"
         "</div>";
@@ -3771,7 +3771,7 @@ std::string genesis_body() {
            "<p><strong>Governmental authority</strong> stays a later landslide — more than half of the eligible citizen population. However long that takes.</p></div>"
            "<div class=\"card\"><h2>This website is the door</h2><p>Feed, friends, mail, and communities live here. "
            "Voting weight, offices, land, and judgments live in a separate governance kernel. "
-           "A platform account is not a CitizenId. Combined verification for civic acts is not live.</p></div>"
+           "A platform account is not a citizen identity. Combined verification for civic acts is not live.</p></div>"
            "</div>" +
            stats;
 }
@@ -4743,7 +4743,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             html_escape(fmt_time(acc->created_at))+"</p></div></div>"+err+
             "<p class=\"muted\">Self-portrait &mdash; draw one with the same tools as the "
             "<a href=\"/me/portrait\">portrait tool</a>.</p>";
-        html += "<p class=\"muted\">A platform account is not a CitizenId.</p></div>";
+        html += "<p class=\"muted\">A platform account is not a citizen identity.</p></div>";
         {
             auto n_frames = g_store.canvas_frames(acc->id).size();
             std::string canvas_status = n_frames == 0
@@ -5161,7 +5161,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             "})();</script>"
             "</div><div class=\"card\"><h2>All communities</h2>";
         auto all = g_store.all_communities();
-        if (all.empty()) html += "<p class=\"empty\">None yet.</p>";
+        if (all.empty()) html += "<p class=\"empty\">No communities yet. Start one with the form above.</p>";
         else {
             // Grouped category -> subcategory -> communities, in that
             // fixed category order, so the directory reads as an actual

@@ -3381,7 +3381,16 @@ std::string jukebox_script(const std::string& yt_key, bool standalone, const std
         "var m=url.match(/[?&]v=([A-Za-z0-9_-]{11})/)||url.match(/youtu\\.be\\/([A-Za-z0-9_-]{11})/);"
         "if(!m)return;"
         "switchMode('search');"
-        "ensurePlayer(function(){ytPlayer.loadVideoById(m[1]);});"
+        // The YT iframe grabbing focus after loadVideoById can also
+        // scroll the document on its own -- save scrollY just before and
+        // reassert it across the next two frames, since the iframe's own
+        // scroll can land a frame after this callback runs.
+        "var y0=window.scrollY;"
+        "ensurePlayer(function(){"
+        "ytPlayer.loadVideoById(m[1]);"
+        "requestAnimationFrame(function(){window.scrollTo(0,y0);"
+        "requestAnimationFrame(function(){window.scrollTo(0,y0);});});"
+        "});"
         "});"
         "if(!STANDALONE){"
         "var toggle=document.getElementById('jbtoggle'),panel=document.getElementById('jbpanel');"
@@ -3586,25 +3595,47 @@ std::string jukebox_add_form(const std::string& post_target, const std::string& 
     return "<div><label>Add a track</label>"
             "<div class=\"row\" style=\"align-items:flex-start\">"
             "<input id=\"jinput\" placeholder=\"Paste a YouTube link\" autocomplete=\"off\" style=\"flex:1\">"
-            "<button type=\"button\" id=\"jqueue\">Queue</button>"
             "</div>"
             "<div id=\"jsresults\" style=\"margin-top:.4rem;display:flex;flex-direction:column;gap:.2rem\"></div>"
             "</div>"
             "<p class=\"muted\">"+note+"</p>"
             "<script>(function(){"
+            // Restores the scroll position saved by queueUrl()'s reload
+            // path below, on the very next load of this same page.
+            "var savedY=sessionStorage.getItem('lg_scroll');"
+            "if(savedY!==null){sessionStorage.removeItem('lg_scroll');window.scrollTo(0,parseInt(savedY,10)||0);}"
             "var target="+js_string_literal(post_target)+";"
-            "var input=document.getElementById('jinput'),out=document.getElementById('jsresults'),"
-            "qbtn=document.getElementById('jqueue');"
+            "var input=document.getElementById('jinput'),out=document.getElementById('jsresults');"
             "var lastTopId=null,timer=null,gen=0;"
             "function esc(s){"
             "var ta=document.createElement('textarea');ta.innerHTML=s;"
             "var d=document.createElement('div');d.textContent=ta.value;return d.innerHTML;"
             "}"
             "function looksLikeUrl(s){return /^https?:\\/\\//i.test(s)||/youtu\\.?be/i.test(s);}"
+            // A picked/pasted track used to always window.location=... ,
+            // a full navigation that scrolls the page back to the top
+            // even though nothing about the layout actually moved. If the
+            // in-page player is already showing (a track was already
+            // queued), just repoint it at the new video and stay put.
+            // Only reload when there's no player yet to update in place
+            // -- and even then, restore scroll rather than land at the
+            // top; also the only path that still surfaces a server-side
+            // error (?jerr=...), since that's rendered server-side.
             "function queueUrl(url){"
             "fetch(target,{method:'POST',"
             "headers:{'Content-Type':'application/x-www-form-urlencoded'},"
-            "body:'url='+encodeURIComponent(url)}).then(function(r){window.location=r.url||location.href;});"
+            "body:'url='+encodeURIComponent(url)}).then(function(r){"
+            "var dest=r.url||location.href;"
+            "var failed=/[?&]jerr=/.test(dest);"
+            "var player=document.getElementById('jbplayer');"
+            "var m=url.match(/[?&]v=([A-Za-z0-9_-]{11})/)||url.match(/youtu\\.be\\/([A-Za-z0-9_-]{11})/);"
+            "if(!failed&&player&&m){"
+            "player.src='https://www.youtube-nocookie.com/embed/'+m[1]+'?rel=0&enablejsapi=1';"
+            "return;"
+            "}"
+            "sessionStorage.setItem('lg_scroll',String(window.scrollY));"
+            "location.reload();"
+            "});"
             "}"
             "function render(items){"
             "out.innerHTML='';lastTopId=null;"
@@ -3641,7 +3672,6 @@ std::string jukebox_add_form(const std::string& post_target, const std::string& 
             "var val=input.value.trim();if(!val)return;"
             "queueUrl(looksLikeUrl(val)?val:(lastTopId?('https://www.youtube.com/watch?v='+lastTopId):val));"
             "}"
-            "qbtn.addEventListener('click',doQueue);"
             "input.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();doQueue();}});"
             "})();</script>";
 }
@@ -5180,7 +5210,12 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             "<tr><td>Standing</td><td>Associate &middot; good</td></tr>"
             "<tr><td>Enrolled</td><td>"+html_escape(fmt_time(found->created_at))+"</td></tr>"
             "</table></div></div>"+committees_html;
-        if (!g_store.author_css(found->id).empty()) {
+        if (!g_store.author_css(found->id).empty() || !g_store.canvas_frames(found->id).empty()) {
+            // Shown for a custom theme (author_css) OR a drawn background
+            // (canvas frames) -- either alone is enough content for this
+            // iframe to be worth rendering; /u/<user>/theme already
+            // handles emitting theme_background_css from the frames when
+            // there's no author_css at all, so nothing else changes there.
             // sandbox="allow-same-origin", not sandbox="" (opaque origin):
             // confirmed live that opaque-origin sandboxed iframes get
             // silently dropped by real-world browser privacy/tracking
@@ -5197,7 +5232,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             // possible in this frame -- are both still fully intact.
             html += "<iframe src=\"/u/"+html_escape(found->username)+"/theme\" sandbox=\"allow-same-origin\" "
                     "title=\"Profile theme\" "
-                    "style=\"width:100%;min-height:220px;border:1px solid var(--rule);"
+                    "style=\"width:100%;min-height:320px;border:1px solid var(--rule);"
                     "border-radius:var(--rsm);background:#fff\"></iframe>";
         }
         if (is_owner) {

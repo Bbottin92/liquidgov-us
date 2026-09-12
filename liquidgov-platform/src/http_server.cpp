@@ -604,9 +604,28 @@ std::string intro_overlay_html() {
 std::string page_wrap(const std::string& title, const std::string& navhtml, const std::string& body) {
     const std::string theme_attr = g_theme_mode.empty() ? "" : " data-theme=\""+g_theme_mode+"\"";
     const std::string next_theme = g_theme_mode == "dark" ? "light" : "dark";
-    const std::string toggle = "<a class=\"themebtn\" href=\"/theme/"+next_theme+
+    std::string toggle = "<a class=\"themebtn\" id=\"themetoggle\" href=\"/theme/"+next_theme+
         "\" aria-label=\"Switch to "+next_theme+"\" title=\"Switch to "+next_theme+"\">"+
         (g_theme_mode == "dark" ? "&#9728;" : "&#9789;")+"</a>";
+    if (g_theme_mode.empty()) {
+        // With no explicit lg_theme cookie, the page is actually dark or
+        // light by prefers-color-scheme -- something the server can't see.
+        // Guessing "dark" as the next theme (the code above's only option
+        // without that information) is wrong for exactly the visitors
+        // whose system is already in dark mode: the button shows a moon
+        // ("switch to dark") while the page is already dark, and clicking
+        // it sets an explicit dark cookie that changes nothing on screen --
+        // reads as "the toggle doesn't work." Corrected client-side, once,
+        // against the one thing only the browser actually knows.
+        toggle +=
+            "<script>(function(){"
+            "if(window.matchMedia&&matchMedia('(prefers-color-scheme:dark)').matches){"
+            "var t=document.getElementById('themetoggle');"
+            "t.href='/theme/light';t.textContent='\\u2600';"
+            "t.setAttribute('aria-label','Switch to light');t.title='Switch to light';"
+            "}"
+            "})();</script>";
+    }
     return "<!doctype html><html lang=\"en\""+theme_attr+"><head><meta charset=\"utf-8\">"
            "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
            "<title>"+html_escape(title)+" — LiquidGov.US</title>"
@@ -647,7 +666,11 @@ std::string nav(const std::string& user, int unread) {
                     "<a href=\"/world\">World</a>"
                     "<a href=\"/notices\">Notices";
     if (unread > 0) n += "<span class=\"badge\">"+std::to_string(unread)+"</span>";
-    n += "</a><a href=\"/me\">"+html_escape(user)+"</a>"
+    // The nav's own name link goes to the public page anyone else sees
+    // (/u/<username>), not the edit screen -- "Edit profile" on that
+    // public page and the "Your profile" link on the home dashboard are
+    // the way to actually reach /me.
+    n += "</a><a href=\"/u/"+html_escape(user)+"\">"+html_escape(user)+"</a>"
          "<a href=\"/settings\">Settings</a><a href=\"/logout\">Log out</a></nav>";
     return n;
 }
@@ -1023,18 +1046,23 @@ std::string attachment_filename_for_mime(const std::string& mime) {
     return "attachment";
 }
 
-bool has_portrait(AccountId id) {
-    auto av = g_store.get(id);
-    if (!av) return false;
-    return g_blobs.meta(av->blob_id).has_value();
-}
-
 std::string portrait_tag(const std::string& username, const char* cls) {
     auto acc = g_store.find_by_username(username);
-    if (!acc || !has_portrait(acc->id))
+    if (!acc) return std::string("<span class=\"portrait ")+cls+" ph\" aria-hidden=\"true\"></span>";
+    auto av = g_store.get(acc->id);
+    if (!av || !g_blobs.meta(av->blob_id).has_value())
         return std::string("<span class=\"portrait ")+cls+" ph\" aria-hidden=\"true\"></span>";
+    // /portrait/<username> is served with Cache-Control: max-age=300 at
+    // this same URL regardless of which image is behind it, so a browser
+    // that already fetched it once shows the old picture for up to five
+    // minutes after a re-upload even though the server side updated
+    // immediately. blob_id changes on every save (a fresh sha256 of the
+    // new bytes -- see save_avatar), so using it as a cache-busting query
+    // param forces a real re-fetch the moment the picture actually
+    // changes, without weakening the cache header for repeat views of the
+    // same picture.
     return std::string("<img class=\"portrait ")+cls+"\" src=\"/portrait/"+html_escape(username)+
-           "\" alt=\"\" width=\"96\" height=\"96\">";
+           "?v="+html_escape(av->blob_id)+"\" alt=\"\" width=\"96\" height=\"96\">";
 }
 
 // Shared drawing-tool engine: freehand brushes (pen, marker, spray, eraser,
@@ -3177,7 +3205,7 @@ std::string home_dashboard(const std::string& user) {
         "<div class=\"stattile\"><strong>" + std::to_string(committees.size()) + "</strong><span>Communities</span></div>"
         "</div>"
         "<p class=\"row\"><a class=\"btn\" href=\"/feed\">Open the feed</a> "
-        "<a class=\"btn ghost\" href=\"/me\">Your profile</a></p></div>" +
+        "<a class=\"btn ghost\" href=\"/u/" + html_escape(user) + "\">Your profile</a></p></div>" +
         quadCard +
         (rooms.empty() ? "" : "<div class=\"card\"><h2>Rooms open now</h2>" + rooms + "</div>");
 }

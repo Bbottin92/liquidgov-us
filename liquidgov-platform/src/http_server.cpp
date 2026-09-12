@@ -420,20 +420,6 @@ std::string css() {
         "button.danger,.btn.danger{background:var(--danger);color:#f7f1e4}"
         ".row{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}"
         ".toolgroup-sep{width:1px;align-self:stretch;background:var(--rule);margin:0 .15rem}"
-        // Below this width the four panels (brush, import, background,
-        // canvas) just stack in their natural DOM order -- exactly what
-        // rendered before .canvas-layout existed. At or above it, the same
-        // four elements become named grid areas instead: three panels
-        // stacked in a fixed-width left column, the canvas area spanning
-        // that column's full height on the right -- CSS placement only,
-        // so DOM/reading/tab order is untouched either way.
-        "@media(min-width:900px){.canvas-layout{display:grid;"
-        "grid-template-columns:17rem 1fr;grid-template-rows:auto auto auto;gap:.6rem;align-items:start}"
-        ".canvas-layout>:nth-child(1){grid-column:1;grid-row:1}"
-        ".canvas-layout>:nth-child(2){grid-column:1;grid-row:2}"
-        ".canvas-layout>:nth-child(3){grid-column:1;grid-row:3}"
-        ".canvas-layout>:nth-child(4){grid-column:2;grid-row:1/4}"
-        "}"
         ".person,.sess,.msg,.post{border-top:1px solid var(--rule);padding:.7rem 0;display:flex;"
         "justify-content:space-between;gap:.8rem;flex-wrap:wrap;align-items:flex-start}"
         ".person:first-of-type,.sess:first-of-type,.msg:first-of-type,.post:first-of-type{border-top:0}"
@@ -1196,16 +1182,6 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
     std::string html =
         "<div class=\"card\"><h1>"+title+"</h1>"
         "<p class=\"muted\">"+intro+"</p>"+errHtml+
-        // The brush panel, the import/selection panel, and the background
-        // presets used to just stack above the canvas, one full-width
-        // block after another -- leaving the canvas's own actual drawing
-        // surface, which has a fixed pixel width well short of the page's
-        // full column, with a wide dead strip beside it on anything wider
-        // than a phone. .canvas-layout below turns that same DOM order
-        // into a real sidebar at desktop widths (CSS grid areas, not a
-        // reordered DOM -- so a screen reader or a narrow viewport still
-        // gets the original, perfectly sensible top-to-bottom order).
-        "<div class=\"canvas-layout\">"
         // Everything about "what am I about to draw with" lives in one
         // bounded panel -- tool, then that tool's own properties, then
         // (only for Text) that tool's extra properties -- separate from
@@ -1374,17 +1350,32 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "<button type=\"button\" class=\"ghost cbgbtn\" data-bg=\"wash\">Wash</button>"
         "<button type=\"button\" class=\"ghost cbgbtn\" data-bg=\"ruled\">Ruled</button>"
         "</div>"
-        // Layers as a vertical tab strip down the canvas's own left edge --
-        // physically attached to the surface they control, the way layer
-        // panels normally sit next to (not above) the thing being layered.
-        // No numbers on the tabs themselves: switching to one and seeing
-        // which is active (the highlighted background) is all a tab needs
-        // to communicate, and all three do the same job -- a number would
-        // just be one more thing to read, not new information. Each still
-        // gets its own opacity slider, a real per-layer property applied
-        // both live (CSS opacity on that layer's own <canvas>) and in
-        // flatten() so a saved/posted image matches what's on screen.
+        // Canvas first, then its layer tabs on the right -- Brandon's own
+        // call after seeing the left-side placement read as "tools bunched
+        // up on one side" rather than a real layer panel. No numbers on
+        // the tabs themselves: switching to one and seeing which is active
+        // (the highlighted background) is all a tab needs to communicate,
+        // and all three do the same job -- a number would just be one more
+        // thing to read, not new information. Each still gets its own
+        // opacity slider, a real per-layer property applied both live (CSS
+        // opacity on that layer's own <canvas>) and in flatten() so a
+        // saved/posted image matches what's on screen.
         "<div style=\"display:flex;gap:.5rem;align-items:flex-start\">"
+        "<div id=\"ccanvaswrap\" style=\"position:relative;flex:1;min-width:0;max-width:"+cws+"px;"
+        "aspect-ratio:"+aspect+";background:#fff;border:1px solid var(--rule);"
+        "border-radius:var(--rsm);overflow:hidden;touch-action:none\">"
+        "<canvas id=\"clayer0\" width=\""+cws+"\" height=\""+chs+"\" "
+        "style=\"position:absolute;inset:0;width:100%;height:100%\"></canvas>"
+        "<canvas id=\"clayer1\" width=\""+cws+"\" height=\""+chs+"\" "
+        "style=\"position:absolute;inset:0;width:100%;height:100%\"></canvas>"
+        "<canvas id=\"clayer2\" width=\""+cws+"\" height=\""+chs+"\" "
+        "style=\"position:absolute;inset:0;width:100%;height:100%\"></canvas>"
+        "<canvas id=\"coverlay\" width=\""+cws+"\" height=\""+chs+"\" "
+        "style=\"position:absolute;inset:0;width:100%;height:100%;cursor:crosshair\"></canvas>"
+        "<div id=\"cresizehandle\" title=\"Drag to resize the canvas\" "
+        "style=\"position:absolute;right:0;bottom:0;width:16px;height:16px;padding:2px;"
+        "cursor:nwse-resize;z-index:11;touch-action:none;color:var(--stone)\">"+kIconResizeGrip+"</div>"
+        "</div>"
         "<div style=\"display:flex;flex-direction:column;gap:.6rem;width:2.6rem\">"
         "<div style=\"display:flex;flex-direction:column;gap:.15rem;align-items:center\">"
         "<button type=\"button\" class=\"ghost layerbtn\" data-layer=\"0\" title=\"Switch to layer 1\" "
@@ -1403,22 +1394,6 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "style=\"width:2.4rem;padding:.5rem 0\">"+kIconLayer+"</button>"
         "<input type=\"range\" class=\"layeropacity\" data-layer=\"2\" min=\"0\" max=\"100\" value=\"100\" "
         "title=\"Layer 3 opacity\" style=\"width:2.4rem\">"
-        "</div>"
-        "</div>"
-        "<div id=\"ccanvaswrap\" style=\"position:relative;flex:1;min-width:0;max-width:"+cws+"px;"
-        "aspect-ratio:"+aspect+";background:#fff;border:1px solid var(--rule);"
-        "border-radius:var(--rsm);overflow:hidden;touch-action:none\">"
-        "<canvas id=\"clayer0\" width=\""+cws+"\" height=\""+chs+"\" "
-        "style=\"position:absolute;inset:0;width:100%;height:100%\"></canvas>"
-        "<canvas id=\"clayer1\" width=\""+cws+"\" height=\""+chs+"\" "
-        "style=\"position:absolute;inset:0;width:100%;height:100%\"></canvas>"
-        "<canvas id=\"clayer2\" width=\""+cws+"\" height=\""+chs+"\" "
-        "style=\"position:absolute;inset:0;width:100%;height:100%\"></canvas>"
-        "<canvas id=\"coverlay\" width=\""+cws+"\" height=\""+chs+"\" "
-        "style=\"position:absolute;inset:0;width:100%;height:100%;cursor:crosshair\"></canvas>"
-        "<div id=\"cresizehandle\" title=\"Drag to resize the canvas\" "
-        "style=\"position:absolute;right:0;bottom:0;width:16px;height:16px;padding:2px;"
-        "cursor:nwse-resize;z-index:11;touch-action:none;color:var(--stone)\">"+kIconResizeGrip+"</div>"
         "</div>"
         "</div>"
         "</div>"

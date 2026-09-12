@@ -420,26 +420,23 @@ std::string css() {
         "button.danger,.btn.danger{background:var(--danger);color:#f7f1e4}"
         ".row{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}"
         ".toolgroup-sep{width:1px;align-self:stretch;background:var(--rule);margin:0 .15rem}"
-        // Below this width .canvas-frame's five children (tool row,
-        // colour/size/opacity row, glow/mirror/fill row, the hidden text
-        // row, and the canvas+layers row) just stack in that same order --
-        // exactly what rendered before this rule existed. At or above it,
-        // the same five elements become grid areas instead: the first
-        // three (plus the hidden text row, in the same column so it drops
-        // in place if a Text tool selection ever reveals it) form a
-        // toolbox column down the left, the canvas+layers row fills a
-        // second column spanning that column's full height on the right --
-        // wrapping the tool controls around the canvas the way a real
-        // paint app's toolbox-plus-canvas workspace does, without moving
-        // any of the underlying markup (so DOM/tab/reading order is
-        // identical at every width).
-        // The tool icons wrap vertically down the canvas's left edge (a
-        // real toolbox column, full height); the colour/size/opacity and
-        // glow/mirror/fill rows wrap horizontally across its top edge (a
-        // real options bar) -- an L-shaped frame around two adjacent
-        // sides of the canvas+layers area at bottom-right, the same
-        // corner arrangement Photoshop/Procreate/every real paint app
-        // uses, not everything squeezed into a single side.
+        // Below this width .canvas-frame's three children (tool row,
+        // the .cprops wrapper, and the canvas+layers row) just stack in
+        // that order -- exactly what rendered before this rule existed.
+        // At or above it, the tool icons wrap vertically down the
+        // canvas's left edge (a real toolbox column, full height); the
+        // .cprops wrapper -- itself holding the colour/size/opacity row,
+        // the glow/mirror/fill row, and the hidden text row, stacked by
+        // normal block flow -- wraps horizontally across the top edge (a
+        // real options bar). That's deliberately one wrapping element
+        // grid-placed once, not three separate items placed at the same
+        // grid-row/grid-column: CSS Grid overlaps same-cell items rather
+        // than stacking them, which is exactly what broke the first
+        // version of this layout live. Together this forms an L-shaped
+        // frame around two adjacent sides of the canvas+layers area at
+        // bottom-right, the same corner arrangement Photoshop/Procreate/
+        // every real paint app uses, without moving any of the underlying
+        // markup (so DOM/tab/reading order is identical at every width).
         "@media(min-width:900px){.canvas-frame{display:grid;"
         "grid-template-columns:9rem 1fr;grid-template-rows:auto auto;gap:.6rem;align-items:start}"
         // Two columns of icons within that narrower toolbox, not one
@@ -450,9 +447,7 @@ std::string css() {
         "grid-template-columns:repeat(2,1fr);gap:.3rem}"
         ".canvas-frame>:nth-child(1) .toolgroup-sep{grid-column:1/3;width:100%;height:1px;margin:.2rem 0}"
         ".canvas-frame>:nth-child(2){grid-column:2;grid-row:1}"
-        ".canvas-frame>:nth-child(3){grid-column:2;grid-row:1}"
-        ".canvas-frame>:nth-child(4){grid-column:2;grid-row:1}"
-        ".canvas-frame>:nth-child(5){grid-column:2;grid-row:2}"
+        ".canvas-frame>:nth-child(3){grid-column:2;grid-row:2}"
         "}"
         ".person,.sess,.msg,.post{border-top:1px solid var(--rule);padding:.7rem 0;display:flex;"
         "justify-content:space-between;gap:.8rem;flex-wrap:wrap;align-items:flex-start}"
@@ -1267,6 +1262,13 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "<button type=\"button\" class=\"ghost toolbtn\" data-tool=\"text\" title=\"Text\" "
         "style=\"padding:.5rem .55rem\">"+kIconText+"</button>"
         "</div>"
+        // The three property/modifier/text rows below share one wrapping
+        // div, not separate grid placements -- multiple items placed at
+        // the exact same grid-row/grid-column overlap each other rather
+        // than stacking (that's what actually broke the first version of
+        // this layout, live), so they need to be one single grid item
+        // that stacks its own children by normal block flow internally.
+        "<div class=\"cprops\">"
         "<div class=\"row\" style=\"flex-wrap:wrap;gap:.4rem 1rem;align-items:center;margin-bottom:.4rem\">"
         "<input type=\"color\" id=\"ccolor\" value=\"#1a1814\" aria-label=\"Color\" "
         "style=\"width:36px;min-height:36px;padding:2px;flex:0 0 auto\">"
@@ -1341,6 +1343,7 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "style=\"padding:.5rem .6rem\">"+kIconHighlight+"</button>"
         "<input type=\"color\" id=\"ctextbgcolor\" value=\"#ffffff\" aria-label=\"Text background colour\" "
         "style=\"width:36px;min-height:36px;padding:2px;flex:0 0 auto\">"
+        "</div>"
         "</div>"
         "</div>"
         // Canvas, with its layer tabs on the right, as the fourth and

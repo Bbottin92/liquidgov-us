@@ -10,6 +10,7 @@
 #include <fcntl.h>
 #include <filesystem>
 #include <fstream>
+#include <random>
 #include <sstream>
 #include <stdexcept>
 #include <unistd.h>
@@ -322,6 +323,36 @@ void FileStore::set_blurb(AccountId id, const std::string& blurb) {
 std::string FileStore::blurb(AccountId id) const {
     auto it = blurbs_.find(id);
     return it == blurbs_.end() ? "" : it->second;
+}
+
+void FileStore::set_profile(const std::string& username, const Profile& p) {
+    if (!username_exists(username)) return;
+    profiles_[username] = p;
+    flush();
+}
+
+Profile FileStore::profile_of(const std::string& username) const {
+    auto it = profiles_.find(username);
+    return it == profiles_.end() ? Profile{} : it->second;
+}
+
+std::vector<std::string> FileStore::findable_sample(const std::string& requester, std::size_t n) const {
+    std::vector<std::string> pool;
+    for (const auto& [name, id] : by_username_) {
+        (void)id;
+        if (name == requester) continue;
+        if (is_blocked(requester, name) || is_blocked(name, requester)) continue;
+        if (are_friends(requester, name)) {
+            pool.push_back(name);
+            continue;
+        }
+        if (prefs_of(name).findability == Findability::Typeahead) pool.push_back(name);
+    }
+    if (pool.size() <= n) return pool;
+    static thread_local std::mt19937 rng{std::random_device{}()};
+    std::shuffle(pool.begin(), pool.end(), rng);
+    pool.resize(n);
+    return pool;
 }
 
 void FileStore::set_author_css(AccountId id, const std::string& css) {
@@ -1061,6 +1092,7 @@ bool FileStore::delete_account(AccountId id) {
     for (const auto& sid : drop) sessions_.erase(sid);
     phone_fp_.erase(id);
     blurbs_.erase(id);
+    profiles_.erase(name);
     author_css_.erase(id);
     canvas_frames_.erase(id);
     canvas_timelapse_.erase(id);
@@ -1085,6 +1117,7 @@ void FileStore::load() {
     accounts_.clear();
     sessions_.clear();
     blurbs_.clear();
+    profiles_.clear();
     author_css_.clear();
     canvas_frames_.clear();
     canvas_timelapse_.clear();
@@ -1460,6 +1493,18 @@ void FileStore::load() {
             auto it = messages_.find(msg_id);
             if (it == messages_.end()) throw std::runtime_error("LGP1: gmh with no message");
             it->second.edit_history.push_back(pct_decode(f[2]));
+        } else if (tag == "prof") {
+            if (f.size() != 9) throw std::runtime_error("LGP1: bad prof record");
+            Profile p;
+            const std::string name = pct_decode(f[1]);
+            p.email_fp = pct_decode(f[2]);
+            p.display_name = pct_decode(f[3]);
+            p.hometown = pct_decode(f[4]);
+            p.living = pct_decode(f[5]);
+            p.interests = pct_decode(f[6]);
+            p.career = pct_decode(f[7]);
+            p.school = pct_decode(f[8]);
+            if (!name.empty()) profiles_[name] = p;
         } else {
             throw std::runtime_error("LGP1: unknown record type '" + tag + "'");
         }
@@ -1588,6 +1633,12 @@ void FileStore::flush() {
              << (p.notify_message ? 1 : 0) << "\t" << (p.notify_group ? 1 : 0) << "\t"
              << static_cast<int>(p.jukebox_policy) << "\t" << static_cast<int>(p.profile_visibility) << "\t"
              << static_cast<int>(p.posts_visibility) << "\t" << (p.intro_every_visit ? 1 : 0) << "\n";
+    }
+    for (const auto& [name, p] : profiles_) {
+        body << "prof\t" << pct_encode(name) << "\t" << pct_encode(p.email_fp) << "\t"
+             << pct_encode(p.display_name) << "\t" << pct_encode(p.hometown) << "\t"
+             << pct_encode(p.living) << "\t" << pct_encode(p.interests) << "\t"
+             << pct_encode(p.career) << "\t" << pct_encode(p.school) << "\n";
     }
     for (const auto& n : notices_) {
         body << "note\t" << n.id << "\t" << pct_encode(n.to) << "\t" << pct_encode(n.type) << "\t"

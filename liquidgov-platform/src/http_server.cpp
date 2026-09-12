@@ -849,6 +849,7 @@ std::string page_wrap(const std::string& title, const std::string& navhtml, cons
 }
 
 std::string portrait_tag(const std::string& username, const char* cls); // defined below, needed here for nav()
+std::string post_block(const Post& p, const std::string& viewer);
 std::string mail_widget_script(); // defined below, needed here for nav()
 
 std::string nav(const std::string& user, int unread) {
@@ -1513,12 +1514,17 @@ std::string notices_list_html(const std::string& user) {
     if (notes.empty()) html += "<p class=\"empty\">Nothing waiting.</p>";
     for (auto& n : notes) {
         std::string line;
-        if (n.type=="friend_request") line = html_escape(n.from)+" sent a friend request.";
-        else if (n.type=="friend_accept") line = html_escape(n.from)+" accepted your request.";
-        else if (n.type=="message") line = html_escape(n.from)+" sent mail.";
-        else if (n.type=="group_invite") line = html_escape(n.from)+" added you to /"+html_escape(n.extra)+".";
+        std::string href;
+        if (n.type=="friend_request") { line = html_escape(n.from)+" sent a friend request."; href="/friends"; }
+        else if (n.type=="friend_accept") { line = html_escape(n.from)+" accepted your request."; href="/u/"+html_escape(n.from); }
+        else if (n.type=="message") { line = html_escape(n.from)+" sent mail."; href="/mail?with="+html_escape(n.from); }
+        else if (n.type=="group_invite") { line = html_escape(n.from)+" added you to /"+html_escape(n.extra)+"."; href="/c/"+html_escape(n.extra); }
         else line = html_escape(n.type);
-        html += "<div class=\"person\"><div>"+line+"<div class=\"muted\">"+html_escape(fmt_time(n.ts))+"</div></div></div>";
+        html += "<div class=\"person\">";
+        if (!href.empty()) html += "<a href=\""+href+"\" style=\"flex:1;min-width:0;color:inherit;text-decoration:none\">";
+        html += "<div>"+line+"<div class=\"muted\">"+html_escape(fmt_time(n.ts))+"</div></div>";
+        if (!href.empty()) html += "</a>";
+        html += "</div>";
     }
     html += "<p class=\"muted\">A declined friend request does not send a notice.</p></div>";
     return html;
@@ -1678,6 +1684,19 @@ std::string mail_widget_script() {
         "var accountMenu=document.querySelector('nav.accountmenu');"
         "if(accountMenu)accountMenu.addEventListener('click',function(e){"
         "if(e.target.closest('a'))closeMenu();"
+        "});"
+        "function clickInsideChrome(t){"
+        "if(!t||!t.closest)return false;"
+        "return !!(t.closest('nav.accountmenu')||t.closest('#notifpanel')||t.closest('#mailpanel')"
+        "||t.closest('.navavatar')||t.closest('#notiftoggle')||t.closest('#mailtoggle')"
+        "||t.closest('label.navbtn')||t.closest('#navc'));"
+        "}"
+        "document.addEventListener('click',function(e){"
+        "if(clickInsideChrome(e.target))return;"
+        "closeMenu();hideNotif();hideMail();"
+        "});"
+        "document.addEventListener('keydown',function(e){"
+        "if(e.key==='Escape'){closeMenu();hideNotif();hideMail();}"
         "});"
         // Delegated, not per-link: mailRoot's own contents are replaced
         // wholesale on every load, so listeners bound to specific elements
@@ -2090,12 +2109,9 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "<button type=\"button\" class=\"ghost\" id=\"ccrop\" title=\"Apply crop to selection\" "
         "style=\"padding:.5rem .55rem\">"+kIconCrop+"</button>"
         "</div>"
-        "</div>"
-        // Second panel, one clear step down in how often it gets touched:
-        // bring something in, or act on a selection -- both operate on the
-        // canvas as a whole rather than being "what the next stroke looks
-        // like", which is why it's not part of the wrap-the-canvas frame
-        // above.
+        "</div>";
+    if (!portrait) {
+        html +=
         "<div class=\"card\">"
         "<div class=\"row\" style=\"flex-wrap:wrap;gap:.4rem 1rem;align-items:center\">"
         "<label class=\"ghost\" style=\"cursor:pointer;padding:.3rem .6rem;border-radius:var(--rsm)\">"
@@ -2104,7 +2120,10 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "</div>"
         "<p class=\"muted\" style=\"margin:.5rem 0 0\">Ctrl+V also pastes an image straight from your "
         "OS clipboard onto the active layer.</p>"
-        "</div>"
+        "</div>";
+    } else {
+        html += "<p class=\"muted\">Self-portraits are drawn here. Photo upload and paste are off on this page.</p>";
+    }
         // A starting texture under whatever gets drawn, the way real paper
         // has a grain before any ink touches it -- four options, Plain
         // (today's blank default) among them, exactly one active at a
@@ -2506,6 +2525,7 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         // the browser) -- separate from the internal Copy/Cut/Paste
         // above, which only ever moves pixels around inside this canvas.
         "document.addEventListener('paste',function(e){"
+        + std::string(portrait ? "return;" : "") +
         "var items=(e.clipboardData||{}).items||[];"
         "for(var i=0;i<items.length;i++){"
         "if(items[i].type.indexOf('image')!==0)continue;"
@@ -2570,7 +2590,9 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "layerBtns.forEach(function(b){"
         "b.addEventListener('click',function(){activeLayer=Number(b.dataset.layer);refreshLayerBtns();});"
         "});"
-        "refreshLayerBtns();"
+        "refreshLayerBtns();";
+    if (!portrait) {
+        html +=
         "document.getElementById('cimport').addEventListener('change',function(e){"
         "var f=e.target.files[0];if(!f)return;"
         "var status=document.getElementById('cstatus');"
@@ -2609,13 +2631,9 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "reader.readAsDataURL(f);"
         "}"
         "e.target.value='';"
-        "});"
-        // Flattens all layers onto a fresh white-backed canvas -- storage
-        // only ever holds one flat PNG per frame, so layers are purely a
-        // client-side editing convenience that collapses down at capture
-        // time, same as an image editor's "flatten" export. Shared by both
-        // modes: the background tool's per-action frame capture below, and
-        // the self-portrait tool's own one-shot Save handler.
+        "});";
+    }
+    html +=
         "function flatten(){"
         "var out=document.createElement('canvas');"
         "out.width=layers[0].cv.width;out.height=layers[0].cv.height;"
@@ -3957,7 +3975,7 @@ std::string home_dashboard(const std::string& user) {
                "<a class=\"btn ghost\" href=\"/u/" + html_escape(user) + "\">Your profile</a></p>";
     }
 
-    return
+    std::string out =
         "<div class=\"card\"><p class=\"eyebrow\">" + std::string(first_hour ? "You're in" : "Welcome back") +
         "</p><h1>@" + html_escape(user) + "</h1>"
         "<div class=\"stattiles\">"
@@ -3969,8 +3987,74 @@ std::string home_dashboard(const std::string& user) {
         std::string(committees.size()==1?"Community":"Communities") + "</span></div>"
         "</div>"
         + next + "</div>" +
-        quadCard +
-        (rooms.empty() ? "" : "<div class=\"card\"><h2>Rooms open now</h2>" + rooms + "</div>");
+        quadCard;
+
+    auto friend_posts = g_store.feed_view(user, 6, FeedFilter::Friends);
+    if (!friend_posts.empty()) {
+        out += "<div class=\"card\"><h2>From people you know</h2>";
+        for (const auto& p : friend_posts) out += post_block(p, user);
+        out += "<p><a href=\"/feed\">Open the feed</a></p></div>";
+    }
+
+    Profile prof = g_store.profile_of(user);
+    auto ci_has = [](std::string hay, std::string needle) {
+        for (char& c : hay) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        for (char& c : needle) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        if (needle.size() < 3) return false;
+        return hay.find(needle) != std::string::npos;
+    };
+    std::vector<std::string> interest_bits;
+    {
+        std::string cur;
+        for (char c : prof.interests + "," + prof.hometown + "," + prof.living + "," + prof.career + "," + prof.school) {
+            if (c==',' || c==';') {
+                while (!cur.empty() && cur.front()==' ') cur.erase(cur.begin());
+                while (!cur.empty() && cur.back()==' ') cur.pop_back();
+                if (cur.size()>=3) interest_bits.push_back(cur);
+                cur.clear();
+            } else cur.push_back(c);
+        }
+        while (!cur.empty() && cur.front()==' ') cur.erase(cur.begin());
+        while (!cur.empty() && cur.back()==' ') cur.pop_back();
+        if (cur.size()>=3) interest_bits.push_back(cur);
+    }
+    std::string matched;
+    for (const auto& c : g_store.all_communities()) {
+        bool mine = false;
+        for (const auto& m : committees) if (m.slug==c.slug) mine = true;
+        if (mine) continue;
+        std::string hay = c.name + " " + c.about + " " + c.subcategory + " " + c.slug;
+        bool hit = false;
+        for (const auto& bit : interest_bits) if (ci_has(hay, bit)) { hit = true; break; }
+        if (!hit) continue;
+        matched += "<a class=\"roomrow\" href=\"/c/" + html_escape(c.slug) + "\"><span class=\"roomname\">" +
+                   html_escape(c.name) + "</span></a>";
+    }
+    if (!matched.empty())
+        out += "<div class=\"card\"><h2>Might fit you</h2>" + matched + "</div>";
+    if (!rooms.empty())
+        out += "<div class=\"card\"><h2>Your rooms</h2>" + rooms + "</div>";
+
+    if (friend_posts.empty() && matched.empty() && rooms.empty()) {
+        auto sample = g_store.findable_sample(user, 6);
+        auto allc = g_store.all_communities();
+        std::string people, comms;
+        for (auto& n : sample)
+            people += "<div class=\"person\"><div class=\"who\">"+portrait_tag(n,"sm")+
+                      "<a href=\"/u/"+html_escape(n)+"\"><strong>"+html_escape(n)+"</strong></a></div>"
+                      "<a class=\"btn ghost\" href=\"/search?q="+html_escape(n)+"\">View</a></div>";
+        std::size_t shown = 0;
+        for (const auto& c : allc) {
+            if (shown >= 6) break;
+            comms += "<a class=\"roomrow\" href=\"/c/" + html_escape(c.slug) + "\"><span class=\"roomname\">" +
+                     html_escape(c.name) + "</span></a>";
+            ++shown;
+        }
+        out += "<div class=\"card\"><h2>Looking around</h2>"
+               "<p class=\"muted\">Nothing is tagged to you yet, so this is a mix of people and groups on the site.</p>"
+               + people + comms + "</div>";
+    }
+    return out;
 }
 
 // The mobile design reads the charter as a chaptered, one-screen-at-a-time
@@ -4279,23 +4363,48 @@ std::string control_body() {
            "explicitly not a binding vote. Sign in to see them.</p></div>";
 }
 
+struct SignupDraft {
+    std::string username, phone, email, display_name;
+    std::string hometown, living, bio, interests, career, school;
+};
+
+bool looks_like_email(const std::string& s) {
+    auto at = s.find('@');
+    if (at == std::string::npos || at == 0 || at + 1 >= s.size()) return false;
+    auto dot = s.find('.', at + 1);
+    if (dot == std::string::npos || dot + 1 >= s.size()) return false;
+    if (s.find(' ') != std::string::npos) return false;
+    return s.size() <= 200;
+}
+
 std::string signup_page(const std::string& navuser, int unread, const std::string& err,
-                        const std::string& username, const std::string& phone) {
+                        const SignupDraft& d) {
     std::string e;
     if (!err.empty()) e = "<p class=\"warn\">"+html_escape(err)+"</p>";
     return wrap("Sign up", navuser, unread,
         "<div class=\"card\"><h1>Create an account</h1>"
         "<p class=\"muted\">Username is 3–32 characters: letters, numbers, dots, underscores, hyphens. "
-        "No spaces, no @. Password at least 8 characters. Phone is a signup binding (ten or more digits), "
-        "not stored as the number itself, and not used to log in. "
+        "No spaces, no @. Password at least 8 characters. Phone and email are signup bindings "
+        "(not used to log in). The phone number and email address themselves are not stored. "
         "This is a platform account, not a citizen identity.</p>"+e+
         "<form method=\"POST\" action=\"/signup\">"
         "<label>Username</label><input name=\"username\" required minlength=\"3\" maxlength=\"32\" "
         "pattern=\"[A-Za-z0-9._-]{3,32}\" title=\"3–32 letters, numbers, dots, underscores, hyphens. No spaces.\" "
-        "autocomplete=\"username\" placeholder=\"alice\" value=\""+html_escape(username)+"\">"
+        "autocomplete=\"username\" placeholder=\"alice\" value=\""+html_escape(d.username)+"\">"
+        "<label>Display name</label><input name=\"display_name\" required maxlength=\"80\" "
+        "autocomplete=\"name\" placeholder=\"How you want to be shown\" value=\""+html_escape(d.display_name)+"\">"
         "<label>Password</label><input type=\"password\" name=\"password\" required minlength=\"8\" maxlength=\"200\" autocomplete=\"new-password\">"
+        "<label>Email</label><input name=\"email\" type=\"email\" required maxlength=\"200\" autocomplete=\"email\" "
+        "placeholder=\"you@example.com\" value=\""+html_escape(d.email)+"\">"
         "<label>Phone</label><input name=\"phone\" type=\"tel\" required autocomplete=\"tel\" inputmode=\"tel\" "
-        "placeholder=\"10+ digits\" value=\""+html_escape(phone)+"\">"
+        "placeholder=\"10+ digits\" value=\""+html_escape(d.phone)+"\">"
+        "<p class=\"eyebrow\" style=\"margin-top:1.2rem\">Optional</p>"
+        "<label>Hometown</label><input name=\"hometown\" maxlength=\"80\" value=\""+html_escape(d.hometown)+"\">"
+        "<label>Where you live now</label><input name=\"living\" maxlength=\"80\" value=\""+html_escape(d.living)+"\">"
+        "<label>Bio</label><textarea name=\"bio\" maxlength=\"500\">"+html_escape(d.bio)+"</textarea>"
+        "<label>Interests</label><input name=\"interests\" maxlength=\"200\" placeholder=\"comma-separated\" value=\""+html_escape(d.interests)+"\">"
+        "<label>Career</label><input name=\"career\" maxlength=\"80\" value=\""+html_escape(d.career)+"\">"
+        "<label>School</label><input name=\"school\" maxlength=\"80\" value=\""+html_escape(d.school)+"\">"
         "<button>Continue</button></form></div>");
 }
 
@@ -4648,7 +4757,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         return pg("Laws · " + chapters[n-1].title, laws_chapter_body(n));
     }
     if(method=="GET"&&path=="/control") return pg("Who holds control", control_body());
-    if(method=="GET"&&path=="/signup") return http_ok(signup_page(user, unread, "", "", ""));
+    if(method=="GET"&&path=="/signup") return http_ok(signup_page(user, unread, "", SignupDraft{}));
     if(method=="GET"&&path=="/login") {
         std::string err;
         // Deliberately one generic message for bad-username and
@@ -4839,6 +4948,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         if (qs["err"]=="image") err = "<p class=\"warn\">That file was not a usable image (PNG/JPEG/GIF, 2&nbsp;MiB, 1024px). SVG is not accepted.</p>";
         else if (qs["err"]=="large") err = "<p class=\"warn\">That file is too large. Cap is 2&nbsp;MiB and 1024 pixels on the long edge.</p>";
         else if (qs["err"]=="scan") err = "<p class=\"warn\">That file could not be stored.</p>";
+        else if (qs["err"]=="profile") err = "<p class=\"warn\">Display name is required (up to 80 characters).</p>";
         std::string html;
         // Draft/publish: the two forms directly on this page (Profile CSS,
         // Jukebox permissions) no longer save themselves on their own
@@ -4861,6 +4971,21 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             "<p class=\"muted\">Self-portrait &mdash; draw one with the same tools as the "
             "<a href=\"/me/portrait\">portrait tool</a>.</p>";
         html += "<p class=\"muted\">A platform account is not a citizen identity.</p></div>";
+        {
+            auto prof = g_store.profile_of(user);
+            auto bio = g_store.blurb(acc->id);
+            html += "<div class=\"card\"><h2>About you</h2>"
+                "<form method=\"POST\" action=\"/me/profile\">"
+                "<label>Display name</label><input name=\"display_name\" required maxlength=\"80\" value=\""+html_escape(prof.display_name)+"\">"
+                "<label>Hometown</label><input name=\"hometown\" maxlength=\"80\" value=\""+html_escape(prof.hometown)+"\">"
+                "<label>Where you live now</label><input name=\"living\" maxlength=\"80\" value=\""+html_escape(prof.living)+"\">"
+                "<label>Bio</label><textarea name=\"bio\" maxlength=\"500\">"+html_escape(bio)+"</textarea>"
+                "<label>Interests</label><input name=\"interests\" maxlength=\"200\" placeholder=\"comma-separated\" value=\""+html_escape(prof.interests)+"\">"
+                "<label>Career</label><input name=\"career\" maxlength=\"80\" value=\""+html_escape(prof.career)+"\">"
+                "<label>School</label><input name=\"school\" maxlength=\"80\" value=\""+html_escape(prof.school)+"\">"
+                "<button>Save profile</button></form>"
+                "<p class=\"muted\">Email stays a fingerprint from signup. It is not shown and cannot be changed here.</p></div>";
+        }
         {
             auto n_frames = g_store.canvas_frames(acc->id).size();
             std::string canvas_status = n_frames == 0
@@ -4997,7 +5122,22 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             committees_html += "</div>";
         }
         std::string html = "<div class=\"card\"><div class=\"who\">"+portrait_tag(found->username,"")+
-            "<div><h1>"+html_escape(found->username)+"</h1>"
+            "<div><h1>"+html_escape(found->username)+"</h1>";
+        {
+            auto pr = g_store.profile_of(found->username);
+            if (!pr.display_name.empty())
+                html += "<p class=\"lede\" style=\"margin:.2rem 0 .4rem\">"+html_escape(pr.display_name)+"</p>";
+            auto bio = g_store.blurb(found->id);
+            std::string bits;
+            if (!pr.living.empty()) bits += html_escape(pr.living);
+            if (!pr.hometown.empty()) bits += (bits.empty()?"":" · ")+std::string("from ")+html_escape(pr.hometown);
+            if (!pr.career.empty()) bits += (bits.empty()?"":" · ")+html_escape(pr.career);
+            if (!pr.school.empty()) bits += (bits.empty()?"":" · ")+html_escape(pr.school);
+            if (!bits.empty()) html += "<p class=\"muted\">"+bits+"</p>";
+            if (!bio.empty()) html += "<p>"+html_escape(bio)+"</p>";
+            if (!pr.interests.empty()) html += "<p class=\"muted\">"+html_escape(pr.interests)+"</p>";
+        }
+        html +=
             "<table class=\"record\">"
             "<tr><td>Standing</td><td>Associate &middot; good</td></tr>"
             "<tr><td>Enrolled</td><td>"+html_escape(fmt_time(found->created_at))+"</td></tr>"
@@ -5540,43 +5680,62 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
 
     if(method=="POST"&&path=="/signup") {
         auto f=parse_form(body);
-        auto uname=trim_ws(f["username"]);
-        auto phone=trim_ws(f["phone"]);
+        SignupDraft d;
+        d.username=trim_ws(f["username"]);
+        d.phone=trim_ws(f["phone"]);
+        d.email=trim_ws(f["email"]);
+        d.display_name=trim_ws(f["display_name"]);
+        d.hometown=trim_ws(f["hometown"]);
+        d.living=trim_ws(f["living"]);
+        d.bio=trim_ws(f["bio"]);
+        d.interests=trim_ws(f["interests"]);
+        d.career=trim_ws(f["career"]);
+        d.school=trim_ws(f["school"]);
         auto pass=f["password"];
-        if (!valid_username(uname) || uname.size() < 3) {
-            std::string err = uname.empty()
+        auto fail=[&](const std::string& err){ return http_ok(signup_page(user, unread, err, d)); };
+        if (!valid_username(d.username) || d.username.size() < 3) {
+            std::string err = d.username.empty()
                 ? "Need a username: 3–32 letters/numbers (dots, underscores, hyphens ok). No spaces, no @."
-                : uname.size() < 3
+                : d.username.size() < 3
                     ? "Username needs at least three characters."
-                    : ("“"+uname+"” isn’t a valid username. Letters, numbers, dots, underscores, hyphens. No spaces.");
-            return http_ok(signup_page(user, unread, err, uname, phone));
+                    : ("“"+d.username+"” isn’t a valid username. Letters, numbers, dots, underscores, hyphens. No spaces.");
+            return fail(err);
         }
+        if (d.display_name.empty() || d.display_name.size() > 80)
+            return fail("Need a display name (up to 80 characters).");
         if (pass.size() < 8)
-            return http_ok(signup_page(user, unread, "Password needs at least eight characters.", uname, phone));
-        if (count_digits(phone) < 10)
-            return http_ok(signup_page(user, unread, "Need a real phone number (at least ten digits). It is a signup binding, not stored as the number itself, and not used to log in.", uname, phone));
-        if (pass.empty() || phone.empty())
-            return http_ok(signup_page(user, unread, "Need username, password, and phone.", uname, phone));
-        if (g_store.phone_quarantined(fingerprint_phone(phone)))
-            return http_ok(signup_page(user, unread, "Could not create that account.", uname, phone));
-        auto r=create_account(g_store,g_breach,uname,pass,phone);
+            return fail("Password needs at least eight characters.");
+        if (!looks_like_email(d.email))
+            return fail("Need a real email address. It is a signup binding, not stored as the address itself, and not used to log in.");
+        if (count_digits(d.phone) < 10)
+            return fail("Need a real phone number (at least ten digits). It is a signup binding, not stored as the number itself, and not used to log in.");
+        if (pass.empty() || d.phone.empty())
+            return fail("Need username, password, email, phone, and a display name.");
+        if (g_store.phone_quarantined(fingerprint_phone(d.phone)))
+            return fail("Could not create that account.");
+        auto r=create_account(g_store,g_breach,d.username,pass,d.phone);
         if(r.error==AuthError::None) {
-            if (auto created = g_store.find_by_username(uname))
-                g_store.set_phone_fp(created->id, fingerprint_phone(phone));
-            r=login(g_store,g_limiter,uname,pass,device_label_from(req,ip),ip);
+            if (auto created = g_store.find_by_username(d.username)) {
+                g_store.set_phone_fp(created->id, fingerprint_phone(d.phone));
+                if (!d.bio.empty()) g_store.set_blurb(created->id, d.bio.substr(0, 500));
+                Profile p;
+                p.display_name = d.display_name.substr(0, 80);
+                p.email_fp = fingerprint_phone(d.email);
+                p.hometown = d.hometown.substr(0, 80);
+                p.living = d.living.substr(0, 80);
+                p.interests = d.interests.substr(0, 200);
+                p.career = d.career.substr(0, 80);
+                p.school = d.school.substr(0, 80);
+                g_store.set_profile(d.username, p);
+            }
+            r=login(g_store,g_limiter,d.username,pass,device_label_from(req,ip),ip);
         }
         if(r.error==AuthError::UsernameTaken)
-            return http_ok(signup_page(user, unread, "That username is taken. Pick another.", uname, phone));
-        // Same message as the pass.size()<8 pre-check above -- that one
-        // fires first for the common case (skips ever calling
-        // create_account), this covers create_account's own
-        // AuthError::PasswordTooShort in case the two thresholds ever
-        // drift apart instead of silently falling into the generic
-        // "Could not create that account." below.
+            return fail("That username is taken. Pick another.");
         if(r.error==AuthError::PasswordTooShort)
-            return http_ok(signup_page(user, unread, "Password needs at least eight characters.", uname, phone));
+            return fail("Password needs at least eight characters.");
         if(r.error!=AuthError::None||!r.session)
-            return http_ok(signup_page(user, unread, "Could not create that account.", uname, phone));
+            return fail("Could not create that account.");
         return http_redir("/", set_cookie(r.session->id));
     }
     if(method=="POST"&&path=="/login") {
@@ -5658,6 +5817,22 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         if (!g_store.post_by_id(pid)) return http_redir(back);
         g_store.toggle_second(pid, user);
         return http_redir(back);
+    }
+    if(method=="POST"&&path=="/me/profile") {
+        if(!acc) return need_login();
+        auto f = parse_form(body);
+        auto display = trim_ws(f["display_name"]);
+        if (display.empty() || display.size() > 80) return http_redir("/me?err=profile");
+        Profile p = g_store.profile_of(user);
+        p.display_name = display;
+        p.hometown = trim_ws(f["hometown"]).substr(0, 80);
+        p.living = trim_ws(f["living"]).substr(0, 80);
+        p.interests = trim_ws(f["interests"]).substr(0, 200);
+        p.career = trim_ws(f["career"]).substr(0, 80);
+        p.school = trim_ws(f["school"]).substr(0, 80);
+        g_store.set_profile(user, p);
+        g_store.set_blurb(acc->id, trim_ws(f["bio"]).substr(0, 500));
+        return http_redir("/me");
     }
     if(method=="POST"&&path=="/me/css") {
         if(!acc) return need_login();

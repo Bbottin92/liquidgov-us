@@ -41,7 +41,10 @@
 //   blk    <blocker> <blocked> [<at> <reason>]  // trailing two fields optional -- an
 //          older 3-token line means an unknown time (0) and no reason
 //   inner  <owner> <friend>
-//   pref   <username> <findability 0-2> <friends_only_dm> <group_invite_confirm>
+//   pref   <username> <findability 0-2> ...
+//   prof   <username> <email_fp> <display_name> <hometown> <living> <interests> <career> <school>
+//          optional; absence means empty profile. email_fp is blake2 of the
+//          address (same helper as phone). display_name is plaintext.
 //          <presence_hide> <n_friend> <n_message> <n_group>
 //          [<jukebox_policy 0-2> <profile_visibility 0-3> <posts_visibility 0-3>
 //          [<intro_every_visit 0|1>]]
@@ -261,6 +264,19 @@ struct AccountPrefs {
     bool intro_every_visit = false;
 };
 
+// Public profile extras (not login). email_fp is the same blake2 as phone —
+// the address itself is not stored. display_name is shown on /u/<user>.
+// bio lives in the existing blurb field.
+struct Profile {
+    std::string display_name;
+    std::string email_fp;
+    std::string hometown;
+    std::string living;
+    std::string interests;
+    std::string career;
+    std::string school;
+};
+
 // One block, with the context a settings page actually wants to show back
 // -- when, and why (freeform, actor's own words, never shown to the
 // blocked party). is_blocked/blocked_by stay the cheap boolean/list lookup
@@ -346,6 +362,10 @@ public:
 
     void set_blurb(AccountId id, const std::string& blurb);
     std::string blurb(AccountId id) const;
+
+    void set_profile(const std::string& username, const Profile& p);
+    Profile profile_of(const std::string& username) const;
+    std::vector<std::string> findable_sample(const std::string& requester, std::size_t n) const;
 
     // Sanitized (see sanitize_author_css in http_server.cpp) CSS for the
     // account's own /u/<username>/theme document — never the site's own
@@ -556,6 +576,7 @@ private:
     std::map<AccountId, PlatformAccount> accounts_;
     std::map<SessionId, Session> sessions_;
     std::map<AccountId, std::string> blurbs_;
+    std::map<std::string, Profile> profiles_;
     std::map<AccountId, std::string> author_css_;
     std::map<AccountId, std::vector<std::string>> canvas_frames_;
     std::map<AccountId, bool> canvas_timelapse_;

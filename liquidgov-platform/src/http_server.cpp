@@ -420,6 +420,40 @@ std::string css() {
         "button.danger,.btn.danger{background:var(--danger);color:#f7f1e4}"
         ".row{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}"
         ".toolgroup-sep{width:1px;align-self:stretch;background:var(--rule);margin:0 .15rem}"
+        // Below this width .canvas-frame's five children (tool row,
+        // colour/size/opacity row, glow/mirror/fill row, the hidden text
+        // row, and the canvas+layers row) just stack in that same order --
+        // exactly what rendered before this rule existed. At or above it,
+        // the same five elements become grid areas instead: the first
+        // three (plus the hidden text row, in the same column so it drops
+        // in place if a Text tool selection ever reveals it) form a
+        // toolbox column down the left, the canvas+layers row fills a
+        // second column spanning that column's full height on the right --
+        // wrapping the tool controls around the canvas the way a real
+        // paint app's toolbox-plus-canvas workspace does, without moving
+        // any of the underlying markup (so DOM/tab/reading order is
+        // identical at every width).
+        // The tool icons wrap vertically down the canvas's left edge (a
+        // real toolbox column, full height); the colour/size/opacity and
+        // glow/mirror/fill rows wrap horizontally across its top edge (a
+        // real options bar) -- an L-shaped frame around two adjacent
+        // sides of the canvas+layers area at bottom-right, the same
+        // corner arrangement Photoshop/Procreate/every real paint app
+        // uses, not everything squeezed into a single side.
+        "@media(min-width:900px){.canvas-frame{display:grid;"
+        "grid-template-columns:9rem 1fr;grid-template-rows:auto auto;gap:.6rem;align-items:start}"
+        // Two columns of icons within that narrower toolbox, not one
+        // tall single-file column -- eleven buttons stacked one-per-row
+        // would run far taller than useful; paired up, it reads as a
+        // real compact toolbox instead of a thin ribbon.
+        ".canvas-frame>:nth-child(1){grid-column:1;grid-row:1/3;display:grid;"
+        "grid-template-columns:repeat(2,1fr);gap:.3rem}"
+        ".canvas-frame>:nth-child(1) .toolgroup-sep{grid-column:1/3;width:100%;height:1px;margin:.2rem 0}"
+        ".canvas-frame>:nth-child(2){grid-column:2;grid-row:1}"
+        ".canvas-frame>:nth-child(3){grid-column:2;grid-row:1}"
+        ".canvas-frame>:nth-child(4){grid-column:2;grid-row:1}"
+        ".canvas-frame>:nth-child(5){grid-column:2;grid-row:2}"
+        "}"
         ".person,.sess,.msg,.post{border-top:1px solid var(--rule);padding:.7rem 0;display:flex;"
         "justify-content:space-between;gap:.8rem;flex-wrap:wrap;align-items:flex-start}"
         ".person:first-of-type,.sess:first-of-type,.msg:first-of-type,.post:first-of-type{border-top:0}"
@@ -1190,12 +1224,21 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         // questions, three visually distinct answers, instead of one
         // long run of rows a reader has to parse to find which control
         // belongs to which question.
-        "<div class=\"card\">"
+        // One frame around the whole workspace, not a separate panel
+        // floating above the canvas: at desktop widths (see .canvas-frame
+        // in css()) this becomes a real toolbox-and-canvas layout -- tools
+        // in a column down the left, properties in a strip across the
+        // top, canvas and its layer tabs filling the rest -- the same
+        // wrap-the-canvas shape a real paint app uses, built as five grid
+        // areas placed by CSS rather than by moving any of this markup;
+        // below that width it's simply the original stacked column, no
+        // media query applies at all.
+        "<div class=\"card canvas-frame\">"
         // Three clusters, not one undifferentiated run of eleven icons:
         // freehand media, then shapes, then whole-canvas/utility tools --
         // each its own visual group with a hairline divider between,
         // read the same way a real paint app's toolbar groups by kind.
-        "<div class=\"row\" style=\"flex-wrap:wrap;gap:.3rem;align-items:center;margin-bottom:.4rem\">"
+        "<div class=\"row ctools\" style=\"flex-wrap:wrap;gap:.3rem;align-items:center;margin-bottom:.4rem\">"
         "<button type=\"button\" class=\"ghost toolbtn\" data-tool=\"pen\" title=\"Pen\" "
         "style=\"padding:.5rem .55rem\">"+kIconPen+"</button>"
         "<button type=\"button\" class=\"ghost toolbtn\" data-tool=\"marker\" title=\"Marker\" "
@@ -1300,11 +1343,60 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "style=\"width:36px;min-height:36px;padding:2px;flex:0 0 auto\">"
         "</div>"
         "</div>"
+        // Canvas, with its layer tabs on the right, as the fourth and
+        // final area of .canvas-frame -- filling the rest of the frame
+        // beside/under the tool column and properties strip above. No
+        // numbers on the layer tabs themselves: switching to one and
+        // seeing which is active (the highlighted background) is all a
+        // tab needs to communicate, and all three do the same job -- a
+        // number would just be one more thing to read, not new
+        // information. Each still gets its own opacity slider, a real
+        // per-layer property applied both live (CSS opacity on that
+        // layer's own <canvas>) and in flatten() so a saved/posted image
+        // matches what's on screen.
+        "<div class=\"ccanvasrow\" style=\"display:flex;gap:.5rem;align-items:flex-start\">"
+        "<div id=\"ccanvaswrap\" style=\"position:relative;flex:1;min-width:0;max-width:"+cws+"px;"
+        "aspect-ratio:"+aspect+";background:#fff;border:1px solid var(--rule);"
+        "border-radius:var(--rsm);overflow:hidden;touch-action:none\">"
+        "<canvas id=\"clayer0\" width=\""+cws+"\" height=\""+chs+"\" "
+        "style=\"position:absolute;inset:0;width:100%;height:100%\"></canvas>"
+        "<canvas id=\"clayer1\" width=\""+cws+"\" height=\""+chs+"\" "
+        "style=\"position:absolute;inset:0;width:100%;height:100%\"></canvas>"
+        "<canvas id=\"clayer2\" width=\""+cws+"\" height=\""+chs+"\" "
+        "style=\"position:absolute;inset:0;width:100%;height:100%\"></canvas>"
+        "<canvas id=\"coverlay\" width=\""+cws+"\" height=\""+chs+"\" "
+        "style=\"position:absolute;inset:0;width:100%;height:100%;cursor:crosshair\"></canvas>"
+        "<div id=\"cresizehandle\" title=\"Drag to resize the canvas\" "
+        "style=\"position:absolute;right:0;bottom:0;width:16px;height:16px;padding:2px;"
+        "cursor:nwse-resize;z-index:11;touch-action:none;color:var(--stone)\">"+kIconResizeGrip+"</div>"
+        "</div>"
+        "<div style=\"display:flex;flex-direction:column;gap:.6rem;width:2.6rem\">"
+        "<div style=\"display:flex;flex-direction:column;gap:.15rem;align-items:center\">"
+        "<button type=\"button\" class=\"ghost layerbtn\" data-layer=\"0\" title=\"Switch to layer 1\" "
+        "style=\"width:2.4rem;padding:.5rem 0\">"+kIconLayer+"</button>"
+        "<input type=\"range\" class=\"layeropacity\" data-layer=\"0\" min=\"0\" max=\"100\" value=\"100\" "
+        "title=\"Layer 1 opacity\" style=\"width:2.4rem\">"
+        "</div>"
+        "<div style=\"display:flex;flex-direction:column;gap:.15rem;align-items:center\">"
+        "<button type=\"button\" class=\"ghost layerbtn\" data-layer=\"1\" title=\"Switch to layer 2\" "
+        "style=\"width:2.4rem;padding:.5rem 0\">"+kIconLayer+"</button>"
+        "<input type=\"range\" class=\"layeropacity\" data-layer=\"1\" min=\"0\" max=\"100\" value=\"100\" "
+        "title=\"Layer 2 opacity\" style=\"width:2.4rem\">"
+        "</div>"
+        "<div style=\"display:flex;flex-direction:column;gap:.15rem;align-items:center\">"
+        "<button type=\"button\" class=\"ghost layerbtn\" data-layer=\"2\" title=\"Switch to layer 3\" "
+        "style=\"width:2.4rem;padding:.5rem 0\">"+kIconLayer+"</button>"
+        "<input type=\"range\" class=\"layeropacity\" data-layer=\"2\" min=\"0\" max=\"100\" value=\"100\" "
+        "title=\"Layer 3 opacity\" style=\"width:2.4rem\">"
+        "</div>"
+        "</div>"
+        "</div>"
         "</div>"
         // Second panel, one clear step down in how often it gets touched:
         // bring something in, or act on a selection -- both operate on the
         // canvas as a whole rather than being "what the next stroke looks
-        // like", which is why they're not in the Brush panel above.
+        // like", which is why it's not part of the wrap-the-canvas frame
+        // above.
         "<div class=\"card\">"
         "<div class=\"row\" style=\"flex-wrap:wrap;gap:.4rem 1rem;align-items:center\">"
         "<label class=\"ghost\" style=\"cursor:pointer;padding:.3rem .6rem;border-radius:var(--rsm)\">"
@@ -1349,53 +1441,6 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "<button type=\"button\" class=\"ghost cbgbtn\" data-bg=\"plain\" data-on=\"1\">Plain</button>"
         "<button type=\"button\" class=\"ghost cbgbtn\" data-bg=\"wash\">Wash</button>"
         "<button type=\"button\" class=\"ghost cbgbtn\" data-bg=\"ruled\">Ruled</button>"
-        "</div>"
-        // Canvas first, then its layer tabs on the right -- Brandon's own
-        // call after seeing the left-side placement read as "tools bunched
-        // up on one side" rather than a real layer panel. No numbers on
-        // the tabs themselves: switching to one and seeing which is active
-        // (the highlighted background) is all a tab needs to communicate,
-        // and all three do the same job -- a number would just be one more
-        // thing to read, not new information. Each still gets its own
-        // opacity slider, a real per-layer property applied both live (CSS
-        // opacity on that layer's own <canvas>) and in flatten() so a
-        // saved/posted image matches what's on screen.
-        "<div style=\"display:flex;gap:.5rem;align-items:flex-start\">"
-        "<div id=\"ccanvaswrap\" style=\"position:relative;flex:1;min-width:0;max-width:"+cws+"px;"
-        "aspect-ratio:"+aspect+";background:#fff;border:1px solid var(--rule);"
-        "border-radius:var(--rsm);overflow:hidden;touch-action:none\">"
-        "<canvas id=\"clayer0\" width=\""+cws+"\" height=\""+chs+"\" "
-        "style=\"position:absolute;inset:0;width:100%;height:100%\"></canvas>"
-        "<canvas id=\"clayer1\" width=\""+cws+"\" height=\""+chs+"\" "
-        "style=\"position:absolute;inset:0;width:100%;height:100%\"></canvas>"
-        "<canvas id=\"clayer2\" width=\""+cws+"\" height=\""+chs+"\" "
-        "style=\"position:absolute;inset:0;width:100%;height:100%\"></canvas>"
-        "<canvas id=\"coverlay\" width=\""+cws+"\" height=\""+chs+"\" "
-        "style=\"position:absolute;inset:0;width:100%;height:100%;cursor:crosshair\"></canvas>"
-        "<div id=\"cresizehandle\" title=\"Drag to resize the canvas\" "
-        "style=\"position:absolute;right:0;bottom:0;width:16px;height:16px;padding:2px;"
-        "cursor:nwse-resize;z-index:11;touch-action:none;color:var(--stone)\">"+kIconResizeGrip+"</div>"
-        "</div>"
-        "<div style=\"display:flex;flex-direction:column;gap:.6rem;width:2.6rem\">"
-        "<div style=\"display:flex;flex-direction:column;gap:.15rem;align-items:center\">"
-        "<button type=\"button\" class=\"ghost layerbtn\" data-layer=\"0\" title=\"Switch to layer 1\" "
-        "style=\"width:2.4rem;padding:.5rem 0\">"+kIconLayer+"</button>"
-        "<input type=\"range\" class=\"layeropacity\" data-layer=\"0\" min=\"0\" max=\"100\" value=\"100\" "
-        "title=\"Layer 1 opacity\" style=\"width:2.4rem\">"
-        "</div>"
-        "<div style=\"display:flex;flex-direction:column;gap:.15rem;align-items:center\">"
-        "<button type=\"button\" class=\"ghost layerbtn\" data-layer=\"1\" title=\"Switch to layer 2\" "
-        "style=\"width:2.4rem;padding:.5rem 0\">"+kIconLayer+"</button>"
-        "<input type=\"range\" class=\"layeropacity\" data-layer=\"1\" min=\"0\" max=\"100\" value=\"100\" "
-        "title=\"Layer 2 opacity\" style=\"width:2.4rem\">"
-        "</div>"
-        "<div style=\"display:flex;flex-direction:column;gap:.15rem;align-items:center\">"
-        "<button type=\"button\" class=\"ghost layerbtn\" data-layer=\"2\" title=\"Switch to layer 3\" "
-        "style=\"width:2.4rem;padding:.5rem 0\">"+kIconLayer+"</button>"
-        "<input type=\"range\" class=\"layeropacity\" data-layer=\"2\" min=\"0\" max=\"100\" value=\"100\" "
-        "title=\"Layer 3 opacity\" style=\"width:2.4rem\">"
-        "</div>"
-        "</div>"
         "</div>"
         "<div class=\"row\" style=\"margin-top:.6rem;gap:.4rem\">"
         "<button type=\"button\" class=\"ghost\" id=\"cundo\" title=\"Undo\">&#8617;</button>"

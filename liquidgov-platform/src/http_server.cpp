@@ -522,9 +522,24 @@ std::string css() {
         ".roomlive{color:var(--stone);font-size:.8rem;white-space:nowrap;flex-shrink:0}"
         // 28rem, not the original 12rem: tall enough to roughly match the
         // "what it is not" card beside it (four labeled items), so the
-        // pair reads as two same-height columns instead of a short one
-        // leaving visible dead air below it beside a taller one.
-        ".ticker-wrap{margin-top:.6rem;height:28rem;overflow:hidden;"
+        // A fixed height here can never track the card beside it: the
+        // card's own height changes with viewport width (its text
+        // reflows into fewer/more lines as the row grows or shrinks),
+        // so any single guessed number only matches at one width and
+        // leaves dead air below the card at every other width. Instead
+        // the ticker column is a flex column (see solution() below) and
+        // this fills whatever height that column is stretched to by its
+        // taller sibling -- min-height only guards the case where the
+        // ticker sits alone on its own wrapped line.
+        // flex:1 (== flex-basis:0%) would fall back to the ticker's real,
+        // un-clipped content height (all items stacked twice, ~670px)
+        // whenever the column's own height is still being worked out --
+        // a percentage basis resolves against an indefinite container by
+        // using content size instead, exactly the runaway height this
+        // caused. flex-basis:0 (a length, not a percentage) stays
+        // definite regardless, so growth is real available space, not a
+        // content-size leak.
+        ".ticker-wrap{margin-top:.6rem;flex:1 1 0;min-height:10rem;overflow:hidden;"
         "-webkit-mask-image:linear-gradient(180deg,transparent,#000 20%,#000 80%,transparent);"
         "mask-image:linear-gradient(180deg,transparent,#000 20%,#000 80%,transparent)}"
         ".ticker-roll{animation:lg-roll 26s linear infinite}"
@@ -3067,8 +3082,8 @@ std::string genesis_body() {
         for (const auto& p : problems)
             ticker += "<div>" + html_escape(p) + "</div>";
     std::string solution =
-        "<div class=\"row solution-row\" style=\"align-items:flex-start;gap:1rem;flex-wrap:wrap\">"
-        "<div style=\"flex:2 1 12rem;min-width:12rem\">"
+        "<div class=\"row solution-row\" style=\"align-items:stretch;gap:1rem;flex-wrap:wrap\">"
+        "<div style=\"flex:2 1 12rem;min-width:12rem;display:flex;flex-direction:column\">"
         "<p class=\"eyebrow\" style=\"color:var(--accent)\">A legitimate solution to:</p>"
         "<div class=\"ticker-wrap\"><div class=\"ticker-roll\">" + ticker + "</div></div>"
         "</div>"

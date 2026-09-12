@@ -3736,7 +3736,8 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             "<form method=\"POST\" action=\"/login\"><label>Username</label>"
             "<input name=\"username\" required autocomplete=\"username\" value=\""+html_escape(qs["username"])+"\">"
             "<label>Password</label><input type=\"password\" name=\"password\" required autocomplete=\"current-password\">"
-            "<button>Continue</button></form></div>");
+            "<button>Continue</button></form>"
+            "<p class=\"muted\" style=\"margin-top:.7rem\">New here? <a href=\"/signup\">Create an account</a>.</p></div>");
     }
     if(method=="GET"&&path=="/logout") {
         logout(g_store, sid);

@@ -382,8 +382,18 @@ std::string css() {
         // an ultrawide monitor doesn't stretch prose to unreadable line
         // lengths; 88vw fills the space between.
         ".wrap{max-width:clamp(58rem,88vw,96rem);margin:0 auto;padding:0 1.1rem 3.5rem}"
+        // position:sticky + z-index together make header.top its own
+        // stacking context, so anything nested inside it (the account
+        // dropdown included) is capped at THIS z-index when compared
+        // against ordinary page content, no matter how high a z-index the
+        // nested element itself gets -- caught live against #medraftbar's
+        // sticky z-index:8 on /me, which kept painting over the dropdown's
+        // own top rows even after raising the dropdown's z-index well past
+        // it. Above every sticky in-page element (#medraftbar's 8 is the
+        // highest), below the floating jukebox widget (30) and the intro
+        // overlay (999), which should stay on top of the header regardless.
         "header.top{border-bottom:1px solid var(--rule);background:var(--parchment);"
-        "position:sticky;top:0;z-index:5}"
+        "position:sticky;top:0;z-index:10}"
         ".topinner{max-width:clamp(58rem,88vw,96rem);margin:0 auto;padding:.7rem 1.1rem;display:flex;"
         "align-items:center;flex-wrap:wrap;gap:.45rem 1rem}"
         ".brand{display:flex;align-items:center;gap:.65rem;text-decoration:none;color:var(--ink);margin-right:auto}"
@@ -402,6 +412,35 @@ std::string css() {
         "font-size:1rem;margin-left:.4rem;flex-shrink:0}"
         "nav a{color:var(--accent);text-decoration:none;font-size:.92rem;padding:.35rem 0;min-height:44px;"
         "display:inline-flex;align-items:center}nav a:hover{text-decoration:underline}"
+        // Notifications/Messages: always-visible icon buttons next to the
+        // avatar, not buried in the account dropdown -- the dropdown is for
+        // things you open a few times a session, these are things you
+        // check constantly.
+        ".iconbtn{position:relative;min-height:36px;min-width:36px;display:inline-flex;align-items:center;"
+        "justify-content:center;border:1px solid var(--rule);border-radius:50%;color:var(--ink);"
+        "text-decoration:none;font-size:1.05rem;flex-shrink:0}"
+        ".iconbtn .badge{position:absolute;top:-4px;right:-4px;margin:0;font-size:.62rem;"
+        "min-width:1.1rem;height:1.1rem;padding:0 .25rem}"
+        ".navavatar{cursor:pointer;display:inline-flex;flex-shrink:0}"
+        ".navavatar:hover .portrait{filter:brightness(1.08)}"
+        // Same #navc:checked~X sibling-toggle trick the mobile hamburger
+        // already uses (see nav a{} below and the max-width:720px block),
+        // just aimed at the avatar instead and not gated to narrow
+        // viewports -- this panel is always collapsed until you click your
+        // own picture, at any screen size.
+        "nav.accountmenu{display:none;position:absolute;top:100%;right:1.1rem;left:auto;"
+        "flex-direction:column;flex-wrap:nowrap;align-items:stretch;gap:0;background:var(--parchment);"
+        "border:1px solid var(--rule);border-radius:var(--rmd);box-shadow:0 6px 20px rgba(0,0,0,.18);"
+        // Above #medraftbar's sticky z-index:8 (the /me "Editing /me" bar)
+        // -- caught live: the dropdown's own top rows (name, Settings, the
+        // divider) were rendering underneath that bar instead of over it.
+        "min-width:13rem;max-height:calc(100vh - 60px);overflow-y:auto;padding:.5rem 0;z-index:9}"
+        "#navc:checked~nav.accountmenu{display:flex}"
+        ".accountmenu a{color:var(--ink);text-decoration:none;font-size:.92rem;padding:.55rem 1.1rem;"
+        "min-height:40px;display:flex;align-items:center}"
+        ".accountmenu a:hover{background:var(--panel)}"
+        ".accountmenu a.menu-name{font-family:var(--display);font-weight:600;font-size:1.05rem;padding-bottom:.2rem}"
+        ".accountmenu hr{border:0;border-top:1px solid var(--rule);margin:.4rem 0}"
         ".badge{display:inline-flex;align-items:center;justify-content:center;min-width:1.3rem;height:1.3rem;"
         "padding:0 .35rem;border-radius:999px;background:var(--accent);color:var(--paper);font-size:.7rem;"
         "margin-left:.25rem;font-variant-numeric:tabular-nums}"
@@ -602,6 +641,11 @@ std::string css() {
         "align-items:stretch;background:var(--parchment);border-bottom:1px solid var(--rule);"
         "padding:0 1.1rem;max-height:calc(100vh - 60px);overflow-y:auto;z-index:6}"
         "nav a{min-height:44px}#navc:checked~nav{display:flex}}"
+        // The always-visible bell/envelope/avatar/theme cluster (logged in)
+        // is four more inline items than this header ever had at narrow
+        // widths before -- the decorative tagline was the difference
+        // between fitting on one row and wrapping to two in testing.
+        "@media(max-width:480px){.brand .tagline{display:none}.topinner{gap:.45rem .3rem;padding-left:.7rem;padding-right:.7rem}}"
         "@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}";
 }
 
@@ -679,9 +723,25 @@ std::string page_wrap(const std::string& title, const std::string& navhtml, cons
             "}"
             "})();</script>";
     }
+    const std::string full_title = html_escape(title) + " — LiquidGov.US";
+    // What a link unfurls to on Facebook/X/Slack/etc. Without these tags a
+    // shared liquidgov.us link shows nothing but the bare URL. One shared
+    // description site-wide, not a per-page one -- there's no per-page
+    // summary tracked anywhere to draw from, and this is what the site
+    // itself opens with.
+    const std::string og_desc =
+        "A voluntary natural democracy. Genesis, not a government -- "
+        "three rules hold, the rest is your call.";
     return "<!doctype html><html lang=\"en\""+theme_attr+"><head><meta charset=\"utf-8\">"
            "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
-           "<title>"+html_escape(title)+" — LiquidGov.US</title>"
+           "<title>"+full_title+"</title>"
+           "<meta property=\"og:type\" content=\"website\">"
+           "<meta property=\"og:site_name\" content=\"LiquidGov.US\">"
+           "<meta property=\"og:title\" content=\""+full_title+"\">"
+           "<meta property=\"og:description\" content=\""+og_desc+"\">"
+           "<meta name=\"twitter:card\" content=\"summary\">"
+           "<meta name=\"twitter:title\" content=\""+full_title+"\">"
+           "<meta name=\"twitter:description\" content=\""+og_desc+"\">"
            "<link rel=\"icon\" href=\"/favicon.svg\" type=\"image/svg+xml\">"
            "<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">"
            "<link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>"
@@ -705,27 +765,67 @@ std::string page_wrap(const std::string& title, const std::string& navhtml, cons
            "LiquidGov.US is in Beta — some of what's here is still being built.</footer></body></html>";
 }
 
+std::string portrait_tag(const std::string& username, const char* cls); // defined below, needed here for nav()
+
 std::string nav(const std::string& user, int unread) {
-    std::string burger = "<label class=\"navbtn\" for=\"navc\">Menu</label><input id=\"navc\" type=\"checkbox\">";
     if (user.empty()) {
+        std::string burger = "<label class=\"navbtn\" for=\"navc\">Menu</label><input id=\"navc\" type=\"checkbox\">";
         return burger+"<nav><a href=\"/\">Genesis</a><a href=\"/laws\">Laws</a>"
                "<a href=\"/control\">Who holds control</a>"
                "<a href=\"/signup\">Sign up</a><a href=\"/login\">Log in</a></nav>";
     }
-    std::string n = burger+"<nav><a href=\"/feed\">Feed</a>"
-                    "<a href=\"/friends\">People</a><a href=\"/mail\">Mail</a>"
-                    "<a href=\"/communities\">Groups</a>"
-                    "<a href=\"/proposals\">Proposals</a>"
-                    "<a href=\"/world\">World</a>"
-                    "<a href=\"/notices\">Notices";
-    if (unread > 0) n += "<span class=\"badge\">"+std::to_string(unread)+"</span>";
-    // The nav's own name link goes to the public page anyone else sees
+    // Notifications and Messages are their own always-visible icon buttons
+    // next to the avatar (checked constantly), not entries in the account
+    // dropdown (opened a few times a session). unread splits the same way:
+    // "message" notices badge Messages, everything else badges
+    // Notifications -- see mark_notices_read_of_type/_except_type at the
+    // /mail and /notices routes for the matching read-marking split.
+    const int msg_unread = g_store.unread_message_count(user);
+    const int other_unread = unread - msg_unread;
+    // Hand-drawn line icons, not emoji: an emoji glyph's size and even
+    // whether it renders at all is up to the platform's emoji font, which
+    // proved unreliable here (the bell rendered far oversized, the
+    // envelope as a missing-glyph box). An inline SVG with stroke=
+    // currentColor renders identically everywhere and themes for free,
+    // same reasoning as the brand mark/favicon already being hand-drawn
+    // SVG rather than an emoji or icon-font glyph.
+    const char* bell_svg =
+        "<svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" "
+        "stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\">"
+        "<path d=\"M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9\"/>"
+        "<path d=\"M13.73 21a2 2 0 0 1-3.46 0\"/></svg>";
+    const char* mail_svg =
+        "<svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" "
+        "stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\">"
+        "<rect x=\"2\" y=\"4\" width=\"20\" height=\"16\" rx=\"2\"/><path d=\"m22 6-10 7L2 6\"/></svg>";
+    std::string bell = std::string("<a class=\"iconbtn\" href=\"/notices\" aria-label=\"Notifications\" title=\"Notifications\">")+bell_svg;
+    if (other_unread > 0) bell += "<span class=\"badge\">"+std::to_string(other_unread)+"</span>";
+    bell += "</a>";
+    std::string mail = std::string("<a class=\"iconbtn\" href=\"/mail\" aria-label=\"Messages\" title=\"Messages\">")+mail_svg;
+    if (msg_unread > 0) mail += "<span class=\"badge\">"+std::to_string(msg_unread)+"</span>";
+    mail += "</a>";
+    // Same #navc checkbox-toggle trick the mobile hamburger already uses
+    // (see the CSS), just triggered by the avatar instead of a "Menu"
+    // label, and not gated to narrow viewports -- clicking your own
+    // picture is the trigger at every screen size now.
+    std::string avatar = "<label class=\"navavatar\" for=\"navc\">"+portrait_tag(user,"sm")+"</label>"
+                          "<input id=\"navc\" type=\"checkbox\">";
+    // The menu's own name link goes to the public page anyone else sees
     // (/u/<username>), not the edit screen -- "Edit profile" on that
     // public page and the "Your profile" link on the home dashboard are
     // the way to actually reach /me.
-    n += "</a><a href=\"/u/"+html_escape(user)+"\">"+html_escape(user)+"</a>"
-         "<a href=\"/settings\">Settings</a><a href=\"/logout\">Log out</a></nav>";
-    return n;
+    std::string menu = "<nav class=\"accountmenu\">"
+        "<a class=\"menu-name\" href=\"/u/"+html_escape(user)+"\">"+html_escape(user)+"</a>"
+        "<a href=\"/settings\">Settings</a>"
+        "<hr>"
+        "<a href=\"/feed\">Feed</a>"
+        "<a href=\"/friends\">People</a>"
+        "<a href=\"/communities\">Groups</a>"
+        "<a href=\"/proposals\">Proposals</a>"
+        "<a href=\"/world\">World</a>"
+        "<a href=\"/logout\">Log out</a>"
+        "</nav>";
+    return bell+mail+avatar+menu;
 }
 
 std::string url_decode(const std::string& s) {
@@ -4482,6 +4582,9 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
 
     if(method=="GET"&&path=="/mail") {
         if(!acc) return http_redir("/login");
+        // Mirrors /notices clearing everything but "message" -- opening
+        // Mail is what actually clears the Messages icon's own badge.
+        g_store.mark_notices_read_of_type(user, "message");
         auto other = qs["with"];
         std::string html = "<h1>Mail</h1><div class=\"card\"><p class=\"muted\">Direct messages are friends-only in this release. "
             "Open messaging waits on age assurance so a stranger cannot reach a minor. We will not treat a checkbox as age.</p><ul class=\"plain\">";
@@ -4703,7 +4806,11 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
 
     if(method=="GET"&&path=="/notices") {
         if(!acc) return http_redir("/login");
-        g_store.mark_notices_read(user);
+        // Not mark_notices_read: a "message" notice is the Messages icon's
+        // badge now, not this page's -- clearing it here would make an
+        // unread message vanish from its own badge without the message
+        // ever having been opened.
+        g_store.mark_notices_read_except_type(user, "message");
         std::string html = "<h1>Notices</h1><div class=\"card\">";
         auto notes = g_store.notices_for(user, 50);
         if (notes.empty()) html += "<p class=\"empty\">None.</p>";

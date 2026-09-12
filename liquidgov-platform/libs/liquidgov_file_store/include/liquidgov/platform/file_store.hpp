@@ -421,7 +421,16 @@ public:
                     const std::string& extra);
     std::vector<Notice> notices_for(const std::string& user, std::size_t limit) const;
     int unread_count(const std::string& user) const;
+    // "message" notices badge the header's Messages icon separately from
+    // everything else (friend_request/friend_accept/group_invite) badging
+    // the Notifications bell -- unread_count(user) minus this is the
+    // notifications-only count.
+    int unread_message_count(const std::string& user) const;
     void mark_notices_read(const std::string& user);
+    // Split so opening Mail doesn't silently clear a pending friend-request
+    // notice, and visiting Notices doesn't silently clear an unread message.
+    void mark_notices_read_of_type(const std::string& user, const std::string& type);
+    void mark_notices_read_except_type(const std::string& user, const std::string& except_type);
 
     void set_phone_fp(AccountId id, const std::string& fp);
     bool phone_quarantined(const std::string& fp) const;

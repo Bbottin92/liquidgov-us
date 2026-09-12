@@ -933,10 +933,40 @@ int FileStore::unread_count(const std::string& user) const {
     return n;
 }
 
+int FileStore::unread_message_count(const std::string& user) const {
+    int n = 0;
+    for (const auto& note : notices_) {
+        if (note.to == user && !note.read && note.type == "message") ++n;
+    }
+    return n;
+}
+
 void FileStore::mark_notices_read(const std::string& user) {
     bool any = false;
     for (auto& note : notices_) {
         if (note.to == user && !note.read) {
+            note.read = true;
+            any = true;
+        }
+    }
+    if (any) flush();
+}
+
+void FileStore::mark_notices_read_of_type(const std::string& user, const std::string& type) {
+    bool any = false;
+    for (auto& note : notices_) {
+        if (note.to == user && !note.read && note.type == type) {
+            note.read = true;
+            any = true;
+        }
+    }
+    if (any) flush();
+}
+
+void FileStore::mark_notices_read_except_type(const std::string& user, const std::string& except_type) {
+    bool any = false;
+    for (auto& note : notices_) {
+        if (note.to == user && !note.read && note.type != except_type) {
             note.read = true;
             any = true;
         }

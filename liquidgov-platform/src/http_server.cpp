@@ -1334,7 +1334,7 @@ std::string mail_groups_list_html(const std::string& user, AccountId acc_id) {
         if (!conv.is_group) continue;
         bool pending = false;
         for (auto& m : conv.members) if (m.account == acc_id) pending = m.state == MemberState::Pending;
-        list += "<li><a href=\"/mail/g/"+std::to_string(conv.id)+"\">"+html_escape(group_label(conv, acc_id))+"</a>"+
+        list += "<li><a class=\"mailgroup\" href=\"/mail/g/"+std::to_string(conv.id)+"\">"+html_escape(group_label(conv, acc_id))+"</a>"+
                 (pending ? " <span class=\"muted\">invited</span>" : "")+"</li>";
     }
     html += (list.empty() ? "<li class=\"muted\">No groups yet.</li>" : list) + "</ul>"
@@ -1446,14 +1446,31 @@ std::string mail_widget_script() {
         "loadMail(null,false);"
         "});"
         "if(navc)navc.addEventListener('change',function(){if(navc.checked){hideNotif();hideMail();}});"
+        // The account menu's own links (Feed, Settings, Log out, ...) go
+        // through a real or soft navigation either way -- nothing about
+        // that unchecks navc on its own, so the dropdown was left looking
+        // stuck open on top of whatever page you landed on. Delegated on
+        // the <nav> itself, not its links: soft-navigation only ever
+        // replaces this nav's *contents* (see jukebox_script's swap),
+        // never the <nav> element itself, so one listener here survives
+        // every page the account menu's own links take you to.
+        "var accountMenu=document.querySelector('nav.accountmenu');"
+        "if(accountMenu)accountMenu.addEventListener('click',function(e){"
+        "if(e.target.closest('a'))closeMenu();"
+        "});"
         // Delegated, not per-link: mailRoot's own contents are replaced
         // wholesale on every load, so listeners bound to specific elements
         // would be gone after the very first fetch.
         "mailRoot.addEventListener('click',function(e){"
         "var a=e.target.closest('a.mailwith,a.mailback');"
-        "if(!a)return;"
-        "e.preventDefault();"
-        "loadMail(a.classList.contains('mailback')?null:a.dataset.with,true);"
+        "if(a){e.preventDefault();loadMail(a.classList.contains('mailback')?null:a.dataset.with,true);return;}"
+        // A group link (unlike mailwith/mailback) is a real navigation,
+        // not fetched into the panel -- same "left looking stuck open"
+        // problem as the account menu, fixed the same way. Attachment
+        // downloads are deliberately not matched here: those carry
+        // Content-Disposition:attachment, so the browser never actually
+        // navigates away and the panel closing on one would just be wrong.
+        "if(e.target.closest('a.mailgroup'))hideMail();"
         "});"
         "mailRoot.addEventListener('submit',function(e){"
         "var form=e.target.closest('form.mailcomposer');"

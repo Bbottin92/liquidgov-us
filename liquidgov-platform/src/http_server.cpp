@@ -438,14 +438,13 @@ std::string css() {
         // every real paint app uses, without moving any of the underlying
         // markup (so DOM/tab/reading order is identical at every width).
         "@media(min-width:900px){.canvas-frame{display:grid;"
-        "grid-template-columns:9rem 1fr;grid-template-rows:auto auto;gap:.6rem;align-items:start}"
-        // Two columns of icons within that narrower toolbox, not one
-        // tall single-file column -- eleven buttons stacked one-per-row
-        // would run far taller than useful; paired up, it reads as a
-        // real compact toolbox instead of a thin ribbon.
-        ".canvas-frame>:nth-child(1){grid-column:1;grid-row:1/3;display:grid;"
-        "grid-template-columns:repeat(2,1fr);gap:.3rem}"
-        ".canvas-frame>:nth-child(1) .toolgroup-sep{grid-column:1/3;width:100%;height:1px;margin:.2rem 0}"
+        "grid-template-columns:auto 1fr;grid-template-rows:auto auto;gap:.6rem;align-items:stretch}"
+        // A single-file column, one icon wide -- not a 2-up grid, which
+        // read as a block of icons rather than a strip wrapping the
+        // canvas's edge.
+        ".canvas-frame>:nth-child(1){grid-column:1;grid-row:1/3;display:flex;"
+        "flex-direction:column;flex-wrap:nowrap;justify-content:space-between}"
+        ".canvas-frame>:nth-child(1) .toolgroup-sep{width:100%;height:1px;margin:.2rem 0}"
         ".canvas-frame>:nth-child(2){grid-column:2;grid-row:1}"
         ".canvas-frame>:nth-child(3){grid-column:2;grid-row:2}"
         "}"
@@ -1299,11 +1298,10 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "touch-action:none;flex:0 0 auto\">"+kIconDial+"</div>"
         "<input type=\"number\" id=\"copacity\" min=\"5\" max=\"100\" value=\"100\" style=\"width:4rem\">"
         "</div>"
-        "</div>"
-        // Glow/Mirror/Fill are stroke modifiers, not stroke properties --
-        // a different kind of decision than colour/size/opacity, so they
-        // get their own row instead of trailing off the end of that one.
-        "<div class=\"row\" style=\"flex-wrap:wrap;gap:.3rem;align-items:center;margin-bottom:.4rem\">"
+        // Glow/Mirror/Fill are stroke modifiers, not stroke properties,
+        // but still belong in this same single strip -- a second row here
+        // would make the wrap two rows thick instead of one.
+        "<span class=\"toolgroup-sep\" aria-hidden=\"true\"></span>"
         "<button type=\"button\" class=\"ghost fmtbtn\" id=\"cglow\" data-on=\"0\" title=\"Glow\" "
         "style=\"padding:.5rem .55rem\">"+kIconGlow+"</button>"
         "<button type=\"button\" class=\"ghost fmtbtn\" id=\"csymmetry\" data-on=\"0\" title=\"Mirror\" "

@@ -1,0 +1,1105 @@
+diff --git a/liquidgov-platform/src/http_server.cpp b/liquidgov-platform/src/http_server.cpp
+index a10db64..95c7dfc 100644
+--- a/liquidgov-platform/src/http_server.cpp
++++ b/liquidgov-platform/src/http_server.cpp
+@@ -664,6 +664,20 @@ std::string favicon_svg() {
+ // decides). Set once per request in handle() (the whole site's single-
+ // threaded synchronous entry point), read here at render time.
+ thread_local std::string g_theme_mode;
++thread_local bool g_https = false;
++
++std::string set_cookie(const std::string& sid) {
++    std::string o = "Set-Cookie: lg_session="+sid+"; HttpOnly; Path=/; SameSite=Lax; Max-Age=2592000";
++    if (g_https) o += "; Secure";
++    o += "\r\n";
++    return o;
++}
++std::string clear_cookie() {
++    std::string o = "Set-Cookie: lg_session=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0";
++    if (g_https) o += "; Secure";
++    o += "\r\n";
++    return o;
++}
+ 
+ // A full-bleed, muted, autoplaying clip shown the first time a browser
+ // ever lands on the site -- gated entirely client-side (localStorage),
+@@ -681,7 +695,7 @@ std::string intro_overlay_html() {
+            "<button id=\"lgintroskip\" type=\"button\" style=\"position:absolute;bottom:1.25rem;right:1.25rem;"
+            "background:rgba(20,18,15,.78);color:#f2ead8;border:1px solid rgba(242,234,216,.3);"
+            "border-radius:999px;padding:.5rem 1rem;font:600 .75rem \"Segoe UI\",system-ui,sans-serif;"
+-           "letter-spacing:.08em;text-transform:uppercase;cursor:pointer\">Skip &middot; shown once</button>"
++           "letter-spacing:.08em;text-transform:uppercase;cursor:pointer\">Skip</button>"
+            "</div>"
+            "<script>(function(){"
+            "var el=document.getElementById('lgintro');"
+@@ -698,7 +712,7 @@ std::string intro_overlay_html() {
+            "})();</script>";
+ }
+ 
+-std::string page_wrap(const std::string& title, const std::string& navhtml, const std::string& body) {
++std::string page_wrap(const std::string& title, const std::string& navhtml, const std::string& body, bool show_intro = false) {
+     const std::string theme_attr = g_theme_mode.empty() ? "" : " data-theme=\""+g_theme_mode+"\"";
+     const std::string next_theme = g_theme_mode == "dark" ? "light" : "dark";
+     std::string toggle = "<a class=\"themebtn\" id=\"themetoggle\" href=\"/theme/"+next_theme+
+@@ -747,7 +761,7 @@ std::string page_wrap(const std::string& title, const std::string& navhtml, cons
+            "<link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>"
+            "<link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&display=swap\">"
+            "<style>"+css()+"</style></head><body>"
+-           +intro_overlay_html()+
++           +(show_intro ? intro_overlay_html() : std::string())+
+            "<header class=\"top\"><div class=\"topinner\">"
+            "<a class=\"brand\" href=\"/\">"
+            "<svg class=\"mark\" viewBox=\"0 0 48 48\" width=\"28\" height=\"28\" aria-hidden=\"true\">"
+@@ -850,6 +864,28 @@ std::string url_encode(const std::string& s) {
+     }
+     return o;
+ }
++
++// Relative path only. Used as a post-login landing so /world and /feed
++// don't dump a new member on a generic /login with no way back.
++std::string safe_next_path(const std::string& n) {
++    if (n.size() < 2 || n[0] != '/' || n[1] == '/') return {};
++    if (n.find('\r') != std::string::npos || n.find('\n') != std::string::npos) return {};
++    if (n.find('\\') != std::string::npos || n.find("://") != std::string::npos) return {};
++    if (n.size() > 200) return {};
++    if (n.rfind("/login", 0) == 0 || n.rfind("/signup", 0) == 0 || n.rfind("/logout", 0) == 0) return {};
++    return n;
++}
++std::string login_url(const std::string& next) {
++    auto n = safe_next_path(next);
++    if (n.empty()) return "/login";
++    return "/login?next=" + url_encode(n);
++}
++int count_digits(const std::string& s) {
++    int n = 0;
++    for (unsigned char c : s) if (c >= '0' && c <= '9') ++n;
++    return n;
++}
++
+ std::map<std::string,std::string> parse_form(const std::string& body) {
+     std::map<std::string,std::string> m; std::stringstream ss(body); std::string part;
+     while (std::getline(ss,part,'&')) { auto eq=part.find('='); if(eq==std::string::npos) continue;
+@@ -900,6 +936,15 @@ std::string header_value(const std::string& headers, const std::string& name) {
+     if (end == std::string::npos) return headers.substr(pos);
+     return headers.substr(pos, end-pos);
+ }
++std::string forwarded_ip(const std::string& req, const std::string& peer) {
++    auto xff = header_value(req, "X-Forwarded-For");
++    if (xff.empty()) return peer;
++    auto comma = xff.find(',');
++    std::string first = comma == std::string::npos ? xff : xff.substr(0, comma);
++    while (!first.empty() && (first.front()==' '||first.front()=='\t')) first.erase(first.begin());
++    while (!first.empty() && (first.back()==' '||first.back()=='\t')) first.pop_back();
++    return first.empty() ? peer : first;
++}
+ std::string device_label_from(const std::string& headers, const std::string& ip) {
+     auto ua = header_value(headers, "User-Agent");
+     std::string label;
+@@ -949,12 +994,6 @@ std::string http_redir(const std::string& loc, const std::string& extra={}) {
+     o<<"HTTP/1.1 303 See Other\r\nLocation: "<<loc<<"\r\nContent-Length: 0\r\nConnection: close\r\n"<<extra<<"\r\n";
+     return o.str();
+ }
+-std::string set_cookie(const std::string& sid) {
+-    return "Set-Cookie: lg_session="+sid+"; HttpOnly; Path=/; SameSite=Lax; Max-Age=2592000\r\n";
+-}
+-std::string clear_cookie() {
+-    return "Set-Cookie: lg_session=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0\r\n";
+-}
+ 
+ std::string trim_ws(const std::string& s) {
+     std::size_t a = 0, b = s.size();
+@@ -1097,8 +1136,8 @@ bool read_http_request(int fd, std::string& req) {
+ 
+ std::string global_jukebox_widget(const std::string& yt_key, const std::string& user); // defined below, needed here for wrap()
+ 
+-std::string wrap(const std::string& title, const std::string& user, int unread, const std::string& body) {
+-    std::string page = page_wrap(title, nav(user, unread), body);
++std::string wrap(const std::string& title, const std::string& user, int unread, const std::string& body, bool show_intro = false) {
++    std::string page = page_wrap(title, nav(user, unread), body, show_intro);
+     // Widget goes *after* </main>, not inside it: soft-navigation (see
+     // jukebox_script's nav-interception) only ever replaces <main>'s
+     // contents, so a sibling widget's live WebSocket/YT player survive a
+@@ -2253,9 +2292,17 @@ std::string world_page(const std::string& username) {
+         "var proto=location.protocol==='https:'?'wss:':'ws:';"
+         "var ws=new WebSocket(proto+'//'+location.host+'/world/ws');"
+         "var keys={};"
+-        "ws.onopen=function(){st.textContent='Connected.';};"
+-        "ws.onclose=function(){st.textContent='Disconnected. Reload to rejoin.';};"
+-        "ws.onerror=function(){st.textContent='Connection error.';};"
++        "var opened=false;"
++        "ws.onopen=function(){opened=true;st.textContent='Connected. Arrow keys or WASD to move.';};"
++        "ws.onclose=function(){"
++        "st.textContent=opened?'Disconnected. Reload to rejoin.':'Could not reach the room. Reload to try again.';"
++        "};"
++        "ws.onerror=function(){"
++        "if(!opened)st.textContent='Could not reach the room. Reload to try again.';"
++        "};"
++        "setTimeout(function(){"
++        "if(!opened)st.textContent='Still connecting. If this hangs, reload.';"
++        "},4000);"
+         "ws.onmessage=function(ev){"
+         "try{var data=JSON.parse(ev.data);players=data.players||{};}catch(e){}"
+         "draw();"
+@@ -2519,9 +2566,9 @@ std::string jukebox_panel_body(bool standalone) {
+ // using the real Document Picture-in-Picture API, moving the whole panel
+ // into an always-on-top OS-level window for as long as this tab stays open).
+ std::string jukebox_script(const std::string& yt_key, bool standalone, const std::string& stations_js) {
++    (void)yt_key; // search goes through /jukebox/search so the key never ships in HTML
+     std::string s =
+         "<script>(function(){"
+-        "var key="+js_string_literal(yt_key)+";"
+         "var STANDALONE="+std::string(standalone ? "true" : "false")+";"
+         "var tabC=document.getElementById('jbtab-community'),tabS=document.getElementById('jbtab-search');"
+         "var playerDiv=document.getElementById('jbplayer');"
+@@ -2830,10 +2877,8 @@ std::string jukebox_script(const std::string& yt_key, bool standalone, const std
+         "var val=input.value.trim();clearTimeout(timer);"
+         "if(!val||looksLikeUrl(val)){resultsEl.innerHTML='';return;}"
+         "timer=setTimeout(function(){"
+-        "if(!key)return;"
+         "var my=++gen;"
+-        "fetch('https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=6&q='"
+-        "+encodeURIComponent(val)+'&key='+key)"
++        "fetch('/jukebox/search?q='+encodeURIComponent(val))"
+         ".then(function(r){return r.json();})"
+         ".then(function(data){"
+         "if(my!==gen)return;"
+@@ -3073,20 +3118,15 @@ std::string jukebox_standalone_page(const std::string& yt_key, const std::string
+ // queue and a guest's one-shot request -- identical UI, different POST
+ // target and different note underneath it.
+ std::string jukebox_add_form(const std::string& post_target, const std::string& note) {
+-    const char* yt_key = youtube_api_key_from_env();
+-    const char* placeholder = yt_key[0]
+-        ? "Paste a link, or type to search"
+-        : "Paste a YouTube link (search is off — site operator hasn't set YOUTUBE_API_KEY)";
+     return "<div><label>Add a track</label>"
+             "<div class=\"row\" style=\"align-items:flex-start\">"
+-            "<input id=\"jinput\" placeholder=\""+std::string(placeholder)+"\" autocomplete=\"off\" style=\"flex:1\">"
++            "<input id=\"jinput\" placeholder=\"Paste a YouTube link\" autocomplete=\"off\" style=\"flex:1\">"
+             "<button type=\"button\" id=\"jqueue\">Queue</button>"
+             "</div>"
+             "<div id=\"jsresults\" style=\"margin-top:.4rem;display:flex;flex-direction:column;gap:.2rem\"></div>"
+             "</div>"
+             "<p class=\"muted\">"+note+"</p>"
+             "<script>(function(){"
+-            "var key="+js_string_literal(yt_key)+";"
+             "var target="+js_string_literal(post_target)+";"
+             "var input=document.getElementById('jinput'),out=document.getElementById('jsresults'),"
+             "qbtn=document.getElementById('jqueue');"
+@@ -3119,10 +3159,9 @@ std::string jukebox_add_form(const std::string& post_target, const std::string&
+             "});"
+             "}"
+             "function search(term){"
+-            "if(!key||!term){out.innerHTML='';return;}"
++            "if(!term){out.innerHTML='';return;}"
+             "var my=++gen;"
+-            "fetch('https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=6&q='"
+-            "+encodeURIComponent(term)+'&key='+key)"
++            "fetch('/jukebox/search?q='+encodeURIComponent(term))"
+             ".then(function(r){return r.json();})"
+             ".then(function(data){if(my!==gen)return;render(data.items);})"
+             ".catch(function(){if(my!==gen)return;out.innerHTML='';});"
+@@ -3279,8 +3318,10 @@ std::string genesis_body() {
+     // as the /control voting card.
+     std::string stats =
+         "<div class=\"stattiles\">"
+-        "<div class=\"stattile\"><strong>" + std::to_string(g_store.account_count()) + "</strong><span>Accounts</span></div>"
+-        "<div class=\"stattile\"><strong>" + std::to_string(g_store.all_communities().size()) + "</strong><span>Communities</span></div>"
++        "<div class=\"stattile\"><strong>" + std::to_string(g_store.account_count()) + "</strong><span>" +
++        std::string(g_store.account_count()==1?"Account":"Accounts") + "</span></div>"
++        "<div class=\"stattile\"><strong>" + std::to_string(g_store.all_communities().size()) + "</strong><span>" +
++        std::string(g_store.all_communities().size()==1?"Community":"Communities") + "</span></div>"
+         "<div class=\"stattile\"><strong>0</strong><span>Elections held</span></div>"
+         "</div>";
+     // The scrolling problems ticker and the two pull-quotes, pulled from
+@@ -3345,17 +3386,11 @@ std::string genesis_body() {
+         "<circle cx=\"32\" cy=\"130\" r=\"6\" style=\"fill:var(--paper);stroke:var(--accent)\" stroke-width=\"1.4\"/>"
+         "<circle cx=\"148\" cy=\"130\" r=\"6\" style=\"fill:var(--paper);stroke:var(--accent)\" stroke-width=\"1.4\"/>"
+         "</svg></div>";
+-    // The punchy three-word law strip directly under the hero divider,
+-    // real content from the design's own `laws` array (01 Do not take /
+-    // 02 Do not wreck / 03 Do not force) -- a different, shorter phrasing
+-    // than the longer "Do not steal/damage/deprive of liberty" cards
+-    // further down the page, which is how the source itself uses them:
+-    // a punchy strip up top, the fuller explanation later.
+     std::string lawstrip =
+         "<div class=\"lawstrip\">"
+-        "<div><p class=\"n\">01</p><p class=\"t\">Do not take</p></div>"
+-        "<div><p class=\"n\">02</p><p class=\"t\">Do not wreck</p></div>"
+-        "<div><p class=\"n\">03</p><p class=\"t\">Do not force</p></div>"
++        "<div><p class=\"n\">01</p><p class=\"t\">Do not steal</p></div>"
++        "<div><p class=\"n\">02</p><p class=\"t\">Do not damage</p></div>"
++        "<div><p class=\"n\">03</p><p class=\"t\">Do not deprive of liberty</p></div>"
+         "</div>"
+         "<p class=\"muted\" style=\"text-align:center;max-width:22rem;margin:.7rem auto 0\">"
+         "Three rules hold. Whoever you are, wherever you're starting from, the rest is your call.</p>";
+@@ -3382,8 +3417,8 @@ std::string genesis_body() {
+         "border:1px solid var(--rule);display:flex;align-items:center;justify-content:center;flex-shrink:0\">" +
+         liveRoomsIcon + "</div>"
+         "<div><strong>Live rooms</strong>"
+-        "<p class=\"muted\" style=\"margin:.3rem 0 0\">The Quad and Juketube. Shared spaces you can actually "
+-        "be in. <a href=\"/world\">Walk into the Quad</a>.</p></div></div>";
++        "<p class=\"muted\" style=\"margin:.3rem 0 0\">The Quad is a shared room. "
++        "<a href=\"/login?next=/world\">Sign in to walk in</a>.</p></div></div>";
+     return emblem +
+            "<p class=\"eyebrow\" style=\"color:var(--accent)\">A Voluntary Natural Democracy</p>"
+            "<h1>This is genesis, not a government.</h1>"
+@@ -3464,15 +3499,30 @@ std::string home_dashboard(const std::string& user) {
+                  "<span class=\"roomlive\">" + (on_air ? "on air" : "quiet") + "</span></a>";
+     }
+ 
++    const bool first_hour = posts == 0 && friends == 0 && committees.empty();
++    std::string next;
++    if (first_hour) {
++        next = "<p class=\"muted\">This is a platform account, not a citizen identity. Start with one of these:</p>"
++               "<p class=\"row\"><a class=\"btn\" href=\"/friends\">Find someone</a> "
++               "<a class=\"btn ghost\" href=\"/me\">Set a portrait</a> "
++               "<a class=\"btn ghost\" href=\"/feed\">Write a post</a></p>";
++    } else {
++        next = "<p class=\"row\"><a class=\"btn\" href=\"/feed\">Open the feed</a> "
++               "<a class=\"btn ghost\" href=\"/u/" + html_escape(user) + "\">Your profile</a></p>";
++    }
++
+     return
+-        "<div class=\"card\"><p class=\"eyebrow\">Welcome back</p><h1>@" + html_escape(user) + "</h1>"
++        "<div class=\"card\"><p class=\"eyebrow\">" + std::string(first_hour ? "You're in" : "Welcome back") +
++        "</p><h1>@" + html_escape(user) + "</h1>"
+         "<div class=\"stattiles\">"
+-        "<div class=\"stattile\"><strong>" + std::to_string(posts) + "</strong><span>Posts</span></div>"
+-        "<div class=\"stattile\"><strong>" + std::to_string(friends) + "</strong><span>Friends</span></div>"
+-        "<div class=\"stattile\"><strong>" + std::to_string(committees.size()) + "</strong><span>Communities</span></div>"
++        "<div class=\"stattile\"><strong>" + std::to_string(posts) + "</strong><span>" +
++        std::string(posts==1?"Post":"Posts") + "</span></div>"
++        "<div class=\"stattile\"><strong>" + std::to_string(friends) + "</strong><span>" +
++        std::string(friends==1?"Friend":"Friends") + "</span></div>"
++        "<div class=\"stattile\"><strong>" + std::to_string(committees.size()) + "</strong><span>" +
++        std::string(committees.size()==1?"Community":"Communities") + "</span></div>"
+         "</div>"
+-        "<p class=\"row\"><a class=\"btn\" href=\"/feed\">Open the feed</a> "
+-        "<a class=\"btn ghost\" href=\"/u/" + html_escape(user) + "\">Your profile</a></p></div>" +
++        + next + "</div>" +
+         quadCard +
+         (rooms.empty() ? "" : "<div class=\"card\"><h2>Rooms open now</h2>" + rooms + "</div>");
+ }
+@@ -3540,6 +3590,8 @@ const std::vector<LawChapter>& law_chapters() {
+          "concentrates power in the hands of whoever can navigate it.</p>"
+          "<p>A Voluntary Natural Democracy recognizes three universal laws. They apply to every person on national territory, "
+          "citizen or not, regardless of wealth or position. No one is above them, and no one is beneath their protection:</p>"
++         "<p><strong>Do not steal. Do not damage. Do not deprive of liberty.</strong></p>"
++         "<p>Consequence, if a court ever sits, is proportional and judicial &mdash; a ceiling, not a license for private revenge:</p>"
+          "<p>If you steal, something of yours may be stolen.<br>If you give damage, you may take damage.<br>"
+          "If you strip someone of their liberty, similarly, you may find your liberty being stripped from you.</p>"
+          "<p><strong>&ldquo;May&rdquo; is deliberate.</strong> These laws set a ceiling on proportional response, not a mandatory "
+@@ -3769,15 +3821,16 @@ std::string control_body() {
+            "<tr><td>This site</td><td>Held by one person. Temporary, and replaced the moment there is anything to replace it with.</td></tr>"
+            "<tr><td>Your account</td><td>A platform account. Not a citizen identity, not a vote, not standing.</td></tr>"
+            "<tr><td>Elections</td><td>None held. Real authority would come later, from a working election.</td></tr>"
+-           "<tr><td>Your data</td><td>Your number is never stored. <a href=\"/export\">Export</a> or delete everything whenever you want.</td></tr>"
++           "<tr><td>Your data</td><td>The phone number itself is not kept &mdash; only a fingerprint, so a deleted account cannot immediately reopen under the same number. "
++           "Sign in to <a href=\"/login?next=/export\">export</a> or delete from Settings.</td></tr>"
+            "</table></div>"
+            "<div class=\"card\"><p class=\"eyebrow\">Voting</p><h3>Nothing is awaiting your vote.</h3>"
+            "<p class=\"muted\">No election has been held. This exists so the mechanism is testable, not "
+            "because anyone here holds a seat.</p>"
+            "<p class=\"muted\">Your account is a platform account. It is not a citizen identity and it "
+            "casts no vote.</p>"
+-           "<p><a href=\"/proposals\">Proposals</a> are the one real mechanism live today — an unofficial "
+-           "straw poll any member can open or vote on, explicitly not a binding vote.</p></div>";
++           "<p><a href=\"/login?next=/proposals\">Proposals</a> are an unofficial straw poll any member can open or vote on, "
++           "explicitly not a binding vote. Sign in to see them.</p></div>";
+ }
+ 
+ std::string signup_page(const std::string& navuser, int unread, const std::string& err,
+@@ -3786,15 +3839,17 @@ std::string signup_page(const std::string& navuser, int unread, const std::strin
+     if (!err.empty()) e = "<p class=\"warn\">"+html_escape(err)+"</p>";
+     return wrap("Sign up", navuser, unread,
+         "<div class=\"card\"><h1>Create an account</h1>"
+-        "<p class=\"muted\">Username is one word: letters, numbers, dots, underscores, hyphens. "
+-        "No spaces, no @. Phone is a signup binding, not the daily login. "
+-        "This is a platform account, not a CitizenId.</p>"+e+
++        "<p class=\"muted\">Username is 3–32 characters: letters, numbers, dots, underscores, hyphens. "
++        "No spaces, no @. Password at least 8 characters. Phone is a signup binding (ten or more digits), "
++        "not stored as the number itself, and not used to log in. "
++        "This is a platform account, not a citizen identity.</p>"+e+
+         "<form method=\"POST\" action=\"/signup\">"
+-        "<label>Username</label><input name=\"username\" required maxlength=\"32\" "
+-        "pattern=\"[A-Za-z0-9._-]+\" title=\"Letters, numbers, dots, underscores, hyphens. No spaces.\" "
++        "<label>Username</label><input name=\"username\" required minlength=\"3\" maxlength=\"32\" "
++        "pattern=\"[A-Za-z0-9._-]{3,32}\" title=\"3–32 letters, numbers, dots, underscores, hyphens. No spaces.\" "
+         "autocomplete=\"username\" placeholder=\"alice\" value=\""+html_escape(username)+"\">"
+-        "<label>Password</label><input type=\"password\" name=\"password\" required autocomplete=\"new-password\">"
+-        "<label>Phone</label><input name=\"phone\" type=\"tel\" required autocomplete=\"tel\" value=\""+html_escape(phone)+"\">"
++        "<label>Password</label><input type=\"password\" name=\"password\" required minlength=\"8\" maxlength=\"200\" autocomplete=\"new-password\">"
++        "<label>Phone</label><input name=\"phone\" type=\"tel\" required autocomplete=\"tel\" inputmode=\"tel\" "
++        "placeholder=\"10+ digits\" value=\""+html_escape(phone)+"\">"
+         "<button>Continue</button></form></div>");
+ }
+ 
+@@ -4040,6 +4095,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
+     if(line_end==std::string::npos) line_end=req.find('\n');
+     if(line_end==std::string::npos) return http_ok(wrap("Error","",0,"<p>bad request</p>"));
+     std::string method, rawpath; { std::istringstream is(req.substr(0,line_end)); is>>method>>rawpath; }
++    if (method == "HEAD") method = "GET";
+     std::string path = rawpath;
+     auto qpos=path.find('?'); if(qpos!=std::string::npos) path=path.substr(0,qpos);
+     auto qs = parse_qs(rawpath);
+@@ -4048,15 +4104,49 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
+     if(sep!=std::string::npos) body=req.substr(sep+4);
+     else { sep=req.find("\n\n"); if(sep!=std::string::npos) body=req.substr(sep+2); }
+     std::lock_guard<std::mutex> lock(g_mu);
++    auto proto = header_value(req, "X-Forwarded-Proto");
++    for (char& c : proto) if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
++    g_https = (proto == "https");
++    const std::string ip = forwarded_ip(req, peer_ip);
++    g_theme_mode = theme_of(req);
+     auto acc = account_from_req(req);
+     std::string user = acc ? acc->username : "";
+     const std::string sid = cookie_of(req);
+     const int unread = acc ? g_store.unread_count(user) : 0;
+-    g_theme_mode = theme_of(req);
+     auto pg = [&](const std::string& title, const std::string& b) {
+         return http_ok(wrap(title, user, unread, b));
+     };
++    auto need_login = [&]() {
++        if (method == "GET") return http_redir(login_url(path));
++        return http_redir("/login");
++    };
++
++    if (path.size() > 1 && path.back() == '/') {
++        std::string dest = path.substr(0, path.size() - 1);
++        auto q = rawpath.find('?');
++        if (q != std::string::npos) dest += rawpath.substr(q);
++        return http_redir(dest);
++    }
+ 
++    if(method=="GET"&&path=="/robots.txt")
++        return http_raw("200 OK", "text/plain; charset=utf-8",
++            "User-agent: *\nAllow: /\nDisallow: /settings\nDisallow: /mail\nDisallow: /export\n");
++    if(method=="GET"&&path=="/favicon.ico")
++        return http_redir("/favicon.svg");
++
++    if(method=="GET"&&path=="/jukebox/search") {
++        if(!acc) return http_raw("401 Unauthorized", "application/json", "{\"items\":[]}");
++        // Type-to-search used to embed YOUTUBE_API_KEY in every logged-in
++        // page. The key stays on the server now. A real search.list proxy
++        // is not in this slice (no TLS HTTP client in this binary); paste
++        // a YouTube link still queues. Empty items is honest, not a hang.
++        return http_raw("200 OK", "application/json", "{\"items\":[]}",
++            "Cache-Control: no-store\r\n");
++    }
++    if(method=="GET"&&path=="/mail/group/new") {
++        if(!acc) return need_login();
++        return http_redir("/mail");
++    }
+     if(method=="GET"&&path=="/favicon.svg")
+         return http_raw("200 OK","image/svg+xml", favicon_svg());
+ 
+@@ -4077,8 +4167,10 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
+         const std::string mode = path.substr(7);
+         std::string back = header_value(req, "Referer");
+         if (back.empty() || back.rfind("http",0)!=0) back = "/";
+-        return http_redir(back, "Set-Cookie: lg_theme="+mode+
+-            "; Path=/; SameSite=Lax; Max-Age=31536000\r\n");
++        std::string extra = "Set-Cookie: lg_theme="+mode+"; Path=/; SameSite=Lax; Max-Age=31536000";
++        if (g_https) extra += "; Secure";
++        extra += "\r\n";
++        return http_redir(back, extra);
+     }
+ 
+     if(method=="GET"&&path=="/") {
+@@ -4090,7 +4182,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
+         std::string extra =
+             "<div class=\"card\"><p class=\"row\"><a class=\"btn\" href=\"/signup\">Create an account</a> "
+             "<a class=\"btn ghost\" href=\"/login\">Log in</a></p></div>";
+-        return pg("Genesis", genesis_body()+extra);
++        return http_ok(wrap("Genesis", user, unread, genesis_body()+extra, true));
+     }
+     if(method=="GET"&&path=="/laws") return pg("Laws", laws_body());
+     if(method=="GET"&&path.rfind("/laws/",0)==0) {
+@@ -4112,11 +4204,14 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
+         // it doesn't depend on whether the account exists.
+         if (qs["err"]=="login") err = "<p class=\"warn\">Invalid username or password.</p>";
+         else if (qs["err"]=="ratelimit") err = "<p class=\"warn\">Too many attempts. Wait a moment and try again.</p>";
++        const std::string next = safe_next_path(qs["next"]);
+         return pg("Log in", "<div class=\"card\"><h1>Log in</h1>"
+-            "<p class=\"muted\">Username and password. Phone is not the daily credential.</p>"+err+
++            "<p class=\"muted\">Username and password. Phone is not the daily credential. "
++            "There is no email reset in this release &mdash; keep the password somewhere you will not lose it.</p>"+err+
+             "<form method=\"POST\" action=\"/login\"><label>Username</label>"
+             "<input name=\"username\" required autocomplete=\"username\" value=\""+html_escape(qs["username"])+"\">"
+             "<label>Password</label><input type=\"password\" name=\"password\" required autocomplete=\"current-password\">"
++            +(next.empty()?std::string():"<input type=\"hidden\" name=\"next\" value=\""+html_escape(next)+"\">")+
+             "<button>Continue</button></form>"
+             "<p class=\"muted\" style=\"margin-top:.7rem\">New here? <a href=\"/signup\">Create an account</a>.</p></div>");
+     }
+@@ -4126,35 +4221,35 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
+     }
+ 
+     if(method=="GET"&&path=="/world") {
+-        if(!acc) return http_redir("/login");
++        if(!acc) return need_login();
+         return pg("World", world_page(user));
+     }
+     if(method=="GET"&&path=="/me/canvas") {
+-        if(!acc) return http_redir("/login");
++        if(!acc) return need_login();
+         return pg("Canvas", canvas_tool_page(user, qs["err"], false));
+     }
+     if(method=="GET"&&path=="/me/portrait") {
+-        if(!acc) return http_redir("/login");
++        if(!acc) return need_login();
+         return pg("Self-portrait", canvas_tool_page(user, qs["err"], true));
+     }
+     if(method=="GET"&&path=="/me/post/canvas") {
+-        if(!acc) return http_redir("/login");
++        if(!acc) return need_login();
+         return pg("Compose a post", canvas_tool_page(user, "", false, "/me/post"));
+     }
+     if(method=="GET"&&path=="/feed/canvas") {
+-        if(!acc) return http_redir("/login");
++        if(!acc) return need_login();
+         return pg("Compose a post", canvas_tool_page(user, "", false, "/feed"));
+     }
+     if(method=="GET"&&path=="/listen") {
+         // Deliberately not wrap()/pg(): this window IS the player, full-page
+         // nav chrome and a second (redundant) floating-widget toggle would
+         // just be noise in a small popout.
+-        if(!acc) return http_redir("/login");
++        if(!acc) return need_login();
+         return http_ok(page_wrap("Listen", "",
+             "<div style=\"padding:.75rem\">" + jukebox_standalone_page(youtube_api_key_from_env(), user) + "</div>"));
+     }
+     if(method=="GET"&&path=="/feed") {
+-        if(!acc) return http_redir("/login");
++        if(!acc) return need_login();
+         std::string filter_key = qs.count("filter") ? qs.at("filter") : "all";
+         FeedFilter filter = FeedFilter::All;
+         if (filter_key == "friends") filter = FeedFilter::Friends;
+@@ -4185,13 +4280,15 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
+             "<p class=\"muted\">Personal posts reach you and your friends. Communities have their own pages. "
+             "This is not a civic act.</p></div>";
+         auto posts = g_store.feed_view(user, 80, filter);
+-        if (posts.empty()) html += "<p class=\"empty\">Nothing yet. Write something, or add a friend.</p>";
++        if (posts.empty()) html += "<div class=\"card\"><p class=\"empty\">No posts in this view yet.</p>"
++            "<p class=\"muted\">Write one above, or <a href=\"/friends\">add a friend</a> so theirs show up. "
++            "This feed is friends-only &mdash; it stays quiet until someone you know posts.</p></div>";
+         for (const auto& p : posts) html += "<div class=\"card\">"+post_block(p, user)+"</div>";
+         return pg("Feed", html);
+     }
+ 
+     if(method=="GET"&&path=="/proposals") {
+-        if(!acc) return http_redir("/login");
++        if(!acc) return need_login();
+         std::string html = "<h1>Proposals</h1>"
+             "<p class=\"muted\">Unofficial straw polls &mdash; a way to gauge how people feel about "
+             "something not yet decided. Not a CitizenId vote, not binding, not this platform's Phase 2.</p>";
+@@ -4203,7 +4300,8 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
+                 "<button>Open for votes</button></form></div>";
+         auto all = g_store.all_proposals();
+         std::reverse(all.begin(), all.end());
+-        if (all.empty()) html += "<p class=\"empty\">No proposals yet.</p>";
++        if (all.empty()) html += "<div class=\"card\"><p class=\"empty\">None open.</p>"
++            "<p class=\"muted\">The form above starts an unofficial straw poll. Not a binding vote.</p></div>";
+         for (const auto& p : all) {
+             auto t = g_store.tally_of(p.id);
+             auto mv = g_store.proposal_vote_of(p.id, user);
+@@ -4282,7 +4380,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
+     }
+ 
+     if(method=="GET"&&path=="/me") {
+-        if(!acc) return http_redir("/login");
++        if(!acc) return need_login();
+         std::string err;
+         if (qs["err"]=="image") err = "<p class=\"warn\">That file was not a usable image (PNG/JPEG/GIF, 2&nbsp;MiB, 1024px). SVG is not accepted.</p>";
+         else if (qs["err"]=="large") err = "<p class=\"warn\">That file is too large. Cap is 2&nbsp;MiB and 1024 pixels on the long edge.</p>";
+@@ -4497,7 +4595,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
+     }
+ 
+     if(method=="GET"&&path=="/friends") {
+-        if(!acc) return http_redir("/login");
++        if(!acc) return need_login();
+         std::string err;
+         if (qs["err"]=="inner") err = "<p class=\"warn\">Inner circle holds twelve. Take someone out first.</p>";
+         std::string html = "<h1>People</h1>"+err+
+@@ -4513,7 +4611,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
+         std::set<std::string> inner_set(inner.begin(), inner.end());
+         html += "<p class=\"muted eyebrow\">"+std::to_string(pals.size())+
+                 (pals.size()==1?" friend":" friends")+" &middot; "+std::to_string(inner_set.size())+" inner</p>";
+-        if(pals.empty()) html += "<p class=\"empty\">None yet.</p>";
++        if(pals.empty()) html += "<p class=\"empty\">No friends yet. Search a username above, or send a request by exact name.</p>";
+         for (auto& other : pals) {
+             const bool inn = inner_set.count(other);
+             html += "<div class=\"person\"><div class=\"who\">"+portrait_tag(other,"sm")+"<div><a href=\"/u/"+html_escape(other)+"\"><strong>"+html_escape(other)+"</strong></a>"
+@@ -4536,7 +4634,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
+                     "<input type=\"hidden\" name=\"who\" value=\""+html_escape(other)+"\">"
+                     "<button class=\"danger\" type=\"submit\">Block</button></form></div></div>";
+         }
+-        html += "<p class=\"muted\">Inner circle is capped at twelve. Outer circle is everyone else you have accepted — derived, not stored as a second list.</p></div>";
++        html += "<p class=\"muted\">Inner circle is up to twelve people. Everyone else you've accepted is still a friend.</p></div>";
+         html += "<div class=\"card\"><h2>Incoming</h2>";
+         auto inc = g_store.incoming_requests(user);
+         if(inc.empty()) html += "<p class=\"empty\">None.</p>";
+@@ -4549,12 +4647,12 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
+         auto outg = g_store.outgoing_requests(user);
+         if(outg.empty()) html += "<p class=\"empty\">None.</p>";
+         for (auto& to : outg) html += "<div class=\"person\"><span>"+html_escape(to)+"</span><span class=\"muted\">waiting</span></div>";
+-        html += "<p class=\"muted\">There is no declined notice. Silence and a declined request look the same.</p></div>";
++        html += "<p class=\"muted\">If someone does not accept, you will not get a notice. That is intentional.</p></div>";
+         return pg("People", html);
+     }
+ 
+     if(method=="GET"&&path=="/search") {
+-        if(!acc) return http_redir("/login");
++        if(!acc) return need_login();
+         auto term = trim_ws(qs["q"]);
+         std::string html = "<h1>Search</h1><div class=\"card\"><form method=\"GET\" action=\"/search\">"
+             "<label>Find a person</label><div class=\"row\"><input name=\"q\" value=\""+html_escape(term)+"\">"
+@@ -4581,7 +4679,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
+     }
+ 
+     if(method=="GET"&&path=="/mail") {
+-        if(!acc) return http_redir("/login");
++        if(!acc) return need_login();
+         // Mirrors /notices clearing everything but "message" -- opening
+         // Mail is what actually clears the Messages icon's own badge.
+         g_store.mark_notices_read_of_type(user, "message");
+@@ -4589,7 +4687,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
+         std::string html = "<h1>Mail</h1><div class=\"card\"><p class=\"muted\">Direct messages are friends-only in this release. "
+             "Open messaging waits on age assurance so a stranger cannot reach a minor. We will not treat a checkbox as age.</p><ul class=\"plain\">";
+         auto pals = g_store.friends_of(user);
+-        if (pals.empty()) html += "<li class=\"muted\">Friend someone first.</li>";
++        if (pals.empty()) html += "<li class=\"muted\">No friends yet. <a href=\"/friends\">Find someone</a> first &mdash; mail is friends-only.</li>";
+         for (auto& n : pals) html += "<li><a href=\"/mail?with="+html_escape(n)+"\">"+html_escape(n)+"</a></li>";
+         html += "</ul></div>";
+         if (!other.empty() && g_store.are_friends(user, other) && !g_store.is_blocked(user, other)) {
+@@ -4645,7 +4743,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
+     }
+ 
+     if(method=="GET"&&path.rfind("/mail/attachment/",0)==0) {
+-        if(!acc) return http_redir("/login");
++        if(!acc) return need_login();
+         const std::string blob_id = path.substr(17);
+         auto found = g_store.find_mail_attachment(user, blob_id);
+         if (!found) return http_raw("404 Not Found", "text/plain; charset=utf-8", "not found");
+@@ -4664,7 +4762,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
+     }
+ 
+     if(method=="GET"&&path.rfind("/mail/g/",0)==0) {
+-        if(!acc) return http_redir("/login");
++        if(!acc) return need_login();
+         ConversationId conv_id = 0;
+         try { conv_id = std::stoull(path.substr(8)); } catch(...) { conv_id = 0; }
+         auto conv = conv_id ? g_store.get_conversation(conv_id) : std::nullopt;
+@@ -4751,14 +4849,14 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
+     }
+ 
+     if(method=="GET"&&path.rfind("/c/",0)==0&&path.size()>10&&path.compare(path.size()-7,7,"/canvas")==0) {
+-        if(!acc) return http_redir("/login");
++        if(!acc) return need_login();
+         const std::string slug = path.substr(3, path.size()-3-7);
+         if (!g_store.community(slug) || !g_store.is_member(slug, user)) return http_redir("/c/"+slug);
+         return pg("Compose a post", canvas_tool_page(user, "", false, "/c/"+slug));
+     }
+ 
+     if(method=="GET"&&path.rfind("/c/",0)==0) {
+-        if(!acc) return http_redir("/login");
++        if(!acc) return need_login();
+         const std::string slug = path.substr(3);
+         auto c = g_store.community(slug);
+         if (!c)
+@@ -4805,7 +4903,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
+     }
+ 
+     if(method=="GET"&&path=="/notices") {
+-        if(!acc) return http_redir("/login");
++        if(!acc) return need_login();
+         // Not mark_notices_read: a "message" notice is the Messages icon's
+         // badge now, not this page's -- clearing it here would make an
+         // unread message vanish from its own badge without the message
+@@ -4813,7 +4911,8 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
+         g_store.mark_notices_read_except_type(user, "message");
+         std::string html = "<h1>Notices</h1><div class=\"card\">";
+         auto notes = g_store.notices_for(user, 50);
+-        if (notes.empty()) html += "<p class=\"empty\">None.</p>";
++        if (notes.empty()) html += "<p class=\"empty\">Nothing waiting.</p>"
++            "<p class=\"muted\">Friend requests, accepts, and mail land here.</p>";
+         for (auto& n : notes) {
+             std::string line;
+             if (n.type=="friend_request") line = html_escape(n.from)+" sent a friend request.";
+@@ -4823,24 +4922,25 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
+             else line = html_escape(n.type);
+             html += "<div class=\"person\"><div>"+line+"<div class=\"muted\">"+html_escape(fmt_time(n.ts))+"</div></div></div>";
+         }
+-        html += "<p class=\"muted\">There is no notice for a declined friend request.</p></div>";
++        html += "<p class=\"muted\">A declined friend request does not send a notice.</p></div>";
+         return pg("Notices", html);
+     }
+ 
+     if(method=="GET"&&path=="/settings") {
+-        if(!acc) return http_redir("/login");
++        if(!acc) return need_login();
+         auto p = g_store.prefs_of(user);
+         auto find_sel = [&](Findability f){ return p.findability==f?" checked":""; };
+         std::string html = "<h1>Settings</h1>"
+-            "<p class=\"muted\">Five sections. Not a junk drawer. Not kernel seats.</p>";
++            "<p class=\"muted\">Account, privacy, data, and notifications.</p>";
+         if (qs["ok"]=="password") html += "<p class=\"ok\">Password changed.</p>";
+         if (qs["err"]=="password") html += "<p class=\"warn\">Could not change password. Check the current one.</p>";
++        if (qs["err"]=="short") html += "<p class=\"warn\">New password needs at least eight characters.</p>";
+         if (qs["err"]=="delete") html += "<p class=\"warn\">Type your username to delete.</p>";
+ 
+         html += "<div class=\"card\"><h2>Security</h2>"
+             "<form method=\"POST\" action=\"/settings/password\">"
+             "<label>Current password</label><input type=\"password\" name=\"current\" required autocomplete=\"current-password\">"
+-            "<label>New password</label><input type=\"password\" name=\"next\" required autocomplete=\"new-password\">"
++            "<label>New password</label><input type=\"password\" name=\"next\" required minlength=\"8\" maxlength=\"200\" autocomplete=\"new-password\">"
+             "<button>Change password</button></form><h2>Sessions</h2>";
+         auto all = g_store.sessions_for(acc->id);
+         int shown = 0;
+@@ -4862,8 +4962,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
+         }
+         if (!shown) html += "<p class=\"muted\">None.</p>";
+         html += "<form method=\"POST\" action=\"/settings/logout-all\" style=\"margin-top:1rem\">"
+-                "<button class=\"danger\" type=\"submit\">Log out other devices</button></form>"
+-                "<p class=\"muted\">Phone change with delay is not in this slice. Passkeys are later.</p></div>";
++                "<button class=\"danger\" type=\"submit\">Log out other devices</button></form></div>";
+ 
+         html += std::string("<div class=\"card\"><h2>Privacy</h2><form method=\"POST\" action=\"/settings/privacy\">")
+             + "<label>Who can find you</label>"
+@@ -4876,10 +4975,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
+             + "<br><span class=\"muted\">Anyone can find you, including as a partial match while they're still typing.</span></p>"
+             + "<p><label><input type=\"checkbox\" name=\"group_invite_confirm\" value=\"1\"" + (p.group_invite_confirm?" checked":"") + "> "
+             + "Don't add me to groups without asking</label></p>"
+-            + "<p><label><input type=\"checkbox\" name=\"presence_hide\" value=\"1\"" + (p.presence_hide?" checked":"") + "> "
+-            + "Hide presence (presence is not shown in this release)</label></p>"
+-            + "<p class=\"muted\">Direct messages are friends-only for everyone until age can be assured. "
+-            + "That is policy, not a self-reported minor toggle.</p>"
++            + "<p class=\"muted\">Direct messages are friends-only until we can tell who is a minor without a checkbox.</p>"
+             + "<label>Visibility register</label>"
+             + "<p class=\"muted\">Each level admits every level after it too: public sees everything members do, "
+             + "members see everything friends do, friends see everything only-me hides from everyone else.</p>";
+@@ -4935,10 +5031,8 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
+         html += "</div>";
+ 
+         html += "<div class=\"card\"><h2>Identity</h2>"
+-            "<p>No civic identity is linked to this platform account.</p>"
+-            "<p class=\"muted\">Combined verification for voting is not live. Unlink is not available because there is nothing to unlink. "
+-            "Unlink would drop voting access until re-verified; it would not resign citizenship. "
+-            "This page does not write CitizenId, GrantCitizenship, points, seats, or parcels.</p></div>";
++            "<p>No civic identity is linked to this account.</p>"
++            "<p class=\"muted\">Voting is not live yet. Linking a citizen identity later will not happen from this page until it is.</p></div>";
+ 
+         html += "<div class=\"card\"><h2>Data</h2>"
+             "<p><a class=\"btn ghost\" href=\"/export\">Download your export</a></p>"
+@@ -4948,21 +5042,20 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
+             "<label>Delete account — type your username</label>"
+             "<input name=\"confirm\" placeholder=\""+html_escape(user)+"\" autocomplete=\"off\">"
+             "<button class=\"danger\">Delete account</button></form>"
+-            "<p class=\"muted\">Sessions end immediately. Mail you sent is tombstoned as [deleted account]. "
+-            "The phone binding is held ninety days so a delete cannot shed a suspension. This is not ResignCitizen.</p></div>";
++            "<p class=\"muted\">Sessions end immediately. Mail you sent is shown as [deleted account]. "
++            "A fingerprint of the phone number is held ninety days so a deleted account cannot immediately reopen under the same number.</p></div>";
+ 
+         html += std::string("<div class=\"card\"><h2>Notifications</h2><form method=\"POST\" action=\"/settings/notify\">")
+             + "<p><label><input type=\"checkbox\" name=\"notify_friend\" value=\"1\"" + (p.notify_friend?" checked":"") + "> Friend requests and accepts</label></p>"
+             + "<p><label><input type=\"checkbox\" name=\"notify_message\" value=\"1\"" + (p.notify_message?" checked":"") + "> New mail</label></p>"
+             + "<p><label><input type=\"checkbox\" name=\"notify_group\" value=\"1\"" + (p.notify_group?" checked":"") + "> Community invites</label></p>"
+-            + "<p class=\"muted\">New-device login, moderation, and age re-verification are always on when those events exist. "
+-            + "There is no FriendRequestDeclined.</p>"
++            + "<p class=\"muted\">Login alerts stay on.</p>"
+             + "<button>Save notifications</button></form></div>";
+         return pg("Settings", html);
+     }
+ 
+     if(method=="GET"&&path=="/export") {
+-        if(!acc) return http_redir("/login");
++        if(!acc) return need_login();
+         std::ostringstream o;
+         o << "LiquidGov.US platform export\n";
+         o << "This is platform data. It is not the governance kernel.\n\n";
+@@ -4998,12 +5091,18 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
+         auto uname=trim_ws(f["username"]);
+         auto phone=trim_ws(f["phone"]);
+         auto pass=f["password"];
+-        if (!valid_username(uname)) {
++        if (!valid_username(uname) || uname.size() < 3) {
+             std::string err = uname.empty()
+-                ? "Need a username: one word, 1–32 letters/numbers (dots, underscores, hyphens ok). No spaces, no @."
+-                : ("“"+uname+"” isn’t a valid username. One word: letters, numbers, dots, underscores, hyphens. No spaces.");
++                ? "Need a username: 3–32 letters/numbers (dots, underscores, hyphens ok). No spaces, no @."
++                : uname.size() < 3
++                    ? "Username needs at least three characters."
++                    : ("“"+uname+"” isn’t a valid username. Letters, numbers, dots, underscores, hyphens. No spaces.");
+             return http_ok(signup_page(user, unread, err, uname, phone));
+         }
++        if (pass.size() < 8)
++            return http_ok(signup_page(user, unread, "Password needs at least eight characters.", uname, phone));
++        if (count_digits(phone) < 10)
++            return http_ok(signup_page(user, unread, "Need a real phone number (at least ten digits). It is a signup binding, not stored as the number itself, and not used to log in.", uname, phone));
+         if (pass.empty() || phone.empty())
+             return http_ok(signup_page(user, unread, "Need username, password, and phone.", uname, phone));
+         if (g_store.phone_quarantined(fingerprint_phone(phone)))
+@@ -5012,26 +5111,35 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
+         if(r.error==AuthError::None) {
+             if (auto created = g_store.find_by_username(uname))
+                 g_store.set_phone_fp(created->id, fingerprint_phone(phone));
+-            r=login(g_store,g_limiter,uname,pass,device_label_from(req,peer_ip),peer_ip);
++            r=login(g_store,g_limiter,uname,pass,device_label_from(req,ip),ip);
+         }
+         if(r.error==AuthError::UsernameTaken)
+             return http_ok(signup_page(user, unread, "That username is taken. Pick another.", uname, phone));
++        if(r.error==AuthError::PasswordTooShort)
++            return http_ok(signup_page(user, unread, "Password needs at least eight characters.", uname, phone));
++        if(r.error==AuthError::PasswordBreached)
++            return http_ok(signup_page(user, unread, "That password is too common. Pick a longer one you have not used elsewhere.", uname, phone));
+         if(r.error!=AuthError::None||!r.session)
+-            return http_ok(signup_page(user, unread, "Need username, password, and phone.", uname, phone));
+-        return http_redir("/me", set_cookie(r.session->id));
++            return http_ok(signup_page(user, unread, "Could not create that account.", uname, phone));
++        return http_redir("/", set_cookie(r.session->id));
+     }
+     if(method=="POST"&&path=="/login") {
+         auto f=parse_form(body);
+         auto uname = trim_ws(f["username"]);
+-        auto r=login(g_store,g_limiter,uname,f["password"],device_label_from(req,peer_ip),peer_ip);
++        auto r=login(g_store,g_limiter,uname,f["password"],device_label_from(req,ip),ip);
+         if(r.error!=AuthError::None||!r.session) {
+             const char* code = (r.error==AuthError::RateLimited) ? "ratelimit" : "login";
+-            return http_redir("/login?err=" + std::string(code) + "&username=" + url_encode(uname));
++            std::string loc = "/login?err=" + std::string(code) + "&username=" + url_encode(uname);
++            auto next = safe_next_path(trim_ws(f["next"]));
++            if (!next.empty()) loc += "&next=" + url_encode(next);
++            return http_redir(loc);
+         }
+-        return http_redir("/feed", set_cookie(r.session->id));
++        auto dest = safe_next_path(trim_ws(f["next"]));
++        if (dest.empty()) dest = "/feed";
++        return http_redir(dest, set_cookie(r.session->id));
+     }
+     if(method=="POST"&&path=="/me/post") {
+-        if(!acc) return http_redir("/login");
++        if(!acc) return need_login();
+         auto hdr_end = req.find("\r\n\r\n");
+         std::string hdrs = hdr_end==std::string::npos ? req : req.substr(0, hdr_end);
+         auto c = read_composer_post(hdrs, body);
+@@ -5041,7 +5149,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
+         return http_redir("/me");
+     }
+     if(method=="POST"&&path=="/me/repost") {
+-        if(!acc) return http_redir("/login");
++        if(!acc) return need_login();
+         auto f = parse_form(body);
+         std::uint64_t pid = 0;
+         try { pid = std::stoull(f["post_id"]); } catch (...) { return http_redir("/me"); }
+@@ -5074,7 +5182,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
+     // pattern the theme toggle already uses, falling back to /feed.
+     if(method=="POST"&&path.rfind("/post/",0)==0&&path.size()>12&&
+        path.compare(path.size()-6,6,"/reply")==0) {
+-        if(!acc) return http_redir("/login");
++        if(!acc) return need_login();
+         std::string back = header_value(req, "Referer");
+         if (back.empty() || back.rfind("http",0)!=0) back = "/feed";
+         std::uint64_t pid = 0;
+@@ -5086,7 +5194,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
+     }
+     if(method=="POST"&&path.rfind("/post/",0)==0&&path.size()>13&&
+        path.compare(path.size()-7,7,"/second")==0) {
+-        if(!acc) return http_redir("/login");
++        if(!acc) return need_login();
+         std::string back = header_value(req, "Referer");
+         if (back.empty() || back.rfind("http",0)!=0) back = "/feed";
+         std::uint64_t pid = 0;
+@@ -5096,7 +5204,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
+         return http_redir(back);
+     }
+     if(method=="POST"&&path=="/me/css") {
+-        if(!acc) return http_redir("/login");
++        if(!acc) return need_login();
+         auto f = parse_form(body);
+         const std::string& raw_css = f["css"];
+         auto check = sanitize_author_css(raw_css);
+@@ -5105,7 +5213,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
+         return http_redir("/me?ok=css");
+     }
+     if(method=="POST"&&path=="/me/avatar") {
+-        if(!acc) return http_redir("/login");
++        if(!acc) return need_login();
+         auto hdr_end = req.find("\r\n\r\n");
+         std::string hdrs = hdr_end==std::string::npos ? req : req.substr(0, hdr_end);
+         auto file = multipart_file(header_value(hdrs, "Content-Type"), body, "photo");
+@@ -5117,17 +5225,17 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
+         return http_redir("/me");
+     }
+     if(method=="POST"&&path=="/me/avatar/clear") {
+-        if(!acc) return http_redir("/login");
++        if(!acc) return need_login();
+         clear_avatar(g_blobs, g_store, acc->id);
+         return http_redir("/me");
+     }
+     if(method=="POST"&&path=="/me/canvas/clear") {
+-        if(!acc) return http_redir("/login");
++        if(!acc) return need_login();
+         g_store.clear_canvas_frames(acc->id);
+         return http_redir("/me/canvas");
+     }
+     if(method=="POST"&&path=="/me/canvas/frame") {
+-        if(!acc) return http_redir("/login");
++        if(!acc) return need_login();
+         // Reuses save_avatar's exact normalize/scan/size-cap pipeline (the
+         // security-relevant part) via a throwaway AvatarStore that just
+         // captures the resulting blob id instead of writing the account's
+@@ -5153,13 +5261,13 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
+         return http_ok("ok");
+     }
+     if(method=="POST"&&path=="/me/canvas/mode") {
+-        if(!acc) return http_redir("/login");
++        if(!acc) return need_login();
+         auto f = parse_form(body);
+         g_store.set_canvas_timelapse(acc->id, f["timelapse"]=="1");
+         return http_redir("/me/canvas?ok=1");
+     }
+     if(method=="POST"&&path=="/me/jukebox/add") {
+-        if(!acc) return http_redir("/login");
++        if(!acc) return need_login();
+         auto url = trim_ws(parse_form(body)["url"]);
+         auto id = extract_youtube_id(url);
+         if (!id) return http_redir("/me?jerr=url");
+@@ -5167,12 +5275,12 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
+         return http_redir("/me");
+     }
+     if(method=="POST"&&path=="/me/jukebox/remove") {
+-        if(!acc) return http_redir("/login");
++        if(!acc) return need_login();
+         g_store.remove_jukebox_track(user, parse_form(body)["video_id"]);
+         return http_redir("/me");
+     }
+     if(method=="POST"&&path=="/me/jukebox/policy") {
+-        if(!acc) return http_redir("/login");
++        if(!acc) return need_login();
+         auto f = parse_form(body);
+         int pv = 0;
+         try { pv = std::stoi(f["policy"]); } catch (...) { pv = 0; }
+@@ -5191,7 +5299,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
+     if(method=="POST"&&path.rfind("/u/",0)==0&&path.size()>15&&
+        path.compare(path.size()-12,12,"/jukebox/add")==0) {
+         const std::string who = path.substr(3, path.size()-3-12);
+-        if(!acc) return http_redir("/login");
++        if(!acc) return need_login();
+         if (!valid_username(who)) return http_redir("/");
+         auto found = g_store.find_by_username(who);
+         if (!found) return http_redir("/");
+@@ -5219,7 +5327,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
+     if(method=="POST"&&path.rfind("/u/",0)==0&&path.size()>20&&
+        path.compare(path.size()-17,17,"/jukebox/complete")==0) {
+         const std::string who = path.substr(3, path.size()-3-17);
+-        if(!acc) return http_redir("/login");
++        if(!acc) return need_login();
+         if (valid_username(who)) g_store.complete_jukebox_track(who, parse_form(body)["video_id"]);
+         return http_ok("ok");
+     }
+@@ -5253,7 +5361,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
+         return http_ok("ok");
+     }
+     if(method=="POST"&&path=="/feed") {
+-        if(!acc) return http_redir("/login");
++        if(!acc) return need_login();
+         auto hdr_end = req.find("\r\n\r\n");
+         std::string hdrs = hdr_end==std::string::npos ? req : req.substr(0, hdr_end);
+         auto c = read_composer_post(hdrs, body);
+@@ -5264,7 +5372,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
+         return http_redir("/feed");
+     }
+     if(method=="POST"&&path=="/proposals") {
+-        if(!acc) return http_redir("/login");
++        if(!acc) return need_login();
+         auto f = parse_form(body);
+         auto title = trim_ws(f["title"]);
+         auto ptext = trim_ws(f["body"]);
+@@ -5273,7 +5381,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
+         return http_redir("/proposals");
+     }
+     if(method=="POST"&&path=="/proposals/vote") {
+-        if(!acc) return http_redir("/login");
++        if(!acc) return need_login();
+         auto f = parse_form(body);
+         std::uint64_t id = 0;
+         try { id = std::stoull(f["id"]); } catch (...) { return http_redir("/proposals"); }
+@@ -5285,7 +5393,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
+         return http_redir("/proposals");
+     }
+     if(method=="POST"&&path=="/friends") {
+-        if(!acc) return http_redir("/login");
++        if(!acc) return need_login();
+         auto who=trim_ws(parse_form(body)["who"]);
+         if(valid_username(who) && who!=user && g_store.find_by_username(who)
+            && !g_store.is_blocked(user, who) && !g_store.is_blocked(who, user)) {
+@@ -5294,35 +5402,35 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
+         return http_redir("/friends");
+     }
+     if(method=="POST"&&path=="/friends/accept") {
+-        if(!acc) return http_redir("/login");
++        if(!acc) return need_login();
+         auto who=parse_form(body)["who"];
+         g_store.accept_friend_request(who, user);
+         return http_redir("/friends");
+     }
+     if(method=="POST"&&path=="/friends/unfriend") {
+-        if(!acc) return http_redir("/login");
++        if(!acc) return need_login();
+         g_store.unfriend(user, parse_form(body)["who"]);
+         return http_redir("/friends");
+     }
+     if(method=="POST"&&path=="/friends/block") {
+-        if(!acc) return http_redir("/login");
++        if(!acc) return need_login();
+         auto who=parse_form(body)["who"];
+         if (valid_username(who) && who!=user) g_store.block(user, who);
+         return http_redir("/friends");
+     }
+     if(method=="POST"&&path=="/friends/inner") {
+-        if(!acc) return http_redir("/login");
++        if(!acc) return need_login();
+         if (!g_store.add_inner(user, parse_form(body)["who"]))
+             return http_redir("/friends?err=inner");
+         return http_redir("/friends");
+     }
+     if(method=="POST"&&path=="/friends/inner-remove") {
+-        if(!acc) return http_redir("/login");
++        if(!acc) return need_login();
+         g_store.remove_inner(user, parse_form(body)["who"]);
+         return http_redir("/friends");
+     }
+     if(method=="POST"&&path=="/mail") {
+-        if(!acc) return http_redir("/login");
++        if(!acc) return need_login();
+         auto hdr_end = req.find("\r\n\r\n");
+         std::string hdrs = hdr_end==std::string::npos ? req : req.substr(0, hdr_end);
+         std::string ctype = header_value(hdrs, "Content-Type");
+@@ -5363,7 +5471,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
+     }
+ 
+     if(method=="POST"&&path=="/mail/group/new") {
+-        if(!acc) return http_redir("/login");
++        if(!acc) return need_login();
+         const auto who = parse_form(body)["who"];
+         std::vector<AccountId> invitees;
+         std::string cur;
+@@ -5387,7 +5495,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
+     }
+ 
+     if(method=="POST"&&path.rfind("/mail/g/",0)==0) {
+-        if(!acc) return http_redir("/login");
++        if(!acc) return need_login();
+         std::string rest = path.substr(8);
+         auto slash = rest.find('/');
+         const std::string id_str = (slash==std::string::npos) ? rest : rest.substr(0,slash);
+@@ -5452,7 +5560,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
+         return http_redir(base);
+     }
+     if(method=="POST"&&path=="/communities") {
+-        if(!acc) return http_redir("/login");
++        if(!acc) return need_login();
+         auto f=parse_form(body);
+         auto slug=trim_ws(f["slug"]);
+         auto name=trim_ws(f["name"]);
+@@ -5463,7 +5571,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
+         return http_redir("/c/"+slug);
+     }
+     if(method=="POST"&&path.rfind("/c/",0)==0) {
+-        if(!acc) return http_redir("/login");
++        if(!acc) return need_login();
+         std::string rest = path.substr(3);
+         std::string slug, action;
+         auto slash = rest.find('/');
+@@ -5492,7 +5600,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
+         return http_redir("/c/"+slug);
+     }
+     if(method=="POST"&&path=="/settings/revoke") {
+-        if(!acc) return http_redir("/login");
++        if(!acc) return need_login();
+         auto target = parse_form(body)["sid"];
+         bool current = target == sid;
+         bool owned = false;
+@@ -5504,22 +5612,24 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
+         return http_redir("/settings");
+     }
+     if(method=="POST"&&path=="/settings/logout-all") {
+-        if(!acc) return http_redir("/login");
++        if(!acc) return need_login();
+         logout_all_devices(g_store, acc->id, sid);
+         return http_redir("/settings");
+     }
+     if(method=="POST"&&path=="/settings/password") {
+-        if(!acc) return http_redir("/login");
++        if(!acc) return need_login();
+         auto f=parse_form(body);
+         if (!verify_password(f["current"], acc->password_hash) || f["next"].empty())
+             return http_redir("/settings?err=password");
++        if (f["next"].size() < 8)
++            return http_redir("/settings?err=short");
+         if (g_breach.is_breached(f["next"]))
+             return http_redir("/settings?err=password");
+         g_store.set_password_hash(acc->id, hash_password(f["next"]));
+         return http_redir("/settings?ok=password");
+     }
+     if(method=="POST"&&path=="/settings/privacy") {
+-        if(!acc) return http_redir("/login");
++        if(!acc) return need_login();
+         auto f=parse_form(body);
+         auto p = g_store.prefs_of(user);
+         int fv = 1;
+@@ -5540,7 +5650,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
+         return http_redir("/settings");
+     }
+     if(method=="POST"&&path=="/settings/notify") {
+-        if(!acc) return http_redir("/login");
++        if(!acc) return need_login();
+         auto f=parse_form(body);
+         auto p = g_store.prefs_of(user);
+         p.notify_friend = f["notify_friend"]=="1";
+@@ -5550,26 +5660,26 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
+         return http_redir("/settings");
+     }
+     if(method=="POST"&&path=="/settings/unblock") {
+-        if(!acc) return http_redir("/login");
++        if(!acc) return need_login();
+         g_store.unblock(user, parse_form(body)["who"]);
+         return http_redir("/settings");
+     }
+     if(method=="POST"&&path=="/settings/block") {
+-        if(!acc) return http_redir("/login");
++        if(!acc) return need_login();
+         auto f = parse_form(body);
+         auto who = trim_ws(f["who"]);
+         if (valid_username(who) && who != user) g_store.block(user, who, trim_ws(f["reason"]));
+         return http_redir("/settings");
+     }
+     if(method=="POST"&&path=="/settings/delete") {
+-        if(!acc) return http_redir("/login");
++        if(!acc) return need_login();
+         auto confirm = trim_ws(parse_form(body)["confirm"]);
+         if (confirm != user) return http_redir("/settings?err=delete");
+         clear_avatar(g_blobs, g_store, acc->id);
+         g_store.delete_account(acc->id);
+         return http_redir("/", clear_cookie());
+     }
+-    return http_code("404 Not Found", wrap("Not found", user, unread, "<div class=\"card\"><p>Not found.</p></div>"));
++    return http_code("404 Not Found", wrap("Not found", user, unread, "<div class=\"card\"><h1>Not found</h1><p>That page is not here.</p></div>"));
+ }
+ }
+ int main() {
+@@ -5713,6 +5823,15 @@ int main() {
+             resp = http_code("500 Internal Server Error",
+                 page_wrap("Error", nav("",0), "<div class=\"card\"><p>Could not save. Try again.</p></div>"));
+         }
++        {
++            auto le = req.find("\r\n");
++            std::string meth;
++            if (le != std::string::npos) { std::istringstream is(req.substr(0, le)); is >> meth; }
++            if (meth == "HEAD") {
++                auto pos = resp.find("\r\n\r\n");
++                if (pos != std::string::npos) resp.resize(pos + 4);
++            }
++        }
+         send(c,resp.data(),resp.size(),0); close(c);
+     }
+ }

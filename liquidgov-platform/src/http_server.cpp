@@ -3038,7 +3038,7 @@ std::string genesis_body() {
             ticker += "<div>" + html_escape(p) + "</div>";
     std::string solution =
         "<div class=\"row solution-row\" style=\"align-items:flex-start;gap:1rem;flex-wrap:wrap\">"
-        "<div style=\"flex:1;min-width:12rem\">"
+        "<div style=\"flex:1;min-width:12rem;max-width:22rem\">"
         "<p class=\"eyebrow\" style=\"color:var(--accent)\">A legitimate solution to:</p>"
         "<div class=\"ticker-wrap\"><div class=\"ticker-roll\">" + ticker + "</div></div>"
         "</div>"
@@ -3127,7 +3127,7 @@ std::string genesis_body() {
            "liquid, natural-law democracy. Anyone here is a guest or a member of that association.</p>"
            "<hr style=\"border:0;border-top:1px solid var(--rule);margin:1rem 0\">" +
            lawstrip +
-           stats + solution + quotes + inside +
+           solution + quotes + inside +
            "<div class=\"card\"><p>This is not a government, and it does not replace your real one — your "
            "actual city, state, or federal government still governs you exactly as it did before you found "
            "this site. No office seated from these pages carries legal authority over anyone who hasn't "
@@ -3144,7 +3144,8 @@ std::string genesis_body() {
            "<div class=\"card\"><h2>This website is the door</h2><p>Feed, friends, mail, and communities live here. "
            "Voting weight, offices, land, and judgments live in a separate governance kernel. "
            "A platform account is not a CitizenId. Combined verification for civic acts is not live.</p></div>"
-           "</div>";
+           "</div>" +
+           stats;
 }
 
 // A real dashboard for a returning user, in the spirit of the mobile

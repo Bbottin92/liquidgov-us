@@ -2393,6 +2393,11 @@ std::string jukebox_panel_body(bool standalone) {
         "text-transform:uppercase\">Stations &mdash; drag to reorder, tap to tune in now</p>"
         "<div id=\"jbstationlist\" style=\"display:flex;flex-direction:column;gap:.2rem\"></div>"
         "<select id=\"jbstationadd\" style=\"margin-top:.35rem\"><option value=\"\">Add a station&hellip;</option></select>"
+        "<div class=\"row\" style=\"margin-top:.3rem;align-items:flex-start\">"
+        "<input id=\"jbfollow\" placeholder=\"Follow someone's Juketube (username)\" autocomplete=\"off\" style=\"flex:1\">"
+        "<button type=\"button\" class=\"ghost\" id=\"jbfollowbtn\">Follow</button>"
+        "</div>"
+        "<p class=\"muted\" id=\"jbfollowerr\" style=\"margin:.2rem 0 0\" hidden></p>"
         "<p class=\"muted\" id=\"jbnow\" style=\"margin:.6rem 0 0\">Connecting&hellip;</p>"
         "<p class=\"muted\" id=\"jbupcoming\" style=\"margin:.1rem 0 0\"></p>"
         "<input id=\"jbadd\" placeholder=\"Add to the queue\" autocomplete=\"off\" "
@@ -2429,6 +2434,13 @@ std::string jukebox_script(const std::string& yt_key, bool standalone, const std
         "var stationList=document.getElementById('jbstationlist'),stationAdd=document.getElementById('jbstationadd');"
         "var mode='community',ytPlayer=null,ws=null,muted=false;"
         "var lastCommunityId=null,lastCommunityElapsed=0;"
+        "var pollTimer=null,activePersonalOwner=null;"
+        "var followInput=document.getElementById('jbfollow'),followBtn=document.getElementById('jbfollowbtn'),"
+        "followErr=document.getElementById('jbfollowerr');"
+        // A personal channel's station id is "u:<username>" -- see
+        // jukebox_stations_js. Everything else (site-wide "" or a
+        // community slug) is a live WebSocket station.
+        "function personalOwnerFromId(id){return id&&id.indexOf('u:')===0?id.slice(2):null;}"
         // Stations: which live jukeboxes (the site-wide one, id "", plus any
         // community this account belongs to) are tuned in on *this* widget,
         // in priority order (index 0 = plays). This is the device's own
@@ -2484,8 +2496,13 @@ std::string jukebox_script(const std::string& yt_key, bool standalone, const std
         "onStateChange:function(e){"
         "if(e.data===YT.PlayerState.PLAYING)playPauseBtn.textContent='Pause';"
         "else if(e.data===YT.PlayerState.PAUSED)playPauseBtn.textContent='Play';"
-        "if(e.data===YT.PlayerState.ENDED&&mode==='community'&&ws&&ws.readyState===1)"
-        "ws.send(JSON.stringify({ended:true}));"
+        "if(e.data===YT.PlayerState.ENDED&&mode==='community'){"
+        "if(ws&&ws.readyState===1)ws.send(JSON.stringify({ended:true}));"
+        "else if(activePersonalOwner&&lastCommunityId)fetch("
+        "'/u/'+encodeURIComponent(activePersonalOwner)+'/jukebox/complete',{method:'POST',"
+        "headers:{'Content-Type':'application/x-www-form-urlencoded'},"
+        "body:'video_id='+encodeURIComponent(lastCommunityId)});"
+        "}"
         "}"
         "}});"
         "});"
@@ -2494,9 +2511,53 @@ std::string jukebox_script(const std::string& yt_key, bool standalone, const std
         "if(ws){try{ws.close();}catch(e){}ws=null;}"
         "lastCommunityId=null;"
         "}"
+        "function teardownPoll(){"
+        "if(pollTimer){clearInterval(pollTimer);pollTimer=null;}"
+        "activePersonalOwner=null;lastCommunityId=null;"
+        "}"
+        "function teardownActive(){teardownWs();teardownPoll();}"
         "function teardown(){"
-        "teardownWs();"
+        "teardownActive();"
         "if(ytPlayer){try{ytPlayer.destroy();}catch(e){}ytPlayer=null;}"
+        "}"
+        // Personal channels have no live sync -- a shared but ordinary HTTP
+        // queue (see jukebox_widget), same one the profile page itself
+        // shows at the front. Polling /jukebox/now every few seconds is
+        // the widget's substitute for the WebSocket push the site-wide/
+        // community stations get; good enough since a personal queue only
+        // changes when someone queues or a track ends, not continuously.
+        "function pollPersonal(owner){"
+        "if(pollTimer)return;"
+        "activePersonalOwner=owner;"
+        "function tick(){"
+        "fetch('/u/'+encodeURIComponent(owner)+'/jukebox/now').then(function(r){"
+        "if(!r.ok)throw new Error('unavailable');return r.json();"
+        "}).then(function(data){"
+        "if(activePersonalOwner!==owner)return;"
+        "if(data.now){"
+        "nowEl.textContent='Now playing on '+esc(stationName('u:'+owner))+' \\u2014 queued by '+esc(data.now.queued_by);"
+        "if(data.now.video_id!==lastCommunityId){"
+        "lastCommunityId=data.now.video_id;"
+        "if(mode==='community')ensurePlayer(function(){ytPlayer.loadVideoById(lastCommunityId);});"
+        "}"
+        "}else{"
+        "nowEl.textContent=esc(stationName('u:'+owner))+': nothing playing \\u2014 add a track below.';"
+        "lastCommunityId=null;"
+        "if(mode==='community'&&ytPlayer)ytPlayer.stopVideo();"
+        "}"
+        "upcomingEl.textContent=data.upcoming?(data.upcoming+' track'+(data.upcoming===1?'':'s')+' queued next'):'';"
+        "}).catch(function(){"
+        "if(activePersonalOwner!==owner)return;"
+        "nowEl.textContent=esc(stationName('u:'+owner))+': can\\u2019t reach this channel right now.';"
+        "});"
+        "}"
+        "tick();pollTimer=setInterval(tick,4000);"
+        "}"
+        "function connectActive(id){"
+        "if(id===null){nowEl.textContent='No station selected \\u2014 add one below.';upcomingEl.textContent='';"
+        "if(ytPlayer)ytPlayer.stopVideo();return;}"
+        "var owner=personalOwnerFromId(id);"
+        "if(owner)pollPersonal(owner);else connectWs(id);"
         "}"
         "function connectWs(stationId){"
         "if(ws)return;"
@@ -2534,9 +2595,8 @@ std::string jukebox_script(const std::string& yt_key, bool standalone, const std
         "if(id===currentConnectedStation)return;"
         "currentConnectedStation=id;"
         "if(mode==='community'){"
-        "teardownWs();"
-        "if(id!==null){connectWs(id);}"
-        "else{nowEl.textContent='No station selected \\u2014 add one below.';upcomingEl.textContent='';if(ytPlayer)ytPlayer.stopVideo();}"
+        "teardownActive();"
+        "connectActive(id);"
         "}"
         "}"
         "function renderStations(){"
@@ -2561,6 +2621,8 @@ std::string jukebox_script(const std::string& yt_key, bool standalone, const std
         "enabledOrder=enabledOrder.filter(function(x){return x!==id;});"
         "if(tempOverride===id)tempOverride=null;"
         "onStationsChanged(true);"
+        "var removedOwner=personalOwnerFromId(id);"
+        "if(removedOwner)fetch('/u/'+encodeURIComponent(removedOwner)+'/jukebox/unsubscribe',{method:'POST'});"
         "});"
         "row.appendChild(handle);row.appendChild(name);row.appendChild(remove);"
         "stationList.appendChild(row);"
@@ -2582,6 +2644,32 @@ std::string jukebox_script(const std::string& yt_key, bool standalone, const std
         "if(id==='__placeholder__')return;"
         "if(enabledOrder.indexOf(id)===-1){enabledOrder.push(id);onStationsChanged(true);}"
         "});"
+        // Following someone's personal Juketube is a real, server-recorded
+        // subscription (not just this device's local station list) so the
+        // owner can see who's tuned in -- see FileStore::subscribe_jukebox.
+        // Unlike the fixed dropdown above, any username can be typed here.
+        "function doFollow(){"
+        "var name=followInput.value.trim();"
+        "followErr.hidden=true;"
+        "if(!name)return;"
+        "followBtn.disabled=true;"
+        "fetch('/u/'+encodeURIComponent(name)+'/jukebox/subscribe',{method:'POST'}).then(function(r){"
+        "followBtn.disabled=false;"
+        "if(!r.ok){"
+        "followErr.textContent=r.status===404?'No one by that name.':'Couldn\\u2019t follow that channel.';"
+        "followErr.hidden=false;return;"
+        "}"
+        "var id='u:'+name;"
+        "if(!STATIONS_AVAILABLE.some(function(s){return s.id===id;}))"
+        "STATIONS_AVAILABLE.push({id:id,name:name+'\\u2019s Juketube'});"
+        "followInput.value='';"
+        "if(enabledOrder.indexOf(id)===-1){enabledOrder.push(id);onStationsChanged(true);}"
+        "}).catch(function(){"
+        "followBtn.disabled=false;followErr.textContent='Couldn\\u2019t reach the server.';followErr.hidden=false;"
+        "});"
+        "}"
+        "followBtn.addEventListener('click',doFollow);"
+        "followInput.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();doFollow();}});"
         // Pointer-based reorder (not native HTML5 drag, which doesn't work
         // on touch): drag the handle, the row under the pointer's midpoint
         // is where it lands, dropped position becomes the new saved order.
@@ -2627,9 +2715,9 @@ std::string jukebox_script(const std::string& yt_key, bool standalone, const std
         "communityUi.hidden=(m!=='community');searchUi.hidden=(m!=='search');"
         "if(m==='community'){"
         "var id=activeStationId();"
-        "if(id!==currentConnectedStation||!ws){"
-        "currentConnectedStation=id;teardownWs();"
-        "if(id!==null)connectWs(id);"
+        "if(id!==currentConnectedStation||(!ws&&!pollTimer)){"
+        "currentConnectedStation=id;teardownActive();"
+        "connectActive(id);"
         "}"
         "if(lastCommunityId)ensurePlayer(function(){"
         "ytPlayer.loadVideoById({videoId:lastCommunityId,startSeconds:lastCommunityElapsed});"
@@ -2673,7 +2761,11 @@ std::string jukebox_script(const std::string& yt_key, bool standalone, const std
         "});"
         "}"
         "attachLiveSearch(addInput,addResults,function(url){"
-        "if(ws&&ws.readyState===1)ws.send(JSON.stringify({add:url}));"
+        "if(activePersonalOwner){"
+        "fetch('/u/'+encodeURIComponent(activePersonalOwner)+'/jukebox/add',{method:'POST',"
+        "headers:{'Content-Type':'application/x-www-form-urlencoded'},"
+        "body:'url='+encodeURIComponent(url)});"
+        "}else if(ws&&ws.readyState===1)ws.send(JSON.stringify({add:url}));"
         "});"
         "attachLiveSearch(searchInput,searchResults,function(url){"
         "var m=url.match(/[?&]v=([A-Za-z0-9_-]{11})/)||url.match(/youtu\\.be\\/([A-Za-z0-9_-]{11})/);"
@@ -2686,7 +2778,7 @@ std::string jukebox_script(const std::string& yt_key, bool standalone, const std
         "toggle.addEventListener('click',function(){"
         "panel.hidden=!panel.hidden;"
         "if(!panel.hidden){ensurePlayer(function(){});"
-        "if(mode==='community'&&!ws){currentConnectedStation=activeStationId();connectWs(currentConnectedStation);}"
+        "if(mode==='community'&&!ws&&!pollTimer){currentConnectedStation=activeStationId();connectActive(currentConnectedStation);}"
         "}"
         "});"
         // Closing the panel is a minimize, not a stop: audio keeps playing
@@ -2745,7 +2837,7 @@ std::string jukebox_script(const std::string& yt_key, bool standalone, const std
         "}else{"
         "document.getElementById('jbclose').addEventListener('click',function(){window.close();});"
         "ensurePlayer(function(){});"
-        "currentConnectedStation=activeStationId();connectWs(currentConnectedStation);"
+        "currentConnectedStation=activeStationId();connectActive(currentConnectedStation);"
         "var floatBtn=document.getElementById('jbfloat');"
         "if('documentPictureInPicture' in window){"
         "floatBtn.hidden=false;"
@@ -2816,6 +2908,15 @@ std::string jukebox_stations_js(const std::string& user) {
     if (!user.empty()) {
         for (const auto& c : g_store.communities_of(user)) {
             os << ",{id:" << js_string_literal(c.slug) << ",name:" << js_string_literal(c.name) << "}";
+        }
+        // Personal channels this account has already subscribed to (see
+        // FileStore::subscribe_jukebox) -- embedded here so a returning
+        // visit shows the right name in the station list without the
+        // widget needing to ask the server about each id one at a time.
+        // Anyone can still *add* a new personal channel from the widget by
+        // typing a username, which is what actually calls /subscribe.
+        for (const auto& owner : g_store.jukebox_subscriptions_of(user)) {
+            os << ",{id:" << js_string_literal("u:" + owner) << ",name:" << js_string_literal(owner + "\xE2\x80\x99s Juketube") << "}";
         }
     }
     os << "]";
@@ -2946,7 +3047,12 @@ std::string jukebox_widget(const std::string& owner, bool owner_view, const std:
     const char* policy_badge = owner_prefs.jukebox_policy==JukeboxPolicy::Anyone ? "anyone may queue"
         : owner_prefs.jukebox_policy==JukeboxPolicy::Friends ? "friends may queue" : "owner curated";
     std::string html = "<div class=\"card jukebox\"><h2>Jukebox</h2>"
-                        "<p class=\"muted eyebrow\">"+std::string(policy_badge)+"</p>";
+                        "<p class=\"muted eyebrow\">"+std::string(policy_badge);
+    if (owner_view) {
+        const auto n = g_store.jukebox_subscriber_count(owner);
+        html += " &middot; "+std::to_string(n)+(n==1?" subscriber":" subscribers");
+    }
+    html += "</p>";
     if (qs.count("jerr")) {
         const std::string& e = qs.at("jerr");
         if (e=="url") html += "<p class=\"warn\">That link wasn't recognized as a YouTube video.</p>";
@@ -3015,16 +3121,19 @@ std::string jukebox_widget(const std::string& owner, bool owner_view, const std:
     }
 
     if (owner_view) {
-        html += jukebox_add_form("/me/jukebox/add", "Visitors listen; navigating away stops playback.");
-        // Who-can-queue is an access-control setting, not profile content --
-        // moved to Settings > Privacy (Brandon: "its not appropriate" on the
-        // profile page). The eyebrow badge above (policy_badge) still shows
-        // the current policy here, read-only, same as everything else on
-        // this card.
-        html += "<p class=\"muted\">Who can queue here is set in "
-                "<a href=\"/settings\">Settings</a>.</p>";
+        // Only true of this in-page embed: a visitor who followed this
+        // channel in their own jukebox widget instead (see jukebox_script's
+        // Follow button, /jukebox/subscribe) keeps listening as they browse
+        // elsewhere -- the widget polls /jukebox/now independently of this
+        // page. Who-can-queue is an access-control setting, not profile
+        // content -- moved to Settings > Privacy (Brandon: "its not
+        // appropriate" on the profile page); the eyebrow badge above still
+        // shows the current policy here, read-only.
+        html += jukebox_add_form("/me/jukebox/add",
+            "Visitors listen here as long as they stay on this page -- following it in the jukebox widget keeps it playing as they browse.");
     } else if (guest_can_add) {
-        html += jukebox_add_form("/u/"+owner+"/jukebox/add", "One request at a time. It plays once, then it's gone.");
+        html += jukebox_add_form("/u/"+owner+"/jukebox/add",
+            "One request at a time. It plays once, then it's gone. Follow this channel in the jukebox widget to keep listening as you browse elsewhere.");
     } else if (is_guest && has_pending) {
         html += "<p class=\"muted\">You already have a track queued here.</p>";
     } else if (is_guest && !blocked && owner_prefs.jukebox_policy == JukeboxPolicy::Friends) {
@@ -4162,6 +4271,41 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         }
         return http_raw("200 OK", "text/html; charset=utf-8", body);
     }
+    // Polled by the floating widget every few seconds while a personal
+    // channel is the active station (see pollPersonal in jukebox_script) --
+    // the widget's substitute for the WebSocket push the site-wide/
+    // community stations get, since a personal jukebox is an ordinary HTTP
+    // queue with no live sync (jukebox_widget's own comment). Shape matches
+    // the community WS snapshot exactly so the client can share one handler.
+    // Must come before the generic GET /u/<username> handler just below --
+    // that one only expects a bare username after "/u/" and would otherwise
+    // 404 this as an invalid username before this more specific route ever
+    // gets a look (caught live: fetching this returned the generic
+    // "Not found" page instead of JSON).
+    if(method=="GET"&&path.rfind("/u/",0)==0&&path.size()>15&&
+       path.compare(path.size()-12,12,"/jukebox/now")==0) {
+        const std::string who = path.substr(3, path.size()-3-12);
+        if (!valid_username(who)) return http_code("404 Not Found", "");
+        auto found_now = g_store.find_by_username(who);
+        if (!found_now) return http_code("404 Not Found", "");
+        if (acc && g_store.is_blocked(who, user)) return http_code("404 Not Found", "");
+        auto target_prefs = g_store.prefs_of(who);
+        const bool is_owner = acc && user == who;
+        const bool is_friend = acc && !is_owner && g_store.are_friends(user, who);
+        if (!visible_to(target_prefs.profile_visibility, is_owner, acc.has_value(), is_friend))
+            return http_code("404 Not Found", "");
+        auto tracks = g_store.jukebox_of(who);
+        std::ostringstream os;
+        os << "{";
+        if (!tracks.empty()) {
+            const auto& t = tracks.front();
+            os << "\"now\":{\"video_id\":\"" << t.video_id << "\",\"queued_by\":\"" << t.queued_by << "\"}";
+        } else {
+            os << "\"now\":null";
+        }
+        os << ",\"upcoming\":" << (tracks.empty() ? 0 : tracks.size() - 1) << "}";
+        return http_raw("200 OK", "application/json", os.str());
+    }
     if(method=="GET"&&path.rfind("/u/",0)==0) {
         const std::string who = path.substr(3);
         if (!valid_username(who))
@@ -4959,6 +5103,35 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         const std::string who = path.substr(3, path.size()-3-17);
         if(!acc) return http_redir("/login");
         if (valid_username(who)) g_store.complete_jukebox_track(who, parse_form(body)["video_id"]);
+        return http_ok("ok");
+    }
+    // A signed-in viewer follows someone's personal jukebox as a "channel"
+    // in their own floating widget (jukebox_script's Follow button). This
+    // is a real, server-recorded subscription -- not just this device's
+    // own station list -- specifically so the owner can see how many
+    // people are tuned in (jukebox_widget's subscriber count, owner_view
+    // only). Listening itself was already open to anyone who could view
+    // the profile; the same profile_visibility/block gates as the page
+    // itself apply here so this can't be used to probe a private profile.
+    if(method=="POST"&&path.rfind("/u/",0)==0&&path.size()>21&&
+       path.compare(path.size()-18,18,"/jukebox/subscribe")==0) {
+        const std::string who = path.substr(3, path.size()-3-18);
+        if(!acc) return http_code("401 Unauthorized", "");
+        if (!valid_username(who) || who == user) return http_code("404 Not Found", "");
+        auto found = g_store.find_by_username(who);
+        if (!found) return http_code("404 Not Found", "");
+        if (g_store.is_blocked(who, user)) return http_code("403 Forbidden", "");
+        auto target_prefs = g_store.prefs_of(who);
+        if (!visible_to(target_prefs.profile_visibility, false, true, g_store.are_friends(user, who)))
+            return http_code("403 Forbidden", "");
+        g_store.subscribe_jukebox(user, who);
+        return http_ok("ok");
+    }
+    if(method=="POST"&&path.rfind("/u/",0)==0&&path.size()>23&&
+       path.compare(path.size()-20,20,"/jukebox/unsubscribe")==0) {
+        const std::string who = path.substr(3, path.size()-3-20);
+        if(!acc) return http_code("401 Unauthorized", "");
+        if (valid_username(who)) g_store.unsubscribe_jukebox(user, who);
         return http_ok("ok");
     }
     if(method=="POST"&&path=="/feed") {

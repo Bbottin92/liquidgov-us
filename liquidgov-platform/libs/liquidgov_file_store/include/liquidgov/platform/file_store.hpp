@@ -55,6 +55,9 @@
 //          a raw URL. queued_by is who requested it -- absent (older lines) means the owner.
 //   jh     <owner_username> <video_id> <queued_by> <played_at>  // one past jukebox play,
 //          most-recent last; trimmed to kJukeboxHistoryCap on write
+//   jsub   <subscriber_username> <owner_username>  // subscriber has added owner's personal
+//          jukebox as a channel in their widget -- existence is the only state (no per-line
+//          metadata), same shape as an f (friend) pair but directed, not mutual
 //   gcn    <next_conversation_id>
 //   gmsn   <next_message_id>
 //   gc     <id> <is_group 0|1> <created_at>          // messenger.hpp Conversation, no roster
@@ -466,6 +469,20 @@ public:
     void complete_jukebox_track(const std::string& owner, const std::string& video_id);
     std::vector<JukeboxHistoryEntry> jukebox_history_of(const std::string& owner) const;
 
+    // A personal jukebox as a channel in the floating widget's station list
+    // (see jukebox_script in http_server.cpp): subscribing is what makes the
+    // widget's local "add a station" list mean something server-side, since
+    // otherwise it's just this device's own localStorage. Returns false on
+    // no-op (already in that state, or subscriber == owner). Listening
+    // itself was already open to anyone who can view the profile -- this
+    // only adds "the owner can see who's tuned in" and a durable list this
+    // account can find itself again from another device.
+    bool subscribe_jukebox(const std::string& subscriber, const std::string& owner);
+    bool unsubscribe_jukebox(const std::string& subscriber, const std::string& owner);
+    bool is_subscribed_jukebox(const std::string& subscriber, const std::string& owner) const;
+    std::vector<std::string> jukebox_subscriptions_of(const std::string& subscriber) const;
+    std::size_t jukebox_subscriber_count(const std::string& owner) const;
+
     const std::string& path() const { return path_; }
 
 private:
@@ -507,6 +524,7 @@ private:
     std::map<AccountId, Avatar> avatars_;
     std::map<std::string, std::vector<JukeboxTrack>> jukebox_;
     std::map<std::string, std::vector<JukeboxHistoryEntry>> jukebox_history_;
+    std::set<std::pair<std::string, std::string>> jukebox_subs_; // (subscriber, owner)
     ConversationId next_conv_id_ = 1;
     MessageId next_message_id_ = 1;
     std::map<ConversationId, Conversation> conversations_;

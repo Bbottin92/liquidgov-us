@@ -988,6 +988,12 @@ bool FileStore::delete_account(AccountId id) {
         keep_blk.insert(p);
     }
     blocks_.swap(keep_blk);
+    std::set<std::pair<std::string, std::string>> keep_jsub;
+    for (const auto& p : jukebox_subs_) {
+        if (p.first == name || p.second == name) continue;
+        keep_jsub.insert(p);
+    }
+    jukebox_subs_.swap(keep_jsub);
     prefs_.erase(name);
     for (auto& [slug, set] : members_) set.erase(name);
     std::vector<Post> keep_posts;
@@ -1064,6 +1070,7 @@ void FileStore::load() {
     avatars_.clear();
     jukebox_.clear();
     jukebox_history_.clear();
+    jukebox_subs_.clear();
     conversations_.clear();
     messages_.clear();
 
@@ -1351,6 +1358,9 @@ void FileStore::load() {
                 throw std::runtime_error("LGP1: bad jh video_id");
             }
             jukebox_history_[h.owner].push_back(h);
+        } else if (tag == "jsub") {
+            if (f.size() != 3) throw std::runtime_error("LGP1: bad jsub record");
+            jukebox_subs_.insert({pct_decode(f[1]), pct_decode(f[2])});
         } else if (tag == "gcn") {
             if (f.size() != 2) throw std::runtime_error("LGP1: bad gcn record");
             next_conv_id_ = parse_u64(f[1], "next_conversation_id");
@@ -1571,6 +1581,10 @@ void FileStore::flush() {
                  << pct_encode(h.queued_by) << "\t" << h.played_at << "\n";
         }
     }
+    for (const auto& p : jukebox_subs_) {
+        if (!by_username_.count(p.first) || !by_username_.count(p.second)) continue;
+        body << "jsub\t" << pct_encode(p.first) << "\t" << pct_encode(p.second) << "\n";
+    }
     // Conversations/messages are never pruned when an account is deleted —
     // same "keep the row, relabel at render time" choice as mail_/posts_
     // above. The numeric sender/member id just stops resolving through
@@ -1760,6 +1774,40 @@ std::vector<JukeboxHistoryEntry> FileStore::jukebox_history_of(const std::string
     auto it = jukebox_history_.find(owner);
     if (it == jukebox_history_.end()) return {};
     return it->second;
+}
+
+bool FileStore::subscribe_jukebox(const std::string& subscriber, const std::string& owner) {
+    if (subscriber.empty() || owner.empty() || subscriber == owner) return false;
+    auto result = jukebox_subs_.insert({subscriber, owner});
+    if (!result.second) return false;
+    flush();
+    return true;
+}
+
+bool FileStore::unsubscribe_jukebox(const std::string& subscriber, const std::string& owner) {
+    if (jukebox_subs_.erase({subscriber, owner}) == 0) return false;
+    flush();
+    return true;
+}
+
+bool FileStore::is_subscribed_jukebox(const std::string& subscriber, const std::string& owner) const {
+    return jukebox_subs_.count({subscriber, owner}) > 0;
+}
+
+std::vector<std::string> FileStore::jukebox_subscriptions_of(const std::string& subscriber) const {
+    std::vector<std::string> out;
+    for (const auto& p : jukebox_subs_) {
+        if (p.first == subscriber) out.push_back(p.second);
+    }
+    return out;
+}
+
+std::size_t FileStore::jukebox_subscriber_count(const std::string& owner) const {
+    std::size_t n = 0;
+    for (const auto& p : jukebox_subs_) {
+        if (p.second == owner) ++n;
+    }
+    return n;
 }
 
 std::vector<Avatar> FileStore::all_avatars() const {

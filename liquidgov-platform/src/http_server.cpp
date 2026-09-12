@@ -423,24 +423,69 @@ std::string css() {
         "min-width:1.1rem;height:1.1rem;padding:0 .25rem}"
         ".navavatar{cursor:pointer;display:inline-flex;flex-shrink:0}"
         ".navavatar:hover .portrait{filter:brightness(1.08)}"
+        // Shared chrome for every header dropdown -- the account menu, and
+        // the Notifications/Messages widgets below. Anchored to the
+        // header's own right edge (not each icon's own position: header.top
+        // is the nearest positioned ancestor since .topinner itself isn't
+        // positioned, so that's what top:100% actually measures from) --
+        // simpler than computing a per-icon offset, and it's a common
+        // enough pattern (most sites' notification dropdowns anchor to the
+        // header edge, not precisely under the bell) that it reads as
+        // intentional rather than misaligned.
+        // Above #medraftbar's sticky z-index:8 (the /me "Editing /me" bar)
+        // -- caught live: a dropdown's top rows rendered underneath that
+        // bar instead of over it until this beat it.
+        ".dropdown-panel{position:absolute;top:100%;right:1.1rem;left:auto;background:var(--parchment);"
+        "border:1px solid var(--rule);border-radius:var(--rmd);box-shadow:0 6px 20px rgba(0,0,0,.18);"
+        "z-index:9;max-height:calc(100vh - 60px);overflow-y:auto}"
+        // The two JS-driven panels (below) toggle visibility via the
+        // `hidden` attribute rather than the #navc checkbox trick, since
+        // opening either one also has to fire a fetch -- but a plain class
+        // selector and the [hidden] attribute selector have equal
+        // specificity, so without this, this stylesheet's own
+        // .notifpanel/.mailpanel{display:flex} would beat the browser's
+        // default [hidden]{display:none} (author styles always beat UA
+        // defaults) and the panel would show even while hidden.
+        ".dropdown-panel[hidden]{display:none}"
         // Same #navc:checked~X sibling-toggle trick the mobile hamburger
         // already uses (see nav a{} below and the max-width:720px block),
         // just aimed at the avatar instead and not gated to narrow
         // viewports -- this panel is always collapsed until you click your
         // own picture, at any screen size.
-        "nav.accountmenu{display:none;position:absolute;top:100%;right:1.1rem;left:auto;"
-        "flex-direction:column;flex-wrap:nowrap;align-items:stretch;gap:0;background:var(--parchment);"
-        "border:1px solid var(--rule);border-radius:var(--rmd);box-shadow:0 6px 20px rgba(0,0,0,.18);"
-        // Above #medraftbar's sticky z-index:8 (the /me "Editing /me" bar)
-        // -- caught live: the dropdown's own top rows (name, Settings, the
-        // divider) were rendering underneath that bar instead of over it.
-        "min-width:13rem;max-height:calc(100vh - 60px);overflow-y:auto;padding:.5rem 0;z-index:9}"
+        "nav.accountmenu{display:none;flex-direction:column;flex-wrap:nowrap;align-items:stretch;gap:0;"
+        "min-width:13rem;padding:.5rem 0}"
         "#navc:checked~nav.accountmenu{display:flex}"
         ".accountmenu a{color:var(--ink);text-decoration:none;font-size:.92rem;padding:.55rem 1.1rem;"
         "min-height:40px;display:flex;align-items:center}"
         ".accountmenu a:hover{background:var(--panel)}"
         ".accountmenu a.menu-name{font-family:var(--display);font-weight:600;font-size:1.05rem;padding-bottom:.2rem}"
         ".accountmenu hr{border:0;border-top:1px solid var(--rule);margin:.4rem 0}"
+        ".notifpanel,.mailpanel{display:flex;flex-direction:column;width:21rem;max-width:88vw}"
+        ".panelhead{font-family:var(--display);font-weight:600;font-size:.95rem;"
+        "padding:.7rem 1.1rem .5rem;border-bottom:1px solid var(--rule);flex-shrink:0}"
+        ".mailsection{padding:.6rem 1.1rem}"
+        ".mailfriends li{padding:0}"
+        ".mailfriends a{display:flex;align-items:center;gap:.5rem;padding:.4rem 0;"
+        "color:var(--ink);text-decoration:none}"
+        ".mailfriends a:hover{color:var(--accent)}"
+        ".mailnewgroup{display:flex;gap:.4rem;margin-top:.5rem}"
+        ".mailnewgroup input{flex:1}"
+        // The instant-messenger part: sent bubbles lean right and pick up
+        // the accent color, received ones lean left in a neutral panel --
+        // the one visual cue that actually makes a flat list of divs read
+        // as a chat instead of a log.
+        ".mailthreadhead{display:flex;align-items:center;gap:.5rem;padding:.6rem 1.1rem;"
+        "border-bottom:1px solid var(--rule)}"
+        ".mailback{color:var(--ink);text-decoration:none;font-size:1.1rem}"
+        ".msglist{padding:.7rem 1.1rem;display:flex;flex-direction:column;gap:.5rem;max-height:18rem;overflow-y:auto}"
+        ".msg{display:flex}.msg.mine{justify-content:flex-end}.msg.theirs{justify-content:flex-start}"
+        ".msg .bubble{max-width:80%;padding:.5rem .7rem;border-radius:var(--rmd);font-size:.88rem;"
+        "line-height:1.35;white-space:pre-wrap;word-break:break-word}"
+        ".msg.mine .bubble{background:var(--accent);color:var(--paper);border-bottom-right-radius:.2rem}"
+        ".msg.theirs .bubble{background:var(--panel);border:1px solid var(--rule);border-bottom-left-radius:.2rem}"
+        ".bubtime{display:block;margin-top:.2rem;font-size:.65rem;opacity:.7}"
+        ".mailcomposer{padding:.6rem 1.1rem;border-top:1px solid var(--rule)}"
+        ".mailattach{max-width:6.5rem;font-size:.7rem;padding:.3rem}"
         ".badge{display:inline-flex;align-items:center;justify-content:center;min-width:1.3rem;height:1.3rem;"
         "padding:0 .35rem;border-radius:999px;background:var(--accent);color:var(--paper);font-size:.7rem;"
         "margin-left:.25rem;font-variant-numeric:tabular-nums}"
@@ -766,6 +811,7 @@ std::string page_wrap(const std::string& title, const std::string& navhtml, cons
 }
 
 std::string portrait_tag(const std::string& username, const char* cls); // defined below, needed here for nav()
+std::string mail_widget_script(); // defined below, needed here for nav()
 
 std::string nav(const std::string& user, int unread) {
     if (user.empty()) {
@@ -798,12 +844,25 @@ std::string nav(const std::string& user, int unread) {
         "<svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" "
         "stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\">"
         "<rect x=\"2\" y=\"4\" width=\"20\" height=\"16\" rx=\"2\"/><path d=\"m22 6-10 7L2 6\"/></svg>";
-    std::string bell = std::string("<a class=\"iconbtn\" href=\"/notices\" aria-label=\"Notifications\" title=\"Notifications\">")+bell_svg;
+    // Buttons, not links: opening either one has to fire a fetch for the
+    // panel's content (see mail_widget_script below), not navigate to
+    // /notices or /mail -- those full pages still exist (direct links,
+    // bookmarks, JS-off fallback) but are no longer how the header itself
+    // gets you there.
+    std::string bell = std::string("<button type=\"button\" class=\"iconbtn\" id=\"notiftoggle\" "
+        "aria-label=\"Notifications\" title=\"Notifications\">")+bell_svg;
     if (other_unread > 0) bell += "<span class=\"badge\">"+std::to_string(other_unread)+"</span>";
-    bell += "</a>";
-    std::string mail = std::string("<a class=\"iconbtn\" href=\"/mail\" aria-label=\"Messages\" title=\"Messages\">")+mail_svg;
+    bell += "</button><div class=\"dropdown-panel notifpanel\" id=\"notifpanel\" hidden>"
+            "<div class=\"panelhead\">Notifications</div>"
+            "<div id=\"notifroot\"><p class=\"muted\" style=\"padding:.7rem 1.1rem\">Loading&hellip;</p></div>"
+            "</div>";
+    std::string mail = std::string("<button type=\"button\" class=\"iconbtn\" id=\"mailtoggle\" "
+        "aria-label=\"Messages\" title=\"Messages\">")+mail_svg;
     if (msg_unread > 0) mail += "<span class=\"badge\">"+std::to_string(msg_unread)+"</span>";
-    mail += "</a>";
+    mail += "</button><div class=\"dropdown-panel mailpanel\" id=\"mailpanel\" hidden>"
+            "<div class=\"panelhead\">Messages</div>"
+            "<div id=\"mailroot\"><p class=\"muted\" style=\"padding:.7rem 1.1rem\">Loading&hellip;</p></div>"
+            "</div>";
     // Same #navc checkbox-toggle trick the mobile hamburger already uses
     // (see the CSS), just triggered by the avatar instead of a "Menu"
     // label, and not gated to narrow viewports -- clicking your own
@@ -814,7 +873,7 @@ std::string nav(const std::string& user, int unread) {
     // (/u/<username>), not the edit screen -- "Edit profile" on that
     // public page and the "Your profile" link on the home dashboard are
     // the way to actually reach /me.
-    std::string menu = "<nav class=\"accountmenu\">"
+    std::string menu = "<nav class=\"dropdown-panel accountmenu\">"
         "<a class=\"menu-name\" href=\"/u/"+html_escape(user)+"\">"+html_escape(user)+"</a>"
         "<a href=\"/settings\">Settings</a>"
         "<hr>"
@@ -825,7 +884,7 @@ std::string nav(const std::string& user, int unread) {
         "<a href=\"/world\">World</a>"
         "<a href=\"/logout\">Log out</a>"
         "</nav>";
-    return bell+mail+avatar+menu;
+    return bell+mail+avatar+menu+mail_widget_script();
 }
 
 std::string url_decode(const std::string& s) {
@@ -1216,6 +1275,188 @@ std::string portrait_tag(const std::string& username, const char* cls) {
     // same picture.
     return std::string("<img class=\"portrait ")+cls+"\" src=\"/portrait/"+html_escape(username)+
            "?v="+html_escape(av->blob_id)+"\" alt=\"\" width=\"96\" height=\"96\">";
+}
+
+// Shared by /notices (full page) and GET /notices/panel (the fragment the
+// header's notifications widget fetches on open) -- one implementation,
+// two callers, so the widget and the page can never drift apart.
+std::string notices_list_html(const std::string& user) {
+    std::string html = "<div class=\"card\">";
+    auto notes = g_store.notices_for(user, 50);
+    if (notes.empty()) html += "<p class=\"empty\">None.</p>";
+    for (auto& n : notes) {
+        std::string line;
+        if (n.type=="friend_request") line = html_escape(n.from)+" sent a friend request.";
+        else if (n.type=="friend_accept") line = html_escape(n.from)+" accepted your request.";
+        else if (n.type=="message") line = html_escape(n.from)+" sent mail.";
+        else if (n.type=="group_invite") line = html_escape(n.from)+" added you to /"+html_escape(n.extra)+".";
+        else line = html_escape(n.type);
+        html += "<div class=\"person\"><div>"+line+"<div class=\"muted\">"+html_escape(fmt_time(n.ts))+"</div></div></div>";
+    }
+    html += "<p class=\"muted\">There is no notice for a declined friend request.</p></div>";
+    return html;
+}
+
+// The friends section of the mail widget/page: real hrefs (/mail?with=X)
+// so it still works with JS off or as a direct link, plus a data-with the
+// widget's own delegated click handler uses to fetch the thread in place
+// instead of navigating -- same progressive-enhancement shape as the
+// site's own soft-navigation (see jukebox_script's click interceptor).
+std::string mail_friends_list_html(const std::string& user) {
+    std::string html = "<div class=\"mailsection\"><p class=\"eyebrow\">Direct</p><ul class=\"plain mailfriends\">";
+    auto pals = g_store.friends_of(user);
+    if (pals.empty()) html += "<li class=\"muted\">Friend someone first.</li>";
+    for (auto& n : pals) {
+        html += "<li><a class=\"mailwith\" data-with=\""+html_escape(n)+"\" href=\"/mail?with="+html_escape(n)+"\">"+
+                portrait_tag(n, "sm")+"<span>"+html_escape(n)+"</span></a></li>";
+    }
+    html += "</ul></div>";
+    return html;
+}
+
+// Groups stay real, full-page links (not fetched into the panel) -- a
+// group thread carries member management (invite/accept/leave) the
+// compact widget was never meant to reimplement; only 1:1 messaging gets
+// the in-panel instant-messenger treatment. acc_id is the caller's own,
+// needed to tell an invited-but-not-yet-accepted membership apart.
+std::string mail_groups_list_html(const std::string& user, AccountId acc_id) {
+    (void)user;
+    std::string html = "<div class=\"mailsection\"><p class=\"eyebrow\">Groups</p><ul class=\"plain\">";
+    auto groups = g_store.conversations_for(acc_id);
+    std::string list;
+    for (auto& conv : groups) {
+        if (!conv.is_group) continue;
+        bool pending = false;
+        for (auto& m : conv.members) if (m.account == acc_id) pending = m.state == MemberState::Pending;
+        list += "<li><a href=\"/mail/g/"+std::to_string(conv.id)+"\">"+html_escape(group_label(conv, acc_id))+"</a>"+
+                (pending ? " <span class=\"muted\">invited</span>" : "")+"</li>";
+    }
+    html += (list.empty() ? "<li class=\"muted\">No groups yet.</li>" : list) + "</ul>"
+            "<form method=\"POST\" action=\"/mail/group/new\" class=\"mailnewgroup\">"
+            "<input name=\"who\" placeholder=\"Start a group \xE2\x80\x94 usernames\">"
+            "<button type=\"submit\">Create</button></form></div>";
+    return html;
+}
+
+// The open thread: message bubbles (mine/theirs) plus the composer. Shared
+// by the full /mail page and GET /mail/panel?with=<friend> -- same
+// friends-only/not-blocked gate either way, empty string means "not
+// viewable" (unknown other, not actually friends, or blocked either
+// direction), which the caller renders as simply no thread shown.
+std::string mail_thread_html(const std::string& user, const std::string& other,
+                              const std::map<std::string,std::string>& qs) {
+    if (other.empty() || !g_store.are_friends(user, other) || g_store.is_blocked(user, other)) return "";
+    std::string html = "<div class=\"mailthread\">"
+        "<div class=\"mailthreadhead\"><a class=\"mailback\" data-with=\"\" href=\"/mail\" aria-label=\"Back to messages\">\xE2\x86\x90</a>"
+        "<strong>"+html_escape(other)+"</strong></div>";
+    if (qs.count("err")) {
+        const std::string& e = qs.at("err");
+        if (e=="type") html += "<p class=\"warn\">That attachment isn't a usable type. Allowed: PNG/JPEG/GIF, PDF, plain text, macro-free Word/Excel/PowerPoint. No SVG, no archives.</p>";
+        else if (e=="large") html += "<p class=\"warn\">That attachment is too large.</p>";
+        else if (e=="active") html += "<p class=\"warn\">That document was refused: it declares a macro, embedded object, or OLE content.</p>";
+        else if (e=="scan") html += "<p class=\"warn\">That attachment could not be stored.</p>";
+    }
+    auto thread = g_store.mail_with(user, other);
+    html += "<div class=\"msglist\" id=\"msglist\">";
+    if (thread.empty()) html += "<p class=\"empty\">No messages yet.</p>";
+    for (auto& m : thread) {
+        const bool mine = m.from == user;
+        html += "<div class=\"msg "+std::string(mine ? "mine" : "theirs")+"\"><div class=\"bubble\">";
+        if (!m.text.empty()) html += html_escape(m.text);
+        if (m.attachment_blob_id) {
+            html += "<div><a href=\"/mail/attachment/"+html_escape(*m.attachment_blob_id)+"\">Download attachment</a></div>";
+        }
+        html += "<span class=\"bubtime\">"+html_escape(fmt_time(m.ts))+"</span></div></div>";
+    }
+    html += "</div>"
+        "<form method=\"POST\" action=\"/mail\" enctype=\"multipart/form-data\" class=\"mailcomposer\">"
+        "<input type=\"hidden\" name=\"to\" value=\""+html_escape(other)+"\">"
+        "<div class=\"row\" style=\"align-items:center;gap:.4rem;flex-wrap:nowrap\">"
+        "<input name=\"text\" maxlength=\"2000\" placeholder=\"Message\" autocomplete=\"off\" style=\"flex:1;min-width:0\">"
+        "<input type=\"file\" name=\"attachment\" class=\"mailattach\" title=\"Attach a file\" "
+        "accept=\"image/png,image/jpeg,image/gif,application/pdf,text/plain,.docx,.xlsx,.pptx\">"
+        "<button type=\"submit\">Send</button></div></form></div>";
+    return html;
+}
+
+// Drives the Notifications/Messages header widgets: open/close, fetching
+// each panel's fragment (/notices/panel, /mail/panel), switching between
+// the friends list and an open thread inside the mail panel without a
+// real navigation, sending a message via fetch, and polling the open
+// thread every few seconds so it behaves like an actual instant messenger
+// instead of a static page you have to manually refresh.
+//
+// Lives in .topinner as a sibling of <nav class="accountmenu">, same as
+// the buttons and panels it drives -- the site's own soft-navigation (see
+// jukebox_script) only ever replaces the *inside* of that <nav> element,
+// never this script tag or the panels themselves, so this widget's state
+// (an open thread, the poll timer) survives browsing to another page the
+// same way the floating jukebox widget already does.
+std::string mail_widget_script() {
+    return
+        "<script>(function(){"
+        "var notifToggle=document.getElementById('notiftoggle'),notifPanel=document.getElementById('notifpanel'),"
+        "notifRoot=document.getElementById('notifroot');"
+        "var mailToggle=document.getElementById('mailtoggle'),mailPanel=document.getElementById('mailpanel'),"
+        "mailRoot=document.getElementById('mailroot');"
+        "var navc=document.getElementById('navc');"
+        "if(!notifToggle||!mailToggle)return;"
+        "var activeWith=null,mailFetching=false,pollTimer=null;"
+        "function nearBottom(el){return el.scrollHeight-el.scrollTop-el.clientHeight<60;}"
+        "function stopPoll(){if(pollTimer){clearInterval(pollTimer);pollTimer=null;}}"
+        "function hideNotif(){notifPanel.hidden=true;}"
+        "function hideMail(){mailPanel.hidden=true;stopPoll();activeWith=null;}"
+        "function closeMenu(){if(navc)navc.checked=false;}"
+        "function loadMail(withUser,forceScroll){"
+        "if(mailFetching)return;"
+        "mailFetching=true;"
+        "var url='/mail/panel'+(withUser?('?with='+encodeURIComponent(withUser)):'');"
+        "fetch(url).then(function(r){return r.text();}).then(function(html){"
+        "mailFetching=false;"
+        "var list=document.getElementById('msglist');"
+        "var wasNear=list?nearBottom(list):true;"
+        "mailRoot.innerHTML=html;"
+        "activeWith=withUser||null;"
+        "var newList=document.getElementById('msglist');"
+        "if(newList&&(forceScroll||wasNear))newList.scrollTop=newList.scrollHeight;"
+        "if(activeWith&&!pollTimer)pollTimer=setInterval(function(){loadMail(activeWith,false);},3000);"
+        "if(!activeWith)stopPoll();"
+        "}).catch(function(){mailFetching=false;});"
+        "}"
+        "notifToggle.addEventListener('click',function(){"
+        "if(!notifPanel.hidden){hideNotif();return;}"
+        "hideMail();closeMenu();"
+        "notifPanel.hidden=false;"
+        "fetch('/notices/panel').then(function(r){return r.text();}).then(function(html){"
+        "notifRoot.innerHTML=html;"
+        "var b=notifToggle.querySelector('.badge');if(b)b.remove();"
+        "});"
+        "});"
+        "mailToggle.addEventListener('click',function(){"
+        "if(!mailPanel.hidden){hideMail();return;}"
+        "hideNotif();closeMenu();"
+        "mailPanel.hidden=false;"
+        "var b=mailToggle.querySelector('.badge');if(b)b.remove();"
+        "loadMail(null,false);"
+        "});"
+        "if(navc)navc.addEventListener('change',function(){if(navc.checked){hideNotif();hideMail();}});"
+        // Delegated, not per-link: mailRoot's own contents are replaced
+        // wholesale on every load, so listeners bound to specific elements
+        // would be gone after the very first fetch.
+        "mailRoot.addEventListener('click',function(e){"
+        "var a=e.target.closest('a.mailwith,a.mailback');"
+        "if(!a)return;"
+        "e.preventDefault();"
+        "loadMail(a.classList.contains('mailback')?null:a.dataset.with,true);"
+        "});"
+        "mailRoot.addEventListener('submit',function(e){"
+        "var form=e.target.closest('form.mailcomposer');"
+        "if(!form)return;"
+        "e.preventDefault();"
+        "var fd=new FormData(form);"
+        "fetch('/mail',{method:'POST',body:fd}).then(function(){loadMail(activeWith,true);});"
+        "});"
+        "})();</script>";
 }
 
 // Shared drawing-tool engine: freehand brushes (pen, marker, spray, eraser,
@@ -4585,63 +4826,25 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         // Mirrors /notices clearing everything but "message" -- opening
         // Mail is what actually clears the Messages icon's own badge.
         g_store.mark_notices_read_of_type(user, "message");
-        auto other = qs["with"];
-        std::string html = "<h1>Mail</h1><div class=\"card\"><p class=\"muted\">Direct messages are friends-only in this release. "
-            "Open messaging waits on age assurance so a stranger cannot reach a minor. We will not treat a checkbox as age.</p><ul class=\"plain\">";
-        auto pals = g_store.friends_of(user);
-        if (pals.empty()) html += "<li class=\"muted\">Friend someone first.</li>";
-        for (auto& n : pals) html += "<li><a href=\"/mail?with="+html_escape(n)+"\">"+html_escape(n)+"</a></li>";
-        html += "</ul></div>";
-        if (!other.empty() && g_store.are_friends(user, other) && !g_store.is_blocked(user, other)) {
-            html += "<div class=\"card\"><h2>"+html_escape(other)+"</h2>";
-            if (qs["err"]=="type") html += "<p class=\"warn\">That attachment isn't a usable type. Allowed: PNG/JPEG/GIF, PDF, plain text, macro-free Word/Excel/PowerPoint. No SVG, no archives.</p>";
-            else if (qs["err"]=="large") html += "<p class=\"warn\">That attachment is too large.</p>";
-            else if (qs["err"]=="active") html += "<p class=\"warn\">That document was refused: it declares a macro, embedded object, or OLE content.</p>";
-            else if (qs["err"]=="scan") html += "<p class=\"warn\">That attachment could not be stored.</p>";
-            auto thread = g_store.mail_with(user, other);
-            if (thread.empty()) html += "<p class=\"empty\">No messages yet.</p>";
-            for (auto& m : thread) {
-                html += "<div class=\"msg\"><div><strong>"+html_escape(m.from)+"</strong> "
-                        "<span class=\"muted\">"+html_escape(fmt_time(m.ts))+"</span>";
-                if (!m.text.empty()) html += "<p>"+html_escape(m.text)+"</p>";
-                if (m.attachment_blob_id) {
-                    html += "<p><a href=\"/mail/attachment/"+html_escape(*m.attachment_blob_id)+"\">Download attachment</a> "
-                            "<span class=\"muted\">"+html_escape(m.attachment_mime.value_or(""))+"</span></p>";
-                }
-                html += "</div></div>";
-            }
-            html += "<form method=\"POST\" action=\"/mail\" enctype=\"multipart/form-data\">"
-                    "<input type=\"hidden\" name=\"to\" value=\""+html_escape(other)+"\">"
-                    "<label>Message</label><input name=\"text\" maxlength=\"2000\">"
-                    "<label>Attachment (optional)</label>"
-                    "<input type=\"file\" name=\"attachment\" "
-                    "accept=\"image/png,image/jpeg,image/gif,application/pdf,text/plain,.docx,.xlsx,.pptx\">"
-                    "<p class=\"muted\">Scanned, content-sniffed, default-deny. No SVG. No archives.</p>"
-                    "<button>Send</button></form></div>";
-        }
-
-        html += "<div class=\"card\"><h2>Groups</h2>"
-            "<p class=\"muted\">Invite a friend and they join right away. Invite someone you're not "
-            "friends with yet and they get a pending invite to accept before they can post. Adding "
-            "someone into a room that would put a minor with a stranger is refused with a generic "
-            "message — start a new group instead.</p>";
-        auto groups = g_store.conversations_for(acc->id);
-        std::string list;
-        for (auto& conv : groups) {
-            if (!conv.is_group) continue;
-            bool pending = false;
-            for (auto& m : conv.members) if (m.account == acc->id) pending = m.state == MemberState::Pending;
-            list += "<li><a href=\"/mail/g/" + std::to_string(conv.id) + "\">" +
-                    html_escape(group_label(conv, acc->id)) + "</a>" +
-                    (pending ? " <span class=\"muted\">invited</span>" : "") + "</li>";
-        }
-        html += "<ul class=\"plain\">" + (list.empty() ? "<li class=\"muted\">No groups yet.</li>" : list) +
-                "</ul>"
-                "<form method=\"POST\" action=\"/mail/group/new\">"
-                "<label>Start a group — usernames, space or comma separated</label>"
-                "<input name=\"who\" placeholder=\"alice bob carol\">"
-                "<button>Create</button></form></div>";
+        std::string thread = mail_thread_html(user, qs["with"], qs);
+        std::string html = "<h1>Mail</h1><p class=\"muted\">Direct messages are friends-only in this release. "
+            "Open messaging waits on age assurance so a stranger cannot reach a minor. We will not treat a checkbox as age.</p>"
+            "<div class=\"card mailwidget\">"+thread+mail_friends_list_html(user)+"</div>"
+            "<div class=\"card\">"+mail_groups_list_html(user, acc->id)+"</div>";
         return pg("Mail", html);
+    }
+    // Fetched by the header's Messages widget on open, on picking a friend,
+    // after sending, and on its poll interval while a thread is open --
+    // same content the full /mail page renders (same helper functions), as
+    // a bare fragment for innerHTML instead of a full document. Marking
+    // read here too since opening the widget is opening Mail. Thread first
+    // (when one's open) so it's visible without scrolling past the list.
+    if(method=="GET"&&path=="/mail/panel") {
+        if(!acc) return http_code("401 Unauthorized", "");
+        g_store.mark_notices_read_of_type(user, "message");
+        std::string thread = mail_thread_html(user, qs["with"], qs);
+        std::string html = thread+mail_friends_list_html(user)+mail_groups_list_html(user, acc->id);
+        return http_ok(html);
     }
 
     if(method=="GET"&&path.rfind("/mail/attachment/",0)==0) {
@@ -4811,20 +5014,14 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         // unread message vanish from its own badge without the message
         // ever having been opened.
         g_store.mark_notices_read_except_type(user, "message");
-        std::string html = "<h1>Notices</h1><div class=\"card\">";
-        auto notes = g_store.notices_for(user, 50);
-        if (notes.empty()) html += "<p class=\"empty\">None.</p>";
-        for (auto& n : notes) {
-            std::string line;
-            if (n.type=="friend_request") line = html_escape(n.from)+" sent a friend request.";
-            else if (n.type=="friend_accept") line = html_escape(n.from)+" accepted your request.";
-            else if (n.type=="message") line = html_escape(n.from)+" sent mail.";
-            else if (n.type=="group_invite") line = html_escape(n.from)+" added you to /"+html_escape(n.extra)+".";
-            else line = html_escape(n.type);
-            html += "<div class=\"person\"><div>"+line+"<div class=\"muted\">"+html_escape(fmt_time(n.ts))+"</div></div></div>";
-        }
-        html += "<p class=\"muted\">There is no notice for a declined friend request.</p></div>";
-        return pg("Notices", html);
+        return pg("Notices", "<h1>Notices</h1>"+notices_list_html(user));
+    }
+    // Fetched by the header's Notifications widget on open -- same content
+    // as the full page (same helper), as a bare fragment for innerHTML.
+    if(method=="GET"&&path=="/notices/panel") {
+        if(!acc) return http_code("401 Unauthorized", "");
+        g_store.mark_notices_read_except_type(user, "message");
+        return http_ok(notices_list_html(user));
     }
 
     if(method=="GET"&&path=="/settings") {

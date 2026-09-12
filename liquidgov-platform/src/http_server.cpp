@@ -419,6 +419,7 @@ std::string css() {
         "button.ghost,.btn.ghost{background:transparent;color:var(--accent);border:1px solid var(--rule)}"
         "button.danger,.btn.danger{background:var(--danger);color:#f7f1e4}"
         ".row{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}"
+        ".toolgroup-sep{width:1px;align-self:stretch;background:var(--rule);margin:0 .15rem}"
         ".person,.sess,.msg,.post{border-top:1px solid var(--rule);padding:.7rem 0;display:flex;"
         "justify-content:space-between;gap:.8rem;flex-wrap:wrap;align-items:flex-start}"
         ".person:first-of-type,.sess:first-of-type,.msg:first-of-type,.post:first-of-type{border-top:0}"
@@ -1116,11 +1117,16 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
     // The old abstract polygon-plus-drip didn't read as a bucket at 16px --
     // a real trapezoid body with a rim and a single drip is the shape
     // paint-bucket icons actually use everywhere else.
+    // The bucket's body and drip are filled with the actual selected
+    // colour (kept in sync by ccolor's own input listener below), not a
+    // static outline -- so the tool icon itself shows what it's about to
+    // pour, the way a real paint bucket would.
     const std::string kIconBucket =
         "<svg viewBox=\"0 0 16 16\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" "
-        "stroke-width=\"1.2\" aria-hidden=\"true\"><path d=\"M3 5h8.5l-1.1 6.3a1 1 0 0 1-1 .8H5.1a1 1 0 0 1-1-.8L3 5Z\"/>"
+        "stroke-width=\"1.2\" aria-hidden=\"true\"><path id=\"bucketpaint\" fill=\"#1a1814\" "
+        "d=\"M3 5h8.5l-1.1 6.3a1 1 0 0 1-1 .8H5.1a1 1 0 0 1-1-.8L3 5Z\"/>"
         "<path d=\"M2.5 5 4.3 2h5.4l1.8 3\"/>"
-        "<circle cx=\"13\" cy=\"12.2\" r=\"1.2\" fill=\"currentColor\" stroke=\"none\"/></svg>";
+        "<circle id=\"bucketdrip\" cx=\"13\" cy=\"12.2\" r=\"1.2\" fill=\"#1a1814\" stroke=\"none\"/></svg>";
     const std::string kIconSelect =
         "<svg viewBox=\"0 0 16 16\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" "
         "stroke-width=\"1.3\" stroke-dasharray=\"2.3 2\" aria-hidden=\"true\">"
@@ -1185,6 +1191,10 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         // long run of rows a reader has to parse to find which control
         // belongs to which question.
         "<div class=\"card\">"
+        // Three clusters, not one undifferentiated run of eleven icons:
+        // freehand media, then shapes, then whole-canvas/utility tools --
+        // each its own visual group with a hairline divider between,
+        // read the same way a real paint app's toolbar groups by kind.
         "<div class=\"row\" style=\"flex-wrap:wrap;gap:.3rem;align-items:center;margin-bottom:.4rem\">"
         "<button type=\"button\" class=\"ghost toolbtn\" data-tool=\"pen\" title=\"Pen\" "
         "style=\"padding:.5rem .55rem\">"+kIconPen+"</button>"
@@ -1194,14 +1204,19 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "style=\"padding:.5rem .55rem\">"+kIconSpray+"</button>"
         "<button type=\"button\" class=\"ghost toolbtn\" data-tool=\"smudge\" title=\"Smudge\" "
         "style=\"padding:.5rem .55rem\">"+kIconSmudge+"</button>"
+        // Eraser gets a colour of its own -- pink, not currentColor --
+        // so it reads as visually distinct from the ink-laying tools
+        // around it at a glance, not just by its shape.
         "<button type=\"button\" class=\"ghost toolbtn\" data-tool=\"eraser\" title=\"Eraser\" "
-        "style=\"padding:.5rem .55rem\">"+kIconEraser+"</button>"
+        "style=\"padding:.5rem .55rem;color:#ec6fa0\">"+kIconEraser+"</button>"
+        "<span class=\"toolgroup-sep\" aria-hidden=\"true\"></span>"
         "<button type=\"button\" class=\"ghost toolbtn\" data-tool=\"line\" title=\"Line\" "
         "style=\"padding:.5rem .55rem\">"+kIconLine+"</button>"
         "<button type=\"button\" class=\"ghost toolbtn\" data-tool=\"rect\" title=\"Rectangle\" "
         "style=\"padding:.5rem .55rem\">"+kIconRect+"</button>"
         "<button type=\"button\" class=\"ghost toolbtn\" data-tool=\"circle\" title=\"Circle\" "
         "style=\"padding:.5rem .55rem\">"+kIconCircle+"</button>"
+        "<span class=\"toolgroup-sep\" aria-hidden=\"true\"></span>"
         "<button type=\"button\" class=\"ghost toolbtn\" data-tool=\"bucket\" title=\"Paint bucket\" "
         "style=\"padding:.5rem .55rem\">"+kIconBucket+"</button>"
         "<button type=\"button\" class=\"ghost toolbtn\" data-tool=\"select\" title=\"Select\" "
@@ -1239,6 +1254,11 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "touch-action:none;flex:0 0 auto\">"+kIconDial+"</div>"
         "<input type=\"number\" id=\"copacity\" min=\"5\" max=\"100\" value=\"100\" style=\"width:4rem\">"
         "</div>"
+        "</div>"
+        // Glow/Mirror/Fill are stroke modifiers, not stroke properties --
+        // a different kind of decision than colour/size/opacity, so they
+        // get their own row instead of trailing off the end of that one.
+        "<div class=\"row\" style=\"flex-wrap:wrap;gap:.3rem;align-items:center;margin-bottom:.4rem\">"
         "<button type=\"button\" class=\"ghost fmtbtn\" id=\"cglow\" data-on=\"0\" title=\"Glow\" "
         "style=\"padding:.5rem .55rem\">"+kIconGlow+"</button>"
         "<button type=\"button\" class=\"ghost fmtbtn\" id=\"csymmetry\" data-on=\"0\" title=\"Mirror\" "
@@ -1446,6 +1466,16 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "}"
         "var curTool='pen';"
         "function toolVal(){return curTool;}"
+        // The bucket icon's own fill tracks whatever colour is loaded,
+        // live -- both on page load (the input's own default) and on
+        // every change, so the tool always shows what it's about to pour.
+        "function syncBucketColor(){"
+        "var c=document.getElementById('ccolor').value;"
+        "var p=document.getElementById('bucketpaint'),d=document.getElementById('bucketdrip');"
+        "if(p)p.setAttribute('fill',c);if(d)d.setAttribute('fill',c);"
+        "}"
+        "document.getElementById('ccolor').addEventListener('input',syncBucketColor);"
+        "syncBucketColor();"
         "var toolBtns=document.querySelectorAll('.toolbtn');"
         "function refreshToolBtns(){"
         "toolBtns.forEach(function(b){b.style.background=b.dataset.tool===curTool?'var(--rule)':'';});"

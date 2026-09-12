@@ -520,8 +520,6 @@ std::string css() {
         "font-weight:600;flex-shrink:0}"
         ".roomname{flex:1;font-weight:600;min-width:0}.roomname .muted{display:block;font-weight:400;font-size:.78rem}"
         ".roomlive{color:var(--stone);font-size:.8rem;white-space:nowrap;flex-shrink:0}"
-        // 28rem, not the original 12rem: tall enough to roughly match the
-        // "what it is not" card beside it (four labeled items), so the
         // A fixed height here can never track the card beside it: the
         // card's own height changes with viewport width (its text
         // reflows into fewer/more lines as the row grows or shrinks),
@@ -548,8 +546,13 @@ std::string css() {
         // whole row later), and growing the column wider on a big screen
         // just meant more blank tail after a short left-aligned phrase.
         // Centered, the growth reads as breathing room instead.
-        ".ticker-roll div{font-family:var(--display);font-size:1rem;line-height:1.9;color:var(--ink);"
-        "text-align:center}"
+        // line-height stays tight (1.35) since items are now full phrases
+        // that wrap to 2+ lines on narrower screens -- the old 1.9 was
+        // tuned for single-line words and doubled as inter-item spacing;
+        // padding does that job explicitly now so wrapped lines within
+        // one item don't get the same gap as the space between items.
+        ".ticker-roll div{font-family:var(--display);font-size:1.2rem;line-height:1.35;"
+        "color:var(--ink);text-align:center;padding:.5rem 0}"
         "@keyframes lg-roll{0%{transform:translateY(0)}100%{transform:translateY(-50%)}}"
         "@media(prefers-reduced-motion:reduce){.ticker-roll{animation:none}}"
         ".quote.centered{text-align:center;background:var(--parchment)}"
@@ -3073,9 +3076,12 @@ std::string genesis_body() {
     // preview, which never resolved its {{ }} bindings locally. Same list
     // doubled back-to-back so the CSS loop has no visible seam.
     static const std::vector<std::string> problems = {
-        "Tax-funded pedophilia", "Propaganda", "Overclassification", "Corporate lobbying",
-        "Bureaucracy", "Foreign wars", "Land lock-up", "Ag mismanagement", "Two-tier law",
-        "Qualified immunity", "Emergency powers",
+        "Taxpayer money funding pedophilia", "State-funded propaganda",
+        "Overclassification of official information", "Corporate money buying legislation",
+        "Bureaucracy that answers to no one", "Endless foreign wars",
+        "Federal land locked away from use", "Agricultural mismanagement",
+        "One law for them, another for you", "Qualified immunity for abuse of power",
+        "Emergency powers that never expire",
     };
     std::string ticker;
     for (int rep = 0; rep < 2; ++rep)

@@ -2292,9 +2292,17 @@ std::string world_page(const std::string& username) {
         "var proto=location.protocol==='https:'?'wss:':'ws:';"
         "var ws=new WebSocket(proto+'//'+location.host+'/world/ws');"
         "var keys={};"
-        "ws.onopen=function(){st.textContent='Connected.';};"
-        "ws.onclose=function(){st.textContent='Disconnected. Reload to rejoin.';};"
-        "ws.onerror=function(){st.textContent='Connection error.';};"
+        "var opened=false;"
+        "ws.onopen=function(){opened=true;st.textContent='Connected. Arrow keys or WASD to move.';};"
+        "ws.onclose=function(){"
+        "st.textContent=opened?'Disconnected. Reload to rejoin.':'Could not reach the room. Reload to try again.';"
+        "};"
+        "ws.onerror=function(){"
+        "if(!opened)st.textContent='Could not reach the room. Reload to try again.';"
+        "};"
+        "setTimeout(function(){"
+        "if(!opened)st.textContent='Still connecting. If this hangs, reload.';"
+        "},4000);"
         "ws.onmessage=function(ev){"
         "try{var data=JSON.parse(ev.data);players=data.players||{};}catch(e){}"
         "draw();"
@@ -3491,15 +3499,30 @@ std::string home_dashboard(const std::string& user) {
                  "<span class=\"roomlive\">" + (on_air ? "on air" : "quiet") + "</span></a>";
     }
 
+    const bool first_hour = posts == 0 && friends == 0 && committees.empty();
+    std::string next;
+    if (first_hour) {
+        next = "<p class=\"muted\">This is a platform account, not a citizen identity. Start with one of these:</p>"
+               "<p class=\"row\"><a class=\"btn\" href=\"/friends\">Find someone</a> "
+               "<a class=\"btn ghost\" href=\"/me\">Set a portrait</a> "
+               "<a class=\"btn ghost\" href=\"/feed\">Write a post</a></p>";
+    } else {
+        next = "<p class=\"row\"><a class=\"btn\" href=\"/feed\">Open the feed</a> "
+               "<a class=\"btn ghost\" href=\"/u/" + html_escape(user) + "\">Your profile</a></p>";
+    }
+
     return
-        "<div class=\"card\"><p class=\"eyebrow\">Welcome back</p><h1>@" + html_escape(user) + "</h1>"
+        "<div class=\"card\"><p class=\"eyebrow\">" + std::string(first_hour ? "You're in" : "Welcome back") +
+        "</p><h1>@" + html_escape(user) + "</h1>"
         "<div class=\"stattiles\">"
-        "<div class=\"stattile\"><strong>" + std::to_string(posts) + "</strong><span>Posts</span></div>"
-        "<div class=\"stattile\"><strong>" + std::to_string(friends) + "</strong><span>Friends</span></div>"
-        "<div class=\"stattile\"><strong>" + std::to_string(committees.size()) + "</strong><span>Communities</span></div>"
+        "<div class=\"stattile\"><strong>" + std::to_string(posts) + "</strong><span>" +
+        std::string(posts==1?"Post":"Posts") + "</span></div>"
+        "<div class=\"stattile\"><strong>" + std::to_string(friends) + "</strong><span>" +
+        std::string(friends==1?"Friend":"Friends") + "</span></div>"
+        "<div class=\"stattile\"><strong>" + std::to_string(committees.size()) + "</strong><span>" +
+        std::string(committees.size()==1?"Community":"Communities") + "</span></div>"
         "</div>"
-        "<p class=\"row\"><a class=\"btn\" href=\"/feed\">Open the feed</a> "
-        "<a class=\"btn ghost\" href=\"/u/" + html_escape(user) + "\">Your profile</a></p></div>" +
+        + next + "</div>" +
         quadCard +
         (rooms.empty() ? "" : "<div class=\"card\"><h2>Rooms open now</h2>" + rooms + "</div>");
 }
@@ -4257,7 +4280,9 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             "<p class=\"muted\">Personal posts reach you and your friends. Communities have their own pages. "
             "This is not a civic act.</p></div>";
         auto posts = g_store.feed_view(user, 80, filter);
-        if (posts.empty()) html += "<p class=\"empty\">Nothing yet. Write something, or add a friend.</p>";
+        if (posts.empty()) html += "<div class=\"card\"><p class=\"empty\">No posts in this view yet.</p>"
+            "<p class=\"muted\">Write one above, or <a href=\"/friends\">add a friend</a> so theirs show up. "
+            "This feed is friends-only &mdash; it stays quiet until someone you know posts.</p></div>";
         for (const auto& p : posts) html += "<div class=\"card\">"+post_block(p, user)+"</div>";
         return pg("Feed", html);
     }
@@ -4275,7 +4300,8 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
                 "<button>Open for votes</button></form></div>";
         auto all = g_store.all_proposals();
         std::reverse(all.begin(), all.end());
-        if (all.empty()) html += "<p class=\"empty\">No proposals yet.</p>";
+        if (all.empty()) html += "<div class=\"card\"><p class=\"empty\">None open.</p>"
+            "<p class=\"muted\">The form above starts an unofficial straw poll. Not a binding vote.</p></div>";
         for (const auto& p : all) {
             auto t = g_store.tally_of(p.id);
             auto mv = g_store.proposal_vote_of(p.id, user);
@@ -4585,7 +4611,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         std::set<std::string> inner_set(inner.begin(), inner.end());
         html += "<p class=\"muted eyebrow\">"+std::to_string(pals.size())+
                 (pals.size()==1?" friend":" friends")+" &middot; "+std::to_string(inner_set.size())+" inner</p>";
-        if(pals.empty()) html += "<p class=\"empty\">None yet.</p>";
+        if(pals.empty()) html += "<p class=\"empty\">No friends yet. Search a username above, or send a request by exact name.</p>";
         for (auto& other : pals) {
             const bool inn = inner_set.count(other);
             html += "<div class=\"person\"><div class=\"who\">"+portrait_tag(other,"sm")+"<div><a href=\"/u/"+html_escape(other)+"\"><strong>"+html_escape(other)+"</strong></a>"
@@ -4661,7 +4687,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         std::string html = "<h1>Mail</h1><div class=\"card\"><p class=\"muted\">Direct messages are friends-only in this release. "
             "Open messaging waits on age assurance so a stranger cannot reach a minor. We will not treat a checkbox as age.</p><ul class=\"plain\">";
         auto pals = g_store.friends_of(user);
-        if (pals.empty()) html += "<li class=\"muted\">Friend someone first.</li>";
+        if (pals.empty()) html += "<li class=\"muted\">No friends yet. <a href=\"/friends\">Find someone</a> first &mdash; mail is friends-only.</li>";
         for (auto& n : pals) html += "<li><a href=\"/mail?with="+html_escape(n)+"\">"+html_escape(n)+"</a></li>";
         html += "</ul></div>";
         if (!other.empty() && g_store.are_friends(user, other) && !g_store.is_blocked(user, other)) {
@@ -4812,7 +4838,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             "<label>About</label><textarea name=\"about\" maxlength=\"2000\"></textarea>"
             "<button>Create</button></form></div><div class=\"card\"><h2>All communities</h2>";
         auto all = g_store.all_communities();
-        if (all.empty()) html += "<p class=\"empty\">None yet.</p>";
+        if (all.empty()) html += "<p class=\"empty\">No communities yet. Start one with the form above.</p>";
         for (auto& c : all) {
             html += "<div class=\"person\"><div><a href=\"/c/"+html_escape(c.slug)+"\"><strong>"+html_escape(c.name)+
                     "</strong></a> <span class=\"muted\">/"+html_escape(c.slug)+"</span>"
@@ -4885,7 +4911,8 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         g_store.mark_notices_read_except_type(user, "message");
         std::string html = "<h1>Notices</h1><div class=\"card\">";
         auto notes = g_store.notices_for(user, 50);
-        if (notes.empty()) html += "<p class=\"empty\">None.</p>";
+        if (notes.empty()) html += "<p class=\"empty\">Nothing waiting.</p>"
+            "<p class=\"muted\">Friend requests, accepts, and mail land here.</p>";
         for (auto& n : notes) {
             std::string line;
             if (n.type=="friend_request") line = html_escape(n.from)+" sent a friend request.";
@@ -5094,7 +5121,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             return http_ok(signup_page(user, unread, "That password is too common. Pick a longer one you have not used elsewhere.", uname, phone));
         if(r.error!=AuthError::None||!r.session)
             return http_ok(signup_page(user, unread, "Could not create that account.", uname, phone));
-        return http_redir("/me", set_cookie(r.session->id));
+        return http_redir("/", set_cookie(r.session->id));
     }
     if(method=="POST"&&path=="/login") {
         auto f=parse_form(body);

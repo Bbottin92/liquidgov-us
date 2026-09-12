@@ -2972,6 +2972,31 @@ std::string genesis_body() {
         "</div>"
         "<p class=\"muted\" style=\"text-align:center;max-width:22rem;margin:.7rem auto 0\">"
         "Three rules hold. Whoever you are, wherever you are starting from, the rest is your call.</p>";
+    // "What is inside" in the source is a 2x2 grid of feature cards --
+    // Live rooms, People near you, Meetups, and a fourth. Only Live rooms
+    // maps to something real (/world plus the jukebox stations); the
+    // other two are exactly the geolocation/meetup concepts already set
+    // aside as having no backend at all, so only this one card is built,
+    // per Brandon's own call rather than presenting the other two as if
+    // they existed. Icon and copy are the source's own (rect+two-dot
+    // glyph, "Live rooms"), with "Studio" dropped from the description
+    // since that feature doesn't exist either.
+    std::string liveRoomsIcon =
+        "<svg viewBox=\"0 0 24 24\" width=\"19\" height=\"19\" fill=\"none\" style=\"stroke:var(--accent)\" "
+        "stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\">"
+        "<rect x=\"3.2\" y=\"4.8\" width=\"17.6\" height=\"14.4\" rx=\"2.2\"/>"
+        "<circle cx=\"9.2\" cy=\"11.4\" r=\"1.7\" style=\"fill:var(--accent)\" stroke=\"none\"/>"
+        "<circle cx=\"15\" cy=\"15.2\" r=\"1.7\" style=\"fill:var(--accent)\" stroke=\"none\"/>"
+        "</svg>";
+    std::string inside =
+        "<p class=\"eyebrow\" style=\"color:var(--accent)\">What is inside</p>"
+        "<div class=\"card\" style=\"display:flex;gap:.8rem;align-items:flex-start\">"
+        "<div style=\"width:2.2rem;height:2.2rem;border-radius:.5rem;background:var(--paper);"
+        "border:1px solid var(--rule);display:flex;align-items:center;justify-content:center;flex-shrink:0\">" +
+        liveRoomsIcon + "</div>"
+        "<div><strong>Live rooms</strong>"
+        "<p class=\"muted\" style=\"margin:.3rem 0 0\">The Quad and Juketube. Shared spaces you can actually "
+        "be in. <a href=\"/world\">Walk into the Quad</a>.</p></div></div>";
     return emblem +
            "<p class=\"eyebrow\" style=\"color:var(--accent)\">A Voluntary Natural Democracy</p>"
            "<h1>This is genesis, not a government.</h1>"
@@ -2979,7 +3004,7 @@ std::string genesis_body() {
            "liquid, natural-law democracy. Anyone here is a guest or a member of that association.</p>"
            "<hr style=\"border:0;border-top:1px solid var(--rule);margin:1rem 0\">" +
            lawstrip +
-           stats + solution + quotes +
+           stats + solution + quotes + inside +
            "<div class=\"card\"><p>Nobody on this site is your city, state, or federal government. "
            "No office seated from these pages has legal authority over anyone who did not choose to associate.</p>"
            "<p>Website control is temporary. When a working election exists among enrolled citizens, "

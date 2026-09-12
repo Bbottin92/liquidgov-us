@@ -4957,11 +4957,12 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
     if(method=="GET"&&path=="/communities") {
         if(!acc) return http_redir("/login");
         std::string err;
-        if (qs["err"]=="slug") err = "<p class=\"warn\">Need a free slug: letters, numbers, dots, underscores, hyphens.</p>";
+        if (qs["err"]=="address") err = "<p class=\"warn\">Need a free address: letters, numbers, dots, underscores, hyphens.</p>";
         std::string html = "<h1>Communities</h1>"+err+
             "<p class=\"lede\">These are platform groups. They are not AVND localities and they do not confer standing.</p>"
             "<div class=\"card\"><h2>Start one</h2><form method=\"POST\" action=\"/communities\">"
-            "<label>Slug</label><input name=\"slug\" required maxlength=\"32\" pattern=\"[A-Za-z0-9._-]+\" placeholder=\"town-hall\">"
+            "<label>Address</label><input name=\"slug\" required maxlength=\"32\" pattern=\"[A-Za-z0-9._-]+\" placeholder=\"town-hall\">"
+            "<p class=\"muted\" style=\"margin-top:-.3rem\">Your community's web address -- for example, /c/town-hall.</p>"
             "<label>Name</label><input name=\"name\" required maxlength=\"80\">"
             "<label>About</label><textarea name=\"about\" maxlength=\"2000\"></textarea>"
             "<button>Create</button></form></div><div class=\"card\"><h2>All communities</h2>";
@@ -5679,7 +5680,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         auto about=f["about"]; if(about.size()>2000) about.resize(2000);
         Community c;
         c.slug = slug; c.name = name.empty()?slug:name; c.owner = user; c.about = about; c.created_at = now();
-        if (!g_store.create_community(c)) return http_redir("/communities?err=slug");
+        if (!g_store.create_community(c)) return http_redir("/communities?err=address");
         return http_redir("/c/"+slug);
     }
     if(method=="POST"&&path.rfind("/c/",0)==0) {

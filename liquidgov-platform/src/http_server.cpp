@@ -3016,20 +3016,13 @@ std::string jukebox_widget(const std::string& owner, bool owner_view, const std:
 
     if (owner_view) {
         html += jukebox_add_form("/me/jukebox/add", "Visitors listen; navigating away stops playback.");
-        auto sel = [&](JukeboxPolicy pol) -> std::string { return owner_prefs.jukebox_policy==pol?" checked":""; };
-        // data-draft here is inert unless draft_publish_script() is also on
-        // the page (only /me appends it) -- this same widget renders
-        // unchanged, Save button and all, when owner_view is true on the
-        // owner's own /u/<username> page, which has no draft bar to defer to.
-        html += "<form method=\"POST\" action=\"/me/jukebox/policy\" data-draft=\"1\" style=\"margin-top:.75rem\">"
-                "<label>Who else can queue a track here</label>"
-                "<p><label><input type=\"radio\" name=\"policy\" value=\"0\""+sel(JukeboxPolicy::OwnerOnly)+"> Just me</label></p>"
-                "<p><label><input type=\"radio\" name=\"policy\" value=\"1\""+sel(JukeboxPolicy::Friends)+"> Friends</label></p>"
-                "<p><label><input type=\"radio\" name=\"policy\" value=\"2\""+sel(JukeboxPolicy::Anyone)+"> Anyone signed in</label></p>"
-                "<p class=\"muted\">One request at a time per person; it plays once, then it's gone. "
-                "Anyone you've blocked can never queue, regardless. Manage blocks in "
-                "<a href=\"/settings\">Settings</a>.</p>"
-                "<button>Save</button></form>";
+        // Who-can-queue is an access-control setting, not profile content --
+        // moved to Settings > Privacy (Brandon: "its not appropriate" on the
+        // profile page). The eyebrow badge above (policy_badge) still shows
+        // the current policy here, read-only, same as everything else on
+        // this card.
+        html += "<p class=\"muted\">Who can queue here is set in "
+                "<a href=\"/settings\">Settings</a>.</p>";
     } else if (guest_can_add) {
         html += jukebox_add_form("/u/"+owner+"/jukebox/add", "One request at a time. It plays once, then it's gone.");
     } else if (is_guest && has_pending) {
@@ -4661,6 +4654,22 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
                 "<div class=\"row\"><input name=\"who\" placeholder=\"username\" required style=\"flex:1\">"
                 "<button class=\"danger\" type=\"submit\">Add block</button></div>"
                 "<input name=\"reason\" placeholder=\"Reason (optional, only you see it)\" maxlength=\"200\"></form>";
+        {
+            // Moved off the profile page: who can queue a track on your
+            // jukebox is an access-control setting like block list and
+            // visibility above, not something that belongs on a page
+            // visitors see (Brandon: "its not appropriate" there).
+            auto jsel = [&](JukeboxPolicy pol) -> std::string { return p.jukebox_policy==pol?" checked":""; };
+            html += "<h2>Jukebox</h2>"
+                    "<form method=\"POST\" action=\"/me/jukebox/policy\">"
+                    "<label>Who else can queue a track on your jukebox</label>"
+                    "<p><label><input type=\"radio\" name=\"policy\" value=\"0\""+jsel(JukeboxPolicy::OwnerOnly)+"> Just me</label></p>"
+                    "<p><label><input type=\"radio\" name=\"policy\" value=\"1\""+jsel(JukeboxPolicy::Friends)+"> Friends</label></p>"
+                    "<p><label><input type=\"radio\" name=\"policy\" value=\"2\""+jsel(JukeboxPolicy::Anyone)+"> Anyone signed in</label></p>"
+                    "<p class=\"muted\">One request at a time per person; it plays once, then it's gone. "
+                    "Anyone you've blocked above can never queue, regardless.</p>"
+                    "<button>Save</button></form>";
+        }
         html += "</div>";
 
         html += "<div class=\"card\"><h2>Identity</h2>"
@@ -4909,7 +4918,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         auto p = g_store.prefs_of(user);
         p.jukebox_policy = static_cast<JukeboxPolicy>(pv);
         g_store.set_prefs(user, p);
-        return http_redir("/me");
+        return http_redir("/settings");
     }
     // A guest's one-shot request on someone else's jukebox. Gated by the
     // owner's JukeboxPolicy, the owner's block list, and one outstanding

@@ -149,6 +149,11 @@ int main() {
     assert(no_phone.error == AuthError::PhoneNotVerified);
     std::cout << "signup requires verified phone\n";
 
+    // 9. password shorter than 8 characters is rejected
+    auto short_pw = create_account(store, breach_checker, "shorty", "1234567", "+15551212121");
+    assert(short_pw.error == AuthError::PasswordTooShort);
+    std::cout << "short password rejected\n";
+
     std::cout << "\nall auth tests passed\n";
     return 0;
 }

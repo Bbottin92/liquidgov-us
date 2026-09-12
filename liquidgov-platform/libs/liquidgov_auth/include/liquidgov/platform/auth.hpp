@@ -16,6 +16,7 @@ enum class AuthError {
     None,
     UsernameTaken,
     PasswordBreached,
+    PasswordTooShort,
     InvalidCredentials,
     RateLimited,
     PhoneNotVerified,

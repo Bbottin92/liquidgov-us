@@ -10,6 +10,9 @@ AuthResult create_account(AccountStore& store, const BreachChecker& breach_check
     if (verified_phone_e164.empty()) {
         return {AuthError::PhoneNotVerified, std::nullopt};
     }
+    if (password.size() < 8) {
+        return {AuthError::PasswordTooShort, std::nullopt};
+    }
     if (store.username_exists(username)) {
         return {AuthError::UsernameTaken, std::nullopt};
     }

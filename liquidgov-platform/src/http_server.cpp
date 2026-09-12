@@ -2804,6 +2804,17 @@ std::string jukebox_script(const std::string& yt_key, bool standalone, const std
         "if(!a||a.target&&a.target!=='_self'||a.hasAttribute('download'))return;"
         "var url;try{url=new URL(a.href,location.href);}catch(err){return;}"
         "if(url.origin!==location.origin||url.pathname===location.pathname&&url.search===location.search&&url.hash)return;"
+        // /theme/<mode> flips the data-theme attribute on <html>, which sits
+        // outside both regions softNavigate ever touches (main.wrap and
+        // header.top nav) -- a soft nav here sets the cookie and swaps
+        // content that already assumed the OLD theme, so nothing visibly
+        // changes until some later real page load re-renders <html> from
+        // scratch. Reads as "the toggle doesn't work" (Brandon, live on
+        // liquidgov.us) until you hit refresh, at which point it's already
+        // correct. Letting this one path fall through to a real navigation
+        // is simpler and safer than teaching softNavigate to also patch
+        // <html>'s attribute on every navigation just for this one case.
+        "if(url.pathname.indexOf('/theme/')===0)return;"
         "e.preventDefault();"
         "softNavigate(url.href,true);"
         "});"

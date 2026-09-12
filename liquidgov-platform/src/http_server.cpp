@@ -415,10 +415,16 @@ std::string css() {
         // Notifications/Messages: always-visible icon buttons next to the
         // avatar, not buried in the account dropdown -- the dropdown is for
         // things you open a few times a session, these are things you
-        // check constantly.
+        // check constantly. Now real <button> elements (needed a JS click
+        // handler, not just an href -- see mail_widget_script), which
+        // means the sitewide button{} rule (the big accent-filled pill
+        // used for Post/Send/Create) applies too unless overridden: caught
+        // live as an oversized amber stadium shape instead of a small
+        // circle, since button{}'s padding widened the box past its
+        // min-width before border-radius:50% ever got a square to round.
         ".iconbtn{position:relative;min-height:36px;min-width:36px;display:inline-flex;align-items:center;"
-        "justify-content:center;border:1px solid var(--rule);border-radius:50%;color:var(--ink);"
-        "text-decoration:none;font-size:1.05rem;flex-shrink:0}"
+        "justify-content:center;border:1px solid var(--rule);border-radius:50%;background:transparent;"
+        "color:var(--ink);padding:0;text-decoration:none;font-size:1.05rem;flex-shrink:0}"
         ".iconbtn .badge{position:absolute;top:-4px;right:-4px;margin:0;font-size:.62rem;"
         "min-width:1.1rem;height:1.1rem;padding:0 .25rem}"
         ".navavatar{cursor:pointer;display:inline-flex;flex-shrink:0}"

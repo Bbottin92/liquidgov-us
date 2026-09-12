@@ -528,7 +528,13 @@ std::string css() {
         "-webkit-mask-image:linear-gradient(180deg,transparent,#000 20%,#000 80%,transparent);"
         "mask-image:linear-gradient(180deg,transparent,#000 20%,#000 80%,transparent)}"
         ".ticker-roll{animation:lg-roll 26s linear infinite}"
-        ".ticker-roll div{font-family:var(--display);font-size:1rem;line-height:1.9;color:var(--ink)}"
+        // Centered, not left-aligned: each item is still a full-width
+        // block (so a real fill colour or hover state could use the
+        // whole row later), and growing the column wider on a big screen
+        // just meant more blank tail after a short left-aligned phrase.
+        // Centered, the growth reads as breathing room instead.
+        ".ticker-roll div{font-family:var(--display);font-size:1rem;line-height:1.9;color:var(--ink);"
+        "text-align:center}"
         "@keyframes lg-roll{0%{transform:translateY(0)}100%{transform:translateY(-50%)}}"
         "@media(prefers-reduced-motion:reduce){.ticker-roll{animation:none}}"
         ".quote.centered{text-align:center;background:var(--parchment)}"
@@ -544,16 +550,17 @@ std::string css() {
         // gave up. Full width by default; the narrow fixed sidebar shape
         // only above the width where it actually sits beside the ticker.
         ".isnt-card{flex:1 1 100%}"
-        // .row{display:flex} is a block-level element, so left alone it
-        // stretches to the full content column regardless of whether its
-        // two children (the width-capped ticker, the fixed-width card)
-        // actually need that space -- on a wide screen that left a large
-        // unclaimed strip to the right of the card, inside the row but
-        // outside both children. Capped to roughly what the pair needs
-        // side by side (ticker's own 22rem cap + the card's 12rem + gap),
-        // so the row's own edge stops well short of stretching past its
-        // two children once they're side by side.
-        "@media(min-width:34rem){.isnt-card{flex:0 0 12rem}.solution-row{max-width:37rem}}"
+        // Both columns grow together above the breakpoint (ticker at 2x
+        // weight, card at 1x, roughly matching their original visual
+        // proportions) instead of the card staying pinned to a fixed
+        // 12rem -- capping the row's own width just relocated the gap
+        // from "beside the card" to "beside the row" once .wrap itself
+        // scaled wider (clamp() above), since a capped-width row sitting
+        // in a much wider column looks exactly like the dead space it
+        // was supposed to fix. Growing both children means the pair
+        // always fills whatever width the row actually has, the same way
+        // every other full-width section on this page already does.
+        "@media(min-width:34rem){.isnt-card{flex:1 1 12rem}}"
         ".lawstrip{display:flex}"
         ".lawstrip>div{flex:1;text-align:center;padding:0 .5rem;border-left:1px solid var(--rule)}"
         ".lawstrip>div:first-child{border-left:0}"
@@ -3061,7 +3068,7 @@ std::string genesis_body() {
             ticker += "<div>" + html_escape(p) + "</div>";
     std::string solution =
         "<div class=\"row solution-row\" style=\"align-items:flex-start;gap:1rem;flex-wrap:wrap\">"
-        "<div style=\"flex:1;min-width:12rem;max-width:22rem\">"
+        "<div style=\"flex:2 1 12rem;min-width:12rem\">"
         "<p class=\"eyebrow\" style=\"color:var(--accent)\">A legitimate solution to:</p>"
         "<div class=\"ticker-wrap\"><div class=\"ticker-roll\">" + ticker + "</div></div>"
         "</div>"

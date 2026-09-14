@@ -17,12 +17,19 @@
     '<button id="jbtoggle" type="button" aria-label="Juketube" aria-expanded="false">' + ICON + "</button>" +
     '<div id="jbhint">Juketube — search, stations, history. Tap a track and everyone on that station hears it.</div>' +
     '<div id="jbpanel" role="dialog" aria-label="Juketube">' +
-    '<p class="jb-name">Juketube</p>' +
-    '<div class="jb-tabs">' +
-    '<button type="button" id="jbtab-radio" class="on">Radio</button>' +
-    '<button type="button" id="jbtab-stations">Stations</button>' +
+    '<div id="jbstations" hidden>' +
+    '<p class="muted jb-label">Stations</p>' +
+    '<div id="jbstationlist"></div>' +
+    '<div class="jb-follow">' +
+    '<input id="jbfollow" placeholder="Follow a username" autocomplete="off">' +
+    '<button type="button" id="jbfollowbtn">Follow</button>' +
     "</div>" +
-    '<div id="jbradio">' +
+    '<p class="muted" id="jbfollowerr" hidden></p>' +
+    "</div>" +
+    '<div class="jb-head">' +
+    '<p class="jb-name">Juketube</p>' +
+    '<button type="button" id="jbstations-toggle">Stations</button>' +
+    "</div>" +
     '<div class="jb-bar">' +
     '<select id="jbscope" aria-label="Search in">' +
     '<option value="all">All</option>' +
@@ -30,8 +37,8 @@
     '<option value="friends">Friends</option>' +
     '<option value="others">Others</option>' +
     '<option value="self">Self</option>' +
+    '<option value="history">History</option>' +
     "</select>" +
-    '<select id="jbhist" aria-label="History"><option value="">History</option></select>' +
     "</div>" +
     '<div class="jb-searchwrap">' +
     '<input id="jbsearch" type="search" placeholder="Search" autocomplete="off" enterkeyhint="search">' +
@@ -42,19 +49,10 @@
     '<div class="jb-controls">' +
     '<button type="button" id="jbpause">Pause</button>' +
     '<button type="button" id="jbskip">Skip</button>' +
+    '<button type="button" id="jbmute">Mute</button>' +
     '<input id="jbvol" type="range" min="0" max="100" value="80" aria-label="Volume">' +
     "</div>" +
     '<div id="jbupcoming"></div>' +
-    "</div>" +
-    '<div id="jbstations" hidden>' +
-    '<p class="muted jb-label">Tap to tune in</p>' +
-    '<div id="jbstationlist"></div>' +
-    '<div class="jb-follow">' +
-    '<input id="jbfollow" placeholder="Follow a username" autocomplete="off">' +
-    '<button type="button" id="jbfollowbtn">Follow</button>' +
-    "</div>" +
-    '<p class="muted" id="jbfollowerr" hidden></p>' +
-    "</div>" +
     "</div>";
 
   var toggle = document.getElementById("jbtoggle");
@@ -66,12 +64,10 @@
   var search = document.getElementById("jbsearch");
   var pauseBtn = document.getElementById("jbpause");
   var skipBtn = document.getElementById("jbskip");
+  var muteBtn = document.getElementById("jbmute");
   var vol = document.getElementById("jbvol");
   var scopeEl = document.getElementById("jbscope");
-  var histEl = document.getElementById("jbhist");
-  var tabRadio = document.getElementById("jbtab-radio");
-  var tabStations = document.getElementById("jbtab-stations");
-  var radioUi = document.getElementById("jbradio");
+  var stToggle = document.getElementById("jbstations-toggle");
   var stationsUi = document.getElementById("jbstations");
   var stationList = document.getElementById("jbstationlist");
   var followInput = document.getElementById("jbfollow");
@@ -124,15 +120,19 @@
     setOpen(false);
   });
 
-  function showTab(which) {
-    var radio = which === "radio";
-    radioUi.hidden = !radio;
-    stationsUi.hidden = radio;
-    tabRadio.classList.toggle("on", radio);
-    tabStations.classList.toggle("on", !radio);
+  function setStationsOpen(open) {
+    stationsUi.hidden = !open;
+    stToggle.classList.toggle("on", open);
   }
-  tabRadio.addEventListener("click", function () { showTab("radio"); });
-  tabStations.addEventListener("click", function () { showTab("stations"); });
+  stToggle.addEventListener("click", function (e) {
+    e.stopPropagation();
+    setStationsOpen(stationsUi.hidden);
+  });
+  panel.addEventListener("click", function (e) {
+    if (stationsUi.hidden) return;
+    if (stationsUi.contains(e.target) || stToggle.contains(e.target)) return;
+    setStationsOpen(false);
+  });
 
   var ytPlayer = null;
   var lastId = null;
@@ -328,23 +328,33 @@
   }
 
   function loadHistory() {
-    histEl.innerHTML = '<option value="">History</option>';
     var owner = personalOwner() || me;
-    if (!owner) return;
+    if (!owner) {
+      resultsEl.textContent = "No history yet.";
+      return;
+    }
+    var q = search.value.trim().toLowerCase();
+    var my = ++gen;
+    resultsEl.textContent = "Loading history…";
     fetch("/u/" + encodeURIComponent(owner) + "/jukebox/history", { credentials: "same-origin" })
       .then(function (r) { return r.ok ? r.json() : { items: [] }; })
       .then(function (data) {
-        var items = data.items || [];
-        histEl.innerHTML = '<option value="">History</option>';
+        if (my !== gen) return;
+        resultsEl.textContent = "";
+        var items = (data.items || []).slice().reverse();
+        var n = 0;
         items.forEach(function (it) {
           if (!it.video_id) return;
-          var o = document.createElement("option");
-          o.value = it.video_id;
-          o.textContent = (it.queued_by || "track") + " · " + it.video_id;
-          histEl.appendChild(o);
+          var label = (it.queued_by || "track") + " · " + it.video_id;
+          if (q && label.toLowerCase().indexOf(q) === -1 && it.video_id.toLowerCase().indexOf(q) === -1) return;
+          ytHit({ video_id: it.video_id, title: label });
+          n++;
         });
+        if (!n) resultsEl.textContent = q ? "No history matches." : "No history yet.";
       })
-      .catch(function () {});
+      .catch(function () {
+        if (my === gen) resultsEl.textContent = "History failed.";
+      });
   }
 
   function tune(id, opts) {
@@ -358,9 +368,8 @@
     teardownWs();
     teardownPoll();
     renderStations();
-    loadHistory();
     if (opts.open) setOpen(true);
-    showTab("radio");
+    setStationsOpen(false);
     if (personalOwner()) {
       pollPersonal();
       pollTimer = setInterval(pollPersonal, 4000);
@@ -419,17 +428,42 @@
     } catch (e) {}
   });
   skipBtn.addEventListener("click", function () {
-    ignoreEndedUntil = 0;
-    loadedAt = 0;
-    reportEnded();
+    ignoreEndedUntil = Date.now() + 1500;
+    var owner = personalOwner();
+    var id = lastId;
+    lastId = null;
+    lastElapsed = 0;
+    if (owner && id) {
+      fetch("/u/" + encodeURIComponent(owner) + "/jukebox/complete", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: "video_id=" + encodeURIComponent(id) + "&skip=1"
+      }).then(function () { pollPersonal(); }).catch(function () {});
+      return;
+    }
+    if (ws && ws.readyState === 1) ws.send(JSON.stringify({ ended: true }));
+  });
+  var muted = false;
+  muteBtn.addEventListener("click", function () {
+    if (!ytPlayer) return;
+    muted = !muted;
+    try {
+      if (muted) ytPlayer.mute();
+      else ytPlayer.unMute();
+    } catch (e) {}
+    muteBtn.textContent = muted ? "Unmute" : "Mute";
   });
   vol.addEventListener("input", function () {
     if (!ytPlayer) return;
-    try { ytPlayer.setVolume(Number(vol.value) || 0); } catch (e) {}
-  });
-  histEl.addEventListener("change", function () {
-    if (histEl.value) sendPlay(histEl.value);
-    histEl.selectedIndex = 0;
+    try {
+      ytPlayer.setVolume(Number(vol.value) || 0);
+      if (muted && Number(vol.value) > 0) {
+        muted = false;
+        ytPlayer.unMute();
+        muteBtn.textContent = "Mute";
+      }
+    } catch (e) {}
   });
 
   function ytHit(it) {
@@ -513,6 +547,10 @@
     var scope = scopeEl.value;
     var my = ++gen;
     resultsEl.textContent = "";
+    if (scope === "history") {
+      loadHistory();
+      return;
+    }
     if (scope === "all" || scope === "self") {
       if (!q) {
         if (scope === "self") {
@@ -641,7 +679,6 @@
     friends = data.friends || [];
     groups = data.groups || [];
     renderStations();
-    loadHistory();
   }
 
   fetch("/jukebox/meta", { credentials: "same-origin" })

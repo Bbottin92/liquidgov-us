@@ -1873,6 +1873,25 @@ void FileStore::complete_jukebox_track(const std::string& owner, const std::stri
     }
 }
 
+void FileStore::skip_jukebox_track(const std::string& owner, const std::string& video_id) {
+    auto it = jukebox_.find(owner);
+    if (it == jukebox_.end() || video_id.empty()) return;
+    auto& list = it->second;
+    for (std::size_t i = 0; i < list.size(); ++i) {
+        if (list[i].video_id != video_id) continue;
+        JukeboxTrack t = list[i];
+        auto& hist = jukebox_history_[owner];
+        hist.push_back(JukeboxHistoryEntry{owner, t.video_id, t.queued_by, now()});
+        if (hist.size() > kJukeboxHistoryCap) {
+            hist.erase(hist.begin(), hist.begin() + static_cast<std::ptrdiff_t>(hist.size() - kJukeboxHistoryCap));
+        }
+        list.erase(list.begin() + static_cast<std::ptrdiff_t>(i));
+        if (t.queued_by == owner) list.push_back(t);
+        flush();
+        return;
+    }
+}
+
 std::vector<JukeboxHistoryEntry> FileStore::jukebox_history_of(const std::string& owner) const {
     auto it = jukebox_history_.find(owner);
     if (it == jukebox_history_.end()) return {};

@@ -544,6 +544,9 @@ public:
     // queue -- one shot, then gone; an owner-curated track stays queued,
     // unaffected. No-op if the track isn't currently queued.
     void complete_jukebox_track(const std::string& owner, const std::string& video_id);
+    // Skip the matching track: guest requests are removed, owner-curated
+    // tracks rotate to the back of the queue so the next song actually plays.
+    void skip_jukebox_track(const std::string& owner, const std::string& video_id);
     std::vector<JukeboxHistoryEntry> jukebox_history_of(const std::string& owner) const;
 
     // A personal jukebox as a channel in the floating widget's station list

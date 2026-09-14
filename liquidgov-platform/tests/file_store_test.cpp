@@ -291,7 +291,14 @@ int main() {
         assert(hist.size() == 2);
         assert(hist[0].video_id == "cccccccccc1" && hist[0].queued_by == "jukeguest");
         assert(hist[1].video_id == "ddddddddddd" && hist[1].queued_by == "someguest");
-        std::cout << "jukebox queued_by, complete, and history ok\n";
+
+        assert(store.add_jukebox_track("jukeguest", "eeeeeeeeeee", "jukeguest"));
+        store.skip_jukebox_track("jukeguest", "cccccccccc1");
+        auto skipped = store.jukebox_of("jukeguest");
+        assert(skipped.size() == 2);
+        assert(skipped[0].video_id == "eeeeeeeeeee");
+        assert(skipped[1].video_id == "cccccccccc1");
+        std::cout << "jukebox queued_by, complete, skip, and history ok\n";
     }
 
     {
@@ -300,9 +307,9 @@ int main() {
         assert(on_disk.find("\njh\t") != std::string::npos);
         FileStore store(path);
         assert(store.jukebox_of("juke").size() == kJukeboxQueueCap);
-        assert(store.jukebox_of("jukeguest").size() == 1);
+        assert(store.jukebox_of("jukeguest").size() == 2);
         assert(store.jukebox_of("jukeguest")[0].queued_by == "jukeguest");
-        assert(store.jukebox_history_of("jukeguest").size() == 2);
+        assert(store.jukebox_history_of("jukeguest").size() == 3);
         auto acc = store.find_by_username("juke");
         assert(acc.has_value());
         assert(store.delete_account(acc->id));

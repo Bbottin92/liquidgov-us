@@ -6139,7 +6139,11 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
        path.compare(path.size()-17,17,"/jukebox/complete")==0) {
         const std::string who = path.substr(3, path.size()-3-17);
         if(!acc) return need_login();
-        if (valid_username(who)) g_store.complete_jukebox_track(who, parse_form(body)["video_id"]);
+        auto jf = parse_form(body);
+        if (valid_username(who)) {
+            if (jf["skip"] == "1") g_store.skip_jukebox_track(who, jf["video_id"]);
+            else g_store.complete_jukebox_track(who, jf["video_id"]);
+        }
         return http_ok("ok");
     }
     // A signed-in viewer follows someone's personal jukebox as a "channel"

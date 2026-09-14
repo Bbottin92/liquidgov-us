@@ -40,8 +40,10 @@
     "</select>" +
     '<select id="jbhist" aria-label="History"><option value="">History</option></select>' +
     "</div>" +
-    '<input id="jbsearch" type="search" placeholder="Search" autocomplete="off">' +
+    '<div class="jb-searchwrap">' +
+    '<input id="jbsearch" type="search" placeholder="Search" autocomplete="off" enterkeyhint="search">' +
     '<div id="jbresults"></div>' +
+    "</div>" +
     '<div id="jbupcoming"></div>' +
     "</div>" +
     '<div id="jbstations" hidden>' +
@@ -78,6 +80,30 @@
 
   if (localStorage.getItem("lg-jb-hint") === "1") hint.style.display = "none";
 
+  function syncViewport() {
+    var vv = window.visualViewport;
+    var kb = 0, vvh = window.innerHeight;
+    if (vv) {
+      kb = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+      vvh = Math.round(vv.height);
+    }
+    document.documentElement.style.setProperty("--kb", kb + "px");
+    document.documentElement.style.setProperty("--vvh", vvh + "px");
+    panel.classList.toggle("kb-open", kb > 80);
+    if (search) {
+      var r = search.getBoundingClientRect();
+      var top = vv ? vv.offsetTop : 0;
+      var space = Math.max(72, Math.round(r.top - top - 8));
+      resultsEl.style.maxHeight = Math.min(280, space) + "px";
+    }
+  }
+  if (window.visualViewport) {
+    visualViewport.addEventListener("resize", syncViewport);
+    visualViewport.addEventListener("scroll", syncViewport);
+  }
+  window.addEventListener("resize", syncViewport);
+  syncViewport();
+
   function setOpen(open) {
     panel.classList.toggle("open", open);
     panel.style.display = open ? "flex" : "none";
@@ -87,6 +113,7 @@
       localStorage.setItem("lg-jb-hint", "1");
       ensurePlayer(function () {});
       if (stationId.indexOf("u:") !== 0 && (!ws || ws.readyState > 1)) connectWs();
+      syncViewport();
     }
   }
 
@@ -553,7 +580,7 @@
           resultsEl.textContent = "";
           var items = data.items || [];
           if (!items.length) {
-            resultsEl.textContent = "No match.";
+            resultsEl.textContent = "No one matches.";
             return;
           }
           items.forEach(personHit);
@@ -567,70 +594,70 @@
   var t = null;
   search.addEventListener("input", function () {
     clearTimeout(t);
-    t = setTimeout(runSearch, 180);
+    t = setTimeout(runSearch, 220);
   });
-  scopeEl.addEventListener("change", function () {
-    search.placeholder =
-      scopeEl.value === "all" || scopeEl.value === "self" ? "Search YouTube" :
-      scopeEl.value === "groups" ? "Search groups" :
-      "Search people";
-    runSearch();
+  search.addEventListener("focus", function () {
+    setTimeout(syncViewport, 50);
+    setTimeout(syncViewport, 320);
   });
+  search.addEventListener("blur", function () {
+    setTimeout(syncViewport, 50);
+    setTimeout(syncViewport, 320);
+  });
+  scopeEl.addEventListener("change", runSearch);
 
   function renderStations() {
-    stationList.textContent = "";
-    stations.forEach(function (s) {
-      var row = document.createElement("button");
-      row.type = "button";
-      row.className = "jb-station" + (s.id === stationId ? " on" : "");
-      row.textContent = s.name;
-      row.addEventListener("click", function () { tune(s.id, { open: true }); });
-      stationList.appendChild(row);
+    stationList.innerHTML = "";
+    stations.forEach(function (st) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "jb-station" + (st.id === stationId ? " on" : "");
+      b.textContent = st.name + (st.kind === "group" ? " · group" : st.kind === "person" ? " · person" : "");
+      b.addEventListener("click", function () { tune(st.id); });
+      stationList.appendChild(b);
     });
   }
 
-  function followSomeone() {
+  followBtn.addEventListener("click", function () {
     var name = followInput.value.trim();
     followErr.hidden = true;
     if (!name) return;
     fetch("/u/" + encodeURIComponent(name) + "/jukebox/subscribe", {
       method: "POST",
       credentials: "same-origin"
-    }).then(function (r) {
-      if (!r.ok) throw new Error("no");
-      return fetchMeta();
-    }).then(function () {
-      tune("u:" + name, { open: true });
-      followInput.value = "";
-    }).catch(function () {
-      followErr.hidden = false;
-      followErr.textContent = "Could not follow " + name + ".";
-    });
-  }
-  followBtn.addEventListener("click", followSomeone);
-  followInput.addEventListener("keydown", function (e) {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      followSomeone();
-    }
-  });
-
-  function fetchMeta() {
-    return fetch("/jukebox/meta", { credentials: "same-origin" })
-      .then(function (r) { return r.ok ? r.json() : {}; })
-      .then(function (data) {
-        me = data.me || "";
-        stations = data.stations && data.stations.length ? data.stations : [{ id: "", name: "Site-wide", kind: "site" }];
-        friends = data.friends || [];
-        groups = data.groups || [];
-        renderStations();
+    })
+      .then(function (r) {
+        if (!r.ok) throw new Error("follow failed");
+        return fetch("/jukebox/meta", { credentials: "same-origin" });
       })
-      .catch(function () { renderStations(); });
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        if (data) applyMeta(data);
+        followInput.value = "";
+        tune("u:" + name, { open: true });
+      })
+      .catch(function () {
+        followErr.textContent = "Could not follow that user.";
+        followErr.hidden = false;
+      });
+  });
+
+  function applyMeta(data) {
+    me = data.me || "";
+    stations = data.stations && data.stations.length ? data.stations : stations;
+    friends = data.friends || [];
+    groups = data.groups || [];
+    renderStations();
+    loadHistory();
   }
 
-  fetchMeta().then(function () {
-    var m = location.pathname.match(/^\/u\/([A-Za-z0-9_]+)\/?$/);
-    if (m) tune("u:" + m[1], { open: true });
-    else tune("", { force: true });
-  });
+  fetch("/jukebox/meta", { credentials: "same-origin" })
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (data) {
+      if (data) applyMeta(data);
+      if (!personalOwner()) connectWs();
+    })
+    .catch(function () {
+      if (!personalOwner()) connectWs();
+    });
 })();

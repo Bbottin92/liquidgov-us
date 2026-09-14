@@ -23,13 +23,6 @@
     '<button type="button" id="jbtab-stations">Stations</button>' +
     "</div>" +
     '<div id="jbradio">' +
-    '<div id="jbnow"><span class="muted">Connecting…</span></div>' +
-    '<div id="jbtube-player"></div>' +
-    '<div class="jb-controls">' +
-    '<button type="button" id="jbpause">Pause</button>' +
-    '<button type="button" id="jbskip">Skip</button>' +
-    '<input id="jbvol" type="range" min="0" max="100" value="80" aria-label="Volume">' +
-    "</div>" +
     '<div class="jb-bar">' +
     '<select id="jbscope" aria-label="Search in">' +
     '<option value="all">All</option>' +
@@ -43,6 +36,13 @@
     '<div class="jb-searchwrap">' +
     '<input id="jbsearch" type="search" placeholder="Search" autocomplete="off" enterkeyhint="search">' +
     '<div id="jbresults"></div>' +
+    "</div>" +
+    '<div id="jbnow"><span class="muted">Connecting…</span></div>' +
+    '<div id="jbtube-wrap"><div id="jbtube-player"></div></div>' +
+    '<div class="jb-controls">' +
+    '<button type="button" id="jbpause">Pause</button>' +
+    '<button type="button" id="jbskip">Skip</button>' +
+    '<input id="jbvol" type="range" min="0" max="100" value="80" aria-label="Volume">' +
     "</div>" +
     '<div id="jbupcoming"></div>' +
     "</div>" +

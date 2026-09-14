@@ -829,6 +829,10 @@
         if (scope === "self") resultsEl.textContent = "Type to add to your Juketube.";
         return;
       }
+      if (q.length < 3) {
+        resultsEl.textContent = "Type at least 3 letters.";
+        return;
+      }
       resultsEl.textContent = "Searching…";
       fetch("/jukebox/search?q=" + encodeURIComponent(q), { credentials: "same-origin" })
         .then(function (r) {
@@ -842,7 +846,7 @@
           var items = data.items || [];
           if (!items.length) {
             resultsEl.textContent = data.error || "No matches.";
-            lgBeacon("search-empty", q.slice(0, 40));
+            if (!data.error) lgBeacon("search-empty", q.slice(0, 40));
             return;
           }
           if (scope === "self" && me) tune("u:" + me);
@@ -901,7 +905,7 @@
   var t = null;
   function scheduleSearch() {
     clearTimeout(t);
-    t = setTimeout(runSearch, 180);
+    t = setTimeout(runSearch, 450);
   }
   new MutationObserver(function () {
     panel.classList.toggle("has-results", !!resultsEl.firstChild);

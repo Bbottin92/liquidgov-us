@@ -37,6 +37,9 @@ inline bool skip_path(const std::string& method, const std::string& path) {
     if (method != "GET" && method != "HEAD") return false;
     if (path.rfind("/assets/", 0) == 0) return true;
     if (path == "/favicon.ico" || path == "/favicon.svg" || path == "/robots.txt") return true;
+    if (path == "/jukebox/meta" || path == "/manifest.webmanifest") return true;
+    if (path == "/icon" || path == "/apple-icon") return true;
+    if (path.size() > 12 && path.compare(path.size() - 12, 12, "/jukebox/now") == 0) return true;
     auto dot = path.rfind('.');
     if (dot != std::string::npos && dot + 1 < path.size()) {
         const char* ext = path.c_str() + dot + 1;

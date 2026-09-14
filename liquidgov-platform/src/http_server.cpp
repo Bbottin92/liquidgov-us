@@ -430,8 +430,14 @@ std::string css() {
         ".iconbtn{position:relative;min-height:36px;min-width:36px;display:inline-flex;align-items:center;"
         "justify-content:center;border:1px solid var(--rule);border-radius:50%;background:transparent;"
         "color:var(--ink);padding:0;text-decoration:none;font-size:1.05rem;flex-shrink:0}"
-        ".iconbtn .badge{position:absolute;top:-4px;right:-4px;margin:0;font-size:.62rem;"
-        "min-width:1.1rem;height:1.1rem;padding:0 .25rem}"
+        ".iconbtn .badge{position:absolute;top:-5px;right:-5px;margin:0;font-size:.7rem;"
+        "min-width:1.25rem;height:1.25rem;padding:0 .28rem;box-shadow:0 0 0 2px var(--parchment)}"
+        ".notif-banner{margin:0 0 .6rem;padding:.35rem .6rem;border-radius:var(--rsm);"
+        "background:var(--accent);color:var(--paper);font-size:.8rem;font-weight:600}"
+        ".notice-unread{background:rgba(196,165,116,.14);margin:0 -.4rem;padding:.7rem .4rem;"
+        "border-radius:var(--rsm)}"
+        ".person form.notice-accept{flex-shrink:0;margin:0 0 0 .4rem}"
+        ".person form.notice-accept button{min-height:36px;width:auto;padding:.3rem .75rem}"
         ".navavatar{cursor:pointer;display:inline-flex;flex-shrink:0}"
         ".navavatar:hover .portrait{filter:brightness(1.08)}"
         // Shared chrome for every header dropdown -- the account menu, and
@@ -1514,21 +1520,33 @@ std::string people_search_script() {
 // header's notifications widget fetches on open) -- one implementation,
 // two callers, so the widget and the page can never drift apart.
 std::string notices_list_html(const std::string& user) {
-    std::string html = "<div class=\"card\">";
     auto notes = g_store.notices_for(user, 50);
+    int fresh = 0;
+    for (const auto& n : notes) if (!n.read) ++fresh;
+    std::string html = "<div class=\"card\" data-unread=\"" + std::to_string(fresh) + "\">";
+    if (fresh > 0) html += "<p class=\"notif-banner\">" + std::to_string(fresh) + (fresh==1?" new":" new") + "</p>";
     if (notes.empty()) html += "<p class=\"empty\">Nothing waiting.</p>";
     for (auto& n : notes) {
         std::string line;
         std::string href;
-        if (n.type=="friend_request") { line = html_escape(n.from)+" sent a friend request."; href="/friends"; }
+        const bool pending_fr = n.type=="friend_request" &&
+            ([&]{ auto inc=g_store.incoming_requests(user); return std::find(inc.begin(),inc.end(),n.from)!=inc.end(); })();
+        if (n.type=="friend_request") { line = html_escape(n.from)+" sent a friend request."; href="/u/"+html_escape(n.from); }
         else if (n.type=="friend_accept") { line = html_escape(n.from)+" accepted your request."; href="/u/"+html_escape(n.from); }
         else if (n.type=="message") { line = html_escape(n.from)+" sent mail."; href="/mail?with="+html_escape(n.from); }
         else if (n.type=="group_invite") { line = html_escape(n.from)+" added you to /"+html_escape(n.extra)+"."; href="/c/"+html_escape(n.extra); }
         else line = html_escape(n.type);
-        html += "<div class=\"person\">";
+        html += "<div class=\"person" + std::string(n.read?"":" notice-unread") + "\">";
+        if (!n.from.empty()) html += portrait_tag(n.from, "sm");
         if (!href.empty()) html += "<a href=\""+href+"\" style=\"flex:1;min-width:0;color:inherit;text-decoration:none\">";
+        else html += "<div style=\"flex:1;min-width:0\">";
         html += "<div>"+line+"<div class=\"muted\">"+html_escape(fmt_time(n.ts))+"</div></div>";
-        if (!href.empty()) html += "</a>";
+        if (!href.empty()) html += "</a>"; else html += "</div>";
+        if (pending_fr) {
+            html += "<form class=\"inline notice-accept\" method=\"POST\" action=\"/friends/accept\">"
+                    "<input type=\"hidden\" name=\"who\" value=\""+html_escape(n.from)+"\">"
+                    "<button type=\"submit\">Accept</button></form>";
+        }
         html += "</div>";
     }
     html += "<p class=\"muted\">A declined friend request does not send a notice.</p></div>";
@@ -1666,8 +1684,7 @@ std::string mail_widget_script() {
         "hideMail();closeMenu();"
         "notifPanel.hidden=false;"
         "fetch('/notices/panel').then(function(r){return r.text();}).then(function(html){"
-        "notifRoot.innerHTML=html;"
-        "var b=notifToggle.querySelector('.badge');if(b)b.remove();"
+        "notifRoot.innerHTML=html;syncNotifBadge();"
         "});"
         "});"
         "mailToggle.addEventListener('click',function(){"
@@ -1716,6 +1733,26 @@ std::string mail_widget_script() {
         // Content-Disposition:attachment, so the browser never actually
         // navigates away and the panel closing on one would just be wrong.
         "if(e.target.closest('a.mailgroup'))hideMail();"
+        "});"
+        "function syncNotifBadge(){"
+        "var card=notifRoot.querySelector('[data-unread]');"
+        "var c=card?Number(card.getAttribute('data-unread')||0):0;"
+        "var b=notifToggle.querySelector('.badge');"
+        "if(c>0){if(!b){b=document.createElement('span');b.className='badge';notifToggle.appendChild(b);}b.textContent=String(c);}"
+        "else if(b)b.remove();"
+        "}"
+        "notifRoot.addEventListener('submit',function(e){"
+        "var form=e.target.closest('form.notice-accept');"
+        "if(!form)return;"
+        "e.preventDefault();"
+        "var who=(form.querySelector('[name=who]')||{}).value||'';"
+        "fetch('/friends/accept',{method:'POST',credentials:'same-origin',"
+        "headers:{'Content-Type':'application/x-www-form-urlencoded'},"
+        "body:'who='+encodeURIComponent(who)}).then(function(){"
+        "return fetch('/notices/panel');"
+        "}).then(function(r){return r.text();}).then(function(html){"
+        "notifRoot.innerHTML=html;syncNotifBadge();"
+        "});"
         "});"
         "mailRoot.addEventListener('submit',function(e){"
         "var form=e.target.closest('form.mailcomposer');"
@@ -5647,14 +5684,16 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         // badge now, not this page's -- clearing it here would make an
         // unread message vanish from its own badge without the message
         // ever having been opened.
-        g_store.mark_notices_read_except_type(user, "message");
+        g_store.mark_notices_read_of_type(user, "friend_accept");
+        g_store.mark_notices_read_of_type(user, "group_invite");
         return pg("Notices", "<h1>Notices</h1>"+notices_list_html(user));
     }
     // Fetched by the header's Notifications widget on open -- same content
     // as the full page (same helper), as a bare fragment for innerHTML.
     if(method=="GET"&&path=="/notices/panel") {
         if(!acc) return http_code("401 Unauthorized", "");
-        g_store.mark_notices_read_except_type(user, "message");
+        g_store.mark_notices_read_of_type(user, "friend_accept");
+        g_store.mark_notices_read_of_type(user, "group_invite");
         return http_ok(notices_list_html(user));
     }
 
@@ -6180,6 +6219,8 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         if(!acc) return need_login();
         auto who=parse_form(body)["who"];
         g_store.accept_friend_request(who, user);
+        if (g_store.incoming_requests(user).empty())
+            g_store.mark_notices_read_of_type(user, "friend_request");
         return http_redir("/friends");
     }
     if(method=="POST"&&path=="/friends/unfriend") {

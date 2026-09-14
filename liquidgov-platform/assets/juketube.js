@@ -89,13 +89,6 @@
     }
     document.documentElement.style.setProperty("--kb", kb + "px");
     document.documentElement.style.setProperty("--vvh", vvh + "px");
-    panel.classList.toggle("kb-open", kb > 80);
-    if (search) {
-      var r = search.getBoundingClientRect();
-      var top = vv ? vv.offsetTop : 0;
-      var space = Math.max(72, Math.round(r.top - top - 8));
-      resultsEl.style.maxHeight = Math.min(280, space) + "px";
-    }
   }
   if (window.visualViewport) {
     visualViewport.addEventListener("resize", syncViewport);

@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cerrno>
+#include <cmath>
 #include <cstring>
 #include <fcntl.h>
 #include <filesystem>
@@ -115,6 +116,91 @@ bool parse_bit(const std::string& s, const char* what) {
     const auto v = parse_u64(s, what);
     if (v > 1) throw std::runtime_error(std::string("LGP1: bad ") + what);
     return v == 1;
+}
+
+double parse_dbl(const std::string& s, const char* what) {
+    if (s.empty()) throw std::runtime_error(std::string("LGP1: empty ") + what);
+    std::size_t idx = 0;
+    double v = 0;
+    try {
+        v = std::stod(s, &idx);
+    } catch (...) {
+        throw std::runtime_error(std::string("LGP1: bad ") + what);
+    }
+    if (idx != s.size() || !std::isfinite(v))
+        throw std::runtime_error(std::string("LGP1: bad ") + what);
+    return v;
+}
+
+std::string fmt_stored(double v) {
+    std::ostringstream o;
+    o.precision(12);
+    o << v;
+    return o.str();
+}
+
+bool valid_iso_date(const std::string& s) {
+    if (s.size() != 10 || s[4] != '-' || s[7] != '-') return false;
+    for (int i : {0, 1, 2, 3, 5, 6, 8, 9}) {
+        if (s[static_cast<std::size_t>(i)] < '0' || s[static_cast<std::size_t>(i)] > '9') return false;
+    }
+    const int y = std::stoi(s.substr(0, 4));
+    const int m = std::stoi(s.substr(5, 2));
+    const int d = std::stoi(s.substr(8, 2));
+    return y >= 2000 && y <= 2100 && m >= 1 && m <= 12 && d >= 1 && d <= 31;
+}
+
+bool spec_ok(const BallotSpec& s) {
+    const int k = static_cast<int>(s.kind);
+    if (k < 0 || k > 4) return false;
+    if (s.unit.size() > 24) return false;
+    if (s.kind == BallotKind::Choice) {
+        if (s.options.size() < 2 || s.options.size() > 12) return false;
+        for (const auto& o : s.options) {
+            if (o.empty() || o.size() > 80) return false;
+        }
+    }
+    if (s.kind == BallotKind::Scale) {
+        if (s.options.size() > 2) return false;
+        for (const auto& o : s.options) {
+            if (o.size() > 40) return false;
+        }
+    }
+    if (s.kind == BallotKind::Number) {
+        if (s.min_v != 0 || s.max_v != 0) {
+            if (!(s.min_v < s.max_v) || !std::isfinite(s.min_v) || !std::isfinite(s.max_v))
+                return false;
+        }
+    }
+    return true;
+}
+
+bool payload_ok(const BallotSpec& s, const std::string& raw) {
+    if (raw.empty()) return false;
+    if (s.kind == BallotKind::Number) {
+        std::size_t idx = 0;
+        double v = 0;
+        try { v = std::stod(raw, &idx); } catch (...) { return false; }
+        if (idx != raw.size() || !std::isfinite(v) || std::fabs(v) > 1e12) return false;
+        if (s.min_v != 0 || s.max_v != 0) {
+            if (v < s.min_v || v > s.max_v) return false;
+        }
+        return true;
+    }
+    if (s.kind == BallotKind::Date) return valid_iso_date(raw);
+    if (s.kind == BallotKind::Choice) {
+        std::size_t idx = 0;
+        unsigned long i = 0;
+        try { i = std::stoul(raw, &idx); } catch (...) { return false; }
+        return idx == raw.size() && i < s.options.size();
+    }
+    if (s.kind == BallotKind::Scale) {
+        std::size_t idx = 0;
+        long i = 0;
+        try { i = std::stol(raw, &idx); } catch (...) { return false; }
+        return idx == raw.size() && i >= 0 && i <= 100;
+    }
+    return false;
 }
 
 void write_all(int fd, const std::string& data) {
@@ -793,13 +879,16 @@ int FileStore::second_count(std::uint64_t post_id) const {
     return n;
 }
 
-std::uint64_t FileStore::add_proposal(const std::string& author, const std::string& title, const std::string& body) {
+std::uint64_t FileStore::add_proposal(const std::string& author, const std::string& title, const std::string& body,
+                                      BallotSpec spec) {
+    if (!spec_ok(spec)) return 0;
     Proposal p;
     p.id = next_proposal_id_++;
     p.author = author;
     p.ts = now();
     p.title = title;
     p.body = body;
+    p.ballot = spec;
     proposals_.push_back(p);
     flush();
     return p.id;
@@ -818,6 +907,8 @@ std::optional<Proposal> FileStore::proposal_by_id(std::uint64_t id) const {
 
 void FileStore::cast_proposal_vote(std::uint64_t proposal_id, const std::string& voter, ProposalVote choice) {
     if (voter.empty()) return;
+    auto p = proposal_by_id(proposal_id);
+    if (p && p->ballot.kind != BallotKind::YesNo) return;
     proposal_votes_[proposal_id][voter] = choice;
     flush();
 }
@@ -841,6 +932,69 @@ ProposalTally FileStore::tally_of(std::uint64_t proposal_id) const {
             case ProposalVote::Abstain: ++t.abstain; break;
         }
     }
+    return t;
+}
+
+void FileStore::cast_ballot_value(std::uint64_t proposal_id, const std::string& voter, const std::string& payload) {
+    if (voter.empty()) return;
+    auto p = proposal_by_id(proposal_id);
+    if (!p || p->ballot.kind == BallotKind::YesNo) return;
+    if (!payload_ok(p->ballot, payload)) return;
+    ballot_values_[proposal_id][voter] = payload;
+    flush();
+}
+
+std::optional<std::string> FileStore::ballot_value_of(std::uint64_t proposal_id, const std::string& voter) const {
+    auto pit = ballot_values_.find(proposal_id);
+    if (pit == ballot_values_.end()) return std::nullopt;
+    auto vit = pit->second.find(voter);
+    if (vit == pit->second.end()) return std::nullopt;
+    return vit->second;
+}
+
+BallotTally FileStore::value_tally_of(std::uint64_t proposal_id) const {
+    BallotTally t;
+    auto p = proposal_by_id(proposal_id);
+    if (!p) return t;
+    auto pit = ballot_values_.find(proposal_id);
+    if (pit == ballot_values_.end() || pit->second.empty()) {
+        if (p->ballot.kind == BallotKind::Choice)
+            t.option_counts.assign(p->ballot.options.size(), 0);
+        return t;
+    }
+    t.n = static_cast<int>(pit->second.size());
+    if (p->ballot.kind == BallotKind::Choice) {
+        t.option_counts.assign(p->ballot.options.size(), 0);
+        for (const auto& [voter, payload] : pit->second) {
+            std::size_t idx = 0;
+            unsigned long i = 0;
+            try { i = std::stoul(payload, &idx); } catch (...) { continue; }
+            if (idx == payload.size() && i < t.option_counts.size())
+                ++t.option_counts[i];
+        }
+        return t;
+    }
+    if (p->ballot.kind == BallotKind::Date) {
+        std::vector<std::string> dates;
+        dates.reserve(pit->second.size());
+        for (const auto& [voter, payload] : pit->second) dates.push_back(payload);
+        std::sort(dates.begin(), dates.end());
+        t.lo_date = dates.front();
+        t.hi_date = dates.back();
+        t.median_date = dates[(dates.size() - 1) / 2];
+        return t;
+    }
+    std::vector<double> vals;
+    vals.reserve(pit->second.size());
+    for (const auto& [voter, payload] : pit->second) {
+        try { vals.push_back(std::stod(payload)); } catch (...) {}
+    }
+    if (vals.empty()) return t;
+    std::sort(vals.begin(), vals.end());
+    t.lo = vals.front();
+    t.hi = vals.back();
+    t.median = vals[(vals.size() - 1) / 2];
+    t.n = static_cast<int>(vals.size());
     return t;
 }
 
@@ -1085,6 +1239,7 @@ bool FileStore::delete_account(AccountId id) {
         if (p.author == name) p.author = "[deleted account]";
     }
     for (auto& [pid, votes] : proposal_votes_) votes.erase(name);
+    for (auto& [pid, vals] : ballot_values_) vals.erase(name);
     std::vector<SessionId> drop;
     for (const auto& [sid, s] : sessions_) {
         if (s.account == id) drop.push_back(sid);
@@ -1135,6 +1290,7 @@ void FileStore::load() {
     seconds_.clear();
     proposals_.clear();
     proposal_votes_.clear();
+    ballot_values_.clear();
     communities_.clear();
     members_.clear();
     notices_.clear();
@@ -1157,6 +1313,15 @@ void FileStore::load() {
 
     std::map<std::uint64_t, std::pair<std::string, std::uint64_t>> pending_reposts;
     std::map<std::uint64_t, std::pair<std::string, std::string>> pending_attachments;
+    struct PendingBk {
+        int kind = 0;
+        std::string unit;
+        double min_v = 0;
+        double max_v = 0;
+        double step = 1;
+    };
+    std::map<std::uint64_t, PendingBk> pending_bk;
+    std::map<std::uint64_t, std::vector<std::pair<int, std::string>>> pending_bo;
     while (std::getline(in, line)) {
         if (!line.empty() && line.back() == '\r') line.pop_back();
         if (line.empty()) continue;
@@ -1281,6 +1446,26 @@ void FileStore::load() {
             const auto cv = parse_u64(f[3], "pvote choice");
             if (cv > 2) throw std::runtime_error("LGP1: bad pvote choice");
             proposal_votes_[pid][voter] = static_cast<ProposalVote>(cv);
+        } else if (tag == "pbk") {
+            if (f.size() != 7) throw std::runtime_error("LGP1: bad pbk record");
+            const auto pid = parse_u64(f[1], "pbk proposal id");
+            const auto kind = parse_u64(f[2], "pbk kind");
+            if (kind < 1 || kind > 4) throw std::runtime_error("LGP1: bad pbk kind");
+            pending_bk[pid] = PendingBk{
+                static_cast<int>(kind), pct_decode(f[3]),
+                parse_dbl(f[4], "pbk min"), parse_dbl(f[5], "pbk max"),
+                parse_dbl(f[6], "pbk step")
+            };
+        } else if (tag == "pbo") {
+            if (f.size() != 4) throw std::runtime_error("LGP1: bad pbo record");
+            const auto pid = parse_u64(f[1], "pbo proposal id");
+            const auto idx = parse_u64(f[2], "pbo index");
+            pending_bo[pid].push_back({static_cast<int>(idx), pct_decode(f[3])});
+        } else if (tag == "pbv") {
+            if (f.size() != 4) throw std::runtime_error("LGP1: bad pbv record");
+            const auto pid = parse_u64(f[1], "pbv proposal id");
+            const auto voter = pct_decode(f[2]);
+            if (!voter.empty()) ballot_values_[pid][voter] = pct_decode(f[3]);
         } else if (tag == "rp") {
             // A separate tag (not a wider "post" record) specifically so
             // existing 6-field "post" records from before reposts existed
@@ -1526,6 +1711,23 @@ void FileStore::load() {
             p.attachment_mime = ait->second.second;
         }
     }
+    for (auto& p : proposals_) {
+        auto bit = pending_bk.find(p.id);
+        if (bit != pending_bk.end()) {
+            p.ballot.kind = static_cast<BallotKind>(bit->second.kind);
+            p.ballot.unit = bit->second.unit;
+            p.ballot.min_v = bit->second.min_v;
+            p.ballot.max_v = bit->second.max_v;
+            p.ballot.step = bit->second.step;
+        }
+        auto oit = pending_bo.find(p.id);
+        if (oit != pending_bo.end()) {
+            auto opts = oit->second;
+            std::sort(opts.begin(), opts.end());
+            p.ballot.options.clear();
+            for (const auto& item : opts) p.ballot.options.push_back(item.second);
+        }
+    }
 }
 
 void FileStore::flush() {
@@ -1608,6 +1810,20 @@ void FileStore::flush() {
     for (const auto& [pid, votes] : proposal_votes_) {
         for (const auto& [voter, choice] : votes) {
             body << "pvote\t" << pid << "\t" << pct_encode(voter) << "\t" << static_cast<int>(choice) << "\n";
+        }
+    }
+    for (const auto& p : proposals_) {
+        if (p.ballot.kind == BallotKind::YesNo) continue;
+        body << "pbk\t" << p.id << "\t" << static_cast<int>(p.ballot.kind) << "\t"
+             << pct_encode(p.ballot.unit) << "\t" << fmt_stored(p.ballot.min_v) << "\t"
+             << fmt_stored(p.ballot.max_v) << "\t" << fmt_stored(p.ballot.step) << "\n";
+        for (std::size_t i = 0; i < p.ballot.options.size(); ++i) {
+            body << "pbo\t" << p.id << "\t" << i << "\t" << pct_encode(p.ballot.options[i]) << "\n";
+        }
+    }
+    for (const auto& [pid, vals] : ballot_values_) {
+        for (const auto& [voter, payload] : vals) {
+            body << "pbv\t" << pid << "\t" << pct_encode(voter) << "\t" << pct_encode(payload) << "\n";
         }
     }
     for (const auto& [slug, c] : communities_) {

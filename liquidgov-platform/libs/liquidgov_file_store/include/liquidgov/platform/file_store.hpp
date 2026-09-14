@@ -30,10 +30,14 @@
 //   sec    <post_id> <username>   // one line per (post, account) that has
 //          seconded it; toggling off just means the line stops being written
 //   prop   <id> <author> <ts> <title> <body>   // unofficial site-wide straw poll,
-//          see Proposal's comment -- not a CitizenId vote
+//          see Proposal's comment -- not a CitizenId vote. Shape is frozen at
+//          5 fields so existing files boot unchanged.
 //   propn  <next_proposal_id>
-//   pvote  <proposal_id> <voter> <choice 0-2>   // one line per (proposal, voter);
-//          re-voting overwrites the prior line for that pair on the next flush
+//   pvote  <proposal_id> <voter> <choice 0-2>   // Yes/No/Abstain only
+//   pbk    <proposal_id> <kind 1-4> <unit> <min> <max> <step>
+//          ballot kind other than YesNo; absence means YesNo. Never reuse pvote.
+//   pbo    <proposal_id> <index> <label>        // Choice/Scale labels
+//   pbv    <proposal_id> <voter> <payload>      // number/date/choice/scale value
 //   comm   <slug> <name> <owner> <about> <created_at> [<category 0-10> <subcategory>]
 //          -- trailing two fields optional; an older 6-token line means category
 //          General (10) and an empty subcategory
@@ -186,6 +190,23 @@ struct Community {
     std::string subcategory;
 };
 
+enum class BallotKind : int {
+    YesNo = 0,   // existing For / Against / Abstain
+    Number = 1,  // pick a value (deadline in days, a budget, a cap)
+    Date = 2,    // pick a calendar date
+    Choice = 3,  // pick one of the author's labels
+    Scale = 4,   // 0–100 slider
+};
+
+struct BallotSpec {
+    BallotKind kind = BallotKind::YesNo;
+    std::string unit;   // Number: "days", "$" — empty is fine
+    double min_v = 0;   // Number: both 0 means unbounded (still clamped)
+    double max_v = 0;
+    double step = 1;
+    std::vector<std::string> options; // Choice: 2–12 labels; Scale: optional left/right
+};
+
 // A site-wide, unofficial straw poll -- explicitly not a binding vote (the
 // genesis-phase copy is clear real governmental authority is a later,
 // separate landslide). Any member can open one and any member can cast one
@@ -196,6 +217,7 @@ struct Proposal {
     std::int64_t ts = 0;
     std::string title;
     std::string body;
+    BallotSpec ballot;
 };
 
 enum class ProposalVote : int {
@@ -208,6 +230,18 @@ struct ProposalTally {
     int yes = 0;
     int no = 0;
     int abstain = 0;
+};
+
+// For Number / Date / Scale / Choice. YesNo keeps using ProposalTally.
+struct BallotTally {
+    int n = 0;
+    double median = 0;
+    double lo = 0;
+    double hi = 0;
+    std::string median_date;
+    std::string lo_date;
+    std::string hi_date;
+    std::vector<int> option_counts;
 };
 
 // Who besides the owner may add tracks to an account's jukebox. The owner can
@@ -460,7 +494,8 @@ public:
     bool has_seconded(std::uint64_t post_id, const std::string& user) const;
     int second_count(std::uint64_t post_id) const;
 
-    std::uint64_t add_proposal(const std::string& author, const std::string& title, const std::string& body);
+    std::uint64_t add_proposal(const std::string& author, const std::string& title, const std::string& body,
+                               BallotSpec spec = {});
     std::vector<Proposal> all_proposals() const; // oldest first, same as posts_by
     std::optional<Proposal> proposal_by_id(std::uint64_t id) const;
     // Casting again overwrites the voter's own prior choice on this
@@ -468,6 +503,11 @@ public:
     void cast_proposal_vote(std::uint64_t proposal_id, const std::string& voter, ProposalVote choice);
     std::optional<ProposalVote> proposal_vote_of(std::uint64_t proposal_id, const std::string& voter) const;
     ProposalTally tally_of(std::uint64_t proposal_id) const;
+    // Number/Date/Choice/Scale. Payload meaning depends on kind (decimal,
+    // YYYY-MM-DD, option index, 0-100). Invalid payload is a no-op.
+    void cast_ballot_value(std::uint64_t proposal_id, const std::string& voter, const std::string& payload);
+    std::optional<std::string> ballot_value_of(std::uint64_t proposal_id, const std::string& voter) const;
+    BallotTally value_tally_of(std::uint64_t proposal_id) const;
 
     bool create_community(const Community& c);
     std::optional<Community> community(const std::string& slug) const;
@@ -596,6 +636,7 @@ private:
     std::uint64_t next_proposal_id_ = 1;
     std::vector<Proposal> proposals_;
     std::map<std::uint64_t, std::map<std::string, ProposalVote>> proposal_votes_;
+    std::map<std::uint64_t, std::map<std::string, std::string>> ballot_values_;
     std::map<std::string, Community> communities_;
     std::map<std::string, std::set<std::string>> members_;
     std::vector<Notice> notices_;

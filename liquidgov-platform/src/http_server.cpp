@@ -18,6 +18,7 @@
 #include <atomic>
 #include <cctype>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -4577,37 +4578,139 @@ std::string post_block(const Post& p, const std::string& viewer) {
 
 // A proportional Yes/No/Abstain bar plus one-click vote buttons, the
 // current voter's own choice picked out with a filled button instead of a
-// ghost one. viewer empty (logged out) renders the tally with no voting UI.
-std::string proposal_block(const Proposal& p, const std::string& viewer, const ProposalTally& t,
-                            std::optional<ProposalVote> my_vote) {
-    const int total = t.yes + t.no + t.abstain;
-    std::string bar = "<div style=\"display:flex;height:8px;border-radius:4px;overflow:hidden;background:var(--rule);margin:.5rem 0\">";
-    if (total > 0) {
-        if (t.yes) bar += "<div style=\"flex:"+std::to_string(t.yes)+";background:var(--ok)\"></div>";
-        if (t.no) bar += "<div style=\"flex:"+std::to_string(t.no)+";background:var(--danger)\"></div>";
-        if (t.abstain) bar += "<div style=\"flex:"+std::to_string(t.abstain)+";background:var(--stone)\"></div>";
+// ghost one. Number / Date / Choice / Scale use the same card, with a
+// median (or option counts) instead of the yes/no bar. viewer empty
+// (logged out) renders the tally with no voting UI.
+std::string fmt_ballot_num(double v) {
+    std::ostringstream o;
+    if (std::fabs(v - std::round(v)) < 1e-9) o << static_cast<long long>(std::round(v));
+    else { o.setf(std::ios::fixed); o.precision(2); o << v; }
+    return o.str();
+}
+
+std::string proposal_block(const Proposal& p, const std::string& viewer) {
+    std::string kindEyebrow;
+    switch (p.ballot.kind) {
+        case BallotKind::YesNo: kindEyebrow = "Yes / No"; break;
+        case BallotKind::Number: kindEyebrow = p.ballot.unit.empty() ? "Number" : html_escape(p.ballot.unit); break;
+        case BallotKind::Date: kindEyebrow = "Date"; break;
+        case BallotKind::Choice: kindEyebrow = "Choice"; break;
+        case BallotKind::Scale: kindEyebrow = "Scale"; break;
     }
-    bar += "</div><p class=\"muted\">"+std::to_string(t.yes)+" yes · "+std::to_string(t.no)+" no · "+
-           std::to_string(t.abstain)+" abstain · "+std::to_string(total)+" total</p>";
-    std::string voteForm;
-    if (!viewer.empty()) {
-        auto btn = [&](ProposalVote v, const char* label) {
-            const bool active = my_vote.has_value() && *my_vote == v;
-            return "<form class=\"inline\" method=\"POST\" action=\"/proposals/vote\">"
-                   "<input type=\"hidden\" name=\"id\" value=\""+std::to_string(p.id)+"\">"
-                   "<input type=\"hidden\" name=\"choice\" value=\""+std::to_string(static_cast<int>(v))+"\">"
-                   "<button class=\""+std::string(active ? "" : "ghost")+"\" type=\"submit\">"+label+
-                   (active ? " &#10003;" : "")+"</button></form>";
-        };
-        voteForm = "<div class=\"row\">"+btn(ProposalVote::Yes,"Yes")+btn(ProposalVote::No,"No")+
-                   btn(ProposalVote::Abstain,"Abstain")+"</div>";
+    std::string body;
+    if (p.ballot.kind == BallotKind::YesNo) {
+        auto t = g_store.tally_of(p.id);
+        auto my_vote = viewer.empty() ? std::optional<ProposalVote>{} : g_store.proposal_vote_of(p.id, viewer);
+        const int total = t.yes + t.no + t.abstain;
+        std::string bar = "<div style=\"display:flex;height:8px;border-radius:4px;overflow:hidden;background:var(--rule);margin:.5rem 0\">";
+        if (total > 0) {
+            if (t.yes) bar += "<div style=\"flex:"+std::to_string(t.yes)+";background:var(--ok)\"></div>";
+            if (t.no) bar += "<div style=\"flex:"+std::to_string(t.no)+";background:var(--danger)\"></div>";
+            if (t.abstain) bar += "<div style=\"flex:"+std::to_string(t.abstain)+";background:var(--stone)\"></div>";
+        }
+        bar += "</div><p class=\"muted\">"+std::to_string(t.yes)+" yes · "+std::to_string(t.no)+" no · "+
+               std::to_string(t.abstain)+" abstain · "+std::to_string(total)+" total</p>";
+        std::string voteForm;
+        if (!viewer.empty()) {
+            auto btn = [&](ProposalVote v, const char* label) {
+                const bool active = my_vote.has_value() && *my_vote == v;
+                return "<form class=\"inline\" method=\"POST\" action=\"/proposals/vote\">"
+                       "<input type=\"hidden\" name=\"id\" value=\""+std::to_string(p.id)+"\">"
+                       "<input type=\"hidden\" name=\"choice\" value=\""+std::to_string(static_cast<int>(v))+"\">"
+                       "<button class=\""+std::string(active ? "" : "ghost")+"\" type=\"submit\">"+label+
+                       (active ? " &#10003;" : "")+"</button></form>";
+            };
+            voteForm = "<div class=\"row\">"+btn(ProposalVote::Yes,"Yes")+btn(ProposalVote::No,"No")+
+                       btn(ProposalVote::Abstain,"Abstain")+"</div>";
+        }
+        body = bar + voteForm;
+    } else if (p.ballot.kind == BallotKind::Choice) {
+        auto t = g_store.value_tally_of(p.id);
+        auto mine = viewer.empty() ? std::optional<std::string>{} : g_store.ballot_value_of(p.id, viewer);
+        int total = t.n;
+        std::string bar = "<div style=\"display:flex;height:8px;border-radius:4px;overflow:hidden;background:var(--rule);margin:.5rem 0\">";
+        if (total > 0) {
+            for (std::size_t i = 0; i < t.option_counts.size(); ++i) {
+                if (t.option_counts[i])
+                    bar += "<div style=\"flex:"+std::to_string(t.option_counts[i])+";background:var(--accent)\"></div>";
+            }
+        }
+        bar += "</div>";
+        std::string list = "<div class=\"row\" style=\"flex-wrap:wrap;gap:.4rem\">";
+        for (std::size_t i = 0; i < p.ballot.options.size(); ++i) {
+            int n = (i < t.option_counts.size()) ? t.option_counts[i] : 0;
+            const bool active = mine && *mine == std::to_string(i);
+            if (!viewer.empty()) {
+                list += "<form class=\"inline\" method=\"POST\" action=\"/proposals/vote\">"
+                        "<input type=\"hidden\" name=\"id\" value=\""+std::to_string(p.id)+"\">"
+                        "<input type=\"hidden\" name=\"value\" value=\""+std::to_string(i)+"\">"
+                        "<button class=\""+std::string(active ? "" : "ghost")+"\" type=\"submit\">"+
+                        html_escape(p.ballot.options[i])+" · "+std::to_string(n)+
+                        (active ? " &#10003;" : "")+"</button></form>";
+            } else {
+                list += "<span class=\"muted\">"+html_escape(p.ballot.options[i])+" · "+std::to_string(n)+"</span>";
+            }
+        }
+        list += "</div>";
+        body = bar + "<p class=\"muted\">"+std::to_string(total)+" responses</p>" + list;
+    } else {
+        auto t = g_store.value_tally_of(p.id);
+        auto mine = viewer.empty() ? std::optional<std::string>{} : g_store.ballot_value_of(p.id, viewer);
+        std::string summary;
+        if (p.ballot.kind == BallotKind::Date) {
+            if (t.n == 0) summary = "<p class=\"muted\">No dates yet.</p>";
+            else summary = "<p>Median date: <strong>"+html_escape(t.median_date)+"</strong></p>"
+                           "<p class=\"muted\">"+std::to_string(t.n)+" responses · earliest "+html_escape(t.lo_date)+
+                           " · latest "+html_escape(t.hi_date)+"</p>";
+        } else {
+            std::string unit = p.ballot.unit.empty() ? "" : " "+html_escape(p.ballot.unit);
+            if (p.ballot.kind == BallotKind::Scale) {
+                std::string left = (p.ballot.options.empty() || p.ballot.options[0].empty()) ? "0" : html_escape(p.ballot.options[0]);
+                std::string right = (p.ballot.options.size() < 2 || p.ballot.options[1].empty()) ? "100" : html_escape(p.ballot.options[1]);
+                if (t.n == 0) summary = "<p class=\"muted\">"+left+" — "+right+". No responses yet.</p>";
+                else summary = "<p>"+left+" — <strong>"+fmt_ballot_num(t.median)+"</strong> — "+right+"</p>"
+                               "<p class=\"muted\">median of "+std::to_string(t.n)+" · range "+fmt_ballot_num(t.lo)+
+                               "–"+fmt_ballot_num(t.hi)+"</p>";
+            } else {
+                if (t.n == 0) summary = "<p class=\"muted\">No numbers yet.</p>";
+                else summary = "<p>Median: <strong>"+fmt_ballot_num(t.median)+unit+"</strong></p>"
+                               "<p class=\"muted\">"+std::to_string(t.n)+" responses · range "+fmt_ballot_num(t.lo)+
+                               "–"+fmt_ballot_num(t.hi)+unit+"</p>";
+            }
+        }
+        std::string voteForm;
+        if (!viewer.empty()) {
+            voteForm = "<form method=\"POST\" action=\"/proposals/vote\">"
+                       "<input type=\"hidden\" name=\"id\" value=\""+std::to_string(p.id)+"\">";
+            if (p.ballot.kind == BallotKind::Date) {
+                voteForm += "<label>Your date</label><input type=\"date\" name=\"value\" required";
+                if (mine) voteForm += " value=\""+html_escape(*mine)+"\"";
+                voteForm += ">";
+            } else if (p.ballot.kind == BallotKind::Scale) {
+                std::string cur = mine ? html_escape(*mine) : "50";
+                voteForm += "<label>Your mark <span class=\"muted\" id=\"scv"+std::to_string(p.id)+"\">"+cur+"</span></label>"
+                            "<input type=\"range\" name=\"value\" min=\"0\" max=\"100\" value=\""+cur+
+                            "\" oninput=\"document.getElementById('scv"+std::to_string(p.id)+"').textContent=this.value\">";
+            } else {
+                voteForm += "<label>Your number";
+                if (!p.ballot.unit.empty()) voteForm += " ("+html_escape(p.ballot.unit)+")";
+                voteForm += "</label><input type=\"number\" name=\"value\" required step=\"any\"";
+                if (p.ballot.min_v != 0 || p.ballot.max_v != 0) {
+                    voteForm += " min=\""+fmt_ballot_num(p.ballot.min_v)+"\" max=\""+fmt_ballot_num(p.ballot.max_v)+"\"";
+                }
+                if (mine) voteForm += " value=\""+html_escape(*mine)+"\"";
+                voteForm += ">";
+            }
+            voteForm += "<button>Cast</button></form>";
+        }
+        body = summary + voteForm;
     }
     std::string when = fmt_time(p.ts);
-    return "<p class=\"muted eyebrow\">Proposal "+std::to_string(p.id)+"</p>"
+    return "<p class=\"muted eyebrow\">Proposal "+std::to_string(p.id)+" · "+kindEyebrow+"</p>"
            "<h3 style=\"margin:.1rem 0\">"+html_escape(p.title)+"</h3>"
            "<p class=\"muted\">by <a href=\"/u/"+html_escape(p.author)+"\">"+html_escape(p.author)+"</a>"+
            (when.empty()?"":" · "+html_escape(when))+"</p>"
-           "<p style=\"white-space:pre-wrap\">"+html_escape(p.body)+"</p>"+bar+voteForm;
+           "<p style=\"white-space:pre-wrap\">"+html_escape(p.body)+"</p>"+body;
 }
 
 // Shared by every post composer (/me/post, /feed, /c/<slug>): pulls the
@@ -4974,19 +5077,48 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             "<p class=\"muted\">Unofficial straw polls &mdash; a way to gauge how people feel about "
             "something not yet decided. Not a CitizenId vote, not binding, not this platform's Phase 2.</p>";
         if (qs["err"]=="empty") html += "<p class=\"warn\">Need a title and a body.</p>";
+        if (qs["err"]=="options") html += "<p class=\"warn\">Choice polls need 2 to 12 options, one per line.</p>";
+        if (qs["err"]=="range") html += "<p class=\"warn\">Number polls need a minimum below the maximum, or leave both blank.</p>";
         html += "<div class=\"card\"><form method=\"POST\" action=\"/proposals\">"
                 "<label>Title</label><input name=\"title\" maxlength=\"140\" required>"
                 "<label>What's being proposed</label>"
                 "<textarea name=\"body\" maxlength=\"4000\" required placeholder=\"Plain text.\"></textarea>"
-                "<button>Open for votes</button></form></div>";
+                "<label>How should people answer?</label>"
+                "<select name=\"kind\" id=\"bkind\">"
+                "<option value=\"0\">Yes / No / Abstain</option>"
+                "<option value=\"1\">A number</option>"
+                "<option value=\"2\">A date</option>"
+                "<option value=\"3\">Pick one option</option>"
+                "<option value=\"4\">A scale (0–100)</option>"
+                "</select>"
+                "<div id=\"bnum\" hidden>"
+                "<label>Unit (optional)</label><input name=\"unit\" maxlength=\"24\" placeholder=\"days, dollars, people\">"
+                "<label>Minimum (optional)</label><input name=\"min\" type=\"number\" step=\"any\">"
+                "<label>Maximum (optional)</label><input name=\"max\" type=\"number\" step=\"any\">"
+                "</div>"
+                "<div id=\"bchoice\" hidden>"
+                "<label>Options (one per line, 2–12)</label>"
+                "<textarea name=\"options\" maxlength=\"800\" placeholder=\"One option per line\"></textarea>"
+                "</div>"
+                "<div id=\"bscale\" hidden>"
+                "<label>Left label</label><input name=\"left\" maxlength=\"40\" placeholder=\"Too little\">"
+                "<label>Right label</label><input name=\"right\" maxlength=\"40\" placeholder=\"Too much\">"
+                "</div>"
+                "<button>Open for votes</button></form>"
+                "<script>"
+                "(function(){var s=document.getElementById('bkind');if(!s)return;"
+                "function show(){var v=s.value;"
+                "document.getElementById('bnum').hidden=(v!=='1');"
+                "document.getElementById('bchoice').hidden=(v!=='3');"
+                "document.getElementById('bscale').hidden=(v!=='4');}"
+                "s.addEventListener('change',show);show();})();"
+                "</script></div>";
         auto all = g_store.all_proposals();
         std::reverse(all.begin(), all.end());
         if (all.empty()) html += "<div class=\"card\"><p class=\"empty\">None open.</p>"
             "<p class=\"muted\">The form above starts an unofficial straw poll. Not a binding vote.</p></div>";
         for (const auto& p : all) {
-            auto t = g_store.tally_of(p.id);
-            auto mv = g_store.proposal_vote_of(p.id, user);
-            html += "<div class=\"card\">"+proposal_block(p, user, t, mv)+"</div>";
+            html += "<div class=\"card\">"+proposal_block(p, user)+"</div>";
         }
         return pg("Proposals", html);
     }
@@ -6149,7 +6281,36 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         auto title = trim_ws(f["title"]);
         auto ptext = trim_ws(f["body"]);
         if (title.empty() || ptext.empty()) return http_redir("/proposals?err=empty");
-        g_store.add_proposal(user, title, ptext);
+        BallotSpec spec;
+        int kind = 0;
+        try { kind = std::stoi(f["kind"]); } catch (...) { kind = 0; }
+        if (kind < 0 || kind > 4) kind = 0;
+        spec.kind = static_cast<BallotKind>(kind);
+        if (spec.kind == BallotKind::Number) {
+            spec.unit = trim_ws(f["unit"]);
+            if (spec.unit.size() > 24) spec.unit.resize(24);
+            auto mins = trim_ws(f["min"]);
+            auto maxs = trim_ws(f["max"]);
+            if (!mins.empty() || !maxs.empty()) {
+                try { spec.min_v = std::stod(mins); } catch (...) { return http_redir("/proposals?err=range"); }
+                try { spec.max_v = std::stod(maxs); } catch (...) { return http_redir("/proposals?err=range"); }
+                if (!(spec.min_v < spec.max_v)) return http_redir("/proposals?err=range");
+            }
+        } else if (spec.kind == BallotKind::Choice) {
+            std::istringstream in(f["options"]);
+            std::string line;
+            while (std::getline(in, line)) {
+                auto o = trim_ws(line);
+                if (!o.empty()) spec.options.push_back(o);
+            }
+            if (spec.options.size() < 2 || spec.options.size() > 12) return http_redir("/proposals?err=options");
+        } else if (spec.kind == BallotKind::Scale) {
+            auto left = trim_ws(f["left"]);
+            auto right = trim_ws(f["right"]);
+            spec.options = {left, right};
+        }
+        auto id = g_store.add_proposal(user, title, ptext, spec);
+        if (id == 0) return http_redir("/proposals?err=range");
         return http_redir("/proposals");
     }
     if(method=="POST"&&path=="/proposals/vote") {
@@ -6157,11 +6318,16 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         auto f = parse_form(body);
         std::uint64_t id = 0;
         try { id = std::stoull(f["id"]); } catch (...) { return http_redir("/proposals"); }
-        if (!g_store.proposal_by_id(id)) return http_redir("/proposals");
-        int cv = 2;
-        try { cv = std::stoi(f["choice"]); } catch (...) { cv = 2; }
-        if (cv < 0 || cv > 2) cv = 2;
-        g_store.cast_proposal_vote(id, user, static_cast<ProposalVote>(cv));
+        auto p = g_store.proposal_by_id(id);
+        if (!p) return http_redir("/proposals");
+        if (p->ballot.kind == BallotKind::YesNo) {
+            int cv = 2;
+            try { cv = std::stoi(f["choice"]); } catch (...) { cv = 2; }
+            if (cv < 0 || cv > 2) cv = 2;
+            g_store.cast_proposal_vote(id, user, static_cast<ProposalVote>(cv));
+        } else {
+            g_store.cast_ballot_value(id, user, trim_ws(f["value"]));
+        }
         return http_redir("/proposals");
     }
     if(method=="POST"&&path=="/friends") {

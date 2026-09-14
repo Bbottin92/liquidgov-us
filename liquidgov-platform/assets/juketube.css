@@ -1,4 +1,4 @@
-/* Juketube V1 — one radio. Tokens from the site :root. */
+/* Juketube — unique player id, scopes, stations. Hide in-page profile embed. */
 #jbtoggle{
   position:fixed;right:1rem;
   bottom:calc(1rem + env(safe-area-inset-bottom,0px) + 3rem);
@@ -17,32 +17,39 @@
   box-shadow:0 6px 24px rgba(0,0,0,.35);
   display:none;
 }
-#jbpanel.open{display:flex;flex-direction:column;gap:.65rem}
+#jbpanel.open{display:flex;flex-direction:column;gap:.55rem}
 .jb-name{
   font-family:var(--display,serif);font-size:1.05rem;letter-spacing:.04em;
   color:var(--accent);text-align:center;margin:0;
 }
-#jbnow{font-size:.85rem;color:var(--ink);min-height:1.2em}
-#jbnow .muted,#jbstatus,#jbupcoming{color:var(--stone);font-size:.8rem}
-#jbplayer{aspect-ratio:16/9;background:#000;border-radius:var(--rsm);overflow:hidden}
-#jbplayer iframe{width:100%;height:100%;border:0;display:block}
-.jb-controls{display:flex;align-items:center;gap:.5rem}
-.jb-controls button{
+.jb-tabs,.jb-bar,.jb-controls,.jb-follow{display:flex;align-items:center;gap:.4rem}
+.jb-tabs button,.jb-controls button,.jb-follow button,.jb-station{
   cursor:pointer;border:1px solid var(--rule);background:var(--paper);
-  color:var(--ink);border-radius:var(--rsm);padding:.35rem .7rem;min-height:44px;
+  color:var(--ink);border-radius:var(--rsm);padding:.35rem .7rem;min-height:40px;font:inherit;
 }
+.jb-tabs button.on,.jb-station.on{background:var(--accent);color:var(--paper);border-color:var(--accent)}
+#jbnow{font-size:.85rem;color:var(--ink);min-height:1.2em}
+#jbnow .muted,#jbupcoming,.jb-label{color:var(--stone);font-size:.8rem}
+.jb-label{margin:.2rem 0;text-transform:uppercase;letter-spacing:.08em;font-size:.72rem}
+#jbtube-player{aspect-ratio:16/9;background:#000;border-radius:var(--rsm);overflow:hidden}
+#jbtube-player iframe{width:100%;height:100%;border:0;display:block}
 .jb-controls input[type=range]{flex:1}
-#jbsearch{
-  width:100%;box-sizing:border-box;min-height:44px;
+#jbsearch,.jb-bar select,#jbfollow{
+  width:100%;box-sizing:border-box;min-height:40px;
   border:1px solid var(--rule);border-radius:var(--rsm);
-  background:var(--paper);color:var(--ink);padding:.45rem .6rem;font:inherit;
+  background:var(--paper);color:var(--ink);padding:.4rem .55rem;font:inherit;
 }
+.jb-bar select{flex:1;min-width:0}
+#jbstationlist{display:flex;flex-direction:column;gap:.25rem}
+.jb-station{text-align:left;width:100%}
+.jb-follow input{flex:1}
 .jb-hit{
   display:flex;align-items:center;gap:.5rem;padding:.3rem;
   border-radius:var(--rsm);cursor:pointer;
 }
 .jb-hit:hover,.jb-hit:focus{background:var(--parchment);outline:0}
 .jb-hit img{width:64px;height:36px;object-fit:cover;border-radius:3px;flex-shrink:0;background:#000}
+.jb-hit img.port{width:32px;height:32px;border-radius:50%}
 .jb-hit span{flex:1;font-size:.8rem;line-height:1.25}
 .jb-hit .next{
   flex-shrink:0;min-height:36px;border:1px solid var(--rule);
@@ -57,3 +64,5 @@
   border-radius:var(--rmd);font-size:.8rem;color:var(--ink);
   box-shadow:0 4px 16px rgba(0,0,0,.2);
 }
+/* Profile page used to host its own player (same #jbplayer). Playback lives in the widget. */
+main .card.jukebox iframe{display:none}

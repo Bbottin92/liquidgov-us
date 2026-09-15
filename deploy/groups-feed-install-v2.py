@@ -1,0 +1,41 @@
+#!/usr/bin/env python3
+"""Groups+feed UX v2 — live-string patches. Skips audience/delete/linkify."""
+import gzip, base64, json, shutil
+from pathlib import Path
+from datetime import datetime, timezone
+
+BLOB = """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"""
+DATA = json.loads(gzip.decompress(base64.b64decode(BLOB)))
+stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+fail = []
+optional = {"feed_card", "feed_empty"}
+path = Path("/opt/liquidgov/src/http_server.cpp")
+shutil.copy2(path, str(path) + ".bak-gf2-" + stamp)
+text = path.read_text()
+
+def once(name, text, old, new, required):
+    n = text.count(old)
+    print(name, n)
+    if n == 0:
+        if new and text.count(new) >= 1:
+            print("  already")
+            return text
+        if not required:
+            print("  skip")
+            return text
+        fail.append(name)
+        return text
+    if n != 1:
+        fail.append(name + " count=" + str(n))
+        return text
+    return text.replace(old, new, 1)
+
+for item in DATA["http"]:
+    text = once("http:" + item["name"], text, item["old"], item["new"], item["name"] not in optional)
+if fail:
+    print("STOP", ", ".join(fail))
+    print("NEED_BUILD 0")
+    raise SystemExit(1)
+path.write_text(text)
+print("ok bak-gf2-" + stamp)
+print("NEED_BUILD 1")

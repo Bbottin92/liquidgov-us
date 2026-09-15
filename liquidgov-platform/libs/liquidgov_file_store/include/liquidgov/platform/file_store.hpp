@@ -462,6 +462,9 @@ public:
     std::optional<Post> post_by_id(std::uint64_t id) const;
     // For BlobStore::adopt() at process startup -- see main()'s comment.
     std::vector<Post> all_posts_with_attachments() const;
+    // Author-only. Drops the post, its replies, and its seconds on the next
+    // flush -- no new LGP1 tag; those rows simply stop being written.
+    bool delete_post(std::uint64_t id, const std::string& actor);
 
     std::uint64_t add_reply(std::uint64_t post_id, const std::string& author, const std::string& text);
     std::vector<PostReply> replies_of(std::uint64_t post_id) const; // oldest first

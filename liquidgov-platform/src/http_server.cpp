@@ -192,6 +192,58 @@ std::string html_escape(const std::string& s) {
     return o;
 }
 
+// Turn http(s) URLs in user text into links. Escape first so the href is
+// never raw user HTML; trailing punctuation stays outside the link.
+std::string linkify_text(const std::string& raw) {
+    const std::string e = html_escape(raw);
+    std::string o;
+    o.reserve(e.size() + 24);
+    std::size_t i = 0;
+    while (i < e.size()) {
+        const auto http = e.find("http://", i);
+        const auto https = e.find("https://", i);
+        std::size_t at = std::string::npos;
+        if (http == std::string::npos) at = https;
+        else if (https == std::string::npos) at = http;
+        else at = std::min(http, https);
+        if (at == std::string::npos) {
+            o.append(e, i, std::string::npos);
+            break;
+        }
+        o.append(e, i, at - i);
+        std::size_t end = at;
+        while (end < e.size()) {
+            const unsigned char c = static_cast<unsigned char>(e[end]);
+            if (c <= 32 || c == '<' || c == '>' || c == '"') break;
+            ++end;
+        }
+        while (end > at) {
+            const char last = e[end - 1];
+            if (last=='.'||last==','||last==')'||last==']'||last==';'||last==':') --end;
+            else break;
+        }
+        if (end <= at) { o += e[i]; ++i; continue; }
+        const std::string url = e.substr(at, end - at);
+        o += "<a href=\"" + url + "\" rel=\"nofollow noopener noreferrer\" target=\"_blank\">" + url + "</a>";
+        i = end;
+    }
+    return o;
+}
+
+std::string composer_attach_bar(const char* counter_id) {
+    return "<div class=\"composerbar\">"
+           "<label class=\"filepick\" title=\"Add a photo or video\">"
+           "<svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" "
+           "stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\">"
+           "<rect x=\"3\" y=\"5\" width=\"18\" height=\"14\" rx=\"2\"/>"
+           "<circle cx=\"8.5\" cy=\"10\" r=\"1.5\"/>"
+           "<path d=\"m21 15-5-5L5 19\"/></svg>"
+           "<input type=\"file\" name=\"media\" accept=\"image/*,video/*\"></label>"
+           "<span class=\"grow\"></span>"
+           "<span class=\"muted\" id=\"" + std::string(counter_id) + "\">2000 left</span>"
+           "<button type=\"submit\">Post</button></div>";
+}
+
 // Quotes a server-controlled (not user-controlled) string as a single-quoted
 // JS string literal embedded in generated HTML, e.g. the YouTube API key.
 std::string js_string_literal(const std::string& s) {
@@ -569,6 +621,14 @@ std::string css() {
         ".person,.sess,.msg,.post{border-top:1px solid var(--rule);padding:.7rem 0;display:flex;"
         "justify-content:space-between;gap:.8rem;flex-wrap:wrap;align-items:flex-start}"
         ".person:first-of-type,.sess:first-of-type,.msg:first-of-type,.post:first-of-type{border-top:0}"
+        ".post p,.post a{overflow-wrap:anywhere;word-break:break-word}"
+        ".composerbar{display:flex;align-items:center;gap:.55rem;margin-top:.45rem}"
+        ".composerbar .grow{flex:1}"
+        ".filepick{position:relative;width:2.4rem;height:2.4rem;flex:0 0 auto;display:inline-flex;"
+        "align-items:center;justify-content:center;border:1px solid var(--rule);border-radius:var(--rsm);"
+        "background:var(--panel);cursor:pointer}"
+        ".filepick input{position:absolute;inset:0;opacity:0;cursor:pointer;font-size:4rem}"
+        ".filepick svg{pointer-events:none}"
         "table.register{width:100%;border-collapse:collapse;margin:.6rem 0 1rem}"
         "table.register th{text-align:left;font:600 .7rem var(--body);letter-spacing:.08em;"
         "text-transform:uppercase;color:var(--stone);padding:.4rem .3rem;border-bottom:1px solid var(--rule)}"
@@ -4617,9 +4677,14 @@ std::string post_block(const Post& p, const std::string& viewer) {
     } else if (seconds > 0) {
         secondForm = "<p class=\"muted\">"+std::to_string(seconds)+(seconds==1?" second":" seconded")+"</p>";
     }
+    std::string deleteForm;
+    if (!viewer.empty() && viewer == p.author)
+        deleteForm = "<form class=\"inline\" method=\"POST\" action=\"/post/"+std::to_string(p.id)+"/delete\" "
+                     "onsubmit=\"return confirm('Delete this post?');\">"
+                     "<button class=\"ghost\" type=\"submit\">Delete</button></form>";
     std::string actionsRow;
-    if (!repostForm.empty() || !secondForm.empty())
-        actionsRow = "<div class=\"row\" style=\"margin-top:.3rem\">"+repostForm+secondForm+"</div>";
+    if (!repostForm.empty() || !secondForm.empty() || !deleteForm.empty())
+        actionsRow = "<div class=\"row\" style=\"margin-top:.3rem\">"+repostForm+secondForm+deleteForm+"</div>";
     std::string repliesBlock;
     {
         auto replies = g_store.replies_of(p.id);
@@ -4629,7 +4694,7 @@ std::string post_block(const Post& p, const std::string& viewer) {
             list += "<div class=\"who\" style=\"margin:.5rem 0\">"+portrait_tag(r.author,"sm")+
                     "<div><a href=\"/u/"+html_escape(r.author)+"\"><strong>"+html_escape(r.author)+
                     "</strong></a> <span class=\"muted\">"+html_escape(rwhen)+"</span>"
-                    "<p style=\"margin:.2rem 0 0\">"+html_escape(r.text)+"</p></div></div>";
+                    "<p style=\"margin:.2rem 0 0\">"+linkify_text(r.text)+"</p></div></div>";
         }
         std::string replyForm;
         if (!viewer.empty()) {
@@ -4656,12 +4721,11 @@ std::string post_block(const Post& p, const std::string& viewer) {
             ? "<video controls preload=\"metadata\" style=\"width:100%;height:auto;display:block;border-radius:var(--rsm);margin-top:.4rem\" src=\""+src+"\"></video>"
             : "<img style=\"width:100%;height:auto;display:block;border-radius:var(--rsm);margin-top:.4rem\" src=\""+src+"\" alt=\"\">";
     }
-    return "<article class=\"post\"><p class=\"eyebrow\" style=\"width:100%\">Entry "+std::to_string(p.id)+
-           "</p><div class=\"who\">"+portrait_tag(p.author,"sm")+"<div><a href=\"/u/"+html_escape(p.author)+"\"><strong>"+
+    return "<article class=\"post\"><div class=\"who\">"+portrait_tag(p.author,"sm")+"<div><a href=\"/u/"+html_escape(p.author)+"\"><strong>"+
            html_escape(p.author)+"</strong></a>"+where+
            (when.empty()?"":" <span class=\"muted\">"+html_escape(when)+"</span>")+
            repostLine+
-           "<p>"+html_escape(p.text)+"</p>"+mediaHtml+actionsRow+repliesBlock+"</div></div></article>";
+           "<p>"+linkify_text(p.text)+"</p>"+mediaHtml+actionsRow+repliesBlock+"</div></div></article>";
 }
 
 // A proportional Yes/No/Abstain bar plus one-click vote buttons, the
@@ -5023,36 +5087,31 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         std::string filter_key = qs.count("filter") ? qs.at("filter") : "all";
         FeedFilter filter = FeedFilter::All;
         if (filter_key == "friends") filter = FeedFilter::Friends;
-        else if (filter_key == "committees") filter = FeedFilter::Committees;
-        else if (filter_key == "drawings") filter = FeedFilter::Drawings;
+        else if (filter_key == "committees" || filter_key == "communities") {
+            filter = FeedFilter::Committees;
+            filter_key = "committees";
+        } else if (filter_key == "drawings") filter = FeedFilter::Drawings;
         else filter_key = "all";
         auto tab = [&](const char* key, const char* label) {
             const bool active = filter_key == key;
             return "<a class=\"btn"+std::string(active?"":" ghost")+"\" href=\"/feed?filter="+key+"\">"+label+"</a>";
         };
-        std::string html = "<h1>Feed</h1><p class=\"muted eyebrow\">"+html_escape(fmt_time(now()))+
-            " &middot; "+std::to_string(g_store.account_count())+" members</p>"
+        std::string html = "<h1>Feed</h1>"
             "<div class=\"row\" style=\"margin:.5rem 0 1rem\">"+
-            tab("all","All")+tab("friends","Friends")+tab("committees","Committees")+tab("drawings","Drawings")+
+            tab("all","All")+tab("friends","Friends")+tab("committees","Communities")+tab("drawings","Drawings")+
             "</div>"+
             composer_media_error(qs["perr"])+
-            "<div class=\"card\"><p class=\"row\" style=\"justify-content:space-between;margin:0 0 .3rem\">"
-            "<label style=\"margin:0\">Write to people who know you</label>"
-            "<span class=\"chip\">Friends only</span></p>"
+            "<div class=\"card\">"
             "<form method=\"POST\" action=\"/feed\" enctype=\"multipart/form-data\">"
-            "<textarea name=\"text\" maxlength=\"2000\" placeholder=\"Plain text. Friends see this.\" "
+            "<textarea name=\"text\" maxlength=\"2000\" placeholder=\"Write something. Friends see this.\" "
             "oninput=\"document.getElementById('feedchars').textContent=(2000-this.value.length)+' left'\"></textarea>"
-            "<p class=\"muted\" id=\"feedchars\" style=\"margin:.2rem 0 0;text-align:right\">2000 left</p>"
-            "<label>Photo or video (optional)</label><input type=\"file\" name=\"media\" accept=\"image/*,video/*\">"
-            "<button>Post</button></form>"
-            "<p class=\"muted\" style=\"margin-top:.5rem\">Or <a href=\"/feed/canvas\">open the canvas</a> "
-            "to draw, crop, layer, or paste one together first.</p>"
-            "<p class=\"muted\">Personal posts reach you and your friends. Communities have their own pages. "
-            "This is not a civic act.</p></div>";
+            + composer_attach_bar("feedchars") +
+            "</form>"
+            "<p class=\"muted\" style=\"margin-top:.5rem\"><a href=\"/feed/canvas\">Draw instead</a> · "
+            "Community posts live on the <a href=\"/communities\">group</a> they belong to.</p></div>";
         auto posts = g_store.feed_view(user, 80, filter);
-        if (posts.empty()) html += "<div class=\"card\"><p class=\"empty\">No posts in this view yet.</p>"
-            "<p class=\"muted\">Write one above, or <a href=\"/friends\">add a friend</a> so theirs show up. "
-            "This feed is friends-only &mdash; it stays quiet until someone you know posts.</p></div>";
+        if (posts.empty()) html += "<div class=\"card\"><p class=\"empty\">Nothing in this view yet.</p>"
+            "<p class=\"muted\">Write one above, or <a href=\"/friends\">add a friend</a> so theirs show up.</p></div>";
         for (const auto& p : posts) html += "<div class=\"card\">"+post_block(p, user)+"</div>";
         return pg("Feed", html);
     }
@@ -5652,12 +5711,53 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         std::string err;
         if (qs["err"]=="address") err = "<p class=\"warn\">Need a free address: letters, numbers, dots, underscores, hyphens.</p>";
         else if (qs["err"]=="subcategory") err = "<p class=\"warn\">Pick or name a subcategory.</p>";
-        std::string html = "<h1>Communities</h1>"+err+
-            "<p class=\"lede\">These are platform groups. They are not AVND localities and they do not confer standing.</p>"
-            "<div class=\"card\"><h2>Start one</h2><form method=\"POST\" action=\"/communities\">"
-            "<label>Address</label><input name=\"slug\" required maxlength=\"32\" pattern=\"[A-Za-z0-9._-]+\" placeholder=\"town-hall\">"
-            "<p class=\"muted\" style=\"margin-top:-.3rem\">Your community's web address -- for example, /c/town-hall.</p>"
-            "<label>Name</label><input name=\"name\" required maxlength=\"80\">"
+        std::string html = "<h1>Groups</h1>"+err+
+            "<p class=\"lede\">Platform groups. Not AVND localities, and they do not confer standing.</p>";
+        auto all = g_store.all_communities();
+        std::vector<Community> mine;
+        for (auto& c : all) if (g_store.is_member(c.slug, user)) mine.push_back(c);
+        if (!mine.empty()) {
+            html += "<div class=\"card\"><h2>Yours</h2><ul class=\"plain\">";
+            for (auto& c : mine) {
+                html += "<li class=\"who\" style=\"margin:.4rem 0\"><div><a href=\"/c/"+html_escape(c.slug)+"\"><strong>"+
+                        html_escape(c.name)+"</strong></a> <span class=\"muted\">/"+html_escape(c.slug)+"</span></div></li>";
+            }
+            html += "</ul></div>";
+        }
+        html += "<div class=\"card\"><h2>Find a group</h2>"
+            "<input id=\"commfilter\" type=\"search\" placeholder=\"Search by name or address\" "
+            "oninput=\"var q=this.value.toLowerCase();document.querySelectorAll('.commrow').forEach(function(el){"
+            "el.style.display=el.getAttribute('data-q').indexOf(q)>=0?'':'none';});\">";
+        if (all.empty()) html += "<p class=\"empty\">None yet. Start one below.</p>";
+        else {
+            std::map<int, std::map<std::string, std::vector<Community>>> grouped;
+            for (auto& c : all) grouped[static_cast<int>(c.category)][c.subcategory].push_back(c);
+            for (const auto& ci : kCommunityCategories) {
+                auto git = grouped.find(static_cast<int>(ci.value));
+                if (git == grouped.end()) continue;
+                std::size_t total = 0;
+                for (auto& [subcat, list] : git->second) total += list.size();
+                html += "<details open><summary>"+std::string(ci.label)+" &middot; "+std::to_string(total)+"</summary>";
+                for (auto& [subcat, list] : git->second) {
+                    html += "<div style=\"margin:.5rem 0 .5rem 1rem\">"
+                            "<p class=\"eyebrow\">"+html_escape(subcat.empty() ? "General" : subcat)+"</p><ul class=\"plain\">";
+                    for (auto& c : list) {
+                        std::string q = c.name + " " + c.slug + " " + c.about + " " + c.subcategory;
+                        for (char& ch : q) if (ch >= 'A' && ch <= 'Z') ch = static_cast<char>(ch - 'A' + 'a');
+                        html += "<li class=\"commrow\" data-q=\""+html_escape(q)+"\"><a href=\"/c/"+html_escape(c.slug)+"\"><strong>"+
+                                html_escape(c.name)+"</strong></a> <span class=\"muted\">/"+html_escape(c.slug)+"</span>"
+                                "<p class=\"muted\">"+html_escape(c.about)+"</p></li>";
+                    }
+                    html += "</ul></div>";
+                }
+                html += "</details>";
+            }
+        }
+        html += "</div><div class=\"card\"><details><summary>Start a group</summary>"
+            "<form method=\"POST\" action=\"/communities\" style=\"margin-top:.7rem\">"
+            "<label>Name</label><input name=\"name\" required maxlength=\"80\" placeholder=\"Neighborhood watch\">"
+            "<label>Link</label><input name=\"slug\" required maxlength=\"32\" pattern=\"[A-Za-z0-9._-]+\" placeholder=\"watch\">"
+            "<p class=\"muted\" style=\"margin-top:-.3rem\">Becomes /c/watch &mdash; letters, numbers, dots, dashes.</p>"
             "<label>Category</label><select name=\"category\" id=\"catselect\">";
         for (const auto& ci : kCommunityCategories) {
             html += "<option value=\""+std::to_string(static_cast<int>(ci.value))+"\">"+ci.label+"</option>";
@@ -5667,8 +5767,8 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             "<input name=\"subcategory\" id=\"subcatinput\" required maxlength=\"60\" list=\"subcatlist\" "
             "placeholder=\"e.g. Neighborhood Watch\" autocomplete=\"off\">"
             "<datalist id=\"subcatlist\"></datalist>"
-            "<p class=\"muted\" style=\"margin-top:-.3rem\">Pick an existing one from the list for this category, or type a new one.</p>"
-            "<label>About</label><textarea name=\"about\" maxlength=\"2000\"></textarea>"
+            "<p class=\"muted\" style=\"margin-top:-.3rem\">Pick an existing one, or type a new one.</p>"
+            "<label>About</label><textarea name=\"about\" maxlength=\"2000\" placeholder=\"What this group is for.\"></textarea>"
             "<button>Create</button></form>"
             "<script>(function(){"
             "var SUB="+community_subcats_js()+";"
@@ -5681,36 +5781,8 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             "}"
             "sel.addEventListener('change',refresh);refresh();"
             "})();</script>"
-            "</div><div class=\"card\"><h2>All communities</h2>";
-        auto all = g_store.all_communities();
-        if (all.empty()) html += "<p class=\"empty\">No communities yet. Start one with the form above.</p>";
-        else {
-            // Grouped category -> subcategory -> communities, in that
-            // fixed category order, so the directory reads as an actual
-            // hierarchy instead of one long flat list.
-            std::map<int, std::map<std::string, std::vector<Community>>> grouped;
-            for (auto& c : all) grouped[static_cast<int>(c.category)][c.subcategory].push_back(c);
-            for (const auto& ci : kCommunityCategories) {
-                auto git = grouped.find(static_cast<int>(ci.value));
-                if (git == grouped.end()) continue;
-                std::size_t total = 0;
-                for (auto& [subcat, list] : git->second) total += list.size();
-                html += "<details><summary>"+std::string(ci.label)+" &middot; "+std::to_string(total)+"</summary>";
-                for (auto& [subcat, list] : git->second) {
-                    html += "<div style=\"margin:.5rem 0 .5rem 1rem\">"
-                            "<p class=\"eyebrow\">"+html_escape(subcat.empty() ? "General" : subcat)+"</p><ul class=\"plain\">";
-                    for (auto& c : list) {
-                        html += "<li><a href=\"/c/"+html_escape(c.slug)+"\"><strong>"+html_escape(c.name)+
-                                "</strong></a> <span class=\"muted\">/"+html_escape(c.slug)+"</span>"
-                                "<p class=\"muted\">"+html_escape(c.about)+"</p></li>";
-                    }
-                    html += "</ul></div>";
-                }
-                html += "</details>";
-            }
-        }
-        html += "</div>";
-        return pg("Communities", html);
+            "</details></div>";
+        return pg("Groups", html);
     }
 
     if(method=="GET"&&path.rfind("/c/",0)==0&&path.size()>10&&path.compare(path.size()-7,7,"/canvas")==0) {
@@ -5731,41 +5803,44 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         std::string html = "<h1>"+html_escape(c->name)+"</h1>"
             "<p class=\"muted\">"+html_escape(category_label(c->category))+" &middot; "+
             html_escape(c->subcategory.empty() ? "General" : c->subcategory)+
-            " · /"+html_escape(c->slug)+" · started by "+html_escape(c->owner)+
-            " · a platform community, not a locality</p>";
-        if (qs["err"]=="invite") html += "<p class=\"warn\">Conflicts with another member’s contact settings.</p>";
+            " · /"+html_escape(c->slug)+" · started by <a href=\"/u/"+html_escape(c->owner)+"\">"+html_escape(c->owner)+"</a></p>";
+        if (qs["err"]=="invite") html += "<p class=\"warn\">Could not invite that person.</p>";
         html += composer_media_error(qs["perr"]);
-        html += "<div class=\"card\"><p>"+html_escape(c->about.empty()?"No description.":c->about)+"</p>";
+        html += "<div class=\"card\"><p>"+html_escape(c->about.empty()?"No description yet.":c->about)+"</p>";
         if (!member) {
-            html += "<form method=\"POST\" action=\"/c/"+html_escape(slug)+"/join\"><button>Join</button></form>";
+            html += "<form method=\"POST\" action=\"/c/"+html_escape(slug)+"/join\"><button>Join this group</button></form>";
         } else if (!owner) {
             html += "<form method=\"POST\" action=\"/c/"+html_escape(slug)+"/leave\"><button class=\"ghost\">Leave</button></form>";
         } else {
-            html += "<form method=\"POST\" action=\"/c/"+html_escape(slug)+"/delete\" onsubmit=\"return confirm('Delete this community?');\">"
-                    "<button class=\"danger\">Delete community</button></form>";
+            html += "<form method=\"POST\" action=\"/c/"+html_escape(slug)+"/delete\" onsubmit=\"return confirm('Delete this group and its posts?');\">"
+                    "<button class=\"ghost\">Delete group</button></form>";
         }
         html += "</div>";
         if (member) {
-            html += "<div class=\"card\"><form method=\"POST\" action=\"/c/"+html_escape(slug)+"\" enctype=\"multipart/form-data\">"
-                    "<label>Post in "+html_escape(c->name)+"</label>"
-                    "<textarea name=\"text\" maxlength=\"2000\"></textarea>"
-                    "<label>Photo or video (optional)</label><input type=\"file\" name=\"media\" accept=\"image/*,video/*\">"
-                    "<button>Post</button></form>"
-                    "<p class=\"muted\" style=\"margin-top:.5rem\">Or <a href=\"/c/"+html_escape(slug)+"/canvas\">open the canvas</a> "
-                    "to draw, crop, layer, or paste one together first.</p></div>";
-            html += "<div class=\"card\"><h2>Invite</h2>"
-                    "<form method=\"POST\" action=\"/c/"+html_escape(slug)+"/invite\">"
-                    "<label>Username</label><div class=\"row\"><input name=\"who\" required><button>Invite</button></div></form>"
-                    "<p class=\"muted\">People can also join themselves. An invite that conflicts with contact settings is refused with a generic error.</p></div>";
+            html += "<div class=\"card\">"
+                    "<form method=\"POST\" action=\"/c/"+html_escape(slug)+"\" enctype=\"multipart/form-data\">"
+                    "<textarea name=\"text\" maxlength=\"2000\" placeholder=\"Post in "+html_escape(c->name)+"\" "
+                    "oninput=\"document.getElementById('cchars').textContent=(2000-this.value.length)+' left'\"></textarea>"
+                    + composer_attach_bar("cchars") +
+                    "</form>"
+                    "<p class=\"muted\" style=\"margin-top:.5rem\"><a href=\"/c/"+html_escape(slug)+"/canvas\">Draw instead</a></p></div>";
         }
-        html += "<div class=\"card\"><h2>Members</h2><ul class=\"plain\">";
-        for (auto& n : g_store.members_of(slug)) {
-            html += "<li><a href=\"/u/"+html_escape(n)+"\">"+html_escape(n)+"</a>"+(n==c->owner?" <span class=\"muted\">starter</span>":"")+"</li>";
-        }
-        html += "</ul></div>";
         auto posts = g_store.posts_in(slug, 80);
-        if (posts.empty()) html += "<p class=\"empty\">No posts yet.</p>";
+        if (posts.empty()) html += "<div class=\"card\"><p class=\"empty\">No posts yet.</p>"
+            "<p class=\"muted\">"+(member ? std::string("You're in. Write the first one.") : "Join to post.")+"</p></div>";
         for (const auto& p : posts) html += "<div class=\"card\">"+post_block(p, user)+"</div>";
+        html += "<div class=\"card\"><details><summary>Members · "+std::to_string(g_store.members_of(slug).size())+"</summary><ul class=\"plain\">";
+        for (auto& n : g_store.members_of(slug)) {
+            html += "<li class=\"who\" style=\"margin:.35rem 0\">"+portrait_tag(n,"sm")+
+                    "<div><a href=\"/u/"+html_escape(n)+"\">"+html_escape(n)+"</a>"+
+                    (n==c->owner?" <span class=\"muted\">starter</span>":"")+"</div></li>";
+        }
+        html += "</ul>";
+        if (member) {
+            html += "<form method=\"POST\" action=\"/c/"+html_escape(slug)+"/invite\" style=\"margin-top:.6rem\">"
+                    "<label>Invite by username</label><div class=\"row\"><input name=\"who\" required placeholder=\"username\"><button>Invite</button></div></form>";
+        }
+        html += "</details></div>";
         return pg(c->name, html);
     }
 
@@ -6087,6 +6162,17 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         try { pid = std::stoull(path.substr(6, path.size()-6-7)); } catch (...) { return http_redir(back); }
         if (!g_store.post_by_id(pid)) return http_redir(back);
         g_store.toggle_second(pid, user);
+        return http_redir(back);
+    }
+    if(method=="POST"&&path.rfind("/post/",0)==0&&path.size()>13&&
+       path.compare(path.size()-7,7,"/delete")==0) {
+        if(!acc) return need_login();
+        std::string back = header_value(req, "Referer");
+        if (back.empty() || back.rfind("http",0)!=0) back = "/feed";
+        std::uint64_t pid = 0;
+        try { pid = std::stoull(path.substr(6, path.size()-6-7)); } catch (...) { return http_redir(back); }
+        g_store.delete_post(pid, user);
+        if (back.find("/post/") != std::string::npos) back = "/feed";
         return http_redir(back);
     }
     if(method=="POST"&&path=="/me/profile") {

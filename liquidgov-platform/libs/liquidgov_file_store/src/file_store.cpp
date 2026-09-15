@@ -730,6 +730,22 @@ std::uint64_t FileStore::add_post(const std::string& author, const std::string& 
     return p.id;
 }
 
+bool FileStore::delete_post(std::uint64_t id, const std::string& actor) {
+    auto it = std::find_if(posts_.begin(), posts_.end(),
+                           [&](const Post& p) { return p.id == id; });
+    if (it == posts_.end() || it->author != actor) return false;
+    posts_.erase(it);
+    replies_.erase(std::remove_if(replies_.begin(), replies_.end(),
+                                  [&](const PostReply& r) { return r.post_id == id; }),
+                   replies_.end());
+    for (auto s = seconds_.begin(); s != seconds_.end(); ) {
+        if (s->first == id) s = seconds_.erase(s);
+        else ++s;
+    }
+    flush();
+    return true;
+}
+
 std::vector<Post> FileStore::feed_for(const std::string& user, std::size_t limit) const {
     std::vector<Post> out;
     for (auto it = posts_.rbegin(); it != posts_.rend(); ++it) {

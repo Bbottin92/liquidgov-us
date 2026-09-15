@@ -495,6 +495,28 @@ int main() {
         std::cout << "reply/second LGP1 tags survive reload; author relabeled, seconds pruned on delete\n";
     }
 
+    std::uint64_t deleted_post_id = 0;
+    {
+        FileStore store(path);
+        deleted_post_id = store.add_post("brandon", "please delete me", "");
+        store.add_reply(deleted_post_id, "brandon", "a reply that should vanish");
+        store.toggle_second(deleted_post_id, "brandon");
+        assert(!store.delete_post(deleted_post_id, "reply-a")); // not the author
+        assert(store.post_by_id(deleted_post_id).has_value());
+        assert(store.delete_post(deleted_post_id, "brandon"));
+        assert(!store.post_by_id(deleted_post_id).has_value());
+        assert(store.replies_of(deleted_post_id).empty());
+        assert(store.second_count(deleted_post_id) == 0);
+        std::cout << "delete_post is author-only and drops replies/seconds\n";
+    }
+    {
+        FileStore store(path);
+        assert(!store.post_by_id(deleted_post_id).has_value());
+        const std::string after = slurp(path);
+        assert(after.find("please delete me") == std::string::npos);
+        std::cout << "delete_post flush omits the post row\n";
+    }
+
     unlink(path.c_str());
     unlink((path + ".tmp").c_str());
     std::cout << "\nall file_store tests passed\n";

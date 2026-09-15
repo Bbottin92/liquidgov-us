@@ -534,6 +534,56 @@ std::vector<MailMessage> FileStore::mail_sent_by(const std::string& from) const 
     return out;
 }
 
+std::vector<std::string> FileStore::mail_peers(const std::string& user) const {
+    std::vector<std::string> out;
+    std::set<std::string> seen;
+    for (const auto& m : mail_) {
+        std::string other;
+        if (m.from == user) other = m.to;
+        else if (m.to == user) other = m.from;
+        else continue;
+        if (other.empty() || seen.count(other)) continue;
+        seen.insert(other);
+        out.push_back(other);
+    }
+    return out;
+}
+
+std::int64_t FileStore::last_mail_ts(const std::string& a, const std::string& b) const {
+    std::int64_t ts = 0;
+    for (const auto& m : mail_) {
+        if ((m.from == a && m.to == b) || (m.from == b && m.to == a)) {
+            if (m.ts > ts) ts = m.ts;
+        }
+    }
+    return ts;
+}
+
+std::string FileStore::last_mail_preview(const std::string& a, const std::string& b) const {
+    const MailMessage* last = nullptr;
+    for (const auto& m : mail_) {
+        if ((m.from == a && m.to == b) || (m.from == b && m.to == a)) last = &m;
+    }
+    if (!last) return "";
+    if (!last->text.empty()) return last->text;
+    if (last->attachment_blob_id) return "(attachment)";
+    return "";
+}
+
+void FileStore::mark_thread_read(const std::string& user, const std::string& thread_key) {
+    if (user.empty() || thread_key.empty()) return;
+    mail_last_read_[user][thread_key] = now();
+    flush();
+}
+
+std::int64_t FileStore::thread_last_read(const std::string& user, const std::string& thread_key) const {
+    auto uit = mail_last_read_.find(user);
+    if (uit == mail_last_read_.end()) return 0;
+    auto kit = uit->second.find(thread_key);
+    if (kit == uit->second.end()) return 0;
+    return kit->second;
+}
+
 std::optional<MailMessage> FileStore::find_mail_attachment(const std::string& user,
                                                             const std::string& blob_id) const {
     for (const auto& m : mail_) {
@@ -1449,11 +1499,12 @@ void FileStore::load() {
             next_message_id_ = parse_u64(f[1], "next_message_id");
             if (next_message_id_ == 0) next_message_id_ = 1;
         } else if (tag == "gc") {
-            if (f.size() != 4) throw std::runtime_error("LGP1: bad gc record");
+            if (f.size() != 4 && f.size() != 5) throw std::runtime_error("LGP1: bad gc record");
             Conversation conv;
             conv.id = parse_u64(f[1], "conversation id");
             conv.is_group = parse_bit(f[2], "conversation is_group");
             conv.created_at = parse_i64(f[3], "conversation created_at");
+            if (f.size() == 5) conv.title = pct_decode(f[4]);
             if (conv.id == 0) throw std::runtime_error("LGP1: empty gc id");
             if (conversations_.count(conv.id)) throw std::runtime_error("LGP1: duplicate conversation");
             conversations_[conv.id] = conv;
@@ -1470,7 +1521,7 @@ void FileStore::load() {
             m.state = static_cast<MemberState>(state);
             it->second.members.push_back(m);
         } else if (tag == "gmsg") {
-            if (f.size() != 10) throw std::runtime_error("LGP1: bad gmsg record");
+            if (f.size() != 10 && f.size() != 12) throw std::runtime_error("LGP1: bad gmsg record");
             Message msg;
             msg.id = parse_u64(f[1], "message id");
             msg.conversation_id = parse_u64(f[2], "message conversation id");
@@ -1483,6 +1534,10 @@ void FileStore::load() {
             msg.deleted_at = parse_i64(f[7], "message deleted_at");
             msg.under_review = parse_bit(f[8], "message under_review");
             msg.text = pct_decode(f[9]);
+            if (f.size() == 12) {
+                msg.attachment_blob_id = pct_decode(f[10]);
+                msg.attachment_mime = pct_decode(f[11]);
+            }
             if (msg.id == 0) throw std::runtime_error("LGP1: empty gmsg id");
             if (messages_.count(msg.id)) throw std::runtime_error("LGP1: duplicate message");
             messages_[msg.id] = msg;
@@ -1493,6 +1548,12 @@ void FileStore::load() {
             auto it = messages_.find(msg_id);
             if (it == messages_.end()) throw std::runtime_error("LGP1: gmh with no message");
             it->second.edit_history.push_back(pct_decode(f[2]));
+        } else if (tag == "mlr") {
+            if (f.size() != 4) throw std::runtime_error("LGP1: bad mlr record");
+            const std::string user = pct_decode(f[1]);
+            const std::string key = pct_decode(f[2]);
+            const auto ts = parse_i64(f[3], "mlr ts");
+            if (!user.empty() && !key.empty()) mail_last_read_[user][key] = ts;
         } else if (tag == "prof") {
             if (f.size() != 9) throw std::runtime_error("LGP1: bad prof record");
             Profile p;
@@ -1693,7 +1754,9 @@ void FileStore::flush() {
     // above. The numeric sender/member id just stops resolving through
     // find_by_id; the site layer renders that as "[deleted account]".
     for (const auto& [id, conv] : conversations_) {
-        body << "gc\t" << conv.id << "\t" << (conv.is_group ? 1 : 0) << "\t" << conv.created_at << "\n";
+        body << "gc\t" << conv.id << "\t" << (conv.is_group ? 1 : 0) << "\t" << conv.created_at;
+        if (!conv.title.empty()) body << "\t" << pct_encode(conv.title);
+        body << "\n";
     }
     for (const auto& [id, conv] : conversations_) {
         for (const auto& m : conv.members) {
@@ -1704,12 +1767,21 @@ void FileStore::flush() {
     for (const auto& [id, msg] : messages_) {
         body << "gmsg\t" << msg.id << "\t" << msg.conversation_id << "\t" << msg.sender << "\t"
              << msg.sent_at << "\t" << msg.edited_at << "\t" << static_cast<int>(msg.deletion) << "\t"
-             << msg.deleted_at << "\t" << (msg.under_review ? 1 : 0) << "\t" << pct_encode(msg.text)
-             << "\n";
+             << msg.deleted_at << "\t" << (msg.under_review ? 1 : 0) << "\t" << pct_encode(msg.text);
+        if (!msg.attachment_blob_id.empty()) {
+            body << "\t" << pct_encode(msg.attachment_blob_id) << "\t" << pct_encode(msg.attachment_mime);
+        }
+        body << "\n";
     }
     for (const auto& [id, msg] : messages_) {
         for (const auto& h : msg.edit_history) {
             body << "gmh\t" << msg.id << "\t" << pct_encode(h) << "\n";
+        }
+    }
+    for (const auto& [user, keys] : mail_last_read_) {
+        if (!by_username_.count(user)) continue;
+        for (const auto& [key, ts] : keys) {
+            body << "mlr\t" << pct_encode(user) << "\t" << pct_encode(key) << "\t" << ts << "\n";
         }
     }
     const std::string data = body.str();
@@ -1822,6 +1894,51 @@ std::vector<Message> FileStore::messages_in(ConversationId conv_id) const {
     }
     std::stable_sort(out.begin(), out.end(),
                       [](const Message& a, const Message& b) { return a.sent_at < b.sent_at; });
+    return out;
+}
+
+std::int64_t FileStore::last_group_ts(ConversationId conv_id) const {
+    std::int64_t ts = 0;
+    auto cit = conversations_.find(conv_id);
+    if (cit != conversations_.end()) ts = cit->second.created_at;
+    for (const auto& [id, msg] : messages_) {
+        if (msg.conversation_id == conv_id && msg.sent_at > ts) ts = msg.sent_at;
+    }
+    return ts;
+}
+
+std::string FileStore::last_group_preview(ConversationId conv_id) const {
+    const Message* last = nullptr;
+    for (const auto& [id, msg] : messages_) {
+        if (msg.conversation_id != conv_id) continue;
+        if (msg.deletion == DeletionState::DeletedForEveryone) continue;
+        if (!last || msg.sent_at >= last->sent_at) last = &msg;
+    }
+    if (!last) return "";
+    if (last->deletion == DeletionState::DeletedForEveryone) return "";
+    if (!last->text.empty()) return last->text;
+    if (!last->attachment_blob_id.empty()) return "(attachment)";
+    return "";
+}
+
+std::optional<Message> FileStore::find_group_attachment(AccountId account, const std::string& blob_id) const {
+    if (blob_id.empty()) return std::nullopt;
+    for (const auto& [id, msg] : messages_) {
+        if (msg.attachment_blob_id != blob_id) continue;
+        auto cit = conversations_.find(msg.conversation_id);
+        if (cit == conversations_.end()) continue;
+        for (const auto& m : cit->second.members) {
+            if (m.account == account) return msg;
+        }
+    }
+    return std::nullopt;
+}
+
+std::vector<Message> FileStore::all_group_messages_with_attachments() const {
+    std::vector<Message> out;
+    for (const auto& [id, msg] : messages_) {
+        if (!msg.attachment_blob_id.empty()) out.push_back(msg);
+    }
     return out;
 }
 

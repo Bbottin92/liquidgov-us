@@ -64,7 +64,8 @@ struct AddMemberResult {
 // Adding to an EXISTING conversation is the opposite policy from
 // create_conversation: a violating add is HARD REFUSED, no roster
 // mutation at all. The inviter's path forward is forking a new
-// conversation, not an override of this one.
+// conversation, not an override of this one. Actor must already be an
+// Active member — the library enforces that, not only the HTTP layer.
 AddMemberResult add_member(ConversationStore& store, const SocialGraph& graph, AccountId actor,
                             AccountId candidate, ConversationId conv_id);
 

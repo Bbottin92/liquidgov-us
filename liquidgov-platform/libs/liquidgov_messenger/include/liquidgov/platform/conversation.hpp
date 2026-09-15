@@ -23,6 +23,8 @@ struct Conversation {
     std::vector<ConversationMember> members;
     bool is_group = false;
     std::int64_t created_at = 0;
+    // Optional display name. Empty → the site layer lists the other members.
+    std::string title;
 };
 
 enum class DeletionState { NotDeleted, DeletedForSender, DeletedForEveryone };
@@ -45,6 +47,11 @@ struct Message {
     // window purge regardless of deleted_at — a takedown or a deletion
     // must not be able to vacuum evidence out from under an open report.
     bool under_review = false;
+
+    // Optional file_transfer ingest, same shape as 1:1 MailMessage.
+    // Empty blob_id = no attachment.
+    std::string attachment_blob_id;
+    std::string attachment_mime;
 };
 
 } // namespace liquidgov::platform

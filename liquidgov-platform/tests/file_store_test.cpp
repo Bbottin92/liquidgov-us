@@ -389,7 +389,21 @@ int main() {
         assert(msg->text == "hello group, edited");
         assert(msg->edit_history.size() == 1);
         assert(msg->edit_history[0] == "hello group");
+        assert(conv->title.empty());
+        conv->title = "Town hall";
+        store.save_conversation(*conv);
+        store.mark_thread_read("gc-alice", "g:" + std::to_string(conv_id));
         std::cout << "gc/gcm/gmsg/gmh LGP1 tags survive reload\n";
+    }
+    {
+        FileStore store(path);
+        auto conv = store.get_conversation(conv_id);
+        assert(conv.has_value());
+        assert(conv->title == "Town hall");
+        assert(store.thread_last_read("gc-alice", "g:" + std::to_string(conv_id)) > 0);
+        const std::string on_disk = slurp(path);
+        assert(on_disk.find("\nmlr\t") != std::string::npos);
+        std::cout << "gc title + mlr last-read survive reload\n";
     }
     {
         // Unfriending routes through on_relationship_ended: the initiator

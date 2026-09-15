@@ -479,8 +479,20 @@ std::string css() {
         ".mailfriends a{display:flex;align-items:center;gap:.5rem;padding:.4rem 0;"
         "color:var(--ink);text-decoration:none}"
         ".mailfriends a:hover{color:var(--accent)}"
-        ".mailnewgroup{display:flex;gap:.4rem;margin-top:.5rem}"
-        ".mailnewgroup input{flex:1}"
+        ".mailnewgroup{display:flex;flex-direction:column;gap:.4rem;margin-top:.5rem}"
+        ".inboxrow{display:flex;align-items:center;gap:.55rem;padding:.45rem 0;color:var(--ink);"
+        "text-decoration:none;border-bottom:1px solid var(--rule)}"
+        ".inboxrow:last-child{border-bottom:0}"
+        ".inboxrow .inboxtitle{font-weight:600}"
+        ".inboxrow.unread .inboxtitle{font-weight:700}"
+        ".inboxrow .inboxpreview{display:block;color:var(--stone);font-size:.78rem;"
+        "white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:14rem}"
+        ".inboxrow .inboxmeta{margin-left:auto;font-size:.68rem;color:var(--stone);flex-shrink:0}"
+        ".mailattbtn{display:inline-flex;align-items:center;justify-content:center;width:2.6rem;height:2.6rem;"
+        "border:1px solid var(--rule);border-radius:var(--rsm);background:var(--paper);cursor:pointer;flex-shrink:0}"
+        ".mailattbtn input{display:none}"
+        ".mailpending{background:var(--paper);border:1px dashed var(--rule);padding:.7rem;border-radius:var(--rmd);margin:.6rem 0}"
+        ".maildisclose{font-size:.78rem;color:var(--stone);margin:.4rem 0 0}"
         // The instant-messenger part: sent bubbles lean right and pick up
         // the accent color, received ones lean left in a neutral panel --
         // the one visual cue that actually makes a flat list of divs read
@@ -1308,10 +1320,9 @@ std::string display_name_for(AccountId id) {
     return acc->username;
 }
 
-// No conversation title in the messenger.hpp/conversation.hpp spec — the
-// list label is everyone else in the room, so the thread is identifiable
-// without inventing a naming feature that isn't there.
+// List label: named groups use the title; unnamed ones list everyone else.
 std::string group_label(const Conversation& conv, AccountId viewer) {
+    if (!conv.title.empty()) return conv.title;
     std::string label;
     for (const auto& m : conv.members) {
         if (m.account == viewer) continue;
@@ -1523,6 +1534,7 @@ std::string notices_list_html(const std::string& user) {
         if (n.type=="friend_request") { line = html_escape(n.from)+" sent a friend request."; href="/friends"; }
         else if (n.type=="friend_accept") { line = html_escape(n.from)+" accepted your request."; href="/u/"+html_escape(n.from); }
         else if (n.type=="message") { line = html_escape(n.from)+" sent mail."; href="/mail?with="+html_escape(n.from); }
+        else if (n.type=="mail_group") { line = html_escape(n.from)+" invited you to a group."; href="/mail/g/"+html_escape(n.extra); }
         else if (n.type=="group_invite") { line = html_escape(n.from)+" added you to /"+html_escape(n.extra)+"."; href="/c/"+html_escape(n.extra); }
         else line = html_escape(n.type);
         html += "<div class=\"person\">";
@@ -1535,45 +1547,99 @@ std::string notices_list_html(const std::string& user) {
     return html;
 }
 
-// The friends section of the mail widget/page: real hrefs (/mail?with=X)
-// so it still works with JS off or as a direct link, plus a data-with the
-// widget's own delegated click handler uses to fetch the thread in place
-// instead of navigating -- same progressive-enhancement shape as the
-// site's own soft-navigation (see jukebox_script's click interceptor).
-std::string mail_friends_list_html(const std::string& user) {
-    std::string html = "<div class=\"mailsection\"><p class=\"eyebrow\">Direct</p><ul class=\"plain mailfriends\">";
-    auto pals = g_store.friends_of(user);
-    if (pals.empty()) html += "<li class=\"muted\">Friend someone first. <a href=\"/friends\">Find people</a></li>";
-    for (auto& n : pals) {
-        html += "<li><a class=\"mailwith\" data-with=\""+html_escape(n)+"\" href=\"/mail?with="+html_escape(n)+"\">"+
-                portrait_tag(n, "sm")+"<span>"+html_escape(n)+"</span></a></li>";
+// One chronological inbox: 1:1 threads that actually have mail, plus groups.
+// Friends with no thread live under "Start a conversation", not the list.
+std::string mail_inbox_html(const std::string& user, AccountId acc_id) {
+    struct Row {
+        std::int64_t ts = 0;
+        bool unread = false;
+        bool pending = false;
+        bool is_group = false;
+        std::string href;
+        std::string title;
+        std::string preview;
+        std::string portrait;
+        std::string cls;
+        std::string data_with;
+    };
+    std::vector<Row> rows;
+    for (auto& other : g_store.mail_peers(user)) {
+        if (g_store.is_blocked(user, other) || g_store.is_blocked(other, user)) continue;
+        if (!g_store.are_friends(user, other)) continue;
+        Row r;
+        r.ts = g_store.last_mail_ts(user, other);
+        r.href = "/mail?with=" + html_escape(other);
+        r.title = other;
+        auto prev = g_store.last_mail_preview(user, other);
+        if (prev.size() > 80) prev = prev.substr(0, 77) + "...";
+        r.preview = prev;
+        r.portrait = other;
+        r.cls = "mailwith";
+        r.data_with = other;
+        const auto last_read = g_store.thread_last_read(user, "d:" + other);
+        r.unread = r.ts > last_read;
+        rows.push_back(r);
     }
-    html += "</ul></div>";
+    for (auto& conv : g_store.conversations_for(acc_id)) {
+        if (!conv.is_group) continue;
+        Row r;
+        r.is_group = true;
+        r.ts = g_store.last_group_ts(conv.id);
+        r.href = "/mail/g/" + std::to_string(conv.id);
+        r.title = group_label(conv, acc_id);
+        auto prev = g_store.last_group_preview(conv.id);
+        if (prev.size() > 80) prev = prev.substr(0, 77) + "...";
+        r.preview = prev;
+        r.cls = "mailgroup";
+        for (auto& m : conv.members) if (m.account == acc_id) r.pending = m.state == MemberState::Pending;
+        const auto last_read = g_store.thread_last_read(user, "g:" + std::to_string(conv.id));
+        r.unread = r.pending || r.ts > last_read;
+        rows.push_back(r);
+    }
+    std::stable_sort(rows.begin(), rows.end(), [](const Row& a, const Row& b) { return a.ts > b.ts; });
+
+    std::string html = "<div class=\"mailsection\"><p class=\"eyebrow\">Messages</p>";
+    if (rows.empty()) {
+        html += "<p class=\"muted\">No messages yet. <a href=\"/friends\">Find people</a></p>";
+    } else {
+        html += "<div class=\"inboxlist\">";
+        for (auto& r : rows) {
+            html += "<a class=\"inboxrow "+r.cls+(r.unread?" unread":"")+"\" href=\""+r.href+"\"";
+            if (!r.data_with.empty()) html += " data-with=\""+html_escape(r.data_with)+"\"";
+            html += ">";
+            if (!r.portrait.empty()) html += portrait_tag(r.portrait, "sm");
+            else html += "<span class=\"portrait sm ph\" aria-hidden=\"true\"></span>";
+            html += "<span style=\"min-width:0;flex:1\"><span class=\"inboxtitle\">"+html_escape(r.title)+"</span>";
+            if (r.pending) html += " <span class=\"muted\">invited</span>";
+            if (!r.preview.empty()) html += "<span class=\"inboxpreview\">"+html_escape(r.preview)+"</span>";
+            html += "</span>";
+            if (r.ts) html += "<span class=\"inboxmeta\">"+html_escape(fmt_time(r.ts))+"</span>";
+            html += "</a>";
+        }
+        html += "</div>";
+    }
+    html += "<form method=\"GET\" action=\"/mail\" class=\"mailnewgroup\" style=\"margin-top:.8rem\">"
+            "<input name=\"with\" placeholder=\"Message a friend \xE2\x80\x94 username\" autocomplete=\"off\">"
+            "<button type=\"submit\" class=\"ghost\">Open</button></form>";
+    html += "<form method=\"POST\" action=\"/mail/group/new\" class=\"mailnewgroup\">"
+            "<input name=\"title\" maxlength=\"80\" placeholder=\"Group name (optional)\">"
+            "<input name=\"who\" placeholder=\"Usernames to invite, separated by spaces\">"
+            "<button type=\"submit\">Start a group</button></form>"
+            "<p class=\"maildisclose\">Messages on this copy are stored so the operator can read them. "
+            "Direct mail is friends-only until age assurance exists. Unfriending leaves shared groups.</p>"
+            "</div>";
     return html;
 }
 
-// Groups stay real, full-page links (not fetched into the panel) -- a
-// group thread carries member management (invite/accept/leave) the
-// compact widget was never meant to reimplement; only 1:1 messaging gets
-// the in-panel instant-messenger treatment. acc_id is the caller's own,
-// needed to tell an invited-but-not-yet-accepted membership apart.
+// Kept for the widget's "start a group" only — inbox is the unified list.
 std::string mail_groups_list_html(const std::string& user, AccountId acc_id) {
-    (void)user;
-    std::string html = "<div class=\"mailsection\"><p class=\"eyebrow\">Groups</p><ul class=\"plain\">";
-    auto groups = g_store.conversations_for(acc_id);
-    std::string list;
-    for (auto& conv : groups) {
-        if (!conv.is_group) continue;
-        bool pending = false;
-        for (auto& m : conv.members) if (m.account == acc_id) pending = m.state == MemberState::Pending;
-        list += "<li><a class=\"mailgroup\" href=\"/mail/g/"+std::to_string(conv.id)+"\">"+html_escape(group_label(conv, acc_id))+"</a>"+
-                (pending ? " <span class=\"muted\">invited</span>" : "")+"</li>";
-    }
-    html += (list.empty() ? "<li class=\"muted\">No groups yet.</li>" : list) + "</ul>"
-            "<form method=\"POST\" action=\"/mail/group/new\" class=\"mailnewgroup\">"
-            "<input name=\"who\" placeholder=\"Start a group \xE2\x80\x94 usernames\">"
-            "<button type=\"submit\">Create</button></form></div>";
-    return html;
+    return mail_inbox_html(user, acc_id);
+}
+
+std::string mail_friends_list_html(const std::string& user) {
+    auto acc = g_store.find_by_username(user);
+    if (!acc) return "";
+    return mail_inbox_html(user, acc->id);
 }
 
 // The open thread: message bubbles (mine/theirs) plus the composer. Shared
@@ -1584,15 +1650,18 @@ std::string mail_groups_list_html(const std::string& user, AccountId acc_id) {
 std::string mail_thread_html(const std::string& user, const std::string& other,
                               const std::map<std::string,std::string>& qs) {
     if (other.empty() || !g_store.are_friends(user, other) || g_store.is_blocked(user, other)) return "";
+    g_store.mark_thread_read(user, "d:" + other);
     std::string html = "<div class=\"mailthread\">"
         "<div class=\"mailthreadhead\"><a class=\"mailback\" data-with=\"\" href=\"/mail\" aria-label=\"Back to messages\">\xE2\x86\x90</a>"
-        "<strong>"+html_escape(other)+"</strong></div>";
+        + portrait_tag(other, "sm") +
+        "<strong><a href=\"/u/"+html_escape(other)+"\">"+html_escape(other)+"</a></strong></div>";
     if (qs.count("err")) {
         const std::string& e = qs.at("err");
         if (e=="type") html += "<p class=\"warn\">That attachment isn't a usable type. Allowed: PNG/JPEG/GIF, PDF, plain text, macro-free Word/Excel/PowerPoint. No SVG, no archives.</p>";
         else if (e=="large") html += "<p class=\"warn\">That attachment is too large.</p>";
         else if (e=="active") html += "<p class=\"warn\">That document was refused: it declares a macro, embedded object, or OLE content.</p>";
         else if (e=="scan") html += "<p class=\"warn\">That attachment could not be stored.</p>";
+        else if (e=="notfriends") html += "<p class=\"warn\">Mail is friends-only until they accept.</p>";
     }
     auto thread = g_store.mail_with(user, other);
     html += "<div class=\"msglist\" id=\"msglist\">";
@@ -1607,13 +1676,24 @@ std::string mail_thread_html(const std::string& user, const std::string& other,
         html += "<span class=\"bubtime\">"+html_escape(fmt_time(m.ts))+"</span></div></div>";
     }
     html += "</div>"
-        "<form method=\"POST\" action=\"/mail\" enctype=\"multipart/form-data\" class=\"mailcomposer\">"
+        "<form method=\"POST\" action=\"/mail\" enctype=\"multipart/form-data\" class=\"mailcomposer\" id=\"mailcomposer\">"
         "<input type=\"hidden\" name=\"to\" value=\""+html_escape(other)+"\">"
-        "<div class=\"row\" style=\"align-items:center;gap:.4rem;flex-wrap:nowrap\">"
-        "<input name=\"text\" maxlength=\"2000\" placeholder=\"Message\" autocomplete=\"off\" style=\"flex:1;min-width:0\">"
-        "<input type=\"file\" name=\"attachment\" class=\"mailattach\" title=\"Attach a file\" "
-        "accept=\"image/png,image/jpeg,image/gif,application/pdf,text/plain,.docx,.xlsx,.pptx\">"
-        "<button type=\"submit\">Send</button></div></form></div>";
+        "<div class=\"row\" style=\"align-items:flex-end;gap:.4rem;flex-wrap:nowrap\">"
+        "<textarea name=\"text\" id=\"mailtext\" maxlength=\"2000\" rows=\"2\" placeholder=\"Message\" "
+        "autocomplete=\"off\" style=\"flex:1;min-width:0;min-height:44px;resize:vertical\"></textarea>"
+        "<label class=\"mailattbtn\" title=\"Attach a file\">"
+        "<input type=\"file\" name=\"attachment\" accept=\"image/png,image/jpeg,image/gif,application/pdf,text/plain,.docx,.xlsx,.pptx\">"
+        "<span aria-hidden=\"true\">+</span></label>"
+        "<button type=\"submit\">Send</button></div>"
+        "<p class=\"muted\" style=\"margin:.3rem 0 0\">Enter sends. Shift+Enter is a new line.</p></form></div>"
+        "<script>(function(){"
+        "var list=document.getElementById('msglist');if(list)list.scrollTop=list.scrollHeight;"
+        "var form=document.getElementById('mailcomposer'),ta=document.getElementById('mailtext');"
+        "if(!form||!ta)return;"
+        "ta.addEventListener('keydown',function(e){"
+        "if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();form.requestSubmit();}"
+        "});"
+        "})();</script>";
     return html;
 }
 
@@ -1707,7 +1787,7 @@ std::string mail_widget_script() {
         // wholesale on every load, so listeners bound to specific elements
         // would be gone after the very first fetch.
         "mailRoot.addEventListener('click',function(e){"
-        "var a=e.target.closest('a.mailwith,a.mailback');"
+        "var a=e.target.closest('a.mailwith,a.mailback,a.inboxrow.mailwith');"
         "if(a){e.preventDefault();loadMail(a.classList.contains('mailback')?null:a.dataset.with,true);return;}"
         // A group link (unlike mailwith/mailback) is a real navigation,
         // not fetched into the panel -- same "left looking stuck open"
@@ -1722,7 +1802,16 @@ std::string mail_widget_script() {
         "if(!form)return;"
         "e.preventDefault();"
         "var fd=new FormData(form);"
-        "fetch('/mail',{method:'POST',body:fd}).then(function(){loadMail(activeWith,true);});"
+        "fetch('/mail',{method:'POST',body:fd,credentials:'same-origin'}).then(function(){loadMail(activeWith,true);});"
+        "});"
+        "mailRoot.addEventListener('keydown',function(e){"
+        "if(e.key!=='Enter'||e.shiftKey)return;"
+        "var ta=e.target.closest('textarea[name=text]');"
+        "if(!ta)return;"
+        "var form=ta.closest('form.mailcomposer');"
+        "if(!form)return;"
+        "e.preventDefault();"
+        "form.requestSubmit();"
         "});"
         "})();</script>";
 }
@@ -5307,7 +5396,8 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             // page (see above) -- nothing further needed here.
         } else if (acc && g_store.are_friends(user, found->username)) {
             html += "<p class=\"row\"><a class=\"btn\" href=\"/mail?with="+html_escape(found->username)+"\">Message</a>"
-                    "<form class=\"inline\" method=\"POST\" action=\"/friends/unfriend\">"
+                    "<form class=\"inline\" method=\"POST\" action=\"/friends/unfriend\" "
+                    "onsubmit=\"return confirm('Unfriend "+html_escape(found->username)+"? You will leave every group you share with them. They stay in those groups.');\">"
                     "<input type=\"hidden\" name=\"who\" value=\""+html_escape(found->username)+"\">"
                     "<button class=\"ghost\" type=\"submit\">Unfriend</button></form></p>";
         } else if (acc) {
@@ -5367,7 +5457,8 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
                         "<input type=\"hidden\" name=\"who\" value=\""+html_escape(other)+"\">"
                         "<button class=\"ghost\" type=\"submit\">Inner circle</button></form>";
             }
-            html += "<form class=\"inline\" method=\"POST\" action=\"/friends/unfriend\">"
+            html += "<form class=\"inline\" method=\"POST\" action=\"/friends/unfriend\" "
+                    "onsubmit=\"return confirm('Unfriend this person? You will leave every group you share with them. They stay in those groups.');\">"
                     "<input type=\"hidden\" name=\"who\" value=\""+html_escape(other)+"\">"
                     "<button class=\"ghost\" type=\"submit\">Unfriend</button></form>"
                     "<form class=\"inline\" method=\"POST\" action=\"/friends/block\">"
@@ -5411,27 +5502,25 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
 
     if(method=="GET"&&path=="/mail") {
         if(!acc) return need_login();
-        // Mirrors /notices clearing everything but "message" -- opening
-        // Mail is what actually clears the Messages icon's own badge.
         g_store.mark_notices_read_of_type(user, "message");
         std::string thread = mail_thread_html(user, qs["with"], qs);
-        std::string html = "<h1>Mail</h1><p class=\"muted\">Direct messages are friends-only in this release. "
-            "Open messaging waits on age assurance so a stranger cannot reach a minor. We will not treat a checkbox as age.</p>"
-            "<div class=\"card mailwidget\">"+thread+mail_friends_list_html(user)+"</div>"
-            "<div class=\"card\">"+mail_groups_list_html(user, acc->id)+"</div>";
+        if (!qs["with"].empty() && thread.empty()) {
+            thread = "<div class=\"card\"><p class=\"warn\">Mail is friends-only until they accept. "
+                     "<a href=\"/search?q="+html_escape(qs["with"])+"\">Find "+html_escape(qs["with"])+"</a></p></div>";
+        }
+        std::string html = "<h1>Mail</h1>"
+            "<p class=\"muted\">Direct messages are friends-only in this release. "
+            "Open messaging waits on age assurance so a stranger cannot reach a minor. We will not treat a checkbox as age.</p>";
+        if (qs["skipped"].size()) html += "<p class=\"warn\">Couldn’t include: "+html_escape(qs["skipped"])+
+            ". Unknown, blocked, and contact-settings conflicts are skipped — start a new thread with just them if you still want to talk.</p>";
+        html += "<div class=\"card mailwidget\">"+thread+mail_inbox_html(user, acc->id)+"</div>";
         return pg("Mail", html);
     }
-    // Fetched by the header's Messages widget on open, on picking a friend,
-    // after sending, and on its poll interval while a thread is open --
-    // same content the full /mail page renders (same helper functions), as
-    // a bare fragment for innerHTML instead of a full document. Marking
-    // read here too since opening the widget is opening Mail. Thread first
-    // (when one's open) so it's visible without scrolling past the list.
     if(method=="GET"&&path=="/mail/panel") {
         if(!acc) return http_code("401 Unauthorized", "");
         g_store.mark_notices_read_of_type(user, "message");
         std::string thread = mail_thread_html(user, qs["with"], qs);
-        std::string html = thread+mail_friends_list_html(user)+mail_groups_list_html(user, acc->id);
+        std::string html = thread+mail_inbox_html(user, acc->id);
         return http_ok(html);
     }
 
@@ -5439,7 +5528,17 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         if(!acc) return need_login();
         const std::string blob_id = path.substr(17);
         auto found = g_store.find_mail_attachment(user, blob_id);
-        if (!found) return http_raw("404 Not Found", "text/plain; charset=utf-8", "not found");
+        if (!found) {
+            auto gfound = g_store.find_group_attachment(acc->id, blob_id);
+            if (!gfound) return http_raw("404 Not Found", "text/plain; charset=utf-8", "not found");
+            auto gbytes = g_blobs.get(blob_id);
+            if (!gbytes) return http_raw("404 Not Found", "text/plain; charset=utf-8", "not found");
+            std::string gdata(gbytes->begin(), gbytes->end());
+            const std::string gmime = gfound->attachment_mime.empty() ? "application/octet-stream" : gfound->attachment_mime;
+            std::string gextra = "Content-Disposition: attachment; filename=\""+attachment_filename_for_mime(gmime)+"\"\r\n"
+                                 "Cache-Control: private, no-store\r\n";
+            return http_raw("200 OK", gmime.c_str(), gdata, gextra);
+        }
         const std::string other = (found->from == user) ? found->to : found->from;
         // Same gate as the thread view: attachments do not outlive the
         // friendship they were sent inside of. Do not open stranger DMs.
@@ -5463,59 +5562,88 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         if (conv) for (auto& m : conv->members) if (m.account == acc->id) self_member = &m;
         if (!conv || !conv->is_group || !self_member)
             return http_code("404 Not Found", wrap("Not found", user, unread, "<div class=\"card\"><p>No such group.</p></div>"));
+        g_store.mark_thread_read(user, "g:" + std::to_string(conv_id));
         const std::string base = "/mail/g/" + std::to_string(conv_id);
         const bool active = self_member->state == MemberState::Active;
 
-        std::string html = "<h1>"+html_escape(group_label(*conv, acc->id))+"</h1>"
+        std::string html = "<p><a href=\"/mail\">\xE2\x86\x90 Mail</a></p>"
+            "<h1>"+html_escape(group_label(*conv, acc->id))+"</h1>"
             "<p class=\"muted\">Platform group conversation. Not an AVND locality.</p>";
-        if (qs["err"]=="invite") html += "<p class=\"warn\">Conflicts with another member’s contact settings.</p>";
-        html += "<div class=\"card\"><h2>Members</h2><ul class=\"plain\">";
-        for (auto& m : conv->members) {
-            html += "<li>"+html_escape(display_name_for(m.account))+
-                    (m.state==MemberState::Pending?" <span class=\"muted\">invited</span>":"")+"</li>";
-        }
-        html += "</ul>";
+        if (qs["err"]=="invite") html += "<p class=\"warn\">Couldn’t add them — conflicts with someone’s contact settings. "
+            "Start a new thread with just them if you still want to talk.</p>";
+        if (!qs["skipped"].empty()) html += "<p class=\"warn\">Couldn’t include: "+html_escape(qs["skipped"])+". "
+            "Unknown, blocked, and contact-settings conflicts are skipped.</p>";
+        if (qs["err"]=="type") html += "<p class=\"warn\">That attachment isn't a usable type. Allowed: PNG/JPEG/GIF, PDF, plain text, macro-free Word/Excel/PowerPoint. No SVG, no archives.</p>";
+        else if (qs["err"]=="large") html += "<p class=\"warn\">That attachment is too large.</p>";
+        else if (qs["err"]=="active") html += "<p class=\"warn\">That document was refused: it declares a macro, embedded object, or OLE content.</p>";
+        else if (qs["err"]=="scan") html += "<p class=\"warn\">That attachment could not be stored.</p>";
+
         if (!active) {
-            html += "<p class=\"muted\">You’re invited to this group. Accept to join, or decline — declining is never announced to the room.</p>"
+            html += "<div class=\"mailpending\"><p><strong>Waiting for you to join.</strong> "
+                    "You can’t send until you accept. Declining is never announced to the room.</p>"
                     "<form method=\"POST\" action=\""+base+"/accept\"><button>Accept</button></form>"
-                    "<form method=\"POST\" action=\""+base+"/leave\"><button class=\"ghost\">Decline</button></form>";
-        } else {
-            html += "<form method=\"POST\" action=\""+base+"/invite\"><label>Invite</label>"
-                    "<div class=\"row\"><input name=\"who\" required><button>Invite</button></div></form>"
-                    "<form method=\"POST\" action=\""+base+"/leave\"><button class=\"ghost\">Leave group</button></form>";
+                    "<form method=\"POST\" action=\""+base+"/leave\"><button class=\"ghost\">Decline</button></form></div>";
+        }
+
+        html += "<div class=\"card\">";
+        auto msgs = g_store.messages_in(conv_id);
+        html += "<div class=\"msglist\" id=\"msglist\" style=\"max-height:none\">";
+        bool any = false;
+        for (auto& m : msgs) {
+            if (m.deletion==DeletionState::DeletedForSender && m.sender==acc->id) continue;
+            any = true;
+            const bool mine = m.sender==acc->id;
+            html += "<div class=\"msg "+std::string(mine?"mine":"theirs")+"\"><div class=\"bubble\">";
+            if (!mine) html += "<strong>"+html_escape(display_name_for(m.sender))+"</strong> ";
+            if (m.deletion==DeletionState::DeletedForEveryone) {
+                html += "<em class=\"muted\">Message deleted.</em>";
+            } else {
+                if (!m.text.empty()) html += html_escape(m.text);
+                if (!m.attachment_blob_id.empty())
+                    html += "<div><a href=\"/mail/attachment/"+html_escape(m.attachment_blob_id)+"\">Download attachment</a></div>";
+                if (m.edited_at>0) html += "<span class=\"muted\"> (edited)</span>";
+            }
+            html += "<span class=\"bubtime\">"+html_escape(fmt_time(m.sent_at))+"</span></div></div>";
+        }
+        if (!any) html += "<p class=\"empty\">No messages yet.</p>";
+        html += "</div>";
+        if (active) {
+            html += "<form method=\"POST\" action=\""+base+"/send\" enctype=\"multipart/form-data\" class=\"mailcomposer\" id=\"mailcomposer\">"
+                    "<div class=\"row\" style=\"align-items:flex-end;gap:.4rem;flex-wrap:nowrap\">"
+                    "<textarea name=\"text\" id=\"mailtext\" maxlength=\"2000\" rows=\"2\" placeholder=\"Message\" "
+                    "style=\"flex:1;min-width:0;min-height:44px;resize:vertical\"></textarea>"
+                    "<label class=\"mailattbtn\" title=\"Attach a file\">"
+                    "<input type=\"file\" name=\"attachment\" accept=\"image/png,image/jpeg,image/gif,application/pdf,text/plain,.docx,.xlsx,.pptx\">"
+                    "<span aria-hidden=\"true\">+</span></label>"
+                    "<button type=\"submit\">Send</button></div>"
+                    "<p class=\"muted\" style=\"margin:.3rem 0 0\">Enter sends. Shift+Enter is a new line.</p></form>";
         }
         html += "</div>";
 
-        if (active) {
-            html += "<div class=\"card\">";
-            auto msgs = g_store.messages_in(conv_id);
-            bool any = false;
-            for (auto& m : msgs) {
-                if (m.deletion==DeletionState::DeletedForSender && m.sender==acc->id) continue;
-                any = true;
-                html += "<div class=\"msg\"><div><strong>"+html_escape(display_name_for(m.sender))+"</strong> "
-                        "<span class=\"muted\">"+html_escape(fmt_time(m.sent_at))+"</span>";
-                if (m.deletion==DeletionState::DeletedForEveryone) {
-                    html += "<p class=\"muted\"><em>Message deleted.</em></p>";
-                } else {
-                    html += "<p>"+html_escape(m.text)+"</p>";
-                    if (m.edited_at>0) html += "<p class=\"muted\">(edited)</p>";
-                    if (m.sender==acc->id) {
-                        const std::string mbase = base+"/message/"+std::to_string(m.id);
-                        html += "<form method=\"POST\" action=\""+mbase+"/edit\" class=\"row\">"
-                                "<input name=\"text\" value=\""+html_escape(m.text)+"\" maxlength=\"2000\">"
-                                "<button>Save edit</button></form>"
-                                "<form method=\"POST\" action=\""+mbase+"/delete\">"
-                                "<button class=\"ghost\">Delete</button></form>";
-                    }
-                }
-                html += "</div></div>";
-            }
-            if (!any) html += "<p class=\"empty\">No messages yet.</p>";
-            html += "<form method=\"POST\" action=\""+base+"/send\">"
-                    "<label>Message</label><input name=\"text\" maxlength=\"2000\">"
-                    "<button>Send</button></form></div>";
+        html += "<details class=\"card\"><summary>Members</summary><ul class=\"plain\">";
+        for (auto& m : conv->members) {
+            html += "<li>"+html_escape(display_name_for(m.account))+
+                    (m.state==MemberState::Pending?" <span class=\"muted\">invited \xE2\x80\x94 not in yet</span>":"")+"</li>";
         }
+        html += "</ul>";
+        if (active) {
+            html += "<form method=\"POST\" action=\""+base+"/invite\"><label>Invite</label>"
+                    "<div class=\"row\"><input name=\"who\" required><button>Invite</button></div></form>"
+                    "<form method=\"POST\" action=\""+base+"/title\" class=\"mailnewgroup\">"
+                    "<label>Group name</label><input name=\"title\" maxlength=\"80\" value=\""+html_escape(conv->title)+"\">"
+                    "<button class=\"ghost\">Save name</button></form>"
+                    "<form method=\"POST\" action=\""+base+"/leave\" onsubmit=\"return confirm('Leave this group? You will not be told if others stay.');\">"
+                    "<button class=\"ghost\">Leave group</button></form>";
+        }
+        html += "</details>"
+            "<script>(function(){"
+            "var list=document.getElementById('msglist');if(list)list.scrollTop=list.scrollHeight;"
+            "var form=document.getElementById('mailcomposer'),ta=document.getElementById('mailtext');"
+            "if(!form||!ta)return;"
+            "ta.addEventListener('keydown',function(e){"
+            "if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();form.requestSubmit();}"
+            "});"
+            "})();</script>";
         return pg("Group", html);
     }
 
@@ -5706,7 +5834,9 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             + "<br><span class=\"muted\">Anyone can find you, including as a partial match while they're still typing.</span></p>"
             + "<p><label><input type=\"checkbox\" name=\"group_invite_confirm\" value=\"1\"" + (p.group_invite_confirm?" checked":"") + "> "
             + "Don't add me to groups without asking</label></p>"
-            + "<p class=\"muted\">Direct messages are friends-only until we can tell who is a minor without a checkbox.</p>"
+            + "<p class=\"muted\">Direct messages are friends-only until we can tell who is a minor without a checkbox. "
+            + "Unfriending or blocking leaves every group conversation you share with that person. "
+            + "Messages on this copy are stored so the operator can read them.</p>"
             + "<label>Visibility register</label>"
             + "<p class=\"muted\">Each level admits every level after it too: public sees everything members do, "
             + "members see everything friends do, friends see everything only-me hides from everyone else.</p>";
@@ -6223,7 +6353,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         // Do not open stranger DMs: friends-only, both directions unblocked,
         // exactly as before attachments existed.
         if(to.empty() || !g_store.are_friends(user,to) || g_store.is_blocked(user,to) || g_store.is_blocked(to,user))
-            return http_redir("/mail?with="+to);
+            return http_redir("/mail?with="+to+"&err=notfriends");
 
         std::optional<std::string> blob_id, mime;
         if (file && !file->empty()) {
@@ -6247,17 +6377,23 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
 
     if(method=="POST"&&path=="/mail/group/new") {
         if(!acc) return need_login();
-        const auto who = parse_form(body)["who"];
+        auto form = parse_form(body);
+        const auto who = form["who"];
+        auto title = trim_ws(form["title"]);
+        if (title.size() > 80) title.resize(80);
         std::vector<AccountId> invitees;
+        std::vector<std::string> skipped;
         std::string cur;
         auto flush_tok = [&]() {
             const auto name = trim_ws(cur);
             cur.clear();
             if (name.empty() || name == user) return;
             auto found = g_store.find_by_username(name);
-            if (!found) return; // unknown username: silently dropped
-            if (g_store.is_blocked(user, name) || g_store.is_blocked(name, user)) return;
-            for (auto id : invitees) if (id == found->id) return; // dedupe
+            if (!found || g_store.is_blocked(user, name) || g_store.is_blocked(name, user)) {
+                skipped.push_back(name);
+                return;
+            }
+            for (auto id : invitees) if (id == found->id) return;
             invitees.push_back(found->id);
         };
         for (char c : who) {
@@ -6266,7 +6402,32 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         }
         flush_tok();
         auto result = create_conversation(g_store, g_social_graph, acc->id, invitees, /*is_group=*/true);
-        return http_redir("/mail/g/"+std::to_string(*result.conversation_id));
+        auto conv = g_store.get_conversation(*result.conversation_id);
+        if (conv && !title.empty()) {
+            conv->title = title;
+            g_store.save_conversation(*conv);
+        }
+        if (conv) {
+            std::set<AccountId> kept;
+            for (auto& m : conv->members) kept.insert(m.account);
+            for (auto id : invitees) {
+                if (!kept.count(id)) {
+                    if (auto a = g_store.find_by_id(id)) skipped.push_back(a->username);
+                } else if (auto a = g_store.find_by_id(id)) {
+                    auto pr = g_store.prefs_of(a->username);
+                    if (pr.notify_message) g_store.add_notice(a->username, "mail_group", user, std::to_string(conv->id));
+                }
+            }
+        }
+        std::string loc = "/mail/g/"+std::to_string(*result.conversation_id);
+        if (!skipped.empty()) {
+            loc += "?skipped=";
+            for (size_t i=0;i<skipped.size();++i) {
+                if (i) loc += ",";
+                loc += url_encode(skipped[i]);
+            }
+        }
+        return http_redir(loc);
     }
 
     if(method=="POST"&&path.rfind("/mail/g/",0)==0) {
@@ -6303,14 +6464,60 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             if (!refuse) {
                 auto r = add_member(g_store, g_social_graph, acc->id, found->id, conv_id);
                 refuse = r.error != MessengerError::None;
+                if (!refuse) {
+                    auto pr = g_store.prefs_of(found->username);
+                    if (pr.notify_message) g_store.add_notice(found->username, "mail_group", user, id_str);
+                }
             }
             return http_redir(refuse ? (base+"?err=invite") : base);
         }
+        if (action=="title") {
+            auto title = trim_ws(parse_form(body)["title"]);
+            if (title.size() > 80) title.resize(80);
+            conv->title = title;
+            g_store.save_conversation(*conv);
+            return http_redir(base);
+        }
         if (action=="send") {
-            auto text = trim_ws(parse_form(body)["text"]);
-            if (!text.empty()) {
-                if (text.size()>2000) text.resize(2000);
-                send_message(g_store, acc->id, conv_id, text);
+            auto hdr_end = req.find("\r\n\r\n");
+            std::string hdrs = hdr_end==std::string::npos ? req : req.substr(0, hdr_end);
+            std::string ctype = header_value(hdrs, "Content-Type");
+            std::string text;
+            std::optional<std::vector<std::uint8_t>> file;
+            if (ctype.find("multipart/form-data") != std::string::npos) {
+                text = multipart_field(ctype, body, "text");
+                file = multipart_file(ctype, body, "attachment");
+            } else {
+                text = parse_form(body)["text"];
+            }
+            text = trim_ws(text);
+            if (text.size()>2000) text.resize(2000);
+            std::optional<std::string> blob_id, mime;
+            if (file && !file->empty()) {
+                auto r = ingest_file(g_blobs, g_mail_scanner, g_mail_caps, *file);
+                if (r.error != FileTransferError::None || !r.blob_id) {
+                    const char* code = "type";
+                    switch (r.error) {
+                        case FileTransferError::TooLarge: code = "large"; break;
+                        case FileTransferError::ActiveContentBlocked: code = "active"; break;
+                        case FileTransferError::FailedScan: code = "scan"; break;
+                        default: code = "type"; break;
+                    }
+                    return http_redir(base+"?err="+code);
+                }
+                blob_id = r.blob_id;
+                mime = r.stored_mime_type;
+            }
+            if (!text.empty() || blob_id) {
+                auto sent = send_message(g_store, acc->id, conv_id, text);
+                if (sent.message_id && blob_id) {
+                    auto msg = g_store.get_message(*sent.message_id);
+                    if (msg) {
+                        msg->attachment_blob_id = *blob_id;
+                        msg->attachment_mime = mime.value_or("");
+                        g_store.update_message(*msg);
+                    }
+                }
             }
             return http_redir(base);
         }
@@ -6481,6 +6688,10 @@ int main() {
         g_blobs.adopt(av.blob_id, "image/png");
     for (const auto& m : g_store.all_mail_with_attachments())
         g_blobs.adopt(*m.attachment_blob_id, m.attachment_mime.value_or("application/octet-stream"));
+    for (const auto& m : g_store.all_group_messages_with_attachments())
+        g_blobs.adopt(m.attachment_blob_id, m.attachment_mime.empty() ? "application/octet-stream" : m.attachment_mime);
+    constexpr std::int64_t kMailRetention = 7 * 24 * 60 * 60;
+    purge_expired_deletions(g_store, now(), kMailRetention);
     for (const auto& blob_id : g_store.all_canvas_frame_blob_ids())
         g_blobs.adopt(blob_id, "image/png");
     for (const auto& p : g_store.all_posts_with_attachments())

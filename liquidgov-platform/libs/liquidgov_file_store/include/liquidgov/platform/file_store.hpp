@@ -68,13 +68,18 @@
 //          metadata), same shape as an f (friend) pair but directed, not mutual
 //   gcn    <next_conversation_id>
 //   gmsn   <next_message_id>
-//   gc     <id> <is_group 0|1> <created_at>          // messenger.hpp Conversation, no roster
+//   gc     <id> <is_group 0|1> <created_at> [<title>]
+//          -- title is optional; an older 4-token line means empty title
 //   gcm    <conv_id> <account_id> <state 0=Active|1=Pending>  // one line per member, in
 //          roster order; the gc line for conv_id is always written before its gcm lines
 //   gmsg   <id> <conv_id> <sender> <sent_at> <edited_at> <deletion 0|1|2> <deleted_at>
-//          <under_review 0|1> <text>                 // messenger.hpp Message, no edit_history
+//          <under_review 0|1> <text> [<blob_id> <mime>]
+//          -- trailing two fields optional; an older 10-token line means no attachment
 //   gmh    <message_id> <text>                       // one prior version, oldest first; the
 //          gmsg line for message_id is always written before its gmh lines
+//   mlr    <username> <thread_key> <last_read_unix>
+//          -- thread_key is "d:<other>" for 1:1 mail or "g:<conv_id>" for a group.
+//          Absence means never opened. Used only for unread dots, not access control.
 //   ac     <account_id> <css>   // author CSS for /u/<username>/theme, already sanitized
 //          (see sanitize_author_css in http_server.cpp) before it ever reaches here
 //   cvf    <account_id> <frame_index> <blob_id>   // one canvas snapshot, in draw order;
@@ -405,6 +410,15 @@ public:
     std::vector<MailMessage> mail_with(const std::string& a, const std::string& b) const;
     std::vector<MailMessage> mail_sent_by(const std::string& from) const;
 
+    // People this account has exchanged 1:1 mail with (either direction).
+    std::vector<std::string> mail_peers(const std::string& user) const;
+    std::int64_t last_mail_ts(const std::string& a, const std::string& b) const;
+    std::string last_mail_preview(const std::string& a, const std::string& b) const;
+
+    // Unread dots. thread_key is "d:<username>" or "g:<conv_id>".
+    void mark_thread_read(const std::string& user, const std::string& thread_key);
+    std::int64_t thread_last_read(const std::string& user, const std::string& thread_key) const;
+
     // Authorization lookup for attachment download: returns the message
     // only when `user` is sender or recipient of it. Caller still applies
     // the current friends/not-blocked gate the same way the mail thread
@@ -524,6 +538,10 @@ public:
     // oldest first. Not part of ConversationStore — messenger.hpp never
     // needs "just this conversation's messages" itself.
     std::vector<Message> messages_in(ConversationId conv_id) const;
+    std::int64_t last_group_ts(ConversationId conv_id) const;
+    std::string last_group_preview(ConversationId conv_id) const;
+    std::optional<Message> find_group_attachment(AccountId account, const std::string& blob_id) const;
+    std::vector<Message> all_group_messages_with_attachments() const;
 
     // Owner must be an existing account; video_id must already be a validated
     // id (see extract_youtube_id). queued_by is who's requesting it -- pass
@@ -607,6 +625,7 @@ private:
     MessageId next_message_id_ = 1;
     std::map<ConversationId, Conversation> conversations_;
     std::map<MessageId, Message> messages_;
+    std::map<std::string, std::map<std::string, std::int64_t>> mail_last_read_;
 };
 
 } // namespace liquidgov::platform

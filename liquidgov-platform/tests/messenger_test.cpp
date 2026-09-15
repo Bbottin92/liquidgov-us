@@ -157,6 +157,10 @@ int main() {
         auto add_ok = add_member(store, graph, 1, 60, *created.conversation_id);
         assert(add_ok.error == MessengerError::None);
         std::cout << "add_member: a candidate who IS friends with the minor succeeds\n";
+
+        auto outsider = add_member(store, graph, /*actor=*/50, 70, *created.conversation_id);
+        assert(outsider.error == MessengerError::NotAMember);
+        std::cout << "add_member: a non-Active actor is refused\n";
     }
 
     // ---- send_message: Pending cannot send, Active can ----

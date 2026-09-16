@@ -1247,6 +1247,53 @@ std::string ios_install_hint() {
         "})();</script>";
 }
 
+// Shown once, only inside /mail's own body (never site-wide via
+// wrap() -- see that route) -- Add to Home Screen bookmarks whatever
+// page is actually on screen, so the nudge has to land after the
+// visitor is already on the real inbox, not on the /app/mail install
+// page that may have sent them here. Same dismiss-once/style.display/
+// real-<button> conventions as ios_install_hint() above, but covers
+// Android too (a real menu item there, not an iOS-only gesture) and
+// keys off its own localStorage entry so dismissing one hint doesn't
+// silently dismiss the other.
+std::string mail_install_hint() {
+    return
+        "<div id=\"lgmailhint\" "
+        "style=\"position:fixed;left:.6rem;right:.6rem;"
+        "bottom:calc(.6rem + env(safe-area-inset-bottom,0px));"
+        "z-index:50;max-width:26rem;margin:0 auto;background:var(--parchment);border:1px solid var(--rule);"
+        "border-radius:var(--rmd);padding:.6rem .7rem;box-shadow:0 6px 20px rgba(0,0,0,.18);"
+        "display:none;align-items:center;gap:.6rem\">"
+        "<div style=\"flex:1;min-width:0\">"
+        "<p style=\"margin:0;font-family:var(--display);font-weight:700;font-size:1rem;color:var(--ink)\">You're on Messages</p>"
+        "<p id=\"lgmailhinttext\" style=\"margin:.1rem 0 0;font-size:.78rem;color:var(--stone)\">Now Share &rarr; "
+        "<strong>Add to Home Screen</strong> (name it Messages).</p></div>"
+        "<button type=\"button\" id=\"lgmailhintclose\" class=\"ghost\" aria-label=\"Dismiss\" "
+        "style=\"min-height:44px;min-width:44px;padding:0;flex-shrink:0;font-size:1.1rem\">"
+        "&#10005;</button></div>"
+        "<script>(function(){"
+        "try{if(localStorage.getItem('liquidgov.mailhint.dismissed'))return;}catch(e){return;}"
+        "var isIOS=/iP(hone|od|ad)/.test(navigator.userAgent)||"
+        "(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);"
+        "var isAndroid=/Android/.test(navigator.userAgent);"
+        "if(!isIOS&&!isAndroid)return;"
+        "var standalone=window.navigator.standalone===true||"
+        "(window.matchMedia&&matchMedia('(display-mode: standalone)').matches);"
+        "if(standalone)return;"
+        "var el=document.getElementById('lgmailhint');"
+        "if(isAndroid){document.getElementById('lgmailhinttext').innerHTML="
+        "'Now tap <strong>\\u22ee</strong> then <strong>Add to Home screen</strong> or <strong>Install app</strong>.';}"
+        "el.style.display='flex';"
+        "function dismiss(){"
+        "el.style.display='none';"
+        "try{localStorage.setItem('liquidgov.mailhint.dismissed','1');}catch(e){}"
+        "}"
+        "var btn=document.getElementById('lgmailhintclose');"
+        "btn.addEventListener('touchstart',dismiss,{passive:true});"
+        "btn.addEventListener('click',dismiss);"
+        "})();</script>";
+}
+
 std::string page_wrap(const std::string& title, const std::string& navhtml, const std::string& body,
                        bool show_intro = false, bool intro_always_play = false) {
     const std::string theme_attr = g_theme_mode.empty() ? "" : " data-theme=\""+g_theme_mode+"\"";
@@ -1318,7 +1365,7 @@ std::string page_wrap(const std::string& title, const std::string& navhtml, cons
            // its own "Add to Home Screen" (Share sheet) works from nothing
            // more than the page itself, which is why /install still needs
            // to spell that path out separately.
-           "<link rel=\"manifest\" href=\"/manifest.webmanifest\">"
+           "<link rel=\"manifest\" href=\""+(title=="Messages"?"/manifest-mail.webmanifest":"/manifest.webmanifest")+"\">"
            "<meta name=\"apple-mobile-web-app-capable\" content=\"yes\">"
            "<meta name=\"mobile-web-app-capable\" content=\"yes\">"
            "<meta name=\"apple-mobile-web-app-title\" content=\""+html_escape(title)+"\">"
@@ -7077,6 +7124,26 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             "}");
     }
 
+    // Linked only from a page rendered with title "Messages" (currently
+    // just /mail -- see page_wrap's manifest href branch). start_url is
+    // /mail, not /, so installing *from that page* on a manifest-reading
+    // platform (Chrome/Edge/Android; iOS Safari ignores this file
+    // entirely, see ios_install_hint's own comment) opens straight back
+    // into the inbox instead of the Genesis landing page.
+    if(method=="GET"&&path=="/manifest-mail.webmanifest") {
+        return http_raw("200 OK", "application/manifest+json",
+            "{"
+            "\"name\":\"Messages\","
+            "\"short_name\":\"Messages\","
+            "\"description\":\"LiquidGov.US mail and conversations.\","
+            "\"start_url\":\"/mail\","
+            "\"display\":\"standalone\","
+            "\"background_color\":\"#f7f1e4\","
+            "\"theme_color\":\"#d1a85c\","
+            "\"icons\":[{\"src\":\"/icon-mail-192.png\",\"sizes\":\"192x192\",\"type\":\"image/png\",\"purpose\":\"any\"},{\"src\":\"/icon-mail-512.png\",\"sizes\":\"512x512\",\"type\":\"image/png\",\"purpose\":\"any maskable\"}]"
+            "}");
+    }
+
     if(method=="GET"&&(path=="/apple-touch-icon.png"||path=="/apple-touch-icon-precomposed.png"||path=="/icon-192.png"||path=="/icon-512.png"||path=="/assets/icon-192.png"||path=="/assets/icon-512.png"||path=="/assets/apple-touch-icon.png")) {
         std::string file="assets/apple-touch-icon.png";
         if(path.find("192")!=std::string::npos) file="assets/icon-192.png";
@@ -7901,7 +7968,13 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         if (qs["skipped"].size()) html += "<p class=\"warn\">Couldn’t include: "+html_escape(qs["skipped"])+
             ". Unknown, blocked, and contact-settings conflicts are skipped — start a new thread with just them if you still want to talk.</p>";
         html += "<div class=\"card mailwidget\">"+thread+mail_inbox_html(user, acc->id)+"</div>";
-        return pg("Mail", html);
+        // title "Messages" (not "Mail") is what makes page_wrap emit the
+        // Messages apple-touch-icon/theme-color/manifest branch above --
+        // this is the one page that combination is for. The install hint
+        // goes in the body, not wrap()'s site-wide chrome, so /app/mail,
+        // /apps, and everywhere else stays untouched.
+        html += mail_install_hint();
+        return pg("Messages", html);
     }
     if(method=="GET"&&path=="/mail/panel") {
         if(!acc) return http_code("401 Unauthorized", "");

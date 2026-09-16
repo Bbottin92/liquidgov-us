@@ -193,6 +193,23 @@
   });
 
   var ytPlayer = null;
+  // ytPlayer goes non-null the instant `new YT.Player(...)` returns, but
+  // its real methods (loadVideoById etc.) aren't safe to call until the
+  // async onReady event fires. A second ensurePlayer() call landing in
+  // that gap (very plausible right on page load: setOpen's own
+  // ensurePlayer call and the WS's first snapshot -> loadTrack ->
+  // ensurePlayer call can both fire within milliseconds of each other)
+  // used to see ytPlayer truthy and call cb() immediately, invoking
+  // loadVideoById on a not-yet-ready player -- silently swallowed by
+  // loadTrack's own try/catch, leaving the iframe stuck on its empty
+  // no-video shell forever (reproduced live: a second account's track
+  // pick left the first account's player on a blank gray box, embed src
+  // with no video id, zero further postMessage traffic). playerReady/
+  // pendingPlayerCbs queue behind onReady instead of racing it -- same
+  // fix the old inline widget once needed; this file's rewrite had
+  // dropped it.
+  var playerReady = false;
+  var pendingPlayerCbs = [];
   var lastId = null;
   var lastElapsed = 0;
   var lastDuration = 0;
@@ -260,11 +277,14 @@
   }
 
   function ensurePlayer(cb) {
+    if (playerReady) {
+      cb();
+      return;
+    }
+    pendingPlayerCbs.push(cb);
+    if (ytPlayer) return; // construction already in flight -- onReady below drains the queue
     ensureYT(function () {
-      if (ytPlayer) {
-        cb();
-        return;
-      }
+      if (ytPlayer) return; // guards a second ensureYT completion racing this one
       ytPlayer = new YT.Player("jbtube-player", {
         width: "100%",
         height: "100%",
@@ -274,8 +294,11 @@
         },
         events: {
           onReady: function () {
+            playerReady = true;
             applySound();
-            cb();
+            var cbs = pendingPlayerCbs;
+            pendingPlayerCbs = [];
+            cbs.forEach(function (fn) { fn(); });
           },
           onStateChange: function (e) {
             if (e.data === YT.PlayerState.PLAYING) {

@@ -57,6 +57,10 @@
 //          ballot kind other than YesNo; absence means YesNo. Never reuse pvote.
 //   pbo    <proposal_id> <index> <label>        // Choice/Scale labels
 //   pbv    <proposal_id> <voter> <payload>      // number/date/choice/scale value
+//   popen  <proposal_id>                        // Choice write-ins on. Absence = closed.
+//          Separate tag: pbk is exact 7 fields (loader throws otherwise).
+//   pba    <proposal_id> <index> <username>     // who added that pbo row. No row = creator-seeded.
+//   poff   <proposal_id> <jurisdiction>         // Officials race. Absence = ordinary proposal.
 //   comm   <slug> <name> <owner> <about> <created_at> [<category 0-10> <subcategory>]
 //          -- trailing two fields optional; an older 6-token line means category
 //          General (10) and an empty subcategory
@@ -342,7 +346,9 @@ struct BallotSpec {
     double min_v = 0;   // Number: both 0 means unbounded (still clamped)
     double max_v = 0;
     double step = 1;
-    std::vector<std::string> options; // Choice: 2–12 labels; Scale: optional left/right
+    std::vector<std::string> options; // Choice: 2–12 closed, 1–48 if open_choice; Scale: optional left/right
+    bool open_choice = false;         // people may append a choice (non-author: one each)
+    std::vector<std::string> option_authors; // parallel to options; empty = creator-seeded
 };
 
 // A site-wide, unofficial straw poll -- explicitly not a binding vote (the
@@ -356,6 +362,8 @@ struct Proposal {
     std::string title;
     std::string body;
     BallotSpec ballot;
+    bool is_office = false;
+    std::string jurisdiction;
 };
 
 enum class ProposalVote : int {
@@ -715,6 +723,10 @@ public:
     void cast_ballot_value(std::uint64_t proposal_id, const std::string& voter, const std::string& payload);
     std::optional<std::string> ballot_value_of(std::uint64_t proposal_id, const std::string& voter) const;
     BallotTally value_tally_of(std::uint64_t proposal_id) const;
+    // Append a Choice option. Author: unlimited (up to 48). Anyone else: at most one
+    // on this proposal, and only if open_choice. Not a vote. Duplicate/empty = false.
+    bool add_proposal_option(std::uint64_t proposal_id, const std::string& username, const std::string& label);
+    bool mark_proposal_office(std::uint64_t proposal_id, const std::string& jurisdiction);
 
     bool create_community(const Community& c);
     std::optional<Community> community(const std::string& slug) const;

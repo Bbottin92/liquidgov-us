@@ -155,7 +155,9 @@ bool spec_ok(const BallotSpec& s) {
     if (k < 0 || k > 4) return false;
     if (s.unit.size() > 24) return false;
     if (s.kind == BallotKind::Choice) {
-        if (s.options.size() < 2 || s.options.size() > 12) return false;
+        const std::size_t mn = s.open_choice ? 1 : 2;
+        const std::size_t mx = s.open_choice ? 48 : 12;
+        if (s.options.size() < mn || s.options.size() > mx) return false;
         for (const auto& o : s.options) {
             if (o.empty() || o.size() > 80) return false;
         }
@@ -1066,6 +1068,55 @@ std::uint64_t FileStore::add_proposal(const std::string& author, const std::stri
     return p.id;
 }
 
+namespace {
+std::string trim_label(std::string s) {
+    std::size_t a = 0, b = s.size();
+    while (a < b && (s[a] == ' ' || s[a] == '\t' || s[a] == '\n' || s[a] == '\r')) ++a;
+    while (b > a && (s[b - 1] == ' ' || s[b - 1] == '\t' || s[b - 1] == '\n' || s[b - 1] == '\r')) --b;
+    return s.substr(a, b - a);
+}
+}
+
+bool FileStore::add_proposal_option(std::uint64_t proposal_id, const std::string& username, const std::string& label) {
+    if (username.empty()) return false;
+    const std::string lab = trim_label(label);
+    if (lab.empty() || lab.size() > 80) return false;
+    Proposal* p = nullptr;
+    for (auto& it : proposals_) {
+        if (it.id == proposal_id) { p = &it; break; }
+    }
+    if (!p || p->ballot.kind != BallotKind::Choice) return false;
+    if (!p->ballot.open_choice && username != p->author) return false;
+    if (p->ballot.options.size() >= 48) return false;
+    if (p->ballot.option_authors.size() != p->ballot.options.size())
+        p->ballot.option_authors.resize(p->ballot.options.size());
+    const std::string want = lower_copy(lab);
+    for (const auto& o : p->ballot.options) {
+        if (lower_copy(o) == want) return false;
+    }
+    if (username != p->author) {
+        int n = 0;
+        for (const auto& a : p->ballot.option_authors) if (a == username) ++n;
+        if (n >= 1) return false;
+    }
+    p->ballot.options.push_back(lab);
+    p->ballot.option_authors.push_back(username == p->author ? std::string() : username);
+    flush();
+    return true;
+}
+
+bool FileStore::mark_proposal_office(std::uint64_t proposal_id, const std::string& jurisdiction) {
+    if (jurisdiction.empty() || jurisdiction.size() > 80) return false;
+    for (auto& p : proposals_) {
+        if (p.id != proposal_id) continue;
+        p.is_office = true;
+        p.jurisdiction = jurisdiction;
+        flush();
+        return true;
+    }
+    return false;
+}
+
 std::vector<Proposal> FileStore::all_proposals() const {
     return proposals_;
 }
@@ -1542,6 +1593,9 @@ void FileStore::load() {
     };
     std::map<std::uint64_t, PendingBk> pending_bk;
     std::map<std::uint64_t, std::vector<std::pair<int, std::string>>> pending_bo;
+    std::set<std::uint64_t> pending_popen;
+    std::map<std::uint64_t, std::vector<std::pair<int, std::string>>> pending_pba;
+    std::map<std::uint64_t, std::string> pending_poff;
     std::map<std::uint64_t, PostAudience> pending_audience;
     std::map<std::uint64_t, std::vector<std::string>> pending_exceptions;
     std::map<std::uint64_t, std::vector<std::string>> pending_friend_allowlist;
@@ -1999,6 +2053,18 @@ void FileStore::load() {
             const std::string key = pct_decode(f[2]);
             const auto ts = parse_i64(f[3], "mlr ts");
             if (!user.empty() && !key.empty()) mail_last_read_[user][key] = ts;
+        } else if (tag == "popen") {
+            if (f.size() != 2) throw std::runtime_error("LGP1: bad popen record");
+            pending_popen.insert(parse_u64(f[1], "popen proposal id"));
+        } else if (tag == "pba") {
+            if (f.size() != 4) throw std::runtime_error("LGP1: bad pba record");
+            const auto pid = parse_u64(f[1], "pba proposal id");
+            const auto idx = parse_u64(f[2], "pba index");
+            const auto who = pct_decode(f[3]);
+            if (!who.empty()) pending_pba[pid].push_back({static_cast<int>(idx), who});
+        } else if (tag == "poff") {
+            if (f.size() != 3) throw std::runtime_error("LGP1: bad poff record");
+            pending_poff[parse_u64(f[1], "poff proposal id")] = pct_decode(f[2]);
         } else {
             throw std::runtime_error("LGP1: unknown record type '" + tag + "'");
         }
@@ -2038,7 +2104,26 @@ void FileStore::load() {
             auto opts = oit->second;
             std::sort(opts.begin(), opts.end());
             p.ballot.options.clear();
-            for (const auto& item : opts) p.ballot.options.push_back(item.second);
+            p.ballot.option_authors.clear();
+            for (const auto& item : opts) {
+                p.ballot.options.push_back(item.second);
+                p.ballot.option_authors.push_back("");
+            }
+        }
+        if (pending_popen.count(p.id)) p.ballot.open_choice = true;
+        auto off = pending_poff.find(p.id);
+        if (off != pending_poff.end()) {
+            p.is_office = true;
+            p.jurisdiction = off->second;
+        }
+        auto ait = pending_pba.find(p.id);
+        if (ait != pending_pba.end()) {
+            if (p.ballot.option_authors.size() != p.ballot.options.size())
+                p.ballot.option_authors.resize(p.ballot.options.size());
+            for (const auto& item : ait->second) {
+                if (item.first >= 0 && static_cast<std::size_t>(item.first) < p.ballot.option_authors.size())
+                    p.ballot.option_authors[static_cast<std::size_t>(item.first)] = item.second;
+            }
         }
     }
 }
@@ -2158,6 +2243,14 @@ void FileStore::flush() {
              << fmt_stored(p.ballot.max_v) << "\t" << fmt_stored(p.ballot.step) << "\n";
         for (std::size_t i = 0; i < p.ballot.options.size(); ++i) {
             body << "pbo\t" << p.id << "\t" << i << "\t" << pct_encode(p.ballot.options[i]) << "\n";
+        }
+        if (p.ballot.open_choice) body << "popen\t" << p.id << "\n";
+        if (p.is_office) body << "poff\t" << p.id << "\t" << pct_encode(p.jurisdiction) << "\n";
+        if (p.ballot.option_authors.size() == p.ballot.options.size()) {
+            for (std::size_t i = 0; i < p.ballot.option_authors.size(); ++i) {
+                if (p.ballot.option_authors[i].empty()) continue;
+                body << "pba\t" << p.id << "\t" << i << "\t" << pct_encode(p.ballot.option_authors[i]) << "\n";
+            }
         }
     }
     for (const auto& [pid, vals] : ballot_values_) {

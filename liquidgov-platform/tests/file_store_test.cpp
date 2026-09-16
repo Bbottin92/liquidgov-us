@@ -532,6 +532,87 @@ int main() {
         std::cout << "reply/second LGP1 tags survive reload; author relabeled, seconds pruned on delete\n";
     }
 
+    {
+        FileStore store(path);
+        auto a = create_account(store, breach, "oc-a", "correct-horse-battery-staple", "+15559200000");
+        auto b = create_account(store, breach, "oc-b", "correct-horse-battery-staple", "+15559200001");
+        assert(a.error == AuthError::None && b.error == AuthError::None);
+
+        BallotSpec closed;
+        closed.kind = BallotKind::Choice;
+        closed.options = {"Red", "Blue"};
+        auto cid = store.add_proposal("oc-a", "Closed colors", "No write-ins.", closed);
+        assert(cid != 0);
+        assert(!store.add_proposal_option(cid, "oc-b", "Green"));
+        assert(store.add_proposal_option(cid, "oc-a", "Green"));
+        assert(store.proposal_by_id(cid)->ballot.options.size() == 3);
+
+        BallotSpec open;
+        open.kind = BallotKind::Choice;
+        open.open_choice = true;
+        open.options = {"Alpha"};
+        auto oid = store.add_proposal("oc-a", "Name it", "Add yours.", open);
+        assert(oid != 0);
+        assert(store.add_proposal_option(oid, "oc-b", "Beta"));
+        assert(!store.add_proposal_option(oid, "oc-b", "Gamma")); // second add blocked
+        assert(store.add_proposal_option(oid, "oc-a", "Gamma"));  // author unlimited
+        assert(!store.add_proposal_option(oid, "oc-b", "beta"));  // duplicate, different case
+        auto got = store.proposal_by_id(oid);
+        assert(got && got->ballot.open_choice);
+        assert(got->ballot.options.size() == 3);
+        assert(got->ballot.options[1] == "Beta");
+        assert(got->ballot.option_authors[1] == "oc-b");
+        assert(got->ballot.option_authors[2].empty());
+        const std::string disk = slurp(path);
+        assert(disk.find("\npopen\t") != std::string::npos);
+        assert(disk.find("\npba\t") != std::string::npos);
+        std::cout << "open-choice add/cap/duplicate ok\n";
+    }
+    {
+        FileStore store(path);
+        bool found = false;
+        for (const auto& p : store.all_proposals()) {
+            if (p.title != "Name it") continue;
+            found = true;
+            assert(p.ballot.open_choice);
+            assert(p.ballot.options.size() == 3);
+            assert(p.ballot.option_authors.size() == 3);
+            assert(p.ballot.option_authors[1] == "oc-b");
+        }
+        assert(found);
+        std::cout << "open-choice popen/pba survive reload\n";
+    }
+
+    {
+        FileStore store(path);
+        auto a = create_account(store, breach, "off-a", "correct-horse-battery-staple", "+15559300000");
+        assert(a.error == AuthError::None);
+        BallotSpec spec;
+        spec.kind = BallotKind::Choice;
+        spec.open_choice = true;
+        spec.options = {"Ada", "Bea"};
+        auto id = store.add_proposal("off-a", "Mayor", "Who should hold the office.", spec);
+        assert(id != 0);
+        assert(store.mark_proposal_office(id, "Fresno, CA"));
+        auto got = store.proposal_by_id(id);
+        assert(got && got->is_office && got->jurisdiction == "Fresno, CA");
+        const std::string disk = slurp(path);
+        assert(disk.find("\npoff\t") != std::string::npos);
+        std::cout << "officials mark/poff ok\n";
+    }
+    {
+        FileStore store(path);
+        bool found = false;
+        for (const auto& p : store.all_proposals()) {
+            if (p.title != "Mayor") continue;
+            found = true;
+            assert(p.is_office);
+            assert(p.jurisdiction == "Fresno, CA");
+        }
+        assert(found);
+        std::cout << "officials poff survives reload\n";
+    }
+
     unlink(path.c_str());
     unlink((path + ".tmp").c_str());
     std::cout << "\nall file_store tests passed\n";

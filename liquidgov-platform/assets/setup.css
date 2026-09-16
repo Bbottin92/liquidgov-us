@@ -1,0 +1,10 @@
+
+#lgioshint{display:none!important}
+#lggetapp{display:flex;align-items:center;justify-content:space-between;gap:.6rem;margin:0 0 .85rem;padding:.45rem .7rem;background:var(--parchment,#f7f1e4);border:1px solid var(--rule,#d9cbb0);border-radius:999px}
+#lggetapp a{color:var(--accent,#8a6620);font-weight:700;text-decoration:none;font-size:.92rem}
+#lggetapp button{border:0;background:transparent;min-width:36px;min-height:36px;cursor:pointer;color:var(--stone,#6b6458);font-size:1.1rem}
+@media (display-mode:standalone){#lggetapp{display:none!important}}
+.appgrid{display:grid;gap:.8rem}
+@media(min-width:640px){.appgrid{grid-template-columns:1fr 1fr 1fr}}
+.appcard h2{margin:.2rem 0 .3rem;font-family:var(--display,Georgia,serif)}
+.appcard .mark{width:48px;height:48px;border-radius:12px;background:#14120f;display:block}

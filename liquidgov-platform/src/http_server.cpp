@@ -714,7 +714,9 @@ std::string css() {
         // .notifpanel/.mailpanel{display:flex} would beat the browser's
         // default [hidden]{display:none} (author styles always beat UA
         // defaults) and the panel would show even while hidden.
-        ".dropdown-panel[hidden]{display:none}"
+        ".dropdown-panel[hidden],.mailgroupbox[hidden]{display:none}"
+        ".mailgroupbtn{margin:.15rem 0 .55rem}"
+        ".grouppickrow:hover{background:var(--panel)}"
         // Same #navc:checked~X sibling-toggle trick the mobile hamburger
         // already uses (see nav a{} below and the max-width:720px block),
         // just aimed at the avatar instead and not gated to narrow
@@ -726,7 +728,9 @@ std::string css() {
         ".accountmenu a{color:var(--ink);text-decoration:none;font-size:.92rem;padding:.55rem 1.1rem;"
         "min-height:40px;display:flex;align-items:center}"
         ".accountmenu a:hover{background:var(--panel)}"
-        ".accountmenu a.menu-name{font-family:var(--display);font-weight:600;font-size:1.05rem;padding-bottom:.2rem}"
+        ".accountmenu a.menu-name{font-family:var(--display);font-weight:600;font-size:1.05rem;padding-bottom:.2rem;padding-right:2.8rem}"
+        ".accountmenu .menu-theme-row{position:absolute;top:.35rem;right:.4rem;z-index:1}"
+        ".accountmenu .themebtn{margin:0}"
         ".accountmenu hr{border:0;border-top:1px solid var(--rule);margin:.4rem 0}"
         ".notifpanel,.mailpanel{display:flex;flex-direction:column;width:21rem;max-width:88vw}"
         ".panelhead{font-family:var(--display);font-weight:600;font-size:.95rem;"
@@ -748,6 +752,7 @@ std::string css() {
         ".mailattbtn{display:inline-flex;align-items:center;justify-content:center;width:2.6rem;height:2.6rem;"
         "border:1px solid var(--rule);border-radius:var(--rsm);background:var(--paper);cursor:pointer;flex-shrink:0}"
         ".mailattbtn input{display:none}"
+        ".mailcomposer textarea,#mailtext{background:#fff;color:#14110c;caret-color:#14110c}"
         ".mailpending{background:var(--paper);border:1px dashed var(--rule);padding:.7rem;border-radius:var(--rmd);margin:.6rem 0}"
         ".maildisclose{font-size:.78rem;color:var(--stone);margin:.4rem 0 0}"
         // The instant-messenger part: sent bubbles lean right and pick up
@@ -1314,11 +1319,15 @@ std::string page_wrap(const std::string& title, const std::string& navhtml, cons
            // more than the page itself, which is why /install still needs
            // to spell that path out separately.
            "<link rel=\"manifest\" href=\"/manifest.webmanifest\">"
-           "<meta name=\"theme-color\" content=\"#8a6620\">"
+           "<meta name=\"apple-mobile-web-app-capable\" content=\"yes\">"
+           "<meta name=\"mobile-web-app-capable\" content=\"yes\">"
+           "<meta name=\"apple-mobile-web-app-title\" content=\""+html_escape(title)+"\">"
+           "<link rel=\"apple-touch-icon\" href=\""+(title=="Messages"?"/icon-mail.png":title=="Social"?"/icon-social.png":title=="Civic"?"/icon-civic.png":"/apple-touch-icon.png")+"\">"
+           "<meta name=\"theme-color\" content=\""+(title=="Messages"?"#d1a85c":title=="Social"?"#c17a4a":title=="Civic"?"#6b7d5a":"#8a6620")+"\">"
            "<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">"
            "<link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>"
            "<link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&display=swap\">"
-           "<style>"+css()+"</style></head><body>"
+           "<style>"+css()+"</style><link rel=\"stylesheet\" href=\"/assets/setup.css\"><script src=\"/assets/setup.js\" defer></script></head><body>"
            +(show_intro ? intro_overlay_html(intro_always_play) : std::string())+
            "<header class=\"top\"><div class=\"topinner\">"
            "<a class=\"brand\" href=\"/\">"
@@ -1329,7 +1338,18 @@ std::string page_wrap(const std::string& title, const std::string& navhtml, cons
            "</svg>"
            "<div><div class=\"word\"><strong>LiquidGov</strong><span class=\"tld\">.US</span></div>"
            "<div class=\"tagline\">Civic association &middot; Beta</div></div></a>"
-           +navhtml+toggle+"</div></header>"
+           +[&]{
+           std::string nav_out = navhtml;
+           std::string header_toggle = toggle;
+           const std::string open = "<nav class=\"dropdown-panel accountmenu\">";
+           auto at = nav_out.find(open);
+           if (at != std::string::npos) {
+               nav_out.insert(at + open.size(),
+                   "<div class=\"menu-theme-row\">"+toggle+"</div>");
+               header_toggle.clear();
+           }
+           return nav_out+header_toggle;
+       }()+"</div></header>"
            "<main class=\"wrap\">"+body+"</main>"
            +ios_install_hint()+
            "<footer class=\"site\"><a href=\"/\">Genesis</a> · <a href=\"/laws\">Laws</a> · "
@@ -1348,7 +1368,7 @@ std::string nav(const std::string& user, int unread) {
     if (user.empty()) {
         std::string burger = "<label class=\"navbtn\" for=\"navc\">Menu</label><input id=\"navc\" type=\"checkbox\">";
         return burger+"<nav><a href=\"/\">Genesis</a><a href=\"/laws\">Laws</a>"
-               "<a href=\"/control\">Who holds control</a>"
+               "<a href=\"/control\">Who holds control</a><a href=\"/apps\">App</a>"
                "<a href=\"/signup\">Sign up</a><a href=\"/login\">Log in</a></nav>";
     }
     // Notifications and Messages are their own always-visible icon buttons
@@ -1406,13 +1426,14 @@ std::string nav(const std::string& user, int unread) {
     // the way to actually reach /me.
     std::string menu = "<nav class=\"dropdown-panel accountmenu\">"
         "<a class=\"menu-name\" href=\"/u/"+html_escape(user)+"\">"+html_escape(user)+"</a>"
-        "<a href=\"/settings\">Settings</a>"
+        "<a href=\"/settings\">Settings</a><a href=\"/apps\">App</a>"
         +(is_operator(user) ? "<a href=\"/admin\">Operator</a>" : "")+
         "<hr>"
         "<a href=\"/feed\">Feed</a>"
         "<a href=\"/friends\">People</a>"
         "<a href=\"/communities\">Groups</a>"
         "<a href=\"/proposals\">Proposals</a>"
+        "<a href=\"/officials\">Officials</a>"
         "<a href=\"/world\">World</a>"
         "<a href=\"/laws\">Laws</a>"
         "<a href=\"/logout\">Log out</a>"
@@ -1784,7 +1805,7 @@ std::string wrap(const std::string& title, const std::string& user, int unread, 
         std::string widget =
             "<link rel=\"stylesheet\" href=\"/assets/juketube.css\">"
             "<div id=\"juketube-root\"></div>"
-            "<script src=\"/assets/juketube.js\" defer></script>";
+            "<script src=\"/assets/juketube.js\" defer></script><script src=\"/assets/push.js?v=2\" defer></script>";
         auto pos = page.find("</main>");
         if (pos != std::string::npos) page.insert(pos + 7, widget);
     }
@@ -2223,87 +2244,87 @@ std::string notices_list_html(const std::string& user) {
 // One chronological inbox: 1:1 threads that actually have mail, plus groups.
 // Friends with no thread live under "Start a conversation", not the list.
 std::string mail_inbox_html(const std::string& user, AccountId acc_id) {
-    struct Row {
-        std::int64_t ts = 0;
-        bool unread = false;
-        bool pending = false;
-        bool is_group = false;
-        std::string href;
-        std::string title;
-        std::string preview;
-        std::string portrait;
-        std::string cls;
-        std::string data_with;
-    };
-    std::vector<Row> rows;
-    for (auto& other : g_store.mail_peers(user)) {
-        if (g_store.is_blocked(user, other) || g_store.is_blocked(other, user)) continue;
-        if (!g_store.are_friends(user, other)) continue;
-        Row r;
-        r.ts = g_store.last_mail_ts(user, other);
-        r.href = "/mail?with=" + html_escape(other);
-        r.title = other;
-        auto prev = g_store.last_mail_preview(user, other);
-        if (prev.size() > 80) prev = prev.substr(0, 77) + "...";
-        r.preview = prev;
-        r.portrait = other;
-        r.cls = "mailwith";
-        r.data_with = other;
-        const auto last_read = g_store.thread_last_read(user, "d:" + other);
-        r.unread = r.ts > last_read;
-        rows.push_back(r);
+    auto pals = g_store.friends_of(user);
+    auto inner = g_store.inner_of(user);
+    std::set<std::string> inset(inner.begin(), inner.end());
+    std::vector<std::string> top, rest;
+    for (auto& p : inner) {
+        if (g_store.are_friends(user, p) && !g_store.is_blocked(user, p) && !g_store.is_blocked(p, user))
+            top.push_back(p);
     }
+    for (auto& p : pals) {
+        if (inset.count(p)) continue;
+        if (g_store.is_blocked(user, p) || g_store.is_blocked(p, user)) continue;
+        rest.push_back(p);
+    }
+    std::sort(rest.begin(), rest.end());
+    auto rows_for = [&](const std::vector<std::string>& people) {
+        std::string out;
+        for (auto& other : people) {
+            auto ts = g_store.last_mail_ts(user, other);
+            auto prev = g_store.last_mail_preview(user, other);
+            if (prev.size() > 80) prev = prev.substr(0, 77) + "...";
+            bool unread = ts > g_store.thread_last_read(user, "d:" + other);
+            out += "<a class=\"inboxrow mailwith";
+            if (unread) out += " unread";
+            out += "\" href=\"/mail?with=" + html_escape(other) + "\" data-with=\"" + html_escape(other) + "\">";
+            out += portrait_tag(other, "sm");
+            out += "<span style=\"min-width:0;flex:1\"><span class=\"inboxtitle\">" + html_escape(other) + "</span>";
+            out += "<span class=\"inboxpreview\">" + html_escape(prev) + "</span></span>";
+            if (ts) out += "<span class=\"inboxmeta\">" + html_escape(fmt_time(ts)) + "</span>";
+            out += "</a>";
+        }
+        return out;
+    };
+    auto checks = [&](const std::vector<std::string>& people) {
+        std::string out;
+        for (auto& other : people) {
+            out += "<label class=\"grouppickrow\" style=\"display:flex;align-items:center;gap:.5rem;min-height:44px;padding:.3rem .4rem;cursor:pointer\">";
+            out += portrait_tag(other, "sm") + "<span style=\"flex:1\">" + html_escape(other) + "</span>";
+            out += "<input type=\"checkbox\" data-who=\"" + html_escape(other) + "\"></label>";
+        }
+        return out;
+    };
+    std::string html = "<div class=\"mailsection\">";
+    html += "<button type=\"button\" class=\"ghost mailgroupbtn\">Group</button>";
+    html += "<div class=\"mailgroupbox\" hidden>";
+    html += "<form method=\"POST\" action=\"/mail/group/new\" class=\"mailnewgroup mailgroupform\">";
+    html += "<input name=\"title\" maxlength=\"80\" placeholder=\"Group name (optional)\">";
+    html += "<input type=\"hidden\" name=\"who\" class=\"mailgroupwho\" value=\"\">";
+    html += "<p class=\"muted\">Pick who to invite</p><div class=\"grouppick\" style=\"max-height:min(40vh,320px);overflow-y:auto\">";
+    html += checks(top) + checks(rest);
+    if (top.empty() && rest.empty()) html += "<p class=\"muted\">Add friends first.</p>";
+    html += "</div><button type=\"submit\">Start group</button></form>";
+    std::string groups;
     for (auto& conv : g_store.conversations_for(acc_id)) {
         if (!conv.is_group) continue;
-        Row r;
-        r.is_group = true;
-        r.ts = g_store.last_group_ts(conv.id);
-        r.href = "/mail/g/" + std::to_string(conv.id);
-        r.title = group_label(conv, acc_id);
+        bool pending = false;
+        for (auto& m : conv.members) if (m.account == acc_id) pending = m.state == MemberState::Pending;
+        auto ts = g_store.last_group_ts(conv.id);
         auto prev = g_store.last_group_preview(conv.id);
         if (prev.size() > 80) prev = prev.substr(0, 77) + "...";
-        r.preview = prev;
-        r.cls = "mailgroup";
-        for (auto& m : conv.members) if (m.account == acc_id) r.pending = m.state == MemberState::Pending;
-        const auto last_read = g_store.thread_last_read(user, "g:" + std::to_string(conv.id));
-        r.unread = r.pending || r.ts > last_read;
-        rows.push_back(r);
+        bool unread = pending || ts > g_store.thread_last_read(user, "g:" + std::to_string(conv.id));
+        groups += "<a class=\"inboxrow mailgroup";
+        if (unread) groups += " unread";
+        groups += "\" href=\"/mail/g/" + std::to_string(conv.id) + "\">";
+        groups += "<span class=\"portrait sm ph\" aria-hidden=\"true\"></span>";
+        groups += "<span style=\"min-width:0;flex:1\"><span class=\"inboxtitle\">" + html_escape(group_label(conv, acc_id)) + "</span>";
+        groups += "<span class=\"inboxpreview\">" + html_escape(prev);
+        if (pending) groups += " · invite";
+        groups += "</span></span></a>";
     }
-    std::stable_sort(rows.begin(), rows.end(), [](const Row& a, const Row& b) { return a.ts > b.ts; });
-
-    std::string html = "<div class=\"mailsection\"><p class=\"eyebrow\">Messages</p>";
-    if (rows.empty()) {
-        html += "<p class=\"muted\">No messages yet. <a href=\"/friends\">Find people</a></p>";
+    if (!groups.empty()) html += "<p class=\"eyebrow\">Your groups</p><div class=\"inboxlist\">" + groups + "</div>";
+    html += "</div>";
+    if (top.empty() && rest.empty()) {
+        html += "<p class=\"muted\">No friends yet. <a href=\"/friends\">Find people</a></p>";
     } else {
-        html += "<div class=\"inboxlist\">";
-        for (auto& r : rows) {
-            html += "<a class=\"inboxrow "+r.cls+(r.unread?" unread":"")+"\" href=\""+r.href+"\"";
-            if (!r.data_with.empty()) html += " data-with=\""+html_escape(r.data_with)+"\"";
-            html += ">";
-            if (!r.portrait.empty()) html += portrait_tag(r.portrait, "sm");
-            else html += "<span class=\"portrait sm ph\" aria-hidden=\"true\"></span>";
-            html += "<span style=\"min-width:0;flex:1\"><span class=\"inboxtitle\">"+html_escape(r.title)+"</span>";
-            if (r.pending) html += " <span class=\"muted\">invited</span>";
-            if (!r.preview.empty()) html += "<span class=\"inboxpreview\">"+html_escape(r.preview)+"</span>";
-            html += "</span>";
-            if (r.ts) html += "<span class=\"inboxmeta\">"+html_escape(fmt_time(r.ts))+"</span>";
-            html += "</a>";
-        }
-        html += "</div>";
+        if (!top.empty()) html += "<p class=\"eyebrow\">Inner circle</p><div class=\"inboxlist\">" + rows_for(top) + "</div>";
+        if (!rest.empty()) html += "<p class=\"eyebrow\">Friends</p><div class=\"inboxlist\">" + rows_for(rest) + "</div>";
     }
-    html += "<form method=\"GET\" action=\"/mail\" class=\"mailnewgroup\" style=\"margin-top:.8rem\">"
-            "<input name=\"with\" placeholder=\"Message a friend \xE2\x80\x94 username\" autocomplete=\"off\">"
-            "<button type=\"submit\" class=\"ghost\">Open</button></form>";
-    html += "<form method=\"POST\" action=\"/mail/group/new\" class=\"mailnewgroup\">"
-            "<input name=\"title\" maxlength=\"80\" placeholder=\"Group name (optional)\">"
-            "<input name=\"who\" placeholder=\"Usernames to invite, separated by spaces\">"
-            "<button type=\"submit\">Start a group</button></form>"
-            "<p class=\"maildisclose\">Messages on this copy are stored so the operator can read them. "
-            "Direct mail is friends-only until age assurance exists. Unfriending leaves shared groups.</p>"
-            "</div>";
+    html += "<p class=\"maildisclose\">Messages on this copy are stored so the operator can read them. "
+            "Direct mail is friends-only until age assurance exists. Unfriending leaves shared groups.</p></div>";
     return html;
 }
-
 // Kept for the widget's "start a group" only — inbox is the unified list.
 std::string mail_groups_list_html(const std::string& user, AccountId acc_id) {
     return mail_inbox_html(user, acc_id);
@@ -2353,10 +2374,10 @@ std::string mail_thread_html(const std::string& user, const std::string& other,
         "<input type=\"hidden\" name=\"to\" value=\""+html_escape(other)+"\">"
         "<div class=\"row\" style=\"align-items:flex-end;gap:.4rem;flex-wrap:nowrap\">"
         "<textarea name=\"text\" id=\"mailtext\" maxlength=\"2000\" rows=\"2\" placeholder=\"Message\" "
-        "autocomplete=\"off\" style=\"flex:1;min-width:0;min-height:44px;resize:vertical\"></textarea>"
+        "autocomplete=\"off\" style=\"flex:1;min-width:0;min-height:44px;resize:vertical;background:#fff;color:#14110c;caret-color:#14110c\"></textarea>"
         "<label class=\"mailattbtn\" title=\"Attach a file\">"
         "<input type=\"file\" name=\"attachment\" accept=\"image/png,image/jpeg,image/gif,application/pdf,text/plain,.docx,.xlsx,.pptx\">"
-        "<span aria-hidden=\"true\">+</span></label>"
+        "<span aria-hidden=\"true\">\xF0\x9F\x93\x8E</span></label>"
         "<button type=\"submit\">Send</button></div>"
         "<p class=\"muted\" style=\"margin:.3rem 0 0\">Enter sends. Shift+Enter is a new line.</p></form></div>"
         "<script>(function(){"
@@ -2392,6 +2413,14 @@ std::string mail_widget_script() {
         "mailRoot=document.getElementById('mailroot');"
         "var navc=document.getElementById('navc');"
         "if(!notifToggle||!mailToggle)return;"
+        "var lastN=-1,lastM=-1;"
+        "document.addEventListener('pointerdown',function(){try{if(!window.__lgAC)window.__lgAC=new(window.AudioContext||window.webkitAudioContext)();if(window.__lgAC.resume)window.__lgAC.resume();}catch(err){}},{once:true});"
+        "function lgDing(){try{var ac=window.__lgAC;if(!ac)return;if(ac.resume)ac.resume();var o=ac.createOscillator(),g=ac.createGain();o.frequency.value=880;g.gain.value=0.07;o.connect(g);g.connect(ac.destination);o.start();g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+0.2);o.stop(ac.currentTime+0.22);}catch(err){}}"
+        "function lgSetBadge(btn,v){if(!btn)return;var b=btn.querySelector('.badge');if(v<=0){if(b)b.remove();return;}if(!b){b=document.createElement('span');b.className='badge';btn.appendChild(b);}b.textContent=String(v);}"
+        "function lgApplyUnread(n,m){n=n|0;m=m|0;var t=n+m;try{if(navigator.setAppBadge){if(t)navigator.setAppBadge(t);else if(navigator.clearAppBadge)navigator.clearAppBadge();}}catch(err){}lgSetBadge(notifToggle,n);lgSetBadge(mailToggle,m);if(lastN>=0&&(n>lastN||m>lastM)){lgDing();if('Notification' in window&&Notification.permission==='granted'){try{new Notification('LiquidGov',{body:m>lastM?'New message':'New notice',tag:'lg-unread',icon:'/favicon.svg'});}catch(err){}}}lastN=n;lastM=m;}"
+        "function lgPollUnread(){fetch('/me/unread',{credentials:'same-origin'}).then(function(r){return r.ok?r.json():null;}).then(function(d){if(d)lgApplyUnread(d.n,d.m);}).catch(function(){});}"
+        "lgPollUnread();setInterval(lgPollUnread,20000);"
+        "function lgAskNotify(){if(!('Notification' in window))return;if(Notification.permission==='default'){try{Notification.requestPermission();}catch(err){}}}"
         "var activeWith=null,mailFetching=false,pollTimer=null;"
         "function nearBottom(el){return el.scrollHeight-el.scrollTop-el.clientHeight<60;}"
         "function stopPoll(){if(pollTimer){clearInterval(pollTimer);pollTimer=null;}}"
@@ -2399,6 +2428,14 @@ std::string mail_widget_script() {
         "function hideMail(){mailPanel.hidden=true;stopPoll();activeWith=null;}"
         "function closeMenu(){if(navc)navc.checked=false;}"
         "function loadMail(withUser,forceScroll){"
+        "var ae=document.activeElement;"
+        "if(!forceScroll&&ae&&mailRoot.contains(ae)&&(ae.tagName==='TEXTAREA'||ae.tagName==='INPUT'||(ae.closest&&ae.closest('.mailcomposer'))))return;"
+        "var t0=mailRoot.querySelector('#mailtext');"
+        "var f0=mailRoot.querySelector('.mailcomposer input[type=file],#mailcomposer input[type=file]');"
+        "if(!forceScroll&&f0&&f0.files&&f0.files.length)return;"
+        "var gbox=mailRoot.querySelector('.mailgroupbox');"
+        "if(!forceScroll&&gbox&&!gbox.hidden)return;"
+        "var draft=t0?t0.value:'',ss=t0?t0.selectionStart:0,se=t0?t0.selectionEnd:0;"
         "if(mailFetching)return;"
         "mailFetching=true;"
         "var url='/mail/panel'+(withUser?('?with='+encodeURIComponent(withUser)):'');"
@@ -2407,6 +2444,8 @@ std::string mail_widget_script() {
         "var list=document.getElementById('msglist');"
         "var wasNear=list?nearBottom(list):true;"
         "mailRoot.innerHTML=html;"
+        "var t1=mailRoot.querySelector('#mailtext');"
+        "if(t1&&draft){t1.value=draft;try{t1.setSelectionRange(ss,se);}catch(err){}}"
         "activeWith=withUser||null;"
         "var newList=document.getElementById('msglist');"
         "if(newList&&(forceScroll||wasNear))newList.scrollTop=newList.scrollHeight;"
@@ -2415,6 +2454,7 @@ std::string mail_widget_script() {
         "}).catch(function(){mailFetching=false;});"
         "}"
         "notifToggle.addEventListener('click',function(){"
+        "lgAskNotify();"
         "if(!notifPanel.hidden){hideNotif();return;}"
         "hideMail();closeMenu();"
         "notifPanel.hidden=false;"
@@ -2423,7 +2463,24 @@ std::string mail_widget_script() {
         "var b=notifToggle.querySelector('.badge');if(b)b.remove();"
         "});"
         "});"
+        "document.addEventListener('click',function(e){"
+        "var btn=e.target.closest&&e.target.closest('.mailgroupbtn');"
+        "if(!btn)return;"
+        "e.preventDefault();e.stopPropagation();"
+        "var box=btn.parentNode.querySelector('.mailgroupbox');"
+        "if(box)box.hidden=!box.hidden;"
+        "});"
+        "document.addEventListener('submit',function(e){"
+        "var form=e.target&&e.target.closest&&e.target.closest('.mailgroupform');"
+        "if(!form)return;"
+        "var names=[];"
+        "form.querySelectorAll('input[data-who]:checked').forEach(function(c){names.push(c.getAttribute('data-who'));});"
+        "var h=form.querySelector('.mailgroupwho');"
+        "if(h)h.value=names.join(' ');"
+        "if(!names.length)e.preventDefault();"
+        "});"
         "mailToggle.addEventListener('click',function(){"
+        "lgAskNotify();"
         "if(!mailPanel.hidden){hideMail();return;}"
         "hideNotif();closeMenu();"
         "mailPanel.hidden=false;"
@@ -4687,7 +4744,7 @@ std::string global_jukebox_widget(const std::string& yt_key, const std::string& 
     (void)yt_key; (void)user;
     return "<link rel=\"stylesheet\" href=\"/assets/juketube.css?v=14\">"
            "<div id=\"juketube-root\"></div>"
-           "<script src=\"/assets/juketube.js?v=14\" defer></script>";
+           "<script src=\"/assets/juketube.js?v=14\" defer></script><script src=\"/assets/push.js?v=2\" defer></script>";
 }
 
 std::string jukebox_standalone_page(const std::string& yt_key, const std::string& user) {
@@ -4702,7 +4759,8 @@ std::string jukebox_standalone_page(const std::string& yt_key, const std::string
 std::string jukebox_add_form(const std::string& post_target, const std::string& note) {
     return "<div><label>Add a track</label>"
             "<div class=\"row\" style=\"align-items:flex-start\">"
-            "<input id=\"jinput\" placeholder=\"Paste a YouTube link\" autocomplete=\"off\" style=\"flex:1\">"
+            "<input id=\"jinput\" placeholder=\"Paste a link or type to search\" autocomplete=\"off\" style=\"flex:1\">"
+            "<button type=\"button\" id=\"jaddbtn\">Add</button>"
             "</div>"
             "<div id=\"jsresults\" style=\"margin-top:.4rem;display:flex;flex-direction:column;gap:.2rem\"></div>"
             "<p class=\"warn\" id=\"jaerr\" style=\"margin:.3rem 0 0\" hidden></p>"
@@ -4771,12 +4829,13 @@ std::string jukebox_add_form(const std::string& post_target, const std::string& 
             "});"
             "}"
             "function search(term){"
-            "if(!term){out.innerHTML='';return;}"
+            "if(!term){out.textContent='';return;}"
             "var my=++gen;"
-            "fetch('/jukebox/search?q='+encodeURIComponent(term))"
-            ".then(function(r){return r.json();})"
-            ".then(function(data){if(my!==gen)return;render(data.items);})"
-            ".catch(function(){if(my!==gen)return;out.innerHTML='';});"
+            "out.textContent='Searching...';"
+            "fetch('/jukebox/search?q='+encodeURIComponent(term),{credentials:'same-origin'})"
+            ".then(function(r){if(!r.ok)throw new Error('http');return r.json();})"
+            ".then(function(data){if(my!==gen)return;render(data.items||[]);})"
+            ".catch(function(){if(my!==gen)return;out.textContent='Search failed.';});"
             "}"
             "input.addEventListener('input',function(){"
             "var val=input.value.trim();"
@@ -4786,9 +4845,13 @@ std::string jukebox_add_form(const std::string& post_target, const std::string& 
             "});"
             "function doQueue(){"
             "var val=input.value.trim();if(!val)return;"
-            "queueUrl(looksLikeUrl(val)?val:(lastTopId?('https://www.youtube.com/watch?v='+lastTopId):val));"
+            "if(looksLikeUrl(val))queueUrl(val);"
+            "else if(lastTopId)queueUrl('https://www.youtube.com/watch?v='+lastTopId);"
+            "else search(val);"
             "}"
             "input.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();doQueue();}});"
+            "var addBtn=document.getElementById('jaddbtn');"
+            "if(addBtn)addBtn.addEventListener('click',doQueue);"
             "})();</script>";
 }
 
@@ -5696,7 +5759,7 @@ std::string install_body() {
            "own window, with its own icon, and no address bar in the way.</p>"
            "<div class=\"card\"><h3>iPhone or iPad (Safari)</h3>"
            "<table class=\"record\">"
-           "<tr><td>1</td><td>Open liquidgov.us in Safari &mdash; not Chrome; iOS only allows this from Safari.</td></tr>"
+           "<tr><td>1</td><td>Open liquidgov.us in Safari or Brave (Chrome on iPhone cannot add to Home Screen).</td></tr>"
            "<tr><td>2</td><td>Tap the Share icon (a square with an arrow pointing up), in the bottom toolbar.</td></tr>"
            "<tr><td>3</td><td>Scroll down and tap <strong>Add to Home Screen</strong>.</td></tr>"
            "<tr><td>4</td><td>Tap <strong>Add</strong>. The icon now opens LiquidGov.US on its own, no browser chrome.</td></tr>"
@@ -6076,7 +6139,7 @@ std::string proposal_block(const Proposal& p, const std::string& viewer) {
         case BallotKind::YesNo: kindEyebrow = "Yes / No"; break;
         case BallotKind::Number: kindEyebrow = p.ballot.unit.empty() ? "Number" : html_escape(p.ballot.unit); break;
         case BallotKind::Date: kindEyebrow = "Date"; break;
-        case BallotKind::Choice: kindEyebrow = "Choice"; break;
+        case BallotKind::Choice: kindEyebrow = p.ballot.open_choice ? "Open choice" : "Choice"; break;
         case BallotKind::Scale: kindEyebrow = "Scale"; break;
     }
     std::string body;
@@ -6134,6 +6197,22 @@ std::string proposal_block(const Proposal& p, const std::string& viewer) {
             }
         }
         list += "</div>";
+        if (!viewer.empty() && p.ballot.open_choice) {
+            bool already = false;
+            for (const auto& a : p.ballot.option_authors) if (a == viewer) { already = true; break; }
+            const bool can_add = (viewer == p.author) || !already;
+            if (can_add) {
+                list += "<form method=\"POST\" action=\"/proposals/option\" style=\"margin-top:.7rem\">"
+                        "<input type=\"hidden\" name=\"id\" value=\""+std::to_string(p.id)+"\">"
+                        "<label>Add a choice"
+                        + std::string(viewer == p.author ? "" : " <span class=\"muted\">(one per person)</span>")
+                        + "</label>"
+                        "<div class=\"row\"><input name=\"label\" maxlength=\"80\" required placeholder=\"Your option\">"
+                        "<button type=\"submit\">Add</button></div></form>";
+            } else {
+                list += "<p class=\"muted\">You already added a choice on this one.</p>";
+            }
+        }
         body = bar + "<p class=\"muted\">"+std::to_string(total)+" responses</p>" + list;
     } else {
         auto t = g_store.value_tally_of(p.id);
@@ -6280,6 +6359,8 @@ std::string flash_error(const std::map<std::string,std::string>& qs) {
     if (e=="active") return "<p class=\"warn\">That document contains active content and was rejected.</p>";
     if (e=="type") return "<p class=\"warn\">That file wasn't a supported image or video type.</p>";
     if (e=="nogroup") return "<p class=\"warn\">Pick at least one group, or turn Groups off.</p>";
+    if (e=="options") return "<p class=\"warn\">Need 2–12 options, or 1–12 if people can add their own.</p>";
+    if (e=="option") return "<p class=\"warn\">Could not add that choice. Duplicate, empty, or you already added one.</p>";
     if (e=="url") return "<p class=\"warn\">That link wasn't recognized as a YouTube video.</p>";
     if (e=="full") return "<p class=\"warn\">Queue already holds "+std::to_string(kJukeboxQueueCap)+" tracks. Remove one first.</p>";
     if (e=="denied") return "<p class=\"warn\">You can't queue a track here.</p>";
@@ -6472,32 +6553,34 @@ std::string draft_publish_script() {
         "countEl.textContent=n?(n+' unsaved change'+(n===1?'':'s')):'No unsaved changes';"
         "discardBtn.disabled=publishBtn.disabled=(n===0);"
         "}"
-        "forms.forEach(function(f){"
-        "f.addEventListener('input',refresh);"
-        "f.addEventListener('change',refresh);"
-        "f.addEventListener('submit',function(e){e.preventDefault();});"
-        "});"
-        "discardBtn.addEventListener('click',function(){location.reload();});"
-        "publishBtn.addEventListener('click',function(){"
+        "publishBtn.hidden=true;"
+        "var saveTimer=null;"
+        "function markClean(){"
+        "forms.forEach(function(f,i){initial[i]=serialize(f);});"
+        "countEl.textContent='Saved';"
+        "discardBtn.disabled=true;"
+        "}"
+        "function saveNow(){"
         "var idx=dirtyIndexes();"
         "if(!idx.length)return;"
-        "publishBtn.disabled=true;discardBtn.disabled=true;"
-        "publishBtn.textContent='Publishing\\u2026';"
+        "countEl.textContent='Saving\u2026';"
+        "discardBtn.disabled=true;"
         "function next(i){"
-        "if(i>=idx.length){location.reload();return;}"
+        "if(i>=idx.length){markClean();return;}"
         "var f=forms[idx[i]];"
-        // These forms have no enctype, so a normal submit sends url-encoded
-        // -- the body parse_form() everywhere else in this app expects. A
-        // raw FormData body on fetch() always sends multipart instead,
-        // regardless of the form's own enctype, which parse_form() can't
-        // read at all (silently parses as empty rather than erroring).
         "fetch(f.getAttribute('action'),{method:'POST',"
         "headers:{'Content-Type':'application/x-www-form-urlencoded'},"
         "body:new URLSearchParams(new FormData(f)).toString()})"
         ".then(function(){next(i+1);}).catch(function(){next(i+1);});"
         "}"
         "next(0);"
+        "}"
+        "forms.forEach(function(f){"
+        "f.addEventListener('input',function(){refresh();clearTimeout(saveTimer);saveTimer=setTimeout(saveNow,700);});"
+        "f.addEventListener('change',function(){refresh();clearTimeout(saveTimer);saveTimer=setTimeout(saveNow,200);});"
+        "f.addEventListener('submit',function(e){e.preventDefault();clearTimeout(saveTimer);saveNow();});"
         "});"
+        "discardBtn.addEventListener('click',function(){location.reload();});"
         "refresh();"
         "})();</script>";
 }
@@ -6632,6 +6715,38 @@ void personal_freeze_locked(const std::string& station, const std::string& curre
     const std::int64_t offset = (client_offset && diff <= 3) ? *client_offset : server_elapsed;
     ph.frozen_offset = offset;
     g_store.set_jukebox_pos(station, ph.video_id, offset, now);
+}
+
+
+static bool push_subs_upsert(const std::string& user, const std::string& endpoint,
+                             const std::string& p256dh, const std::string& auth) {
+    if (user.empty() || endpoint.size() < 12 || endpoint.compare(0, 8, "https://") != 0) return false;
+    if (endpoint.find('\t') != std::string::npos || p256dh.find('\t') != std::string::npos) return false;
+    if (auth.find('\t') != std::string::npos) return false;
+    std::vector<std::string> keep;
+    std::ifstream in("push_subs.txt");
+    std::string line;
+    int mine = 0;
+    while (std::getline(in, line)) {
+        if (line.empty() || line[0] == '#') continue;
+        auto t1 = line.find('\t');
+        auto t2 = line.find('\t', t1 == std::string::npos ? 0 : t1 + 1);
+        auto t3 = line.find('\t', t2 == std::string::npos ? 0 : t2 + 1);
+        if (t1 == std::string::npos || t2 == std::string::npos || t3 == std::string::npos) continue;
+        std::string ep = line.substr(t1 + 1, t2 - t1 - 1);
+        if (ep == endpoint) continue;
+        if (line.compare(0, t1, user) == 0) {
+            if (mine >= 7) continue;
+            ++mine;
+        }
+        keep.push_back(line);
+    }
+    keep.push_back(user + "\t" + endpoint + "\t" + p256dh + "\t" + auth);
+    std::ofstream out("push_subs.txt.tmp", std::ios::trunc);
+    if (!out) return false;
+    for (auto& l : keep) out << l << "\n";
+    out.close();
+    return std::rename("push_subs.txt.tmp", "push_subs.txt") == 0;
 }
 
 std::string handle(const std::string& req, const std::string& peer_ip) {
@@ -6909,6 +7024,45 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
     }
     if(method=="GET"&&path=="/favicon.svg")
         return http_raw("200 OK","image/svg+xml", favicon_svg());
+    if(method=="GET"&&path=="/me/unread") {
+        if(!acc) return http_raw("401 Unauthorized","application/json","{\"n\":0,\"m\":0}");
+        const int mcnt = g_store.unread_message_count(user);
+        const int ncnt = unread>mcnt ? unread-mcnt : 0;
+        return http_raw("200 OK","application/json",
+            "{\"n\":"+std::to_string(ncnt)+",\"m\":"+std::to_string(mcnt)+"}");
+    }
+    if(method=="GET"&&path=="/sw.js") {
+        std::ifstream in("assets/sw.js", std::ios::binary);
+        if(!in) return http_raw("404 Not Found","text/plain; charset=utf-8","not found");
+        std::ostringstream ss; ss << in.rdbuf();
+        return http_raw("200 OK","text/javascript; charset=utf-8", ss.str(),
+            "Service-Worker-Allowed: /\r\nCache-Control: no-store\r\n");
+    }
+    if(method=="GET"&&path=="/assets/push.js") {
+        std::ifstream in("assets/push.js", std::ios::binary);
+        if(!in) return http_raw("404 Not Found","text/plain; charset=utf-8","not found");
+        std::ostringstream ss; ss << in.rdbuf();
+        return http_raw("200 OK","text/javascript; charset=utf-8", ss.str(),
+            "Cache-Control: no-store\r\n");
+    }
+    if(method=="GET"&&path=="/push/vapid") {
+        std::ifstream in("deploy/vapid.public");
+        if(!in) return http_raw("404 Not Found","text/plain; charset=utf-8","no vapid");
+        std::ostringstream ss; ss << in.rdbuf();
+        return http_raw("200 OK","text/plain; charset=utf-8", ss.str(),
+            "Cache-Control: no-store\r\n");
+    }
+    if(method=="POST"&&path=="/push/subscribe") {
+        if(!acc) return http_code("401 Unauthorized", "");
+        auto endpoint = extract_json_string_field(body, "\"endpoint\"");
+        auto p256dh = extract_json_string_field(body, "\"p256dh\"");
+        auto authk = extract_json_string_field(body, "\"auth\"");
+        if(!endpoint || !p256dh || !authk) return http_code("400 Bad Request", "bad json");
+        if(!push_subs_upsert(user, trim_ws(*endpoint), trim_ws(*p256dh), trim_ws(*authk)))
+            return http_code("400 Bad Request", "bad sub");
+        return http_raw("200 OK","application/json","{\"ok\":true}");
+    }
+
     if(method=="GET"&&path=="/manifest.webmanifest") {
         return http_raw("200 OK", "application/manifest+json",
             "{"
@@ -6919,10 +7073,40 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             "\"display\":\"standalone\","
             "\"background_color\":\"#f7f1e4\","
             "\"theme_color\":\"#8a6620\","
-            "\"icons\":[{\"src\":\"/favicon.svg\",\"sizes\":\"any\",\"type\":\"image/svg+xml\",\"purpose\":\"any\"}]"
+            "\"icons\":[{\"src\":\"/icon-192.png\",\"sizes\":\"192x192\",\"type\":\"image/png\",\"purpose\":\"any\"},{\"src\":\"/icon-512.png\",\"sizes\":\"512x512\",\"type\":\"image/png\",\"purpose\":\"any maskable\"},{\"src\":\"/favicon.svg\",\"sizes\":\"any\",\"type\":\"image/svg+xml\",\"purpose\":\"any\"}]"
             "}");
     }
 
+    if(method=="GET"&&(path=="/apple-touch-icon.png"||path=="/apple-touch-icon-precomposed.png"||path=="/icon-192.png"||path=="/icon-512.png"||path=="/assets/icon-192.png"||path=="/assets/icon-512.png"||path=="/assets/apple-touch-icon.png")) {
+        std::string file="assets/apple-touch-icon.png";
+        if(path.find("192")!=std::string::npos) file="assets/icon-192.png";
+        else if(path.find("512")!=std::string::npos) file="assets/icon-512.png";
+        std::ifstream in(file, std::ios::binary);
+        if(!in) return http_raw("404 Not Found","text/plain; charset=utf-8","not found");
+        std::ostringstream ss; ss << in.rdbuf();
+        return http_raw("200 OK","image/png", ss.str(), "Cache-Control: public, max-age=86400\r\n");
+    }
+
+    if(method=="GET"&&(path=="/icon-mail.png"||path=="/icon-social.png"||path=="/icon-civic.png"
+        ||path=="/icon-mail-192.png"||path=="/icon-social-192.png"||path=="/icon-civic-192.png"
+        ||path=="/icon-mail-512.png"||path=="/icon-social-512.png"||path=="/icon-civic-512.png")) {
+        std::ifstream in(("assets"+path), std::ios::binary);
+        if(!in) return http_raw("404 Not Found","text/plain; charset=utf-8","not found");
+        std::ostringstream ss; ss << in.rdbuf();
+        return http_raw("200 OK","image/png", ss.str(), "Cache-Control: public, max-age=86400\r\n");
+    }
+    if(method=="GET"&&path=="/assets/setup.js") {
+        std::ifstream in("assets/setup.js", std::ios::binary);
+        if(!in) return http_raw("404 Not Found","text/plain; charset=utf-8","not found");
+        std::ostringstream ss; ss << in.rdbuf();
+        return http_raw("200 OK","text/javascript; charset=utf-8", ss.str(), "Cache-Control: no-store\r\n");
+    }
+    if(method=="GET"&&path=="/assets/setup.css") {
+        std::ifstream in("assets/setup.css", std::ios::binary);
+        if(!in) return http_raw("404 Not Found","text/plain; charset=utf-8","not found");
+        std::ostringstream ss; ss << in.rdbuf();
+        return http_raw("200 OK","text/css; charset=utf-8", ss.str(), "Cache-Control: no-store\r\n");
+    }
     if(method=="GET"&&path=="/assets/juketube.js") {
         std::ifstream in("assets/juketube.js", std::ios::binary);
         if(!in) return http_raw("404 Not Found","text/plain; charset=utf-8","not found");
@@ -7041,7 +7225,22 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         return pg("Laws · " + chapters[n-1].title, laws_chapter_body(n));
     }
     if(method=="GET"&&path=="/control") return pg("Who holds control", control_body());
-    if(method=="GET"&&path=="/install") return pg("Install this as an app", install_body());
+    if(method=="GET"&&(path=="/install"||path=="/apps")) {
+        std::ifstream in("assets/apps.html"); std::ostringstream body; if(in) body<<in.rdbuf();
+        return pg("Get the app", body.str());
+    }
+    if(method=="GET"&&path=="/app/mail") {
+        std::ifstream in("assets/app-mail.html"); std::ostringstream body; if(in) body<<in.rdbuf();
+        return pg("Messages", body.str());
+    }
+    if(method=="GET"&&path=="/app/social") {
+        std::ifstream in("assets/app-social.html"); std::ostringstream body; if(in) body<<in.rdbuf();
+        return pg("Social", body.str());
+    }
+    if(method=="GET"&&path=="/app/civic") {
+        std::ifstream in("assets/app-civic.html"); std::ostringstream body; if(in) body<<in.rdbuf();
+        return pg("Civic", body.str());
+    }
     if(method=="GET"&&path=="/signup") return http_ok(signup_page(user, unread, "", SignupDraft{}));
     if(method=="GET"&&path=="/login") {
         // Deliberately one generic message for bad-username and
@@ -7169,8 +7368,11 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
                 "<label>Maximum (optional)</label><input name=\"max\" type=\"number\" step=\"any\">"
                 "</div>"
                 "<div id=\"bchoice\" hidden>"
-                "<label>Options (one per line, 2–12)</label>"
+                "<label>Options (one per line)</label>"
                 "<textarea name=\"options\" maxlength=\"800\" placeholder=\"One option per line\"></textarea>"
+                "<label class=\"row\" style=\"gap:.4rem;align-items:center;margin-top:.4rem\">"
+                "<input type=\"checkbox\" name=\"open\" value=\"1\"> "
+                "Allow people to add a choice (one each, besides you)</label>"
                 "</div>"
                 "<div id=\"bscale\" hidden>"
                 "<label>Left label</label><input name=\"left\" maxlength=\"40\" placeholder=\"Too little\">"
@@ -7799,7 +8001,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
                     "style=\"flex:1;min-width:0;min-height:44px;resize:vertical\"></textarea>"
                     "<label class=\"mailattbtn\" title=\"Attach a file\">"
                     "<input type=\"file\" name=\"attachment\" accept=\"image/png,image/jpeg,image/gif,application/pdf,text/plain,.docx,.xlsx,.pptx\">"
-                    "<span aria-hidden=\"true\">+</span></label>"
+                    "<span aria-hidden=\"true\">\xF0\x9F\x93\x8E</span></label>"
                     "<button type=\"submit\">Send</button></div>"
                     "<p class=\"muted\" style=\"margin:.3rem 0 0\">Enter sends. Shift+Enter is a new line.</p></form>";
         }
@@ -8732,13 +8934,15 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
                 if (!(spec.min_v < spec.max_v)) return http_redir("/proposals?err=range");
             }
         } else if (spec.kind == BallotKind::Choice) {
+            spec.open_choice = !trim_ws(f["open"]).empty();
             std::istringstream in(f["options"]);
             std::string line;
             while (std::getline(in, line)) {
                 auto o = trim_ws(line);
                 if (!o.empty()) spec.options.push_back(o);
             }
-            if (spec.options.size() < 2 || spec.options.size() > 12) return http_redir("/proposals?err=options");
+            const std::size_t mn = spec.open_choice ? 1 : 2;
+            if (spec.options.size() < mn || spec.options.size() > 12) return http_redir("/proposals?err=options");
         } else if (spec.kind == BallotKind::Scale) {
             auto left = trim_ws(f["left"]);
             auto right = trim_ws(f["right"]);
@@ -8747,6 +8951,87 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         auto id = g_store.add_proposal(user, title, ptext, spec);
         if (id == 0) return http_redir("/proposals?err=range");
         return http_redir("/proposals");
+    }
+    if(method=="POST"&&path=="/proposals/option") {
+        if(!acc) return need_login();
+        auto f = parse_form(body);
+        std::uint64_t id = 0;
+        try { id = std::stoull(f["id"]); } catch (...) { return http_redir("/proposals"); }
+        if (!g_store.add_proposal_option(id, user, trim_ws(f["label"])))
+            return http_redir("/proposals?err=option");
+        return http_redir("/proposals");
+    }
+    if(method=="GET"&&path=="/officials") {
+        std::string cards;
+        for (const auto& pr : g_store.all_proposals()) {
+            if (!pr.is_office) continue;
+            cards += "<div class=\"card\"><h2>"+html_escape(pr.title)+"</h2>"
+                     "<p class=\"muted\">"+html_escape(pr.jurisdiction.empty()?pr.body:pr.jurisdiction)+"</p>";
+            auto tally = g_store.value_tally_of(pr.id);
+            std::string mine;
+            if (!user.empty()) {
+                if (auto mv = g_store.ballot_value_of(pr.id, user)) mine = *mv;
+            }
+            for (const auto& opt : pr.ballot.options) {
+                const bool on = (mine == opt);
+                cards += "<form class=\"inline\" method=\"POST\" action=\"/proposals/vote\">"
+                         "<input type=\"hidden\" name=\"id\" value=\""+std::to_string(pr.id)+"\">"
+                         "<input type=\"hidden\" name=\"value\" value=\""+html_escape(opt)+"\">"
+                         "<button class=\""+std::string(on?"":"ghost")+"\" type=\"submit\">"
+                         +html_escape(opt)+(on?" &#10003;":"")+"</button></form> ";
+            }
+            if (!user.empty() && pr.ballot.open_choice) {
+                cards += "<form method=\"POST\" action=\"/proposals/option\" style=\"margin-top:.6rem\">"
+                         "<input type=\"hidden\" name=\"id\" value=\""+std::to_string(pr.id)+"\">"
+                         "<div class=\"row\"><input name=\"label\" maxlength=\"80\" placeholder=\"Add a candidate\">"
+                         "<button type=\"submit\">Add</button></div></form>";
+            }
+            cards += "</div>";
+        }
+        if (cards.empty()) cards = "<p class=\"muted\">No races yet.</p>";
+        std::string form;
+        if (acc) {
+            form = "<div class=\"card\"><h2>Open a race</h2>"
+                   "<p class=\"muted\">Anyone with an account can vote. Not a certified election.</p>"
+                   "<form method=\"POST\" action=\"/officials\">"
+                   "<label>Office</label><input name=\"title\" maxlength=\"80\" required placeholder=\"Mayor\">"
+                   "<label>Place</label><input name=\"place\" maxlength=\"80\" required placeholder=\"Fresno, CA\">"
+                   "<label>Candidates (one per line)</label>"
+                   "<textarea name=\"options\" maxlength=\"800\" placeholder=\"One name per line\"></textarea>"
+                   "<label class=\"row\" style=\"gap:.4rem;align-items:center;margin-top:.4rem\">"
+                   "<input type=\"checkbox\" name=\"open\" value=\"1\" checked> Allow people to add a candidate</label>"
+                   "<button type=\"submit\">Open race</button></form></div>";
+        } else {
+            form = "<p class=\"muted\"><a href=\"/login?next=/officials\">Log in</a> to vote or open a race.</p>";
+        }
+        return http_ok(wrap("Officials — LiquidGov.US", user, unread,
+            std::string("<h1>Officials</h1>"
+            "<p class=\"muted\">Account vote only. Not a certified election and not proof of residency.</p>")
+            + cards + form));
+    }
+    if(method=="POST"&&path=="/officials") {
+        if(!acc) return need_login();
+        auto f = parse_form(body);
+        auto title = trim_ws(f["title"]);
+        auto place = trim_ws(f["place"]);
+        if (title.empty() || title.size() > 80 || place.empty() || place.size() > 80)
+            return http_redir("/officials");
+        BallotSpec spec;
+        spec.kind = BallotKind::Choice;
+        spec.open_choice = !trim_ws(f["open"]).empty();
+        std::istringstream in(f["options"]);
+        std::string line;
+        while (std::getline(in, line)) {
+            auto o = trim_ws(line);
+            if (!o.empty()) spec.options.push_back(o);
+        }
+        const std::size_t mn = spec.open_choice ? 1 : 2;
+        if (spec.options.size() < mn || spec.options.size() > 12)
+            return http_redir("/officials");
+        auto nid = g_store.add_proposal(user, title, place, spec);
+        if (!nid || !g_store.mark_proposal_office(nid, place))
+            return http_redir("/officials");
+        return http_redir("/officials");
     }
     if(method=="POST"&&path=="/proposals/vote") {
         if(!acc) return need_login();
@@ -8763,6 +9048,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         } else {
             g_store.cast_ballot_value(id, user, trim_ws(f["value"]));
         }
+        if (p->is_office) return http_redir("/officials");
         return http_redir("/proposals");
     }
     if(method=="POST"&&path=="/friends") {

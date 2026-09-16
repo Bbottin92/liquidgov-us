@@ -1266,8 +1266,17 @@ std::string mail_install_hint() {
         "display:none;align-items:center;gap:.6rem\">"
         "<div style=\"flex:1;min-width:0\">"
         "<p style=\"margin:0;font-family:var(--display);font-weight:700;font-size:1rem;color:var(--ink)\">You're on Messages</p>"
-        "<p id=\"lgmailhinttext\" style=\"margin:.1rem 0 0;font-size:.78rem;color:var(--stone)\">Now Share &rarr; "
-        "<strong>Add to Home Screen</strong> (name it Messages).</p></div>"
+        // Chrome on iPhone has no Add to Home Screen action at all --
+        // the button just isn't in its share sheet, same reason
+        // apps.html and the old app-mail.html copy both named Safari/
+        // Brave specifically. ios_install_hint() above skips naming a
+        // browser (it's the generic site-wide nudge, kept short on
+        // purpose) but this one is telling someone to do a specific
+        // thing right now, so the caveat that saves a dead-end tap
+        // belongs in it.
+        "<p id=\"lgmailhinttext\" style=\"margin:.1rem 0 0;font-size:.78rem;color:var(--stone)\">In "
+        "<strong>Safari</strong> (or Brave), tap Share &rarr; "
+        "<strong>Add to Home Screen</strong> (name it Messages). Chrome on iPhone can't do this.</p></div>"
         "<button type=\"button\" id=\"lgmailhintclose\" class=\"ghost\" aria-label=\"Dismiss\" "
         "style=\"min-height:44px;min-width:44px;padding:0;flex-shrink:0;font-size:1.1rem\">"
         "&#10005;</button></div>"

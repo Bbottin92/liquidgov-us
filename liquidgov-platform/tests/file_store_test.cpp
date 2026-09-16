@@ -445,6 +445,57 @@ int main() {
         std::cout << "proposal LGP1 tags survive reload; author relabeled on delete\n";
     }
 
+    {
+        FileStore store(path);
+        BallotSpec num;
+        num.kind = BallotKind::Number;
+        num.unit = "days";
+        num.min_v = 1;
+        num.max_v = 365;
+        auto nid = store.add_proposal("prop-a", "How many days", "Until the next gathering.", num);
+        assert(nid != 0);
+        store.cast_ballot_value(nid, "prop-a", "10");
+        store.cast_ballot_value(nid, "prop-b", "30");
+        store.cast_ballot_value(nid, "prop-a", "20"); // re-vote
+        store.cast_ballot_value(nid, "prop-b", "999"); // out of range, ignored
+        auto vt = store.value_tally_of(nid);
+        assert(vt.n == 2);
+        assert(vt.lo == 20 && vt.hi == 30 && vt.median == 20);
+        assert(*store.ballot_value_of(nid, "prop-a") == "20");
+        assert(*store.ballot_value_of(nid, "prop-b") == "30");
+
+        BallotSpec dt;
+        dt.kind = BallotKind::Date;
+        auto did = store.add_proposal("prop-a", "By when", "A deadline.", dt);
+        store.cast_ballot_value(did, "prop-a", "2027-06-01");
+        store.cast_ballot_value(did, "prop-b", "2027-01-15");
+        auto dtally = store.value_tally_of(did);
+        assert(dtally.n == 2 && dtally.median_date == "2027-01-15");
+        assert(dtally.lo_date == "2027-01-15" && dtally.hi_date == "2027-06-01");
+
+        BallotSpec ch;
+        ch.kind = BallotKind::Choice;
+        ch.options = {"This year", "Next year", "Never"};
+        auto cid = store.add_proposal("prop-a", "When to start", "Pick one.", ch);
+        store.cast_ballot_value(cid, "prop-a", "0");
+        store.cast_ballot_value(cid, "prop-b", "2");
+        auto ct = store.value_tally_of(cid);
+        assert(ct.option_counts.size() == 3);
+        assert(ct.option_counts[0] == 1 && ct.option_counts[2] == 1 && ct.option_counts[1] == 0);
+
+        BallotSpec bad;
+        bad.kind = BallotKind::Choice;
+        assert(store.add_proposal("prop-a", "nope", "needs two options", bad) == 0);
+
+        FileStore reloaded(path);
+        auto np = reloaded.proposal_by_id(nid);
+        assert(np && np->ballot.kind == BallotKind::Number && np->ballot.unit == "days");
+        assert(reloaded.value_tally_of(nid).n == 2);
+        auto cp = reloaded.proposal_by_id(cid);
+        assert(cp && cp->ballot.options.size() == 3 && cp->ballot.options[2] == "Never");
+        std::cout << "proposal number/date/choice ballots + LGP1 round-trip ok\n";
+    }
+
     std::uint64_t reply_post_id = 0;
     {
         FileStore store(path);

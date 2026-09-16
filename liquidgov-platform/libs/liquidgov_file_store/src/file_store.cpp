@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cerrno>
+#include <cmath>
 #include <cstring>
 #include <fcntl.h>
 #include <filesystem>
@@ -115,6 +116,91 @@ bool parse_bit(const std::string& s, const char* what) {
     const auto v = parse_u64(s, what);
     if (v > 1) throw std::runtime_error(std::string("LGP1: bad ") + what);
     return v == 1;
+}
+
+double parse_dbl(const std::string& s, const char* what) {
+    if (s.empty()) throw std::runtime_error(std::string("LGP1: empty ") + what);
+    std::size_t idx = 0;
+    double v = 0;
+    try {
+        v = std::stod(s, &idx);
+    } catch (...) {
+        throw std::runtime_error(std::string("LGP1: bad ") + what);
+    }
+    if (idx != s.size() || !std::isfinite(v))
+        throw std::runtime_error(std::string("LGP1: bad ") + what);
+    return v;
+}
+
+std::string fmt_stored(double v) {
+    std::ostringstream o;
+    o.precision(12);
+    o << v;
+    return o.str();
+}
+
+bool valid_iso_date(const std::string& s) {
+    if (s.size() != 10 || s[4] != '-' || s[7] != '-') return false;
+    for (int i : {0, 1, 2, 3, 5, 6, 8, 9}) {
+        if (s[static_cast<std::size_t>(i)] < '0' || s[static_cast<std::size_t>(i)] > '9') return false;
+    }
+    const int y = std::stoi(s.substr(0, 4));
+    const int m = std::stoi(s.substr(5, 2));
+    const int d = std::stoi(s.substr(8, 2));
+    return y >= 2000 && y <= 2100 && m >= 1 && m <= 12 && d >= 1 && d <= 31;
+}
+
+bool spec_ok(const BallotSpec& s) {
+    const int k = static_cast<int>(s.kind);
+    if (k < 0 || k > 4) return false;
+    if (s.unit.size() > 24) return false;
+    if (s.kind == BallotKind::Choice) {
+        if (s.options.size() < 2 || s.options.size() > 12) return false;
+        for (const auto& o : s.options) {
+            if (o.empty() || o.size() > 80) return false;
+        }
+    }
+    if (s.kind == BallotKind::Scale) {
+        if (s.options.size() > 2) return false;
+        for (const auto& o : s.options) {
+            if (o.size() > 40) return false;
+        }
+    }
+    if (s.kind == BallotKind::Number) {
+        if (s.min_v != 0 || s.max_v != 0) {
+            if (!(s.min_v < s.max_v) || !std::isfinite(s.min_v) || !std::isfinite(s.max_v))
+                return false;
+        }
+    }
+    return true;
+}
+
+bool payload_ok(const BallotSpec& s, const std::string& raw) {
+    if (raw.empty()) return false;
+    if (s.kind == BallotKind::Number) {
+        std::size_t idx = 0;
+        double v = 0;
+        try { v = std::stod(raw, &idx); } catch (...) { return false; }
+        if (idx != raw.size() || !std::isfinite(v) || std::fabs(v) > 1e12) return false;
+        if (s.min_v != 0 || s.max_v != 0) {
+            if (v < s.min_v || v > s.max_v) return false;
+        }
+        return true;
+    }
+    if (s.kind == BallotKind::Date) return valid_iso_date(raw);
+    if (s.kind == BallotKind::Choice) {
+        std::size_t idx = 0;
+        unsigned long i = 0;
+        try { i = std::stoul(raw, &idx); } catch (...) { return false; }
+        return idx == raw.size() && i < s.options.size();
+    }
+    if (s.kind == BallotKind::Scale) {
+        std::size_t idx = 0;
+        long i = 0;
+        try { i = std::stol(raw, &idx); } catch (...) { return false; }
+        return idx == raw.size() && i >= 0 && i <= 100;
+    }
+    return false;
 }
 
 void write_all(int fd, const std::string& data) {
@@ -253,6 +339,10 @@ std::size_t FileStore::account_count() const {
     return accounts_.size();
 }
 
+std::size_t FileStore::post_count() const {
+    return posts_.size();
+}
+
 std::optional<PlatformAccount> FileStore::find_by_username(const std::string& username) const {
     auto it = by_username_.find(username);
     if (it == by_username_.end()) return std::nullopt;
@@ -300,6 +390,16 @@ std::optional<PlatformAccount> FileStore::find_by_id(AccountId id) const {
     auto it = accounts_.find(id);
     if (it == accounts_.end()) return std::nullopt;
     return it->second;
+}
+
+std::vector<PlatformAccount> FileStore::all_accounts() const {
+    std::vector<PlatformAccount> out;
+    out.reserve(accounts_.size());
+    for (const auto& [id, acc] : accounts_) out.push_back(acc);
+    std::sort(out.begin(), out.end(), [](const PlatformAccount& a, const PlatformAccount& b) {
+        return a.created_at > b.created_at;
+    });
+    return out;
 }
 
 std::optional<Session> FileStore::get_session(const SessionId& id) const {
@@ -406,6 +506,58 @@ bool FileStore::set_password_hash(AccountId id, const std::string& password_hash
     it->second.password_hash = password_hash;
     flush();
     return true;
+}
+
+void FileStore::set_email(const std::string& username, const std::string& email) {
+    // Keep the index a true 1:1: don't let a second username steal an
+    // address already claimed by someone else.
+    auto existing = username_by_email(email);
+    if (existing && *existing != username) return;
+    emails_[username] = email;
+    flush();
+}
+
+std::optional<std::string> FileStore::email_of(const std::string& username) const {
+    auto it = emails_.find(username);
+    if (it == emails_.end()) return std::nullopt;
+    return it->second;
+}
+
+std::optional<std::string> FileStore::username_by_email(const std::string& email) const {
+    for (const auto& [username, addr] : emails_) {
+        if (addr == email) return username;
+    }
+    return std::nullopt;
+}
+
+void FileStore::set_reset_token(const std::string& username, const std::string& token_hash,
+                                 std::int64_t until_unix) {
+    reset_tokens_[username] = ResetToken{token_hash, until_unix};
+    flush();
+}
+
+std::optional<std::string> FileStore::consume_reset_token(const std::string& token_hash) {
+    for (auto it = reset_tokens_.begin(); it != reset_tokens_.end(); ++it) {
+        if (it->second.token_hash != token_hash) continue;
+        const std::string username = it->first;
+        const bool expired = it->second.until_unix < now();
+        reset_tokens_.erase(it);
+        flush();
+        return expired ? std::nullopt : std::make_optional(username);
+    }
+    return std::nullopt;
+}
+
+void FileStore::set_google_id(const std::string& username, const std::string& google_sub) {
+    google_ids_[username] = google_sub;
+    flush();
+}
+
+std::optional<std::string> FileStore::username_by_google_sub(const std::string& google_sub) const {
+    for (const auto& [username, sub] : google_ids_) {
+        if (sub == google_sub) return username;
+    }
+    return std::nullopt;
 }
 
 bool FileStore::are_friends(const std::string& a, const std::string& b) const {
@@ -532,6 +684,56 @@ std::vector<MailMessage> FileStore::mail_sent_by(const std::string& from) const 
         if (m.from == from) out.push_back(m);
     }
     return out;
+}
+
+std::vector<std::string> FileStore::mail_peers(const std::string& user) const {
+    std::vector<std::string> out;
+    std::set<std::string> seen;
+    for (const auto& m : mail_) {
+        std::string other;
+        if (m.from == user) other = m.to;
+        else if (m.to == user) other = m.from;
+        else continue;
+        if (other.empty() || seen.count(other)) continue;
+        seen.insert(other);
+        out.push_back(other);
+    }
+    return out;
+}
+
+std::int64_t FileStore::last_mail_ts(const std::string& a, const std::string& b) const {
+    std::int64_t ts = 0;
+    for (const auto& m : mail_) {
+        if ((m.from == a && m.to == b) || (m.from == b && m.to == a)) {
+            if (m.ts > ts) ts = m.ts;
+        }
+    }
+    return ts;
+}
+
+std::string FileStore::last_mail_preview(const std::string& a, const std::string& b) const {
+    const MailMessage* last = nullptr;
+    for (const auto& m : mail_) {
+        if ((m.from == a && m.to == b) || (m.from == b && m.to == a)) last = &m;
+    }
+    if (!last) return "";
+    if (!last->text.empty()) return last->text;
+    if (last->attachment_blob_id) return "(attachment)";
+    return "";
+}
+
+void FileStore::mark_thread_read(const std::string& user, const std::string& thread_key) {
+    if (user.empty() || thread_key.empty()) return;
+    mail_last_read_[user][thread_key] = now();
+    flush();
+}
+
+std::int64_t FileStore::thread_last_read(const std::string& user, const std::string& thread_key) const {
+    auto uit = mail_last_read_.find(user);
+    if (uit == mail_last_read_.end()) return 0;
+    auto kit = uit->second.find(thread_key);
+    if (kit == uit->second.end()) return 0;
+    return kit->second;
 }
 
 std::optional<MailMessage> FileStore::find_mail_attachment(const std::string& user,
@@ -664,7 +866,10 @@ std::vector<std::string> FileStore::typeahead(const std::string& requester, cons
 std::uint64_t FileStore::add_post(const std::string& author, const std::string& text,
                                   const std::string& community,
                                   const std::string& repost_of_author, std::uint64_t repost_of_id,
-                                  const std::string& attachment_blob_id, const std::string& attachment_mime) {
+                                  const std::string& attachment_blob_id, const std::string& attachment_mime,
+                                  PostAudience audience, std::vector<std::string> exceptions,
+                                  std::vector<std::string> friend_allowlist,
+                                  std::vector<std::string> extra_groups) {
     Post p;
     p.id = next_post_id_++;
     p.author = author;
@@ -675,24 +880,61 @@ std::uint64_t FileStore::add_post(const std::string& author, const std::string& 
     p.repost_of_id = repost_of_id;
     p.attachment_blob_id = attachment_blob_id;
     p.attachment_mime = attachment_mime;
+    p.audience = audience;
+    p.exceptions = std::move(exceptions);
+    p.friend_allowlist = std::move(friend_allowlist);
+    p.extra_groups = std::move(extra_groups);
     posts_.push_back(p);
     flush();
     return p.id;
 }
 
+bool FileStore::delete_post(std::uint64_t post_id, const std::string& actor) {
+    auto it = std::find_if(posts_.begin(), posts_.end(),
+                            [&](const Post& p) { return p.id == post_id; });
+    if (it == posts_.end() || it->author != actor) return false;
+    posts_.erase(it);
+    replies_.erase(std::remove_if(replies_.begin(), replies_.end(),
+                                   [&](const PostReply& r) { return r.post_id == post_id; }),
+                   replies_.end());
+    for (auto sit = seconds_.begin(); sit != seconds_.end();) {
+        if (sit->first == post_id) sit = seconds_.erase(sit);
+        else ++sit;
+    }
+    flush();
+    return true;
+}
+
+// Whether `viewer` (a confirmed, non-blocked friend of the author -- caller
+// already checked that) gets to see a Friends/Anybody post in a
+// friends-graph context (this feed, or the profile's own Posts list).
+// Anybody's px hide-list applies here too, same as on the profile ("must
+// not see this post (feed or profile)") -- it only ever trims reach, never
+// grants it. The account-wide posts_visibility OnlyMe blanket gates only
+// the Friends case: an explicit per-post Anybody choice wins over a stale
+// account-level toggle, same posture as the profile page (see its own
+// per-post filter) rather than letting an old blanket silently override a
+// fresh, explicit composer choice.
+bool FileStore::friend_sees_post(const Post& p, const std::string& viewer) const {
+    if (p.audience == PostAudience::Anybody)
+        return std::find(p.exceptions.begin(), p.exceptions.end(), viewer) == p.exceptions.end();
+    if (prefs_of(p.author).posts_visibility == Visibility::OnlyMe) return false;
+    return p.friend_allowlist.empty() ||
+        std::find(p.friend_allowlist.begin(), p.friend_allowlist.end(), viewer) != p.friend_allowlist.end();
+}
+
 std::vector<Post> FileStore::feed_for(const std::string& user, std::size_t limit) const {
     std::vector<Post> out;
     for (auto it = posts_.rbegin(); it != posts_.rend(); ++it) {
-        if (!it->community.empty()) continue;
-        if (it->author == user || are_friends(user, it->author)) {
+        if (it->audience == PostAudience::GroupsOnly) continue;
+        const bool is_self = it->author == user;
+        if (!is_self) {
+            if (!are_friends(user, it->author)) continue;
             if (is_blocked(user, it->author)) continue;
-            // Every post reaching here is either the viewer's own or from a
-            // confirmed friend, so Public/Members/Friends all permit it --
-            // only OnlyMe (hidden even from friends) excludes it here.
-            if (it->author != user && prefs_of(it->author).posts_visibility == Visibility::OnlyMe) continue;
-            out.push_back(*it);
-            if (out.size() >= limit) break;
+            if (!friend_sees_post(*it, user)) continue;
         }
+        out.push_back(*it);
+        if (out.size() >= limit) break;
     }
     return out;
 }
@@ -703,11 +945,18 @@ std::vector<Post> FileStore::feed_view(const std::string& user, std::size_t limi
     for (const auto& c : communities_of(user)) my_slugs.insert(c.slug);
     std::vector<Post> out;
     for (auto it = posts_.rbegin(); it != posts_.rend(); ++it) {
-        const bool personal = it->community.empty() &&
-            (it->author == user || are_friends(user, it->author)) &&
-            !is_blocked(user, it->author) &&
-            !(it->author != user && prefs_of(it->author).posts_visibility == Visibility::OnlyMe);
-        const bool committee_post = !it->community.empty() && my_slugs.count(it->community) > 0;
+        bool personal = false;
+        if (it->audience != PostAudience::GroupsOnly) {
+            const bool is_self = it->author == user;
+            personal = is_self ||
+                (are_friends(user, it->author) && !is_blocked(user, it->author) && friend_sees_post(*it, user));
+        }
+        bool committee_post = !it->community.empty() && my_slugs.count(it->community) > 0;
+        if (!committee_post) {
+            for (const auto& slug : it->extra_groups) {
+                if (my_slugs.count(slug)) { committee_post = true; break; }
+            }
+        }
         bool include;
         if (filter == FeedFilter::Committees) include = committee_post;
         else if (filter == FeedFilter::Drawings) include = (personal || committee_post) && !it->attachment_blob_id.empty();
@@ -722,7 +971,9 @@ std::vector<Post> FileStore::feed_view(const std::string& user, std::size_t limi
 std::vector<Post> FileStore::posts_in(const std::string& community, std::size_t limit) const {
     std::vector<Post> out;
     for (auto it = posts_.rbegin(); it != posts_.rend(); ++it) {
-        if (it->community == community) {
+        const bool matches = it->community == community ||
+            std::find(it->extra_groups.begin(), it->extra_groups.end(), community) != it->extra_groups.end();
+        if (matches) {
             out.push_back(*it);
             if (out.size() >= limit) break;
         }
@@ -735,6 +986,13 @@ std::vector<Post> FileStore::posts_by(const std::string& author) const {
     for (const auto& p : posts_) {
         if (p.author == author) out.push_back(p);
     }
+    return out;
+}
+
+std::vector<Post> FileStore::recent_posts(std::size_t limit) const {
+    std::vector<Post> out;
+    for (auto it = posts_.rbegin(); it != posts_.rend() && out.size() < limit; ++it)
+        out.push_back(*it);
     return out;
 }
 
@@ -793,13 +1051,16 @@ int FileStore::second_count(std::uint64_t post_id) const {
     return n;
 }
 
-std::uint64_t FileStore::add_proposal(const std::string& author, const std::string& title, const std::string& body) {
+std::uint64_t FileStore::add_proposal(const std::string& author, const std::string& title, const std::string& body,
+                                      BallotSpec spec) {
+    if (!spec_ok(spec)) return 0;
     Proposal p;
     p.id = next_proposal_id_++;
     p.author = author;
     p.ts = now();
     p.title = title;
     p.body = body;
+    p.ballot = spec;
     proposals_.push_back(p);
     flush();
     return p.id;
@@ -818,6 +1079,8 @@ std::optional<Proposal> FileStore::proposal_by_id(std::uint64_t id) const {
 
 void FileStore::cast_proposal_vote(std::uint64_t proposal_id, const std::string& voter, ProposalVote choice) {
     if (voter.empty()) return;
+    auto p = proposal_by_id(proposal_id);
+    if (p && p->ballot.kind != BallotKind::YesNo) return;
     proposal_votes_[proposal_id][voter] = choice;
     flush();
 }
@@ -841,6 +1104,69 @@ ProposalTally FileStore::tally_of(std::uint64_t proposal_id) const {
             case ProposalVote::Abstain: ++t.abstain; break;
         }
     }
+    return t;
+}
+
+void FileStore::cast_ballot_value(std::uint64_t proposal_id, const std::string& voter, const std::string& payload) {
+    if (voter.empty()) return;
+    auto p = proposal_by_id(proposal_id);
+    if (!p || p->ballot.kind == BallotKind::YesNo) return;
+    if (!payload_ok(p->ballot, payload)) return;
+    ballot_values_[proposal_id][voter] = payload;
+    flush();
+}
+
+std::optional<std::string> FileStore::ballot_value_of(std::uint64_t proposal_id, const std::string& voter) const {
+    auto pit = ballot_values_.find(proposal_id);
+    if (pit == ballot_values_.end()) return std::nullopt;
+    auto vit = pit->second.find(voter);
+    if (vit == pit->second.end()) return std::nullopt;
+    return vit->second;
+}
+
+BallotTally FileStore::value_tally_of(std::uint64_t proposal_id) const {
+    BallotTally t;
+    auto p = proposal_by_id(proposal_id);
+    if (!p) return t;
+    auto pit = ballot_values_.find(proposal_id);
+    if (pit == ballot_values_.end() || pit->second.empty()) {
+        if (p->ballot.kind == BallotKind::Choice)
+            t.option_counts.assign(p->ballot.options.size(), 0);
+        return t;
+    }
+    t.n = static_cast<int>(pit->second.size());
+    if (p->ballot.kind == BallotKind::Choice) {
+        t.option_counts.assign(p->ballot.options.size(), 0);
+        for (const auto& [voter, payload] : pit->second) {
+            std::size_t idx = 0;
+            unsigned long i = 0;
+            try { i = std::stoul(payload, &idx); } catch (...) { continue; }
+            if (idx == payload.size() && i < t.option_counts.size())
+                ++t.option_counts[i];
+        }
+        return t;
+    }
+    if (p->ballot.kind == BallotKind::Date) {
+        std::vector<std::string> dates;
+        dates.reserve(pit->second.size());
+        for (const auto& [voter, payload] : pit->second) dates.push_back(payload);
+        std::sort(dates.begin(), dates.end());
+        t.lo_date = dates.front();
+        t.hi_date = dates.back();
+        t.median_date = dates[(dates.size() - 1) / 2];
+        return t;
+    }
+    std::vector<double> vals;
+    vals.reserve(pit->second.size());
+    for (const auto& [voter, payload] : pit->second) {
+        try { vals.push_back(std::stod(payload)); } catch (...) {}
+    }
+    if (vals.empty()) return t;
+    std::sort(vals.begin(), vals.end());
+    t.lo = vals.front();
+    t.hi = vals.back();
+    t.median = vals[(vals.size() - 1) / 2];
+    t.n = static_cast<int>(vals.size());
     return t;
 }
 
@@ -914,11 +1240,9 @@ bool FileStore::delete_community(const std::string& slug, const std::string& act
     if (it->second.owner != actor) return false;
     communities_.erase(it);
     members_.erase(slug);
-    std::vector<Post> keep;
-    for (const auto& p : posts_) {
-        if (p.community != slug) keep.push_back(p);
-    }
-    posts_.swap(keep);
+    // Posts made into this room are left exactly as they are -- see this
+    // method's own header comment. Closing a room is not a reason to erase
+    // what anyone said in it.
     flush();
     return true;
 }
@@ -1025,6 +1349,42 @@ bool FileStore::phone_quarantined(const std::string& fp) const {
     return it->second > now();
 }
 
+bool FileStore::is_locked(const std::string& username) const {
+    return locked_.count(username) > 0;
+}
+
+void FileStore::set_locked(const std::string& username, bool locked) {
+    if (locked) {
+        locked_.insert(username);
+        if (auto acc = find_by_username(username)) {
+            for (const auto& s : sessions_for(acc->id)) revoke_session(s.id);
+        }
+    } else {
+        locked_.erase(username);
+    }
+    flush();
+}
+
+void FileStore::add_audit_log(const std::string& operator_name, const std::string& action,
+                              const std::string& target) {
+    AuditLogEntry e;
+    e.ts = now();
+    e.operator_name = operator_name;
+    e.action = action;
+    e.target = target;
+    audit_log_.push_back(std::move(e));
+    if (audit_log_.size() > kAuditLogCap)
+        audit_log_.erase(audit_log_.begin(), audit_log_.end() - static_cast<long>(kAuditLogCap));
+    flush();
+}
+
+std::vector<AuditLogEntry> FileStore::recent_audit_log(std::size_t limit) const {
+    std::vector<AuditLogEntry> out;
+    for (auto it = audit_log_.rbegin(); it != audit_log_.rend() && out.size() < limit; ++it)
+        out.push_back(*it);
+    return out;
+}
+
 bool FileStore::delete_account(AccountId id) {
     auto it = accounts_.find(id);
     if (it == accounts_.end()) return false;
@@ -1051,6 +1411,10 @@ bool FileStore::delete_account(AccountId id) {
     friends_.swap(keep_fr);
     inner_.erase(name);
     for (auto& [owner, set] : inner_) set.erase(name);
+    locked_.erase(name);
+    emails_.erase(name);
+    reset_tokens_.erase(name);
+    google_ids_.erase(name);
     std::set<std::pair<std::string, std::string>> keep_blk;
     for (const auto& p : blocks_) {
         if (p.first == name || p.second == name) { block_meta_.erase(p); continue; }
@@ -1085,6 +1449,7 @@ bool FileStore::delete_account(AccountId id) {
         if (p.author == name) p.author = "[deleted account]";
     }
     for (auto& [pid, votes] : proposal_votes_) votes.erase(name);
+    for (auto& [pid, vals] : ballot_values_) vals.erase(name);
     std::vector<SessionId> drop;
     for (const auto& [sid, s] : sessions_) {
         if (s.account == id) drop.push_back(sid);
@@ -1099,6 +1464,8 @@ bool FileStore::delete_account(AccountId id) {
     avatars_.erase(id);
     jukebox_.erase(name);
     jukebox_history_.erase(name);
+    jukebox_autoplay_.erase(name);
+    jukebox_relay_.erase(name);
     by_username_.erase(name);
     accounts_.erase(it);
     flush();
@@ -1123,6 +1490,9 @@ void FileStore::load() {
     canvas_timelapse_.clear();
     phone_fp_.clear();
     quarantine_.clear();
+    emails_.clear();
+    reset_tokens_.clear();
+    google_ids_.clear();
     friends_.clear();
     requests_.clear();
     mail_.clear();
@@ -1135,6 +1505,7 @@ void FileStore::load() {
     seconds_.clear();
     proposals_.clear();
     proposal_votes_.clear();
+    ballot_values_.clear();
     communities_.clear();
     members_.clear();
     notices_.clear();
@@ -1142,6 +1513,11 @@ void FileStore::load() {
     jukebox_.clear();
     jukebox_history_.clear();
     jukebox_subs_.clear();
+    jukebox_autoplay_.clear();
+    jukebox_relay_.clear();
+    jukebox_pos_.clear();
+    locked_.clear();
+    audit_log_.clear();
     conversations_.clear();
     messages_.clear();
 
@@ -1157,6 +1533,19 @@ void FileStore::load() {
 
     std::map<std::uint64_t, std::pair<std::string, std::uint64_t>> pending_reposts;
     std::map<std::uint64_t, std::pair<std::string, std::string>> pending_attachments;
+    struct PendingBk {
+        int kind = 0;
+        std::string unit;
+        double min_v = 0;
+        double max_v = 0;
+        double step = 1;
+    };
+    std::map<std::uint64_t, PendingBk> pending_bk;
+    std::map<std::uint64_t, std::vector<std::pair<int, std::string>>> pending_bo;
+    std::map<std::uint64_t, PostAudience> pending_audience;
+    std::map<std::uint64_t, std::vector<std::string>> pending_exceptions;
+    std::map<std::uint64_t, std::vector<std::string>> pending_friend_allowlist;
+    std::map<std::uint64_t, std::vector<std::string>> pending_extra_groups;
     while (std::getline(in, line)) {
         if (!line.empty() && line.back() == '\r') line.pop_back();
         if (line.empty()) continue;
@@ -1229,6 +1618,19 @@ void FileStore::load() {
         } else if (tag == "pq") {
             if (f.size() != 3) throw std::runtime_error("LGP1: bad pq record");
             quarantine_[pct_decode(f[1])] = parse_i64(f[2], "pq until");
+        } else if (tag == "ml") {
+            if (f.size() != 3) throw std::runtime_error("LGP1: bad ml record");
+            emails_[pct_decode(f[1])] = pct_decode(f[2]);
+        } else if (tag == "pr") {
+            if (f.size() != 4) throw std::runtime_error("LGP1: bad pr record");
+            ResetToken t;
+            t.token_hash = pct_decode(f[1]);
+            t.until_unix = parse_i64(f[3], "pr until_unix");
+            if (t.token_hash.empty()) throw std::runtime_error("LGP1: bad pr token_hash");
+            reset_tokens_[pct_decode(f[2])] = t;
+        } else if (tag == "gid") {
+            if (f.size() != 3) throw std::runtime_error("LGP1: bad gid record");
+            google_ids_[pct_decode(f[1])] = pct_decode(f[2]);
         } else if (tag == "post") {
             if (f.size() != 6) throw std::runtime_error("LGP1: bad post record");
             Post p;
@@ -1281,6 +1683,26 @@ void FileStore::load() {
             const auto cv = parse_u64(f[3], "pvote choice");
             if (cv > 2) throw std::runtime_error("LGP1: bad pvote choice");
             proposal_votes_[pid][voter] = static_cast<ProposalVote>(cv);
+        } else if (tag == "pbk") {
+            if (f.size() != 7) throw std::runtime_error("LGP1: bad pbk record");
+            const auto pid = parse_u64(f[1], "pbk proposal id");
+            const auto kind = parse_u64(f[2], "pbk kind");
+            if (kind < 1 || kind > 4) throw std::runtime_error("LGP1: bad pbk kind");
+            pending_bk[pid] = PendingBk{
+                static_cast<int>(kind), pct_decode(f[3]),
+                parse_dbl(f[4], "pbk min"), parse_dbl(f[5], "pbk max"),
+                parse_dbl(f[6], "pbk step")
+            };
+        } else if (tag == "pbo") {
+            if (f.size() != 4) throw std::runtime_error("LGP1: bad pbo record");
+            const auto pid = parse_u64(f[1], "pbo proposal id");
+            const auto idx = parse_u64(f[2], "pbo index");
+            pending_bo[pid].push_back({static_cast<int>(idx), pct_decode(f[3])});
+        } else if (tag == "pbv") {
+            if (f.size() != 4) throw std::runtime_error("LGP1: bad pbv record");
+            const auto pid = parse_u64(f[1], "pbv proposal id");
+            const auto voter = pct_decode(f[2]);
+            if (!voter.empty()) ballot_values_[pid][voter] = pct_decode(f[3]);
         } else if (tag == "rp") {
             // A separate tag (not a wider "post" record) specifically so
             // existing 6-field "post" records from before reposts existed
@@ -1296,6 +1718,35 @@ void FileStore::load() {
             if (f.size() != 4) throw std::runtime_error("LGP1: bad pa record");
             pending_attachments[parse_u64(f[1], "pa post id")] =
                 {pct_decode(f[2]), pct_decode(f[3])};
+        } else if (tag == "pv") {
+            // Leftover from an earlier, since-superseded same-day draft of
+            // per-post audience (a plain Visibility 0=Public/2=Friends,
+            // before Groups exceptions/allowlists existed) -- no longer
+            // written, but tolerated on load and converted into the
+            // pau/PostAudience model below, same posture as "em". Only
+            // pau's OWN value wins if a post somehow has both (never
+            // written by the same version of this code, but the fixup pass
+            // below prefers a real pau line over this fallback either way).
+            if (f.size() != 3) throw std::runtime_error("LGP1: bad pv record");
+            const auto vi = parse_u64(f[2], "pv visibility");
+            const auto id = parse_u64(f[1], "pv post id");
+            if (!pending_audience.count(id))
+                pending_audience[id] = (vi == 0) ? PostAudience::Anybody : PostAudience::Friends;
+        } else if (tag == "pau") {
+            if (f.size() != 3) throw std::runtime_error("LGP1: bad pau record");
+            const auto av = parse_u64(f[2], "pau audience");
+            if (av > static_cast<std::uint64_t>(PostAudience::GroupsOnly))
+                throw std::runtime_error("LGP1: bad pau audience value");
+            pending_audience[parse_u64(f[1], "pau post id")] = static_cast<PostAudience>(av);
+        } else if (tag == "px") {
+            if (f.size() != 3) throw std::runtime_error("LGP1: bad px record");
+            pending_exceptions[parse_u64(f[1], "px post id")].push_back(pct_decode(f[2]));
+        } else if (tag == "pf") {
+            if (f.size() != 3) throw std::runtime_error("LGP1: bad pf record");
+            pending_friend_allowlist[parse_u64(f[1], "pf post id")].push_back(pct_decode(f[2]));
+        } else if (tag == "pg") {
+            if (f.size() != 3) throw std::runtime_error("LGP1: bad pg record");
+            pending_extra_groups[parse_u64(f[1], "pg post id")].push_back(pct_decode(f[2]));
         } else if (tag == "comm") {
             if (f.size() != 6 && f.size() != 8) throw std::runtime_error("LGP1: bad comm record");
             Community c;
@@ -1449,11 +1900,12 @@ void FileStore::load() {
             next_message_id_ = parse_u64(f[1], "next_message_id");
             if (next_message_id_ == 0) next_message_id_ = 1;
         } else if (tag == "gc") {
-            if (f.size() != 4) throw std::runtime_error("LGP1: bad gc record");
+            if (f.size() != 4 && f.size() != 5) throw std::runtime_error("LGP1: bad gc record");
             Conversation conv;
             conv.id = parse_u64(f[1], "conversation id");
             conv.is_group = parse_bit(f[2], "conversation is_group");
             conv.created_at = parse_i64(f[3], "conversation created_at");
+            if (f.size() == 5) conv.title = pct_decode(f[4]);
             if (conv.id == 0) throw std::runtime_error("LGP1: empty gc id");
             if (conversations_.count(conv.id)) throw std::runtime_error("LGP1: duplicate conversation");
             conversations_[conv.id] = conv;
@@ -1470,7 +1922,7 @@ void FileStore::load() {
             m.state = static_cast<MemberState>(state);
             it->second.members.push_back(m);
         } else if (tag == "gmsg") {
-            if (f.size() != 10) throw std::runtime_error("LGP1: bad gmsg record");
+            if (f.size() != 10 && f.size() != 12) throw std::runtime_error("LGP1: bad gmsg record");
             Message msg;
             msg.id = parse_u64(f[1], "message id");
             msg.conversation_id = parse_u64(f[2], "message conversation id");
@@ -1483,6 +1935,10 @@ void FileStore::load() {
             msg.deleted_at = parse_i64(f[7], "message deleted_at");
             msg.under_review = parse_bit(f[8], "message under_review");
             msg.text = pct_decode(f[9]);
+            if (f.size() == 12) {
+                msg.attachment_blob_id = pct_decode(f[10]);
+                msg.attachment_mime = pct_decode(f[11]);
+            }
             if (msg.id == 0) throw std::runtime_error("LGP1: empty gmsg id");
             if (messages_.count(msg.id)) throw std::runtime_error("LGP1: duplicate message");
             messages_[msg.id] = msg;
@@ -1506,10 +1962,43 @@ void FileStore::load() {
             p.school = pct_decode(f[8]);
             if (!name.empty()) profiles_[name] = p;
         } else if (tag == "em") {
-            // Dropped parallel schema: email fingerprint used to be its own
-            // tag. Current Profile.email_fp lives on prof. Ignore leftover
-            // lines so an older store still boots.
-            continue;
+            // Leftover from an abandoned schema that fingerprinted email
+            // separately from prof -- nothing here writes this tag anymore
+            // (prof carries its own email_fp field), but a store that still
+            // has old lines from that schema must still boot.
+            if (f.size() != 3) throw std::runtime_error("LGP1: bad em record");
+        } else if (tag == "jauto") {
+            if (f.size() != 3) throw std::runtime_error("LGP1: bad jauto record");
+            jukebox_autoplay_[pct_decode(f[1])] = parse_bit(f[2], "jauto");
+        } else if (tag == "jrelay") {
+            if (f.size() != 3) throw std::runtime_error("LGP1: bad jrelay record");
+            auto target = pct_decode(f[2]);
+            if (!target.empty()) jukebox_relay_[pct_decode(f[1])] = target;
+        } else if (tag == "jpos") {
+            if (f.size() != 5) throw std::runtime_error("LGP1: bad jpos record");
+            JukeboxPos p;
+            p.video_id = pct_decode(f[2]);
+            p.offset_sec = parse_i64(f[3], "jpos offset_sec");
+            p.updated_at = parse_i64(f[4], "jpos updated_at");
+            if (!valid_youtube_id(p.video_id)) throw std::runtime_error("LGP1: bad jpos video_id");
+            jukebox_pos_[pct_decode(f[1])] = p;
+        } else if (tag == "lk") {
+            if (f.size() != 2) throw std::runtime_error("LGP1: bad lk record");
+            locked_.insert(pct_decode(f[1]));
+        } else if (tag == "alog") {
+            if (f.size() != 5) throw std::runtime_error("LGP1: bad alog record");
+            AuditLogEntry e;
+            e.ts = parse_i64(f[1], "alog ts");
+            e.operator_name = pct_decode(f[2]);
+            e.action = pct_decode(f[3]);
+            e.target = pct_decode(f[4]);
+            audit_log_.push_back(std::move(e));
+        } else if (tag == "mlr") {
+            if (f.size() != 4) throw std::runtime_error("LGP1: bad mlr record");
+            const std::string user = pct_decode(f[1]);
+            const std::string key = pct_decode(f[2]);
+            const auto ts = parse_i64(f[3], "mlr ts");
+            if (!user.empty() && !key.empty()) mail_last_read_[user][key] = ts;
         } else {
             throw std::runtime_error("LGP1: unknown record type '" + tag + "'");
         }
@@ -1524,6 +2013,32 @@ void FileStore::load() {
         if (ait != pending_attachments.end()) {
             p.attachment_blob_id = ait->second.first;
             p.attachment_mime = ait->second.second;
+        }
+        auto pauit = pending_audience.find(p.id);
+        if (pauit != pending_audience.end()) p.audience = pauit->second;
+        auto pxit = pending_exceptions.find(p.id);
+        if (pxit != pending_exceptions.end()) p.exceptions = pxit->second;
+        auto pfit = pending_friend_allowlist.find(p.id);
+        if (pfit != pending_friend_allowlist.end()) p.friend_allowlist = pfit->second;
+        auto pgit = pending_extra_groups.find(p.id);
+        if (pgit != pending_extra_groups.end()) p.extra_groups = pgit->second;
+    }
+
+    for (auto& p : proposals_) {
+        auto bit = pending_bk.find(p.id);
+        if (bit != pending_bk.end()) {
+            p.ballot.kind = static_cast<BallotKind>(bit->second.kind);
+            p.ballot.unit = bit->second.unit;
+            p.ballot.min_v = bit->second.min_v;
+            p.ballot.max_v = bit->second.max_v;
+            p.ballot.step = bit->second.step;
+        }
+        auto oit = pending_bo.find(p.id);
+        if (oit != pending_bo.end()) {
+            auto opts = oit->second;
+            std::sort(opts.begin(), opts.end());
+            p.ballot.options.clear();
+            for (const auto& item : opts) p.ballot.options.push_back(item.second);
         }
     }
 }
@@ -1555,6 +2070,20 @@ void FileStore::flush() {
     for (const auto& [fp, until] : quarantine_) {
         if (until <= now()) continue;
         body << "pq\t" << pct_encode(fp) << "\t" << until << "\n";
+    }
+    for (const auto& [username, email] : emails_) {
+        if (!by_username_.count(username)) continue;
+        body << "ml\t" << pct_encode(username) << "\t" << pct_encode(email) << "\n";
+    }
+    for (const auto& [username, tok] : reset_tokens_) {
+        if (!by_username_.count(username)) continue;
+        if (tok.until_unix <= now()) continue; // expired, never used -- drop rather than carry forward
+        body << "pr\t" << pct_encode(tok.token_hash) << "\t" << pct_encode(username) << "\t"
+             << tok.until_unix << "\n";
+    }
+    for (const auto& [username, sub] : google_ids_) {
+        if (!by_username_.count(username)) continue;
+        body << "gid\t" << pct_encode(username) << "\t" << pct_encode(sub) << "\n";
     }
     for (const auto& [id, s] : sessions_) {
         if (s.revoked) continue;
@@ -1591,6 +2120,18 @@ void FileStore::flush() {
             body << "pa\t" << p.id << "\t" << pct_encode(p.attachment_blob_id) << "\t"
                  << pct_encode(p.attachment_mime) << "\n";
         }
+        if (p.audience != PostAudience::Friends) {
+            body << "pau\t" << p.id << "\t" << static_cast<int>(p.audience) << "\n";
+        }
+        for (const auto& ex : p.exceptions) {
+            body << "px\t" << p.id << "\t" << pct_encode(ex) << "\n";
+        }
+        for (const auto& fr : p.friend_allowlist) {
+            body << "pf\t" << p.id << "\t" << pct_encode(fr) << "\n";
+        }
+        for (const auto& slug : p.extra_groups) {
+            body << "pg\t" << p.id << "\t" << pct_encode(slug) << "\n";
+        }
     }
     body << "repln\t" << next_reply_id_ << "\n";
     for (const auto& r : replies_) {
@@ -1608,6 +2149,20 @@ void FileStore::flush() {
     for (const auto& [pid, votes] : proposal_votes_) {
         for (const auto& [voter, choice] : votes) {
             body << "pvote\t" << pid << "\t" << pct_encode(voter) << "\t" << static_cast<int>(choice) << "\n";
+        }
+    }
+    for (const auto& p : proposals_) {
+        if (p.ballot.kind == BallotKind::YesNo) continue;
+        body << "pbk\t" << p.id << "\t" << static_cast<int>(p.ballot.kind) << "\t"
+             << pct_encode(p.ballot.unit) << "\t" << fmt_stored(p.ballot.min_v) << "\t"
+             << fmt_stored(p.ballot.max_v) << "\t" << fmt_stored(p.ballot.step) << "\n";
+        for (std::size_t i = 0; i < p.ballot.options.size(); ++i) {
+            body << "pbo\t" << p.id << "\t" << i << "\t" << pct_encode(p.ballot.options[i]) << "\n";
+        }
+    }
+    for (const auto& [pid, vals] : ballot_values_) {
+        for (const auto& [voter, payload] : vals) {
+            body << "pbv\t" << pid << "\t" << pct_encode(voter) << "\t" << pct_encode(payload) << "\n";
         }
     }
     for (const auto& [slug, c] : communities_) {
@@ -1678,7 +2233,7 @@ void FileStore::flush() {
         }
     }
     for (const auto& [owner, list] : jukebox_history_) {
-        if (!by_username_.count(owner)) continue;
+        if (!by_username_.count(owner) && owner.rfind("jbs:", 0) != 0) continue;
         for (const auto& h : list) {
             body << "jh\t" << pct_encode(h.owner) << "\t" << pct_encode(h.video_id) << "\t"
                  << pct_encode(h.queued_by) << "\t" << h.played_at << "\n";
@@ -1688,12 +2243,38 @@ void FileStore::flush() {
         if (!by_username_.count(p.first) || !by_username_.count(p.second)) continue;
         body << "jsub\t" << pct_encode(p.first) << "\t" << pct_encode(p.second) << "\n";
     }
+    for (const auto& [name, on] : jukebox_autoplay_) {
+        if (!on || !by_username_.count(name)) continue;
+        body << "jauto\t" << pct_encode(name) << "\t1\n";
+    }
+    for (const auto& [name, target] : jukebox_relay_) {
+        if (target.empty() || !by_username_.count(name)) continue;
+        body << "jrelay\t" << pct_encode(name) << "\t" << pct_encode(target) << "\n";
+    }
+    for (const auto& [station, p] : jukebox_pos_) {
+        body << "jpos\t" << pct_encode(station) << "\t" << pct_encode(p.video_id) << "\t"
+             << p.offset_sec << "\t" << p.updated_at << "\n";
+    }
+    for (const auto& name : locked_) {
+        if (!by_username_.count(name)) continue;
+        body << "lk\t" << pct_encode(name) << "\n";
+    }
+    {
+        std::size_t start = audit_log_.size() > kAuditLogCap ? audit_log_.size() - kAuditLogCap : 0;
+        for (std::size_t i = start; i < audit_log_.size(); ++i) {
+            const auto& e = audit_log_[i];
+            body << "alog\t" << e.ts << "\t" << pct_encode(e.operator_name) << "\t"
+                 << pct_encode(e.action) << "\t" << pct_encode(e.target) << "\n";
+        }
+    }
     // Conversations/messages are never pruned when an account is deleted —
     // same "keep the row, relabel at render time" choice as mail_/posts_
     // above. The numeric sender/member id just stops resolving through
     // find_by_id; the site layer renders that as "[deleted account]".
     for (const auto& [id, conv] : conversations_) {
-        body << "gc\t" << conv.id << "\t" << (conv.is_group ? 1 : 0) << "\t" << conv.created_at << "\n";
+        body << "gc\t" << conv.id << "\t" << (conv.is_group ? 1 : 0) << "\t" << conv.created_at;
+        if (!conv.title.empty()) body << "\t" << pct_encode(conv.title);
+        body << "\n";
     }
     for (const auto& [id, conv] : conversations_) {
         for (const auto& m : conv.members) {
@@ -1704,12 +2285,21 @@ void FileStore::flush() {
     for (const auto& [id, msg] : messages_) {
         body << "gmsg\t" << msg.id << "\t" << msg.conversation_id << "\t" << msg.sender << "\t"
              << msg.sent_at << "\t" << msg.edited_at << "\t" << static_cast<int>(msg.deletion) << "\t"
-             << msg.deleted_at << "\t" << (msg.under_review ? 1 : 0) << "\t" << pct_encode(msg.text)
-             << "\n";
+             << msg.deleted_at << "\t" << (msg.under_review ? 1 : 0) << "\t" << pct_encode(msg.text);
+        if (!msg.attachment_blob_id.empty()) {
+            body << "\t" << pct_encode(msg.attachment_blob_id) << "\t" << pct_encode(msg.attachment_mime);
+        }
+        body << "\n";
     }
     for (const auto& [id, msg] : messages_) {
         for (const auto& h : msg.edit_history) {
             body << "gmh\t" << msg.id << "\t" << pct_encode(h) << "\n";
+        }
+    }
+    for (const auto& [user, keys] : mail_last_read_) {
+        if (!by_username_.count(user)) continue;
+        for (const auto& [key, ts] : keys) {
+            body << "mlr\t" << pct_encode(user) << "\t" << pct_encode(key) << "\t" << ts << "\n";
         }
     }
     const std::string data = body.str();
@@ -1825,6 +2415,51 @@ std::vector<Message> FileStore::messages_in(ConversationId conv_id) const {
     return out;
 }
 
+std::int64_t FileStore::last_group_ts(ConversationId conv_id) const {
+    std::int64_t ts = 0;
+    auto cit = conversations_.find(conv_id);
+    if (cit != conversations_.end()) ts = cit->second.created_at;
+    for (const auto& [id, msg] : messages_) {
+        if (msg.conversation_id == conv_id && msg.sent_at > ts) ts = msg.sent_at;
+    }
+    return ts;
+}
+
+std::string FileStore::last_group_preview(ConversationId conv_id) const {
+    const Message* last = nullptr;
+    for (const auto& [id, msg] : messages_) {
+        if (msg.conversation_id != conv_id) continue;
+        if (msg.deletion == DeletionState::DeletedForEveryone) continue;
+        if (!last || msg.sent_at >= last->sent_at) last = &msg;
+    }
+    if (!last) return "";
+    if (last->deletion == DeletionState::DeletedForEveryone) return "";
+    if (!last->text.empty()) return last->text;
+    if (!last->attachment_blob_id.empty()) return "(attachment)";
+    return "";
+}
+
+std::optional<Message> FileStore::find_group_attachment(AccountId account, const std::string& blob_id) const {
+    if (blob_id.empty()) return std::nullopt;
+    for (const auto& [id, msg] : messages_) {
+        if (msg.attachment_blob_id != blob_id) continue;
+        auto cit = conversations_.find(msg.conversation_id);
+        if (cit == conversations_.end()) continue;
+        for (const auto& m : cit->second.members) {
+            if (m.account == account) return msg;
+        }
+    }
+    return std::nullopt;
+}
+
+std::vector<Message> FileStore::all_group_messages_with_attachments() const {
+    std::vector<Message> out;
+    for (const auto& [id, msg] : messages_) {
+        if (!msg.attachment_blob_id.empty()) out.push_back(msg);
+    }
+    return out;
+}
+
 bool FileStore::add_jukebox_track(const std::string& owner, const std::string& video_id,
                                    const std::string& queued_by) {
     if (!by_username_.count(owner)) return false;
@@ -1873,6 +2508,37 @@ void FileStore::complete_jukebox_track(const std::string& owner, const std::stri
     }
 }
 
+
+void FileStore::skip_jukebox_track(const std::string& owner, const std::string& video_id) {
+    auto it = jukebox_.find(owner);
+    if (it == jukebox_.end() || video_id.empty()) return;
+    auto& list = it->second;
+    for (std::size_t i = 0; i < list.size(); ++i) {
+        if (list[i].video_id != video_id) continue;
+        JukeboxTrack t = list[i];
+        auto& hist = jukebox_history_[owner];
+        hist.push_back(JukeboxHistoryEntry{owner, t.video_id, t.queued_by, now()});
+        if (hist.size() > kJukeboxHistoryCap) {
+            hist.erase(hist.begin(), hist.begin() + static_cast<std::ptrdiff_t>(hist.size() - kJukeboxHistoryCap));
+        }
+        list.erase(list.begin() + static_cast<std::ptrdiff_t>(i));
+        if (t.queued_by == owner) list.push_back(t);
+        flush();
+        return;
+    }
+}
+
+void FileStore::record_jukebox_play(const std::string& owner, const std::string& video_id,
+                                    const std::string& queued_by) {
+    if (owner.empty() || !valid_youtube_id(video_id)) return;
+    auto& hist = jukebox_history_[owner];
+    hist.push_back(JukeboxHistoryEntry{owner, video_id, queued_by, now()});
+    if (hist.size() > kJukeboxHistoryCap) {
+        hist.erase(hist.begin(), hist.begin() + static_cast<std::ptrdiff_t>(hist.size() - kJukeboxHistoryCap));
+    }
+    flush();
+}
+
 std::vector<JukeboxHistoryEntry> FileStore::jukebox_history_of(const std::string& owner) const {
     auto it = jukebox_history_.find(owner);
     if (it == jukebox_history_.end()) return {};
@@ -1911,6 +2577,52 @@ std::size_t FileStore::jukebox_subscriber_count(const std::string& owner) const 
         if (p.second == owner) ++n;
     }
     return n;
+}
+
+bool FileStore::jukebox_autoplay(const std::string& username) const {
+    auto it = jukebox_autoplay_.find(username);
+    return it != jukebox_autoplay_.end() && it->second;
+}
+
+void FileStore::set_jukebox_autoplay(const std::string& username, bool on) {
+    if (on) jukebox_autoplay_[username] = true;
+    else jukebox_autoplay_.erase(username);
+    flush();
+}
+
+std::string FileStore::jukebox_relay_target(const std::string& username) const {
+    auto it = jukebox_relay_.find(username);
+    return it == jukebox_relay_.end() ? "" : it->second;
+}
+
+void FileStore::set_jukebox_relay_target(const std::string& username, const std::string& target) {
+    if (target.empty()) jukebox_relay_.erase(username);
+    else jukebox_relay_[username] = target;
+    flush();
+}
+
+std::string FileStore::jukebox_effective_owner(const std::string& username) const {
+    auto target = jukebox_relay_target(username);
+    if (target.empty() || target == username) return username;
+    if (!by_username_.count(target)) return username;
+    // One hop only: if the target relays right back (A->B->A), or has
+    // blocked the account relaying to it, fall back rather than chase the
+    // chain any further or serve a blocked party's queue.
+    if (jukebox_relay_target(target) == username) return username;
+    if (is_blocked(target, username)) return username;
+    return target;
+}
+
+std::optional<JukeboxPos> FileStore::jukebox_pos(const std::string& station) const {
+    auto it = jukebox_pos_.find(station);
+    if (it == jukebox_pos_.end()) return std::nullopt;
+    return it->second;
+}
+
+void FileStore::set_jukebox_pos(const std::string& station, const std::string& video_id,
+                                 std::int64_t offset_sec, std::int64_t updated_at) {
+    jukebox_pos_[station] = JukeboxPos{video_id, offset_sec, updated_at};
+    flush();
 }
 
 std::vector<Avatar> FileStore::all_avatars() const {

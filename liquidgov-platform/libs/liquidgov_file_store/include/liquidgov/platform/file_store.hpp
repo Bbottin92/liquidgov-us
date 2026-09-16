@@ -23,6 +23,25 @@
 //          attachment; bytes live in the blob dir, same store as avatars
 //   ph     <account_id> <phone_fp>    // blake2b of signup phone; not the number
 //   pq     <phone_fp> <until>         // 90-day quarantine after delete
+//   ml     <username> <email>   // deliverable signup email, lowercased -- unlike ph/
+//          Profile.email_fp (both one-way fingerprints), this is the reversible address
+//          password-reset mail actually goes to. One row per username, overwritten on
+//          re-set, never appended. Kept a true 1:1 index (one username per email): if an
+//          address is already claimed by a *different* username, set_email() silently
+//          no-ops rather than stealing the mapping -- that account's signup/settings
+//          change still succeeds, it just doesn't get recovery/Google-linking wired to
+//          that address until it uses a different one.
+//   pr     <token_hash> <username> <until_unix>   // one outstanding password-reset
+//          token. token_hash is sha256_hex of the raw 32-byte token mailed to the user
+//          (the raw token itself is never written to disk); until_unix is a 1-hour
+//          expiry. One row per username -- a new /forgot request overwrites any prior
+//          unused one rather than appending, and a successful /reset consumes (erases)
+//          it. An expired-but-never-used row is garbage-collected the next time
+//          anything touches it (consume_reset_token), not swept proactively.
+//   gid    <username> <google_sub>   // Google "sub" (subject) claim linked to this
+//          account, from a verified Google Identity Services ID token -- how a Google
+//          one-click login is matched back to an account (see username_by_google_sub).
+//          One row per username; a username has at most one linked Google identity.
 //   post   <id> <author> <ts> <text> <community_slug-or-empty>
 //   pn     <next_post_id>
 //   reply  <id> <post_id> <author> <ts> <text>
@@ -30,10 +49,14 @@
 //   sec    <post_id> <username>   // one line per (post, account) that has
 //          seconded it; toggling off just means the line stops being written
 //   prop   <id> <author> <ts> <title> <body>   // unofficial site-wide straw poll,
-//          see Proposal's comment -- not a CitizenId vote
+//          see Proposal's comment -- not a CitizenId vote. Shape is frozen at
+//          5 fields so existing files boot unchanged.
 //   propn  <next_proposal_id>
-//   pvote  <proposal_id> <voter> <choice 0-2>   // one line per (proposal, voter);
-//          re-voting overwrites the prior line for that pair on the next flush
+//   pvote  <proposal_id> <voter> <choice 0-2>   // Yes/No/Abstain only
+//   pbk    <proposal_id> <kind 1-4> <unit> <min> <max> <step>
+//          ballot kind other than YesNo; absence means YesNo. Never reuse pvote.
+//   pbo    <proposal_id> <index> <label>        // Choice/Scale labels
+//   pbv    <proposal_id> <voter> <payload>      // number/date/choice/scale value
 //   comm   <slug> <name> <owner> <about> <created_at> [<category 0-10> <subcategory>]
 //          -- trailing two fields optional; an older 6-token line means category
 //          General (10) and an empty subcategory
@@ -68,13 +91,18 @@
 //          metadata), same shape as an f (friend) pair but directed, not mutual
 //   gcn    <next_conversation_id>
 //   gmsn   <next_message_id>
-//   gc     <id> <is_group 0|1> <created_at>          // messenger.hpp Conversation, no roster
+//   gc     <id> <is_group 0|1> <created_at> [<title>]
+//          -- title is optional; an older 4-token line means empty title
 //   gcm    <conv_id> <account_id> <state 0=Active|1=Pending>  // one line per member, in
 //          roster order; the gc line for conv_id is always written before its gcm lines
 //   gmsg   <id> <conv_id> <sender> <sent_at> <edited_at> <deletion 0|1|2> <deleted_at>
-//          <under_review 0|1> <text>                 // messenger.hpp Message, no edit_history
+//          <under_review 0|1> <text> [<blob_id> <mime>]
+//          -- trailing two fields optional; an older 10-token line means no attachment
 //   gmh    <message_id> <text>                       // one prior version, oldest first; the
 //          gmsg line for message_id is always written before its gmh lines
+//   mlr    <username> <thread_key> <last_read_unix>
+//          -- thread_key is "d:<other>" for 1:1 mail or "g:<conv_id>" for a group.
+//          Absence means never opened. Used only for unread dots, not access control.
 //   ac     <account_id> <css>   // author CSS for /u/<username>/theme, already sanitized
 //          (see sanitize_author_css in http_server.cpp) before it ever reaches here
 //   cvf    <account_id> <frame_index> <blob_id>   // one canvas snapshot, in draw order;
@@ -83,6 +111,73 @@
 //          contiguous for whatever's currently stored.
 //   cvm    <account_id> <timelapse 0|1>   // profile background mode: 0 = last frame as a
 //          static image, 1 = loop through every frame. Absence = static (0).
+//   em     <account_id> <email_fp>   // leftover from an earlier, since-abandoned schema
+//          that fingerprinted email separately from prof (now folded into prof's own
+//          email_fp field) -- no longer written, but tolerated on load (silently
+//          ignored) so a store carrying old lines from that schema still boots instead
+//          of failing closed on a tag nothing here writes anymore.
+//   jauto  <username> <0|1>   // "play my Juketube when someone opens my profile" --
+//          absent means off (default). A separate tag rather than another pref field:
+//          the pref line already grew one ambiguous trailing-optional shape too many
+//          (see its own comment) -- a same-length extension there would have collided
+//          with the already-claimed 14-token legacy meaning.
+//   jrelay <username> <target>   // "play this Juketube instead" -- <username>'s own
+//          queue/now-playing is relayed from <target>'s instead of playing its own.
+//          Absent or empty target means no relay (play your own queue, the default).
+//          Resolved at most one hop at read time (see jukebox_effective_owner) --
+//          self-pointers, a missing target, and A->B->A cycles all fall back to the
+//          account's own queue rather than being stored invalid or chased further.
+//   jpos   <station> <video_id> <offset_sec> <updated_unix>   // the shared
+//          playhead's freeze point: where a station's current track was when
+//          its last listener left (or its most recent periodic save while
+//          still playing). station is "" for the site-wide station, "c:<slug>"
+//          for a community's, "u:<username>" for a personal jukebox. One row
+//          per station, always overwritten, never appended. Absent means "no
+//          freeze on record" -- a station with nobody in it doesn't keep
+//          advancing elapsed time the way it briefly did before this tag
+//          existed; playback for that track starts from 0 the next time
+//          anyone shows up, same as if it had just been queued.
+//   pau    <post_id> <0=Friends|1=Anybody|2=GroupsOnly>   // a post's audience,
+//          the /feed "Anybody"/"Friends"/"Groups" chips. Absent means Friends,
+//          matching every post written before this field existed. Friends and
+//          GroupsOnly both need Post.community/pg to actually matter; a
+//          "Friends + Groups" post is audience=Friends (0) WITH one or more
+//          slugs set -- that combination, not a 4th value, is what puts a
+//          community post in the author's own personal feed too. A separate
+//          tag, not a wider "post" record, for the same reason "rp"/"pa"
+//          already are -- existing 6-token "post" lines load unchanged.
+//   px     <post_id> <username>   // Anybody hide-list: this username must not
+//          see the post (feed or profile), even though Anybody would
+//          otherwise show it to them. Meaningless when audience isn't
+//          Anybody. One line per excepted username; absent entirely means no
+//          exceptions (truly public-on-profile).
+//   pf     <post_id> <username>   // Friends show-list: only these usernames
+//          (plus the author) see the post in the personal/friends feed.
+//          Meaningless when audience isn't Friends. Absent entirely means all
+//          current friends (today's only behavior, unchanged for every post
+//          before this field existed).
+//   pg     <post_id> <slug>   // an ADDITIONAL community this post also
+//          appears in, beyond Post.community itself (which still holds the
+//          first/primary slug for back-compat with every reader that only
+//          ever looked at that one field). One line per extra slug.
+//
+// Legacy note: an earlier same-day draft of per-post audience used a
+// two-value "pv <post_id> <old Visibility 0|2>" tag (0=Public, 2=Friends)
+// before Groups-exceptions/allowlists existed. "pv" is no longer written --
+// tolerated on load and converted into the pau/audience model above
+// (Public->Anybody, anything else->Friends) -- so the one post that used it
+// before this replaced it still boots and renders correctly.
+//   lk     <username>   // operator-panel lock: presence means this account
+//          cannot log in (existing sessions revoked the moment it's set).
+//          Absent means not locked, the default for every account. Login's
+//          own error stays the generic "Invalid username or password" --
+//          this tag is never surfaced to the person it's applied to.
+//   alog   <ts> <operator> <action> <target>   // one operator-panel
+//          action, newest last (same append order as everything else here);
+//          trimmed to kAuditLogCap on write. action is one of lock/unlock/
+//          logout_all/delete_account/delete_post/delete_community; target
+//          is a bare username, post id, or slug -- never a phone/email
+//          fingerprint or anything else that counts as PII.
 //
 // password_hash is argon2id from hash_password(). Never plaintext.
 // Phone number is not stored (signup binding only). Sessions are secrets;
@@ -123,12 +218,59 @@ struct MailMessage {
     std::optional<std::string> attachment_mime;
 };
 
+// A minimum-trust ladder, most to least open: anyone at all, then anyone
+// signed in, then friends only, then the owner alone. Each level implies
+// every level after it can also see it -- there's no way to express "show
+// strangers but hide friends" here. Used for whole-account defaults
+// (AccountPrefs' profile_visibility/posts_visibility) and the
+// Visibility-tiered /u/<username> gating -- NOT for a post's own audience,
+// which needs per-post exceptions/allowlists a flat ladder can't express
+// (see PostAudience below).
+enum class Visibility : int {
+    Public = 0,
+    Members = 1,
+    Friends = 2,
+    OnlyMe = 3,
+};
+
+// A post's own audience -- the /feed "Anybody"/"Friends"/"Groups" chips.
+// Unlike Visibility, this isn't a ladder: Anybody and GroupsOnly are two
+// distinct, non-nested reach shapes (public-minus-exceptions vs.
+// community-membership-only), and Friends carries its own allow-list
+// rather than a single yes/no. See the "pau" LGP1 tag's comment for the
+// exact semantics of each value, including how "Friends + Groups" is
+// represented (Friends here, plus Post::community/extra_groups set).
+enum class PostAudience : int {
+    Friends = 0,
+    Anybody = 1,
+    GroupsOnly = 2,
+};
+
 struct Post {
     std::uint64_t id = 0;
     std::string author;
     std::int64_t ts = 0;
     std::string text;
-    std::string community; // empty = personal feed
+    std::string community; // empty = no community; else the first/primary slug
+    // Which /feed chip chose this post's reach -- see PostAudience's own
+    // comment. Friends is the default and the only value every post had
+    // before this field existed.
+    PostAudience audience = PostAudience::Friends;
+    // Anybody hide-list: these usernames don't see the post even though
+    // Anybody would otherwise show it to them. Only meaningful when
+    // audience == Anybody.
+    std::vector<std::string> exceptions;
+    // Friends show-list: only these usernames (plus the author) see the post
+    // in the personal/friends feed. Empty means every current friend --
+    // today's only behavior, and still the default for a brand new post.
+    // Only meaningful when audience == Friends.
+    std::vector<std::string> friend_allowlist;
+    // Extra communities this post also appears in, beyond `community`
+    // itself (which stays the first/primary slug for every reader that only
+    // ever looked at that one field). "Friends + Groups" together is
+    // audience == Friends with community/extra_groups set -- there is no
+    // separate combined value.
+    std::vector<std::string> extra_groups;
     // A repost is its own Post row (its own id/author/ts, in the reposting
     // user's own feed) that additionally names the ORIGINAL author/id --
     // not the post it was reposted from, if that itself was a repost, so
@@ -186,6 +328,23 @@ struct Community {
     std::string subcategory;
 };
 
+enum class BallotKind : int {
+    YesNo = 0,   // existing For / Against / Abstain
+    Number = 1,  // pick a value (deadline in days, a budget, a cap)
+    Date = 2,    // pick a calendar date
+    Choice = 3,  // pick one of the author's labels
+    Scale = 4,   // 0–100 slider
+};
+
+struct BallotSpec {
+    BallotKind kind = BallotKind::YesNo;
+    std::string unit;   // Number: "days", "$" — empty is fine
+    double min_v = 0;   // Number: both 0 means unbounded (still clamped)
+    double max_v = 0;
+    double step = 1;
+    std::vector<std::string> options; // Choice: 2–12 labels; Scale: optional left/right
+};
+
 // A site-wide, unofficial straw poll -- explicitly not a binding vote (the
 // genesis-phase copy is clear real governmental authority is a later,
 // separate landslide). Any member can open one and any member can cast one
@@ -196,6 +355,7 @@ struct Proposal {
     std::int64_t ts = 0;
     std::string title;
     std::string body;
+    BallotSpec ballot;
 };
 
 enum class ProposalVote : int {
@@ -210,6 +370,18 @@ struct ProposalTally {
     int abstain = 0;
 };
 
+// For Number / Date / Scale / Choice. YesNo keeps using ProposalTally.
+struct BallotTally {
+    int n = 0;
+    double median = 0;
+    double lo = 0;
+    double hi = 0;
+    std::string median_date;
+    std::string lo_date;
+    std::string hi_date;
+    std::vector<int> option_counts;
+};
+
 // Who besides the owner may add tracks to an account's jukebox. The owner can
 // always curate their own queue (subject only to kJukeboxQueueCap) regardless
 // of this setting.
@@ -217,17 +389,6 @@ enum class JukeboxPolicy : int {
     OwnerOnly = 0,
     Friends = 1,
     Anyone = 2,
-};
-
-// A minimum-trust ladder, most to least open: anyone at all, then anyone
-// signed in, then friends only, then the owner alone. Each level implies
-// every level after it can also see it -- there's no way to express "show
-// strangers but hide friends" here (see Visibility below for that).
-enum class Visibility : int {
-    Public = 0,
-    Members = 1,
-    Friends = 2,
-    OnlyMe = 3,
 };
 
 // Which slice of activity /feed shows -- see feed_view's comment for what
@@ -329,6 +490,31 @@ struct JukeboxHistoryEntry {
 inline constexpr std::size_t kJukeboxQueueCap = 50;
 inline constexpr std::size_t kJukeboxHistoryCap = 30;
 
+// A station's saved playhead -- see the jpos tag comment above. offset_sec
+// is seconds into video_id; updated_at is when this was last written, kept
+// mostly for debugging/future use, not currently read for any decision.
+struct JukeboxPos {
+    std::string video_id;
+    std::int64_t offset_sec = 0;
+    std::int64_t updated_at = 0;
+};
+
+// One outstanding password-reset token -- see the "pr" LGP1 tag comment.
+struct ResetToken {
+    std::string token_hash; // sha256_hex of the raw token; the raw token is never stored
+    std::int64_t until_unix = 0;
+};
+
+// One operator-panel action -- see the "alog" LGP1 tag's own comment for
+// what action/target hold.
+struct AuditLogEntry {
+    std::int64_t ts = 0;
+    std::string operator_name;
+    std::string action;
+    std::string target;
+};
+inline constexpr std::size_t kAuditLogCap = 500;
+
 bool valid_username(const std::string& username);
 std::string fingerprint_phone(const std::string& e164);
 
@@ -350,6 +536,7 @@ public:
 
     bool username_exists(const std::string& username) const override;
     std::size_t account_count() const;
+    std::size_t post_count() const;
     std::optional<PlatformAccount> find_by_username(const std::string& username) const override;
     AccountId create(const PlatformAccount& account) override;
     void save_session(const Session& session) override;
@@ -357,6 +544,10 @@ public:
     void revoke_session(const SessionId& id) override;
 
     std::optional<PlatformAccount> find_by_id(AccountId id) const;
+    // Operator panel only -- never renders password_hash to HTML at the
+    // call site, but the struct still carries it, so callers must not
+    // either. Newest account first, matching every other list on the site.
+    std::vector<PlatformAccount> all_accounts() const;
     std::optional<Session> get_session(const SessionId& id) const;
     void touch_session(const SessionId& id);
 
@@ -391,6 +582,26 @@ public:
 
     bool set_password_hash(AccountId id, const std::string& password_hash);
 
+    // Password recovery / Google sign-in -- see the ml/pr/gid tag comments
+    // in the LGP1 registry above. email passed to set_email/username_by_email
+    // is stored/compared lowercased by the caller (http_server.cpp), not
+    // re-normalized here -- FileStore just keys on whatever string it's given.
+    void set_email(const std::string& username, const std::string& email);
+    std::optional<std::string> email_of(const std::string& username) const;
+    std::optional<std::string> username_by_email(const std::string& email) const;
+
+    void set_reset_token(const std::string& username, const std::string& token_hash,
+                          std::int64_t until_unix);
+    // Looks up token_hash across all outstanding reset tokens. A valid
+    // (unexpired) match is consumed -- erased before returning, so a
+    // token works exactly once -- and its owning username is returned.
+    // A match that's found but already past until_unix is also erased
+    // (garbage-collected on next touch) and treated as not found.
+    std::optional<std::string> consume_reset_token(const std::string& token_hash);
+
+    void set_google_id(const std::string& username, const std::string& google_sub);
+    std::optional<std::string> username_by_google_sub(const std::string& google_sub) const;
+
     bool are_friends(const std::string& a, const std::string& b) const;
     std::vector<std::string> friends_of(const std::string& user) const;
     void add_friend_request(const std::string& from, const std::string& to);
@@ -404,6 +615,15 @@ public:
                   const std::optional<std::string>& attachment_mime = std::nullopt);
     std::vector<MailMessage> mail_with(const std::string& a, const std::string& b) const;
     std::vector<MailMessage> mail_sent_by(const std::string& from) const;
+
+    // People this account has exchanged 1:1 mail with (either direction).
+    std::vector<std::string> mail_peers(const std::string& user) const;
+    std::int64_t last_mail_ts(const std::string& a, const std::string& b) const;
+    std::string last_mail_preview(const std::string& a, const std::string& b) const;
+
+    // Unread dots. thread_key is "d:<username>" or "g:<conv_id>".
+    void mark_thread_read(const std::string& user, const std::string& thread_key);
+    std::int64_t thread_last_read(const std::string& user, const std::string& thread_key) const;
 
     // Authorization lookup for attachment download: returns the message
     // only when `user` is sender or recipient of it. Caller still applies
@@ -433,18 +653,39 @@ public:
 
     std::uint64_t add_post(const std::string& author, const std::string& text, const std::string& community,
                            const std::string& repost_of_author = "", std::uint64_t repost_of_id = 0,
-                           const std::string& attachment_blob_id = "", const std::string& attachment_mime = "");
+                           const std::string& attachment_blob_id = "", const std::string& attachment_mime = "",
+                           PostAudience audience = PostAudience::Friends,
+                           std::vector<std::string> exceptions = {},
+                           std::vector<std::string> friend_allowlist = {},
+                           std::vector<std::string> extra_groups = {});
+    // Returns false (no-op) if the post doesn't exist or actor isn't its
+    // author -- the caller (http_server, via its own post_by_id lookup)
+    // decides which of those two cases it was, for a 404 vs. 403 response;
+    // this is just the defense-in-depth check at the store layer itself.
+    // Drops the post's own replies and second-lines too; leaves blob bytes
+    // alone (content-addressed, may be shared) and leaves any existing
+    // reposts of this id untouched -- a repost already carries its own copy
+    // of the text (see repost_of_author's comment), so it keeps rendering
+    // fine with the original simply gone from feeds.
+    bool delete_post(std::uint64_t post_id, const std::string& actor);
     std::vector<Post> feed_for(const std::string& user, std::size_t limit) const;
     // Friends is exactly feed_for. All and Committees additionally pull in
-    // posts from communities `user` actually belongs to (feed_for never
-    // includes community posts at all) -- "committees," not every
-    // community on the site, same personal-feed posture feed_for already
-    // has. Drawings is whichever of those carries a media attachment;
-    // there's no separate "hand-drawn" flag anywhere in Post, so this is
-    // the closest honest reading of "drawings" the data model supports.
+    // posts from communities `user` actually belongs to -- "committees,"
+    // not every community on the site. feed_for itself now also includes a
+    // "Friends + Groups" combo post (audience==Friends with a community
+    // set), same as any other Friends post; a GroupsOnly post never
+    // appears in either feed_for or feed_view's "personal" half. Drawings
+    // is whichever of those carries a media attachment; there's no separate
+    // "hand-drawn" flag anywhere in Post, so this is the closest honest
+    // reading of "drawings" the data model supports.
     std::vector<Post> feed_view(const std::string& user, std::size_t limit, FeedFilter filter) const;
     std::vector<Post> posts_in(const std::string& community, std::size_t limit) const;
     std::vector<Post> posts_by(const std::string& author) const;
+    // Operator panel only -- every post, unscoped by viewer/friendship/
+    // community membership (every other post accessor here is deliberately
+    // scoped; this one isn't, on purpose, since it's gated by is_operator()
+    // at the HTTP layer, not by who could see the post normally).
+    std::vector<Post> recent_posts(std::size_t limit) const;
     std::optional<Post> post_by_id(std::uint64_t id) const;
     // For BlobStore::adopt() at process startup -- see main()'s comment.
     std::vector<Post> all_posts_with_attachments() const;
@@ -460,7 +701,8 @@ public:
     bool has_seconded(std::uint64_t post_id, const std::string& user) const;
     int second_count(std::uint64_t post_id) const;
 
-    std::uint64_t add_proposal(const std::string& author, const std::string& title, const std::string& body);
+    std::uint64_t add_proposal(const std::string& author, const std::string& title, const std::string& body,
+                               BallotSpec spec = {});
     std::vector<Proposal> all_proposals() const; // oldest first, same as posts_by
     std::optional<Proposal> proposal_by_id(std::uint64_t id) const;
     // Casting again overwrites the voter's own prior choice on this
@@ -468,6 +710,11 @@ public:
     void cast_proposal_vote(std::uint64_t proposal_id, const std::string& voter, ProposalVote choice);
     std::optional<ProposalVote> proposal_vote_of(std::uint64_t proposal_id, const std::string& voter) const;
     ProposalTally tally_of(std::uint64_t proposal_id) const;
+    // Number/Date/Choice/Scale. Payload meaning depends on kind (decimal,
+    // YYYY-MM-DD, option index, 0-100). Invalid payload is a no-op.
+    void cast_ballot_value(std::uint64_t proposal_id, const std::string& voter, const std::string& payload);
+    std::optional<std::string> ballot_value_of(std::uint64_t proposal_id, const std::string& voter) const;
+    BallotTally value_tally_of(std::uint64_t proposal_id) const;
 
     bool create_community(const Community& c);
     std::optional<Community> community(const std::string& slug) const;
@@ -481,6 +728,12 @@ public:
     bool join_community(const std::string& slug, const std::string& username);
     bool invite_community(const std::string& slug, const std::string& actor, const std::string& target);
     void leave_community(const std::string& slug, const std::string& username);
+    // Deletes the community and its memberships. Does NOT touch posts made
+    // into it -- they keep their community slug (now a dead link, /c/<slug>
+    // simply 404s) rather than being cascade-deleted, so closing a room
+    // never silently erases what people said in it. `actor` must be the
+    // community's own owner; the operator panel's delete route satisfies
+    // this by passing the real owner through, not by bypassing the check.
     bool delete_community(const std::string& slug, const std::string& actor);
     std::vector<std::string> members_of(const std::string& slug) const;
     std::vector<Community> communities_of(const std::string& username) const;
@@ -504,6 +757,17 @@ public:
     bool phone_quarantined(const std::string& fp) const;
     bool delete_account(AccountId id);
 
+    // Operator panel: account lock (see the "lk" tag's own comment).
+    bool is_locked(const std::string& username) const override;
+    // Locking revokes every existing session for the account immediately
+    // (same reasoning as a password change); unlocking does not restore
+    // them -- signing back in issues a fresh one, same as any other login.
+    void set_locked(const std::string& username, bool locked);
+    void add_audit_log(const std::string& operator_name, const std::string& action,
+                       const std::string& target);
+    // Newest first, capped at `limit` -- /admin/log shows the tail of this.
+    std::vector<AuditLogEntry> recent_audit_log(std::size_t limit) const;
+
     std::optional<Avatar> get(AccountId owner) const override;
     void set(const Avatar& avatar) override;
     void erase(AccountId owner) override;
@@ -524,6 +788,10 @@ public:
     // oldest first. Not part of ConversationStore — messenger.hpp never
     // needs "just this conversation's messages" itself.
     std::vector<Message> messages_in(ConversationId conv_id) const;
+    std::int64_t last_group_ts(ConversationId conv_id) const;
+    std::string last_group_preview(ConversationId conv_id) const;
+    std::optional<Message> find_group_attachment(AccountId account, const std::string& blob_id) const;
+    std::vector<Message> all_group_messages_with_attachments() const;
 
     // Owner must be an existing account; video_id must already be a validated
     // id (see extract_youtube_id). queued_by is who's requesting it -- pass
@@ -544,6 +812,8 @@ public:
     // queue -- one shot, then gone; an owner-curated track stays queued,
     // unaffected. No-op if the track isn't currently queued.
     void complete_jukebox_track(const std::string& owner, const std::string& video_id);
+    void skip_jukebox_track(const std::string& owner, const std::string& video_id);
+    void record_jukebox_play(const std::string& owner, const std::string& video_id, const std::string& queued_by);
     std::vector<JukeboxHistoryEntry> jukebox_history_of(const std::string& owner) const;
 
     // A personal jukebox as a channel in the floating widget's station list
@@ -560,6 +830,26 @@ public:
     std::vector<std::string> jukebox_subscriptions_of(const std::string& subscriber) const;
     std::size_t jukebox_subscriber_count(const std::string& owner) const;
 
+    // "Play my Juketube when someone opens my profile" -- off by default.
+    bool jukebox_autoplay(const std::string& username) const;
+    void set_jukebox_autoplay(const std::string& username, bool on);
+    // "Play this Juketube instead" -- empty means no relay (own queue).
+    std::string jukebox_relay_target(const std::string& username) const;
+    void set_jukebox_relay_target(const std::string& username, const std::string& target);
+    // Resolves username's relay at most one hop: a missing/self/blocked-back
+    // target, or a target that itself relays straight back to username
+    // (A->B->A), all fall back to username's own queue rather than being
+    // chased further or left dangling. Callers that want "whose queue is
+    // actually playing here" call this instead of using username directly.
+    std::string jukebox_effective_owner(const std::string& username) const;
+
+    // The shared playhead freeze point for a station -- see the jpos tag
+    // comment. std::nullopt means no freeze on record (station never
+    // played, or has never had its last listener leave since this existed).
+    std::optional<JukeboxPos> jukebox_pos(const std::string& station) const;
+    void set_jukebox_pos(const std::string& station, const std::string& video_id,
+                          std::int64_t offset_sec, std::int64_t updated_at);
+
     const std::string& path() const { return path_; }
 
 private:
@@ -567,6 +857,10 @@ private:
     void flush();
     void drop_requests_between(const std::string& a, const std::string& b);
     void strip_inner_both(const std::string& a, const std::string& b);
+    // Shared by feed_for/feed_view: whether a confirmed, non-blocked friend
+    // gets to see this Friends/Anybody post at all. See its own comment in
+    // file_store.cpp.
+    bool friend_sees_post(const Post& p, const std::string& viewer) const;
 
     std::string path_;
     AccountId next_id_ = 1;
@@ -574,6 +868,8 @@ private:
     std::uint64_t next_note_id_ = 1;
     std::map<std::string, AccountId> by_username_;
     std::map<AccountId, PlatformAccount> accounts_;
+    std::set<std::string> locked_;
+    std::vector<AuditLogEntry> audit_log_;
     std::map<SessionId, Session> sessions_;
     std::map<AccountId, std::string> blurbs_;
     std::map<std::string, Profile> profiles_;
@@ -582,6 +878,9 @@ private:
     std::map<AccountId, bool> canvas_timelapse_;
     std::map<AccountId, std::string> phone_fp_;
     std::map<std::string, std::int64_t> quarantine_;
+    std::map<std::string, std::string> emails_; // username -> deliverable email (see ml tag)
+    std::map<std::string, ResetToken> reset_tokens_; // username -> outstanding token (see pr tag)
+    std::map<std::string, std::string> google_ids_; // username -> Google sub (see gid tag)
     std::set<std::pair<std::string, std::string>> friends_;
     std::vector<std::pair<std::string, std::string>> requests_;
     std::vector<MailMessage> mail_;
@@ -596,6 +895,7 @@ private:
     std::uint64_t next_proposal_id_ = 1;
     std::vector<Proposal> proposals_;
     std::map<std::uint64_t, std::map<std::string, ProposalVote>> proposal_votes_;
+    std::map<std::uint64_t, std::map<std::string, std::string>> ballot_values_;
     std::map<std::string, Community> communities_;
     std::map<std::string, std::set<std::string>> members_;
     std::vector<Notice> notices_;
@@ -603,10 +903,14 @@ private:
     std::map<std::string, std::vector<JukeboxTrack>> jukebox_;
     std::map<std::string, std::vector<JukeboxHistoryEntry>> jukebox_history_;
     std::set<std::pair<std::string, std::string>> jukebox_subs_; // (subscriber, owner)
+    std::map<std::string, bool> jukebox_autoplay_;
+    std::map<std::string, std::string> jukebox_relay_;
+    std::map<std::string, JukeboxPos> jukebox_pos_; // keyed by station id
     ConversationId next_conv_id_ = 1;
     MessageId next_message_id_ = 1;
     std::map<ConversationId, Conversation> conversations_;
     std::map<MessageId, Message> messages_;
+    std::map<std::string, std::map<std::string, std::int64_t>> mail_last_read_;
 };
 
 } // namespace liquidgov::platform

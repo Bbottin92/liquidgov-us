@@ -18,6 +18,7 @@
 #include <atomic>
 #include <cctype>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -35,6 +36,7 @@
 #include <thread>
 #include <unordered_map>
 #include <vector>
+#include "lg_log.hpp"
 using namespace liquidgov::platform;
 namespace {
 constexpr int kPort = 8080;
@@ -77,17 +79,44 @@ struct CommunityTrack {
     std::string video_id;
     std::string queued_by;
 };
+// A shared freeze, not a radio that keeps running in an empty room: while
+// at least one listener is connected there's one playhead, ticking off
+// resumed_at; the moment the last one disconnects it's frozen at whatever
+// elapsed had reached (frozen_offset), and stays there -- no wall-clock
+// addition -- until someone shows up again. See community_elapsed_locked,
+// the one formula every reader shares so they can't drift apart from each
+// other. Durable copy lives in FileStore under the jpos tag (keyed the
+// same as station: "" for site-wide, "c:<slug>" for a community, "u:
+// <username>" for a personal jukebox), written on last-listener-leave and
+// roughly every 15s while playing, so a process restart resumes from
+// there too instead of jumping back to 0:00.
 struct CommunityNowPlaying {
     std::string video_id;
     std::string queued_by;
-    std::int64_t started_at = 0;
+    std::int64_t frozen_offset = 0; // seconds elapsed before the current listening session (all of it, if nobody's connected)
+    std::int64_t resumed_at = 0;    // wall-clock unix when listener_count last went 0->1; meaningless while listener_count==0
     bool active = false;
 };
+struct YtCacheEntry { std::string body; std::int64_t exp = 0; };
+std::mutex g_yt_mu;
+std::map<std::string, YtCacheEntry> g_yt_cache;
 std::mutex g_community_mu;
 std::map<std::string, CommunityNowPlaying> g_community_now_by_station;
 std::map<std::string, std::deque<CommunityTrack>> g_community_upcoming_by_station;
+std::map<std::string, int> g_community_listeners_by_station;
+std::map<std::string, std::int64_t> g_community_last_flush_by_station;
 
 // Caller must hold g_community_mu.
+std::int64_t community_elapsed_locked(const std::string& station, std::int64_t now) {
+    const auto& np = g_community_now_by_station[station];
+    const auto count = g_community_listeners_by_station[station];
+    return np.frozen_offset + (count > 0 ? std::max<std::int64_t>(0, now - np.resumed_at) : 0);
+}
+
+// Caller must hold g_community_mu. A fresh track always starts at 0 --
+// jpos for it gets written by the caller right after (see
+// run_community_session), not here, since this file doesn't have g_store
+// declared yet at this point in the translation unit.
 void community_advance_locked(const std::string& station, std::int64_t now) {
     auto& upcoming = g_community_upcoming_by_station[station];
     if (upcoming.empty()) {
@@ -96,7 +125,7 @@ void community_advance_locked(const std::string& station, std::int64_t now) {
     }
     auto next = upcoming.front();
     upcoming.pop_front();
-    g_community_now_by_station[station] = CommunityNowPlaying{next.video_id, next.queued_by, now, true};
+    g_community_now_by_station[station] = CommunityNowPlaying{next.video_id, next.queued_by, 0, now, true};
 }
 
 class NeverBreached : public BreachChecker {
@@ -160,6 +189,16 @@ const char* youtube_api_key_from_env() {
     const char* p = std::getenv("YOUTUBE_API_KEY");
     return p && p[0] ? p : "";
 }
+// Google Identity Services client ID (a public identifier, not a secret
+// -- the Client Secret this app never touches at all, matching "Not a
+// second auth stack" / "Don't put Client Secret in HTML"). Empty means
+// "not configured yet"; the Google sign-in button just doesn't render
+// rather than shipping a broken one (see google_signin_button_html()).
+const char* google_client_id_from_env() {
+    const char* p = std::getenv("LIQUIDGOV_GOOGLE_CLIENT_ID");
+    return p && p[0] ? p : "";
+}
+bool is_operator(const std::string& username); // defined below (needs trim_ws), used here by nav()
 
 FileStore g_store{store_path_from_env()};
 FilesystemBlobStore g_blobs{blob_path_from_env()};
@@ -177,6 +216,173 @@ bool SiteSocialGraph::are_friends(AccountId a, AccountId b) const {
     return g_store.are_friends(ua->username, ub->username);
 }
 
+std::string json_escape(const std::string& s) {
+    std::string o;
+    o.reserve(s.size() + 8);
+    for (unsigned char c : s) {
+        switch (c) {
+            case '"': o += "\\\""; break;
+            case '\\': o += "\\\\"; break;
+            case '\n': o += "\\n"; break;
+            case '\r': o += "\\r"; break;
+            case '\t': o += "\\t"; break;
+            default:
+                if (c < 0x20) {
+                    char buf[8];
+                    std::snprintf(buf, sizeof buf, "\\u%04x", c);
+                    o += buf;
+                } else {
+                    o += static_cast<char>(c);
+                }
+        }
+    }
+    return o;
+}
+
+// Pulls one top-level "key":"value" string field out of a small JSON blob
+// -- not a real parser, just enough to read YouTube's oEmbed response
+// (see GET /jukebox/oembed) without pulling in a JSON library for one
+// field. Handles the few escapes oEmbed titles actually contain
+// (backslash, quote, \n) and skips \uXXXX rather than decoding it, which
+// is rare enough in a video title that the fallback of leaving nothing
+// there is an acceptable, honest gap.
+std::string oembed_json_string_field(const std::string& json, const std::string& key) {
+    auto keypos = json.find("\"" + key + "\"");
+    if (keypos == std::string::npos) return "";
+    auto colon = json.find(':', keypos);
+    if (colon == std::string::npos) return "";
+    auto q1 = json.find('"', colon);
+    if (q1 == std::string::npos) return "";
+    std::string out;
+    for (std::size_t i = q1 + 1; i < json.size(); ++i) {
+        char c = json[i];
+        if (c == '"') break;
+        if (c == '\\' && i + 1 < json.size()) {
+            char nc = json[++i];
+            if (nc == 'n') out += ' ';
+            else if (nc == 'u' && i + 4 < json.size()) i += 4;
+            else out += nc;
+        } else {
+            out += c;
+        }
+    }
+    return out;
+}
+
+// Safely wraps s as a single POSIX shell argument by replacing every
+// embedded ' with '\'' (close quote, escaped literal quote, reopen
+// quote) -- safe against any input regardless of what characters it
+// contains. Needed anywhere user-controlled content (a submitted email
+// address, in particular -- looks_like_email() only checks shape, not
+// charset, so a crafted address containing a shell metacharacter is
+// otherwise a real command-injection risk in a popen() call) lands in a
+// shell command this file builds. The existing curl call sites that
+// url_encode their input first don't need this separately -- url_encode's
+// own output charset is already shell-safe -- this is for content (like
+// a JSON POST body) that isn't URL-encoded.
+std::string shell_single_quote(const std::string& s) {
+    std::string out = "'";
+    for (char c : s) {
+        if (c == '\'') out += "'\\''";
+        else out += c;
+    }
+    out += "'";
+    return out;
+}
+
+// One shared "GET this HTTPS URL via the system curl binary" helper --
+// see /jukebox/search's own comment for why curl-via-popen rather than a
+// linked TLS/HTTP stack (this binary doesn't link libcurl, and curl is
+// already on the box). Factored out of what used to be two near-
+// identical inline popen() blocks; a third call site (Google tokeninfo
+// verification) is why it's a real function now instead of a third
+// copy. Caller must url_encode anything untrusted before it lands in
+// url -- this does not escape anything itself.
+std::string curl_get(const std::string& url, int timeout_sec) {
+    std::string cmd = "curl -sS --max-time " + std::to_string(timeout_sec) + " '" + url + "'";
+    std::string resp;
+    if (FILE* p = popen(cmd.c_str(), "r")) {
+        char buf[4096];
+        size_t n;
+        while ((n = fread(buf, 1, sizeof(buf), p)) > 0) resp.append(buf, n);
+        pclose(p);
+    }
+    return resp;
+}
+
+// Best-effort password-reset delivery, tried in this order:
+//   1. RESEND_API_KEY set -> Resend's HTTPS API (POST, JSON, via curl --
+//      the one call site in this file that needs curl to POST, not GET).
+//   2. LIQUIDGOV_SMTP_URL set -> a raw SMTP send via curl's own smtp://
+//      support, message piped over the child's stdin (popen in "w" mode)
+//      rather than ever appearing in the command line. UNVERIFIED beyond
+//      code review -- there's no SMTP server or real credentials
+//      anywhere in this dev environment to test it against. Test path 3
+//      below first; only trust this once it's been tried against a real
+//      mailbox.
+//   3. Neither set -> log the reset URL to stderr (captured by journald
+//      under systemd: `journalctl -u liquidgov`) instead of mailing
+//      anything. This is the actually-testable path and is what "so
+//      Brandon can test" in the spec refers to.
+// Never throws, never returns anything the caller could use to change
+// the HTTP response -- POST /forgot shows the same page regardless of
+// whether this silently failed, on purpose (see that route's comment on
+// not becoming an account-enumeration oracle via mail-delivery status).
+void send_password_reset_email(const std::string& to_email, const std::string& reset_url) {
+    const char* resend_key = std::getenv("RESEND_API_KEY");
+    const char* smtp_url = std::getenv("LIQUIDGOV_SMTP_URL");
+    const std::string subject = "Reset your LiquidGov.US password";
+    const std::string body =
+        "Someone (hopefully you) asked to reset the password on your LiquidGov.US account.\n\n"
+        "This link works once, for the next hour:\n" + reset_url + "\n\n"
+        "If you didn't ask for this, you can ignore it -- your password hasn't changed.";
+
+    if (resend_key && resend_key[0]) {
+        std::string json = "{\"from\":\"LiquidGov.US <noreply@liquidgov.us>\",\"to\":[\"" +
+            json_escape(to_email) + "\"],\"subject\":\"" + json_escape(subject) +
+            "\",\"text\":\"" + json_escape(body) + "\"}";
+        std::string cmd = "curl -sS --max-time 8 -X POST https://api.resend.com/emails "
+            "-H " + shell_single_quote("Authorization: Bearer " + std::string(resend_key)) + " "
+            "-H 'Content-Type: application/json' "
+            "-d " + shell_single_quote(json) + " -o /dev/null -w '%{http_code}'";
+        std::string code;
+        if (FILE* p = popen(cmd.c_str(), "r")) {
+            char buf[16]; size_t n;
+            while ((n = fread(buf, 1, sizeof(buf), p)) > 0) code.append(buf, n);
+            pclose(p);
+        }
+        std::cerr << "[password-reset] resend send to " << (code == "200" || code == "202" ? "ok" : "FAILED (http " + code + ")")
+                   << std::endl;
+        return;
+    }
+
+    if (smtp_url && smtp_url[0]) {
+        const std::string from = "noreply@liquidgov.us";
+        std::string message = "From: LiquidGov.US <" + from + ">\r\n"
+            "To: <" + to_email + ">\r\n"
+            "Subject: " + subject + "\r\n"
+            "Content-Type: text/plain; charset=utf-8\r\n\r\n" + body + "\r\n";
+        std::string cmd = "curl -sS --max-time 10 " + shell_single_quote(smtp_url) +
+            " --mail-from " + shell_single_quote(from) +
+            " --mail-rcpt " + shell_single_quote(to_email) +
+            " --upload-file - -o /dev/null";
+        int status = -1;
+        if (FILE* p = popen(cmd.c_str(), "w")) {
+            fwrite(message.data(), 1, message.size(), p);
+            status = pclose(p);
+        }
+        std::cerr << "[password-reset] smtp send " << (status == 0 ? "ok" : "FAILED (status " + std::to_string(status) + ")")
+                   << std::endl;
+        return;
+    }
+
+    // No mailer configured: the URL goes to stderr only, never to the
+    // browser (that's how POST /forgot's own page copy already reads --
+    // this is the deliberate "Brandon can still test locally" fallback).
+    std::cerr << "[password-reset] no mailer configured -- reset URL for "
+               << to_email << ": " << reset_url << std::endl;
+}
+
 std::string html_escape(const std::string& s) {
     std::string o;
     o.reserve(s.size());
@@ -192,8 +398,49 @@ std::string html_escape(const std::string& s) {
     return o;
 }
 
+// Turns a bare http(s):// run inside plain post text into a real link,
+// html-escaping everything else exactly as html_escape alone would. Only
+// recognizes a URL already present in the text the author typed or pasted
+// -- no oEmbed/unfurl lookup, no separate stored title, so most links still
+// render as themselves (see post_block's own comment on why that's fine
+// here).
+std::string linkify_post_text(const std::string& raw) {
+    std::string out;
+    std::size_t i = 0;
+    auto is_url_char = [](unsigned char c) {
+        return !std::isspace(c) && c != '<' && c != '>' && c != '"';
+    };
+    while (i < raw.size()) {
+        const bool is_link = raw.compare(i, 8, "https://") == 0 || raw.compare(i, 7, "http://") == 0;
+        if (!is_link) { out += html_escape(raw.substr(i, 1)); ++i; continue; }
+        std::size_t j = i;
+        while (j < raw.size() && is_url_char(static_cast<unsigned char>(raw[j]))) ++j;
+        // Trailing punctuation is more likely to be the sentence's than the
+        // URL's -- "see https://example.com." shouldn't link the period.
+        while (j > i && std::string(".,;:!?)").find(raw[j - 1]) != std::string::npos) --j;
+        std::string esc = html_escape(raw.substr(i, j - i));
+        out += "<a href=\"" + esc + "\" target=\"_blank\" rel=\"noopener noreferrer\">" + esc + "</a>";
+        i = j;
+    }
+    return out;
+}
+
 // Quotes a server-controlled (not user-controlled) string as a single-quoted
 // JS string literal embedded in generated HTML, e.g. the YouTube API key.
+std::string composer_attach_bar(const char* counter_id) {
+    return "<div class=\"composerbar\">"
+           "<label class=\"filepick\" title=\"Add a photo or video\">"
+           "<svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" "
+           "stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\">"
+           "<rect x=\"3\" y=\"5\" width=\"18\" height=\"14\" rx=\"2\"/>"
+           "<circle cx=\"8.5\" cy=\"10\" r=\"1.5\"/>"
+           "<path d=\"m21 15-5-5L5 19\"/></svg>"
+           "<input type=\"file\" name=\"media\" accept=\"image/*,video/*\"></label>"
+           "<span class=\"grow\"></span>"
+           "<span class=\"muted\" id=\"" + std::string(counter_id) + "\">2000 left</span>"
+           "<button type=\"submit\">Post</button></div>";
+}
+
 std::string js_string_literal(const std::string& s) {
     std::string o = "'";
     for (char c : s) {
@@ -405,6 +652,10 @@ std::string css() {
         ".mark{flex-shrink:0;display:block}"
         ".brand strong{font-family:var(--display);font-weight:600;font-size:1.35rem;letter-spacing:-.03em}"
         ".brand .tld{color:var(--stone);font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;margin-left:.15rem}"
+        // Keeps "LiquidGov" and ".US" one token -- without this, a squeeze
+        // at a mid-width viewport (nav not yet collapsed, but crowded) can
+        // wrap the two spans onto separate lines.
+        ".brand .word{white-space:nowrap}"
         ".brand .tagline{color:var(--stone);font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;"
         "margin-top:.1rem}"
         "#navc{position:absolute;left:-999px}"
@@ -430,8 +681,14 @@ std::string css() {
         ".iconbtn{position:relative;min-height:36px;min-width:36px;display:inline-flex;align-items:center;"
         "justify-content:center;border:1px solid var(--rule);border-radius:50%;background:transparent;"
         "color:var(--ink);padding:0;text-decoration:none;font-size:1.05rem;flex-shrink:0}"
-        ".iconbtn .badge{position:absolute;top:-4px;right:-4px;margin:0;font-size:.62rem;"
-        "min-width:1.1rem;height:1.1rem;padding:0 .25rem}"
+        ".iconbtn .badge{position:absolute;top:-5px;right:-5px;margin:0;font-size:.7rem;"
+        "min-width:1.25rem;height:1.25rem;padding:0 .28rem;box-shadow:0 0 0 2px var(--parchment)}"
+        ".notif-banner{margin:0 0 .6rem;padding:.35rem .6rem;border-radius:var(--rsm);"
+        "background:var(--accent);color:var(--paper);font-size:.8rem;font-weight:600}"
+        ".notice-unread{background:rgba(196,165,116,.14);margin:0 -.4rem;padding:.7rem .4rem;"
+        "border-radius:var(--rsm)}"
+        ".person form.notice-accept{flex-shrink:0;margin:0 0 0 .4rem}"
+        ".person form.notice-accept button{min-height:36px;width:auto;padding:.3rem .75rem}"
         ".navavatar{cursor:pointer;display:inline-flex;flex-shrink:0}"
         ".navavatar:hover .portrait{filter:brightness(1.08)}"
         // Shared chrome for every header dropdown -- the account menu, and
@@ -479,8 +736,20 @@ std::string css() {
         ".mailfriends a{display:flex;align-items:center;gap:.5rem;padding:.4rem 0;"
         "color:var(--ink);text-decoration:none}"
         ".mailfriends a:hover{color:var(--accent)}"
-        ".mailnewgroup{display:flex;gap:.4rem;margin-top:.5rem}"
-        ".mailnewgroup input{flex:1}"
+        ".mailnewgroup{display:flex;flex-direction:column;gap:.4rem;margin-top:.5rem}"
+        ".inboxrow{display:flex;align-items:center;gap:.55rem;padding:.45rem 0;color:var(--ink);"
+        "text-decoration:none;border-bottom:1px solid var(--rule)}"
+        ".inboxrow:last-child{border-bottom:0}"
+        ".inboxrow .inboxtitle{font-weight:600}"
+        ".inboxrow.unread .inboxtitle{font-weight:700}"
+        ".inboxrow .inboxpreview{display:block;color:var(--stone);font-size:.78rem;"
+        "white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:14rem}"
+        ".inboxrow .inboxmeta{margin-left:auto;font-size:.68rem;color:var(--stone);flex-shrink:0}"
+        ".mailattbtn{display:inline-flex;align-items:center;justify-content:center;width:2.6rem;height:2.6rem;"
+        "border:1px solid var(--rule);border-radius:var(--rsm);background:var(--paper);cursor:pointer;flex-shrink:0}"
+        ".mailattbtn input{display:none}"
+        ".mailpending{background:var(--paper);border:1px dashed var(--rule);padding:.7rem;border-radius:var(--rmd);margin:.6rem 0}"
+        ".maildisclose{font-size:.78rem;color:var(--stone);margin:.4rem 0 0}"
         // The instant-messenger part: sent bubbles lean right and pick up
         // the accent color, received ones lean left in a neutral panel --
         // the one visual cue that actually makes a flat list of divs read
@@ -516,7 +785,12 @@ std::string css() {
         "textarea{min-height:6rem;resize:vertical}button,.btn{display:inline-flex;align-items:center;justify-content:center;"
         "gap:.35rem;background:var(--accent);color:var(--paper);border:0;padding:.65rem 1.05rem;border-radius:var(--rsm);"
         "cursor:pointer;font:600 .95rem var(--body);min-height:44px;text-decoration:none}"
-        "button:hover,.btn:hover{filter:brightness(1.08)}button:active,.btn:active{transform:scale(.98)}"
+        // hover:hover guards this -- a touch tap on iOS synthesizes :hover
+        // with no matching "leave" event, so an unguarded rule here stays
+        // stuck brighter until something else steals focus/hover. A mouse
+        // still gets the real hover feedback; a touch never triggers it.
+        "@media(hover:hover){button:hover,.btn:hover{filter:brightness(1.08)}}"
+        "button:active,.btn:active{transform:scale(.98)}"
         "button.ghost,.btn.ghost{background:transparent;color:var(--accent);border:1px solid var(--rule)}"
         "button.danger,.btn.danger{background:var(--danger);color:#f7f1e4}"
         ".row{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}"
@@ -557,6 +831,14 @@ std::string css() {
         ".person,.sess,.msg,.post{border-top:1px solid var(--rule);padding:.7rem 0;display:flex;"
         "justify-content:space-between;gap:.8rem;flex-wrap:wrap;align-items:flex-start}"
         ".person:first-of-type,.sess:first-of-type,.msg:first-of-type,.post:first-of-type{border-top:0}"
+        ".post p,.post a{overflow-wrap:anywhere;word-break:break-word}"
+        ".composerbar{display:flex;align-items:center;gap:.55rem;margin-top:.45rem}"
+        ".composerbar .grow{flex:1}"
+        ".filepick{position:relative;width:2.4rem;height:2.4rem;flex:0 0 auto;display:inline-flex;"
+        "align-items:center;justify-content:center;border:1px solid var(--rule);border-radius:var(--rsm);"
+        "background:var(--panel);cursor:pointer}"
+        ".filepick input{position:absolute;inset:0;opacity:0;cursor:pointer;font-size:4rem}"
+        ".filepick svg{pointer-events:none}"
         "table.register{width:100%;border-collapse:collapse;margin:.6rem 0 1rem}"
         "table.register th{text-align:left;font:600 .7rem var(--body);letter-spacing:.08em;"
         "text-transform:uppercase;color:var(--stone);padding:.4rem .3rem;border-bottom:1px solid var(--rule)}"
@@ -566,6 +848,23 @@ std::string css() {
         "text-transform:uppercase;color:var(--stone);margin:0 0 .3rem}"
         ".chip{display:inline-block;border:1px solid var(--rule);background:var(--parchment);"
         "border-radius:999px;padding:.25rem .7rem;font-size:.78rem;color:var(--ink)}"
+        // The /feed audience picker: an icon over a label, not a text-only
+        // pill -- the glyph carries the meaning (globe/people/rooms) so the
+        // reach doesn't need a sentence spelled out underneath it.
+        "button.ichip{display:flex;flex-direction:column;align-items:center;gap:.3rem;"
+        "width:4.4rem;min-height:0;padding:.55rem .3rem .5rem;border-radius:var(--rmd);"
+        "border:1px solid var(--rule);background:var(--parchment);color:var(--stone);"
+        "cursor:pointer;font:600 .68rem var(--body);letter-spacing:.02em}"
+        "button.ichip svg{width:20px;height:20px;stroke:currentColor;flex-shrink:0}"
+        "button.ichip:hover{border-color:var(--accent)}"
+        "button.ichip.on{background:var(--accent);border-color:var(--accent);color:var(--paper)}"
+        // Icon-only attach control paired with the composer's Post button --
+        // same .iconbtn footprint as the header's bell/mail toggles, just
+        // sized down slightly and without their absolute-positioned badge.
+        ".attachbtn{position:relative;min-height:44px;min-width:44px;display:inline-flex;"
+        "align-items:center;justify-content:center;background:transparent;color:var(--ink);"
+        "border:1px solid var(--rule);border-radius:var(--rsm);cursor:pointer;flex-shrink:0}"
+        ".attachbtn.has-file{border-color:var(--accent);color:var(--accent)}"
         "table.record{border-collapse:collapse;margin:.6rem 0}"
         "table.record td{padding:.2rem .6rem .2rem 0;border:0;font-size:.9rem}"
         "table.record td:first-child{color:var(--stone);font-size:.72rem;letter-spacing:.08em;"
@@ -590,6 +889,12 @@ std::string css() {
         // so a flex item is actually allowed to be narrower than its
         // content's intrinsic width instead of blowing out the row.
         ".who{display:flex;gap:.75rem;align-items:flex-start}"
+        // A flex item's default min-width is its content's intrinsic width,
+        // not 0 -- without this, a long unbroken token (a pasted URL, the
+        // actual bug this fixes) pushes .who wider than the card instead of
+        // wrapping inside it, no matter what overflow-wrap says below.
+        ".who>div{min-width:0;flex:1}"
+        ".post p{overflow-wrap:anywhere}"
         ".who>div{flex:1;min-width:0}"
         ".post p{margin:.25rem 0 0;white-space:pre-wrap}"
         "ul.plain{list-style:none;padding:0;margin:0}ul.plain li{border-top:1px solid var(--rule);padding:.65rem 0}"
@@ -606,6 +911,12 @@ std::string css() {
         ".jbdraghandle{cursor:grab;color:var(--stone);font-size:1rem;line-height:1;user-select:none;padding:0 .2rem}"
         ".jbstation-name{flex:1;font-size:.85rem;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}"
         ".jbstation-remove{background:none;border:0;color:var(--stone);cursor:pointer;font-size:.9rem;padding:0 .2rem}"
+        // Not a second h1 -- one quiet line naming the thing, same display
+        // face as the site wordmark, small enough to sit above the tab
+        // row without competing with it.
+        ".juketube-plate{text-align:center;font-family:var(--display);font-size:1rem;"
+        "font-weight:600;letter-spacing:.05em;color:var(--ink);margin:0 0 .6rem;"
+        "padding-bottom:.5rem;border-bottom:1px solid var(--rule)}"
         ".jukebox .row{margin-top:.5rem}"
         ".stattiles{display:grid;grid-template-columns:repeat(3,1fr);gap:.6rem;margin:.7rem 0}"
         ".stattile{background:var(--paper);border:1px solid var(--rule);border-radius:var(--rmd);"
@@ -655,7 +966,40 @@ std::string css() {
         ".ticker-roll div{font-family:var(--display);font-size:1.2rem;line-height:1.35;"
         "color:var(--ink);text-align:center;padding:.5rem 0}"
         "@keyframes lg-roll{0%{transform:translateY(0)}100%{transform:translateY(-50%)}}"
-        "@media(prefers-reduced-motion:reduce){.ticker-roll{animation:none}}"
+        // The list is rendered twice back-to-back (see its own comment) so
+        // the scroll loop has no visible seam -- stopping the animation
+        // alone would leave both copies sitting there at once, visibly
+        // doubled. nth-child(n+12) hides the second copy specifically,
+        // matching the 11-item PROBLEMS list's own fixed length.
+        "@media(prefers-reduced-motion:reduce){.ticker-roll{animation:none}"
+        ".ticker-roll div:nth-child(n+12){display:none}}"
+        // Real <button>, not a div playing role="button" -- that exact
+        // substitution already cost a working dismiss control elsewhere on
+        // this site (iOS WebKit doesn't reliably fire `click` on a div).
+        // position:absolute (not fixed) -- pinned to its own hero block's
+        // top-right corner (see genesis_body's position:relative wrapper),
+        // not the viewport, so it scrolls away normally and can't end up
+        // sitting over the sticky header or the iOS install banner.
+        ".listen-pulse{display:inline-flex;align-items:center;justify-content:center;"
+        "min-width:44px;min-height:44px;width:44px;height:44px;border-radius:50%;flex-shrink:0;"
+        "border:none;background:var(--accent);color:var(--paper);cursor:pointer;"
+        "position:absolute;top:0;right:0}"
+        ".listen-pulse::after{content:'';position:absolute;inset:-6px;border-radius:50%;"
+        "border:2px solid var(--accent);opacity:.55;animation:lg-listenpulse 1.8s ease-out infinite}"
+        // Pulsing while it's already playing would read as "still waiting
+        // to be tapped" -- the ring only means "tap for sound".
+        ".listen-pulse.playing::after{animation:none;opacity:0}"
+        "@media(prefers-reduced-motion:reduce){.listen-pulse::after{animation:none}}"
+        "@keyframes lg-listenpulse{0%{transform:scale(.7);opacity:.55}100%{transform:scale(1.7);opacity:0}}"
+        // A few nudges toward the corner, not an indefinite distraction --
+        // the animation runs its fixed count and settles, same spirit as
+        // the install-hint pulse being a "tap for sound" cue rather than
+        // something that runs forever.
+        "#jbhint.show{animation:lg-jthint-bounce 1.6s ease-in-out 3}"
+        "#jbtoggle.jbnudge{animation:lg-jbtoggle-nudge 1.6s ease-in-out 3}"
+        "@keyframes lg-jthint-bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}"
+        "@keyframes lg-jbtoggle-nudge{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}"
+        "@media(prefers-reduced-motion:reduce){#jbhint.show{animation:none}#jbtoggle.jbnudge{animation:none}}"
         ".quote.centered{text-align:center;background:var(--parchment)}"
         ".quote p:not(.attrib):not(.stars){font-family:var(--display);font-size:1.15rem;line-height:1.5}"
         ".quote .stars{color:var(--accent);letter-spacing:.12em;margin:.3rem 0}"
@@ -722,6 +1066,36 @@ std::string favicon_svg() {
            "<path d=\"M24 9c0 0 9.5 12.2 9.5 17.2a9.5 9.5 0 0 1-19 0C14.5 21.2 24 9 24 9z\" fill=\"#d1a85c\"/></svg>";
 }
 
+// Same hand-drawn-line-icon treatment as nav()'s bell/mail (stroke=
+// currentColor, no emoji) -- the composer's file-attach control, standing
+// in for the old "Choose File" button.
+const char* paperclip_svg() {
+    return "<svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" "
+           "stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\">"
+           "<path d=\"M21 11.5 12.4 20a4.2 4.2 0 0 1-6-6L14.8 5.7a2.8 2.8 0 0 1 4 4L10.4 18a1.4 1.4 0 0 1-2-2l7.6-7.6\"/></svg>";
+}
+
+// The /feed audience chips' own glyphs -- globe (Anybody, reach), two
+// heads (Friends), three overlapping rooms (Groups, a destination not a
+// visibility level). Same stroke-icon treatment as every other hand-drawn
+// glyph on this site (currentColor, no fill).
+const char* globe_svg() {
+    return "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke-width=\"1.7\" stroke-linecap=\"round\" "
+           "stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"8.5\"/>"
+           "<path d=\"M3.5 12h17M12 3.5c2.6 2.6 4 5.4 4 8.5s-1.4 5.9-4 8.5c-2.6-2.6-4-5.4-4-8.5s1.4-5.9 4-8.5Z\"/></svg>";
+}
+const char* friends_svg() {
+    return "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke-width=\"1.7\" stroke-linecap=\"round\" "
+           "stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"8.7\" cy=\"8.2\" r=\"2.9\"/>"
+           "<path d=\"M2.8 19c.6-3.4 2.9-5.3 5.9-5.3s5.3 1.9 5.9 5.3\"/><circle cx=\"16.6\" cy=\"7.4\" r=\"2.3\"/>"
+           "<path d=\"M14.8 13.6c2.3.2 4 1.9 4.6 5.1\"/></svg>";
+}
+const char* groups_svg() {
+    return "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke-width=\"1.6\" stroke-linecap=\"round\" "
+           "stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"9\" cy=\"9\" r=\"6\"/>"
+           "<circle cx=\"15\" cy=\"9\" r=\"6\"/><circle cx=\"12\" cy=\"15\" r=\"6\"/></svg>";
+}
+
 // "dark", "light", or "" (no explicit choice -- prefers-color-scheme
 // decides). Set once per request in handle() (the whole site's single-
 // threaded synchronous entry point), read here at render time.
@@ -758,31 +1132,114 @@ std::string clear_cookie() {
 // Only reachable at all when show_intro is true (the Genesis page -- see
 // page_wrap), so this never fires on an internal page regardless.
 std::string intro_overlay_html(bool always_play) {
-    const char* skip_label = "Skip";
     std::string gate = always_play ? "" :
            "try{if(localStorage.getItem('liquidgov.intro.seen')){el.remove();return;}}"
            "catch(e){el.remove();return;}";
     return "<div id=\"lgintro\" style=\"position:fixed;inset:0;z-index:999;background:#14120f;"
            "display:flex;align-items:center;justify-content:center;overflow:hidden\">"
            "<video id=\"lgintrovid\" autoplay muted playsinline "
-           "style=\"width:100%;height:100%;object-fit:cover\" src=\"/assets/intro.mp4\"></video>"
-           "<button id=\"lgintroskip\" type=\"button\" style=\"position:absolute;bottom:1.25rem;right:1.25rem;"
-           "background:rgba(20,18,15,.78);color:#f2ead8;border:1px solid rgba(242,234,216,.3);"
-           "border-radius:999px;padding:.5rem 1rem;font:600 .75rem \"Segoe UI\",system-ui,sans-serif;"
-           "letter-spacing:.08em;text-transform:uppercase;cursor:pointer\">"+std::string(skip_label)+"</button>"
+           "style=\"width:100%;height:100%;object-fit:cover\" src=\"/assets/intro.mp4?v=2\"></video>"
            "</div>"
            "<script>(function(){"
            "var el=document.getElementById('lgintro');"
            +gate+
-           "var vid=document.getElementById('lgintrovid'),skip=document.getElementById('lgintroskip');"
+           "var vid=document.getElementById('lgintrovid');"
            "function finish(){"
            "try{localStorage.setItem('liquidgov.intro.seen','1');}catch(e){}"
            "el.style.transition='opacity .7s ease';el.style.opacity='0';"
            "setTimeout(function(){el.remove();},720);"
            "}"
            "vid.addEventListener('ended',finish);"
-           "skip.addEventListener('click',finish);"
            "})();</script>";
+}
+
+// iOS gives a site no way to trigger its own "Add to Home Screen" --
+// there's no manifest-driven install banner there the way Chrome/Edge/
+// Android have (see /manifest.webmanifest and /install's own comment).
+// This is the honest substitute: a small, dismiss-once banner nudging
+// toward the Share-sheet action that already exists, shown only to a
+// browser that's actually on iOS and not already running installed.
+// Can't reliably tell Safari from Brave/other iOS browsers by user agent
+// (Brave deliberately doesn't add a distinguishing token, to resist
+// fingerprinting), so this doesn't name a specific browser at all -- kept
+// short on purpose; /install has the Safari-if-you-don't-see-it fallback
+// for whoever needs it.
+std::string ios_install_hint() {
+    // Same droplet-in-rings mark as favicon_svg(), at banner scale, in
+    // literal colors (this sits outside <main>, no guarantee page CSS has
+    // finished applying var(--accent) yet on a slow connection).
+    const char* mark =
+        "<svg width=\"32\" height=\"32\" viewBox=\"0 0 48 48\" aria-hidden=\"true\" style=\"flex-shrink:0\">"
+        "<circle cx=\"24\" cy=\"24\" r=\"21\" fill=\"none\" stroke=\"#6b6458\" stroke-width=\"1.5\"/>"
+        "<circle cx=\"24\" cy=\"24\" r=\"17.5\" fill=\"none\" stroke=\"#d1a85c\" stroke-width=\"2\"/>"
+        "<path d=\"M24 9c0 0 9.5 12.2 9.5 17.2a9.5 9.5 0 0 1-19 0C14.5 21.2 24 9 24 9z\" fill=\"#d1a85c\"/></svg>";
+    return
+        // position:fixed, pinned to the bottom of the viewport. This was
+        // suspected at one point of being the actual problem (theory:
+        // native browser toolbar chrome eating the tap) -- it wasn't. The
+        // real bugs were the two documented below, both independent of
+        // positioning, both now fixed, so this is back to fixed/bottom.
+        // display:none here, not the `hidden` attribute -- `hidden` loses
+        // to this div's own inline display:flex (inline style always beats
+        // the UA's [hidden]{display:none}, same fight already documented
+        // at ctextrow/dropdown-panel above). el.hidden=true was silently
+        // doing nothing: dismiss() *was* running (localStorage really got
+        // set), the banner just never stopped rendering. Toggling
+        // style.display directly, like ctextrow does, sidesteps the
+        // cascade instead of fighting it.
+        // The dismiss control is a plain, unwrapped <button> -- no outer
+        // div playing role="button", no pointer-events:none punching a
+        // hole through it. iOS WebKit is known to just not fire `click`
+        // on a div-as-button in some contexts; a nested pointer-events:
+        // none element made it worse by putting a dead zone right where
+        // the tap lands. A real <button> is natively focusable and
+        // tappable with no help needed.
+        "<div id=\"lgioshint\" "
+        "style=\"position:fixed;left:.6rem;right:.6rem;"
+        "bottom:calc(.6rem + env(safe-area-inset-bottom,0px));"
+        "z-index:50;max-width:26rem;margin:0 auto;background:var(--parchment);border:1px solid var(--rule);"
+        "border-radius:var(--rmd);padding:.6rem .7rem;box-shadow:0 6px 20px rgba(0,0,0,.18);"
+        "display:none;align-items:center;gap:.6rem\">"
+        +std::string(mark)+
+        "<div style=\"flex:1;min-width:0\">"
+        "<p style=\"margin:0;font-family:var(--display);font-weight:700;font-size:1rem;color:var(--ink)\">Get the app</p>"
+        "<p style=\"margin:.1rem 0 0;font-size:.78rem;color:var(--stone)\">Tap "
+        "<strong>Share</strong>, then <strong>Add to Home Screen</strong>.</p></div>"
+        "<button type=\"button\" id=\"lgioshintclose\" class=\"ghost\" aria-label=\"Dismiss\" "
+        "style=\"min-height:44px;min-width:44px;padding:0;flex-shrink:0;font-size:1.1rem\">"
+        "&#10005;</button></div>"
+        "<script>(function(){"
+        "try{if(localStorage.getItem('liquidgov.ioshint.dismissed'))return;}catch(e){return;}"
+        "var isIOS=/iP(hone|od|ad)/.test(navigator.userAgent)||"
+        "(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);"
+        "if(!isIOS)return;"
+        "var standalone=window.navigator.standalone===true||"
+        "(window.matchMedia&&matchMedia('(display-mode: standalone)').matches);"
+        "if(standalone)return;"
+        "var el=document.getElementById('lgioshint');"
+        "el.style.cursor='pointer';"
+        "el.style.display='flex';"
+        "function dismiss(){"
+        "el.style.display='none';"
+        "try{localStorage.setItem('liquidgov.ioshint.dismissed','1');}catch(e){}"
+        "}"
+        // Diagnostic-by-design: flash a visible check on the button itself
+        // before hiding, so if this STILL doesn't work, the user can tell
+        // us whether the tap registered at all (flash, then hides -- some
+        // other rule is still winning) or never registered (no flash --
+        // the listener itself isn't firing). touchstart+click both wired
+        // in case one silently doesn't fire on this device; dismiss() is
+        // idempotent so a double-fire is harmless.
+        "var btn=document.getElementById('lgioshintclose');"
+        "var firing=false;"
+        "function onhit(){"
+        "if(firing)return;firing=true;"
+        "btn.textContent='\\u2713';"
+        "setTimeout(dismiss,150);"
+        "}"
+        "btn.addEventListener('touchstart',onhit,{passive:true});"
+        "btn.addEventListener('click',onhit);"
+        "})();</script>";
 }
 
 std::string page_wrap(const std::string& title, const std::string& navhtml, const std::string& body,
@@ -820,17 +1277,44 @@ std::string page_wrap(const std::string& title, const std::string& navhtml, cons
     const std::string og_desc =
         "A voluntary natural democracy. Genesis, not a government -- "
         "three rules hold, the rest is your call.";
+    // One shared image site-wide, same reasoning as og_desc above -- a
+    // generated 1200x630 card (see assets/og-image.png, made once by
+    // og-image/render.js -- @napi-rs/canvas, real serif type, run with
+    // node outside this build entirely) so a shared link actually shows
+    // something branded instead of the bare title-only card platforms
+    // fall back to with no image at all. summary_large_image (not
+    // summary) is what makes X/Twitter actually render it at that size
+    // instead of a small square thumbnail.
+    const std::string og_image = "https://liquidgov.us/assets/og-image.png";
     return "<!doctype html><html lang=\"en\""+theme_attr+"><head><meta charset=\"utf-8\">"
-           "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+           // viewport-fit=cover: without it, env(safe-area-inset-bottom)
+           // resolves to 0 everywhere per spec -- every bottom-fixed
+           // element's safe-area term (jbtoggle, jbpanel, jbhint,
+           // lgioshint) has silently been adding zero this whole time.
+           "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1,viewport-fit=cover\">"
            "<title>"+full_title+"</title>"
            "<meta property=\"og:type\" content=\"website\">"
            "<meta property=\"og:site_name\" content=\"LiquidGov.US\">"
            "<meta property=\"og:title\" content=\""+full_title+"\">"
            "<meta property=\"og:description\" content=\""+og_desc+"\">"
-           "<meta name=\"twitter:card\" content=\"summary\">"
+           "<meta property=\"og:image\" content=\""+og_image+"\">"
+           "<meta property=\"og:image:width\" content=\"1200\">"
+           "<meta property=\"og:image:height\" content=\"630\">"
+           "<meta name=\"twitter:card\" content=\"summary_large_image\">"
            "<meta name=\"twitter:title\" content=\""+full_title+"\">"
            "<meta name=\"twitter:description\" content=\""+og_desc+"\">"
+           "<meta name=\"twitter:image\" content=\""+og_image+"\">"
            "<link rel=\"icon\" href=\"/favicon.svg\" type=\"image/svg+xml\">"
+           // Installable as a standalone app (see /install for the actual
+           // per-platform instructions): a manifest is what turns Chrome/
+           // Edge/Android's browser-menu "Install"/"Add to Home screen"
+           // from a plain bookmark into a real standalone window with this
+           // name and icon. iOS Safari doesn't read this file at all --
+           // its own "Add to Home Screen" (Share sheet) works from nothing
+           // more than the page itself, which is why /install still needs
+           // to spell that path out separately.
+           "<link rel=\"manifest\" href=\"/manifest.webmanifest\">"
+           "<meta name=\"theme-color\" content=\"#8a6620\">"
            "<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">"
            "<link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>"
            "<link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&display=swap\">"
@@ -843,19 +1327,22 @@ std::string page_wrap(const std::string& title, const std::string& navhtml, cons
            "<circle cx=\"24\" cy=\"24\" r=\"19\" fill=\"none\" style=\"stroke:var(--accent)\" stroke-width=\"1.2\"/>"
            "<path d=\"M24 9c0 0 9.5 12.2 9.5 17.2a9.5 9.5 0 0 1-19 0C14.5 21.2 24 9 24 9z\" style=\"fill:var(--accent)\"/>"
            "</svg>"
-           "<div><div><strong>LiquidGov</strong><span class=\"tld\">.US</span></div>"
+           "<div><div class=\"word\"><strong>LiquidGov</strong><span class=\"tld\">.US</span></div>"
            "<div class=\"tagline\">Civic association &middot; Beta</div></div></a>"
            +navhtml+toggle+"</div></header>"
            "<main class=\"wrap\">"+body+"</main>"
+           +ios_install_hint()+
            "<footer class=\"site\"><a href=\"/\">Genesis</a> · <a href=\"/laws\">Laws</a> · "
-           "<a href=\"/control\">Who holds control</a><br>"
+           "<a href=\"/control\">Who holds control</a> · <a href=\"/install\">Install this as an app</a><br>"
            "Not a government. A platform account is not a citizen identity. "
-           "LiquidGov.US is in Beta — some of what's here is still being built.</footer></body></html>";
+           "LiquidGov.US is in Beta — some of what's here is still being built.</footer>"
+           "</body></html>";
 }
 
 std::string portrait_tag(const std::string& username, const char* cls); // defined below, needed here for nav()
 std::string post_block(const Post& p, const std::string& viewer);
 std::string mail_widget_script(); // defined below, needed here for nav()
+std::string flash_error(const std::map<std::string,std::string>& qs); // defined below, needed here for jukebox_widget()
 
 std::string nav(const std::string& user, int unread) {
     if (user.empty()) {
@@ -920,12 +1407,14 @@ std::string nav(const std::string& user, int unread) {
     std::string menu = "<nav class=\"dropdown-panel accountmenu\">"
         "<a class=\"menu-name\" href=\"/u/"+html_escape(user)+"\">"+html_escape(user)+"</a>"
         "<a href=\"/settings\">Settings</a>"
+        +(is_operator(user) ? "<a href=\"/admin\">Operator</a>" : "")+
         "<hr>"
         "<a href=\"/feed\">Feed</a>"
         "<a href=\"/friends\">People</a>"
         "<a href=\"/communities\">Groups</a>"
         "<a href=\"/proposals\">Proposals</a>"
         "<a href=\"/world\">World</a>"
+        "<a href=\"/laws\">Laws</a>"
         "<a href=\"/logout\">Log out</a>"
         "</nav>";
     return bell+mail+avatar+menu+mail_widget_script();
@@ -1048,13 +1537,18 @@ std::string device_label_from(const std::string& headers, const std::string& ip)
     if (label.size() > 80) label.resize(80);
     return label;
 }
+// Date only, not a UTC timestamp -- the server can't know a visitor's
+// timezone, so "2026-09-13 05:18 UTC" was just engineer-speak with no way
+// to be locally correct. A bare date reads honestly everywhere it's used
+// (posts, "member since", session activity, jukebox history) without
+// needing a client-side reformat script for something this minor.
 std::string fmt_time(std::int64_t t) {
     if (t <= 0) return "";
     std::time_t tt = static_cast<std::time_t>(t);
     std::tm tm{};
     gmtime_r(&tt, &tm);
     char buf[40];
-    std::strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M UTC", &tm);
+    std::strftime(buf, sizeof(buf), "%Y-%m-%d", &tm);
     return buf;
 }
 
@@ -1089,6 +1583,57 @@ std::string trim_ws(const std::string& s) {
     while (a < b && (s[a]==' '||s[a]=='\t'||s[a]=='\r'||s[a]=='\n')) ++a;
     while (b > a && (s[b-1]==' '||s[b-1]=='\t'||s[b-1]=='\r'||s[b-1]=='\n')) --b;
     return s.substr(a, b-a);
+}
+
+// ASCII-only is fine here -- every email this ever runs on already passed
+// looks_like_email (an ASCII shape check), and lowercasing is only ever
+// used for the ml-tag dedup key, not for anything that has to be
+// Unicode-correct.
+std::string lowercase_ascii(std::string s) {
+    for (char& c : s) if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+    return s;
+}
+
+// sha256_hex (liquidgov_blob) takes bytes, not a std::string -- this is
+// the one place that conversion happens, for hashing a password-reset
+// token before it's stored (see POST /forgot / POST /reset).
+std::string sha256_hex_of(const std::string& s) {
+    return sha256_hex(std::vector<std::uint8_t>(s.begin(), s.end()));
+}
+
+// Genesis operator tools (/admin, see its own comment) gate on this, not a
+// second login -- same session as everyone else, just a username on a
+// list. LIQUIDGOV_OPERATORS is comma-separated exact usernames (no
+// wildcards, no roles); unset means the one-person default this site has
+// actually always had. Checked fresh on every request, not cached, so
+// changing the env var and restarting is the entire revocation story.
+bool is_operator(const std::string& username) {
+    if (username.empty()) return false;
+    const char* env = std::getenv("LIQUIDGOV_OPERATORS");
+    std::string list = (env && env[0]) ? env : "Bbottin";
+    std::size_t i = 0;
+    while (i <= list.size()) {
+        auto comma = list.find(',', i);
+        std::string name = trim_ws(list.substr(i, comma == std::string::npos ? std::string::npos : comma - i));
+        if (!name.empty() && name == username) return true;
+        if (comma == std::string::npos) break;
+        i = comma + 1;
+    }
+    return false;
+}
+
+// The operator panel's delete confirmations (accounts, communities) ask
+// for the word "delete" typed back, not the username/slug -- short enough
+// to not be annoying, still enough friction that a stray click can't fire
+// it. Case-insensitive so "Delete" doesn't quietly fail.
+bool confirm_says_delete(const std::string& s) {
+    if (s.size() != 6) return false;
+    for (std::size_t i = 0; i < 6; ++i) {
+        char c = s[i];
+        char lc = (c >= 'A' && c <= 'Z') ? static_cast<char>(c - 'A' + 'a') : c;
+        if (lc != "delete"[i]) return false;
+    }
+    return true;
 }
 
 std::string header_line_value(const std::string& headers, const char* name) {
@@ -1236,7 +1781,10 @@ std::string wrap(const std::string& title, const std::string& user, int unread, 
     // contents, so a sibling widget's live WebSocket/YT player survive a
     // page-to-page click untouched instead of being torn down and rebuilt.
     if (!user.empty()) {
-        std::string widget = global_jukebox_widget(youtube_api_key_from_env(), user);
+        std::string widget =
+            "<link rel=\"stylesheet\" href=\"/assets/juketube.css\">"
+            "<div id=\"juketube-root\"></div>"
+            "<script src=\"/assets/juketube.js\" defer></script>";
         auto pos = page.find("</main>");
         if (pos != std::string::npos) page.insert(pos + 7, widget);
     }
@@ -1298,6 +1846,62 @@ std::string multipart_field(const std::string& content_type, const std::string& 
     return std::string(v->begin(), v->end());
 }
 
+// Same walk as multipart_file, but collects every part named `field`
+// instead of stopping at the first -- for a checkbox group (except/friend/
+// group on the /feed composer) where the same name repeats once per
+// checked box.
+std::vector<std::string> multipart_field_all(const std::string& content_type, const std::string& body,
+                                              const char* field) {
+    std::vector<std::string> out;
+    auto bpos = content_type.find("boundary=");
+    if (bpos == std::string::npos) return out;
+    std::string boundary = trim_copy(content_type.substr(bpos + 9));
+    auto semi = boundary.find(';');
+    if (semi != std::string::npos) boundary.resize(semi);
+    boundary = trim_copy(boundary);
+    if (boundary.empty()) return out;
+    const std::string delim = "--" + boundary;
+    const std::string needle = std::string("name=\"") + field + "\"";
+    std::size_t i = 0;
+    while (i < body.size()) {
+        auto start = body.find(delim, i);
+        if (start == std::string::npos) break;
+        start += delim.size();
+        if (start + 1 < body.size() && body[start] == '-' && body[start + 1] == '-') break;
+        if (start + 1 < body.size() && body[start] == '\r' && body[start + 1] == '\n') start += 2;
+        else if (start < body.size() && body[start] == '\n') start += 1;
+        auto next = body.find(delim, start);
+        if (next == std::string::npos) break;
+        std::string part = body.substr(start, next - start);
+        while (part.size() >= 2 && part[part.size() - 2] == '\r' && part.back() == '\n')
+            part.resize(part.size() - 2);
+        auto hdr_end = part.find("\r\n\r\n");
+        std::size_t skip = 4;
+        if (hdr_end == std::string::npos) { hdr_end = part.find("\n\n"); skip = 2; }
+        if (hdr_end != std::string::npos) {
+            std::string hdrs = part.substr(0, hdr_end);
+            if (hdrs.find(needle) != std::string::npos) out.push_back(part.substr(hdr_end + skip));
+        }
+        i = next;
+    }
+    return out;
+}
+
+// Same idea for a urlencoded body (parse_form itself keeps only the last
+// value per key, which is right for every single-valued field on this
+// site -- this is only for a checkbox group's repeated name).
+std::vector<std::string> parse_form_multi(const std::string& body, const std::string& key) {
+    std::vector<std::string> out;
+    std::stringstream ss(body);
+    std::string part;
+    while (std::getline(ss, part, '&')) {
+        auto eq = part.find('=');
+        if (eq == std::string::npos) continue;
+        if (url_decode(part.substr(0, eq)) == key) out.push_back(url_decode(part.substr(eq + 1)));
+    }
+    return out;
+}
+
 // Group rosters and messages key on AccountId, which can outlive the
 // account itself (delete_account() does not prune conversations_/
 // messages_ — see file_store.cpp). Same "relabel, don't erase" choice
@@ -1308,10 +1912,9 @@ std::string display_name_for(AccountId id) {
     return acc->username;
 }
 
-// No conversation title in the messenger.hpp/conversation.hpp spec — the
-// list label is everyone else in the room, so the thread is identifiable
-// without inventing a naming feature that isn't there.
+// List label: named groups use the title; unnamed ones list everyone else.
 std::string group_label(const Conversation& conv, AccountId viewer) {
+    if (!conv.title.empty()) return conv.title;
     std::string label;
     for (const auto& m : conv.members) {
         if (m.account == viewer) continue;
@@ -1411,6 +2014,70 @@ std::vector<std::string> people_hits(const std::string& viewer, const std::strin
         }
     }
     return hits;
+}
+
+// Category browse for the floating widget's Search tab: which live
+// jukeboxes (personal or community) a viewer can tune the widget to,
+// filtered by a free-text term within one category. Not a recommendation
+// engine -- just filtered listing, same posture as discover_people/
+// discover_communities. "Others" and "All" route through typeahead(),
+// so Findability and blocks apply exactly as they do everywhere else
+// that's used -- a miss looks like a miss.
+std::string jukebox_browse_json(const std::string& viewer, const std::string& category, const std::string& term) {
+    struct Item { std::string id, name; };
+    std::vector<Item> items;
+    auto to_lower = [](std::string s) {
+        for (char& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        return s;
+    };
+    const std::string term_lower = to_lower(term);
+    auto matches = [&](const std::string& hay) {
+        if (term.empty()) return true;
+        return to_lower(hay).find(term_lower) != std::string::npos;
+    };
+    auto add_unique = [&](const std::string& id, const std::string& name) {
+        for (auto& it : items) if (it.id == id) return;
+        items.push_back({id, name});
+    };
+    if (category == "self") {
+        add_unique("u:" + viewer, viewer);
+    } else if (category == "group") {
+        for (auto& c : g_store.communities_of(viewer)) {
+            if (matches(c.name) || matches(c.slug)) add_unique(c.slug, c.name);
+            if (items.size() >= 20) break;
+        }
+    } else if (category == "friends") {
+        for (auto& f : g_store.friends_of(viewer)) {
+            if (matches(f)) add_unique("u:" + f, f);
+            if (items.size() >= 20) break;
+        }
+    } else if (category == "others") {
+        if (term.size() >= 3) {
+            for (auto& n : g_store.typeahead(viewer, term)) {
+                if (n == viewer || g_store.are_friends(viewer, n)) continue;
+                add_unique("u:" + n, n);
+                if (items.size() >= 20) break;
+            }
+        }
+    } else { // "all"
+        for (auto& f : g_store.friends_of(viewer)) if (matches(f)) add_unique("u:" + f, f);
+        for (auto& c : g_store.communities_of(viewer)) if (matches(c.name) || matches(c.slug)) add_unique(c.slug, c.name);
+        if (term.size() >= 3) {
+            for (auto& n : g_store.typeahead(viewer, term)) {
+                if (n == viewer || g_store.are_friends(viewer, n)) continue;
+                add_unique("u:" + n, n);
+                if (items.size() >= 20) break;
+            }
+        }
+        if (items.size() > 20) items.resize(20);
+    }
+    std::string out = "{\"items\":[";
+    for (std::size_t i = 0; i < items.size(); ++i) {
+        if (i) out += ",";
+        out += "{\"id\":\"" + json_escape(items[i].id) + "\",\"name\":\"" + json_escape(items[i].name) + "\"}";
+    }
+    out += "]}";
+    return out;
 }
 
 size_t mutual_friend_count(const std::string& a, const std::string& b) {
@@ -1514,21 +2181,34 @@ std::string people_search_script() {
 // header's notifications widget fetches on open) -- one implementation,
 // two callers, so the widget and the page can never drift apart.
 std::string notices_list_html(const std::string& user) {
-    std::string html = "<div class=\"card\">";
     auto notes = g_store.notices_for(user, 50);
+    int fresh = 0;
+    for (const auto& n : notes) if (!n.read) ++fresh;
+    std::string html = "<div class=\"card\" data-unread=\"" + std::to_string(fresh) + "\">";
+    if (fresh > 0) html += "<p class=\"notif-banner\">" + std::to_string(fresh) + (fresh==1?" new":" new") + "</p>";
     if (notes.empty()) html += "<p class=\"empty\">Nothing waiting.</p>";
     for (auto& n : notes) {
         std::string line;
         std::string href;
-        if (n.type=="friend_request") { line = html_escape(n.from)+" sent a friend request."; href="/friends"; }
+        const bool pending_fr = n.type=="friend_request" &&
+            ([&]{ auto inc=g_store.incoming_requests(user); return std::find(inc.begin(),inc.end(),n.from)!=inc.end(); })();
+        if (n.type=="friend_request") { line = html_escape(n.from)+" sent a friend request."; href="/u/"+html_escape(n.from); }
         else if (n.type=="friend_accept") { line = html_escape(n.from)+" accepted your request."; href="/u/"+html_escape(n.from); }
         else if (n.type=="message") { line = html_escape(n.from)+" sent mail."; href="/mail?with="+html_escape(n.from); }
+        else if (n.type=="mail_group") { line = html_escape(n.from)+" invited you to a group."; href="/mail/g/"+html_escape(n.extra); }
         else if (n.type=="group_invite") { line = html_escape(n.from)+" added you to /"+html_escape(n.extra)+"."; href="/c/"+html_escape(n.extra); }
         else line = html_escape(n.type);
-        html += "<div class=\"person\">";
+        html += "<div class=\"person" + std::string(n.read?"":" notice-unread") + "\">";
+        if (!n.from.empty()) html += portrait_tag(n.from, "sm");
         if (!href.empty()) html += "<a href=\""+href+"\" style=\"flex:1;min-width:0;color:inherit;text-decoration:none\">";
+        else html += "<div style=\"flex:1;min-width:0\">";
         html += "<div>"+line+"<div class=\"muted\">"+html_escape(fmt_time(n.ts))+"</div></div>";
-        if (!href.empty()) html += "</a>";
+        if (!href.empty()) html += "</a>"; else html += "</div>";
+        if (pending_fr) {
+            html += "<form class=\"inline notice-accept\" method=\"POST\" action=\"/friends/accept\">"
+                    "<input type=\"hidden\" name=\"who\" value=\""+html_escape(n.from)+"\">"
+                    "<button type=\"submit\">Accept</button></form>";
+        }
         html += "</div>";
     }
     html += "<p class=\"muted\">A declined friend request does not send a notice.</p></div>";
@@ -1540,40 +2220,99 @@ std::string notices_list_html(const std::string& user) {
 // widget's own delegated click handler uses to fetch the thread in place
 // instead of navigating -- same progressive-enhancement shape as the
 // site's own soft-navigation (see jukebox_script's click interceptor).
-std::string mail_friends_list_html(const std::string& user) {
-    std::string html = "<div class=\"mailsection\"><p class=\"eyebrow\">Direct</p><ul class=\"plain mailfriends\">";
-    auto pals = g_store.friends_of(user);
-    if (pals.empty()) html += "<li class=\"muted\">Friend someone first. <a href=\"/friends\">Find people</a></li>";
-    for (auto& n : pals) {
-        html += "<li><a class=\"mailwith\" data-with=\""+html_escape(n)+"\" href=\"/mail?with="+html_escape(n)+"\">"+
-                portrait_tag(n, "sm")+"<span>"+html_escape(n)+"</span></a></li>";
+// One chronological inbox: 1:1 threads that actually have mail, plus groups.
+// Friends with no thread live under "Start a conversation", not the list.
+std::string mail_inbox_html(const std::string& user, AccountId acc_id) {
+    struct Row {
+        std::int64_t ts = 0;
+        bool unread = false;
+        bool pending = false;
+        bool is_group = false;
+        std::string href;
+        std::string title;
+        std::string preview;
+        std::string portrait;
+        std::string cls;
+        std::string data_with;
+    };
+    std::vector<Row> rows;
+    for (auto& other : g_store.mail_peers(user)) {
+        if (g_store.is_blocked(user, other) || g_store.is_blocked(other, user)) continue;
+        if (!g_store.are_friends(user, other)) continue;
+        Row r;
+        r.ts = g_store.last_mail_ts(user, other);
+        r.href = "/mail?with=" + html_escape(other);
+        r.title = other;
+        auto prev = g_store.last_mail_preview(user, other);
+        if (prev.size() > 80) prev = prev.substr(0, 77) + "...";
+        r.preview = prev;
+        r.portrait = other;
+        r.cls = "mailwith";
+        r.data_with = other;
+        const auto last_read = g_store.thread_last_read(user, "d:" + other);
+        r.unread = r.ts > last_read;
+        rows.push_back(r);
     }
-    html += "</ul></div>";
+    for (auto& conv : g_store.conversations_for(acc_id)) {
+        if (!conv.is_group) continue;
+        Row r;
+        r.is_group = true;
+        r.ts = g_store.last_group_ts(conv.id);
+        r.href = "/mail/g/" + std::to_string(conv.id);
+        r.title = group_label(conv, acc_id);
+        auto prev = g_store.last_group_preview(conv.id);
+        if (prev.size() > 80) prev = prev.substr(0, 77) + "...";
+        r.preview = prev;
+        r.cls = "mailgroup";
+        for (auto& m : conv.members) if (m.account == acc_id) r.pending = m.state == MemberState::Pending;
+        const auto last_read = g_store.thread_last_read(user, "g:" + std::to_string(conv.id));
+        r.unread = r.pending || r.ts > last_read;
+        rows.push_back(r);
+    }
+    std::stable_sort(rows.begin(), rows.end(), [](const Row& a, const Row& b) { return a.ts > b.ts; });
+
+    std::string html = "<div class=\"mailsection\"><p class=\"eyebrow\">Messages</p>";
+    if (rows.empty()) {
+        html += "<p class=\"muted\">No messages yet. <a href=\"/friends\">Find people</a></p>";
+    } else {
+        html += "<div class=\"inboxlist\">";
+        for (auto& r : rows) {
+            html += "<a class=\"inboxrow "+r.cls+(r.unread?" unread":"")+"\" href=\""+r.href+"\"";
+            if (!r.data_with.empty()) html += " data-with=\""+html_escape(r.data_with)+"\"";
+            html += ">";
+            if (!r.portrait.empty()) html += portrait_tag(r.portrait, "sm");
+            else html += "<span class=\"portrait sm ph\" aria-hidden=\"true\"></span>";
+            html += "<span style=\"min-width:0;flex:1\"><span class=\"inboxtitle\">"+html_escape(r.title)+"</span>";
+            if (r.pending) html += " <span class=\"muted\">invited</span>";
+            if (!r.preview.empty()) html += "<span class=\"inboxpreview\">"+html_escape(r.preview)+"</span>";
+            html += "</span>";
+            if (r.ts) html += "<span class=\"inboxmeta\">"+html_escape(fmt_time(r.ts))+"</span>";
+            html += "</a>";
+        }
+        html += "</div>";
+    }
+    html += "<form method=\"GET\" action=\"/mail\" class=\"mailnewgroup\" style=\"margin-top:.8rem\">"
+            "<input name=\"with\" placeholder=\"Message a friend \xE2\x80\x94 username\" autocomplete=\"off\">"
+            "<button type=\"submit\" class=\"ghost\">Open</button></form>";
+    html += "<form method=\"POST\" action=\"/mail/group/new\" class=\"mailnewgroup\">"
+            "<input name=\"title\" maxlength=\"80\" placeholder=\"Group name (optional)\">"
+            "<input name=\"who\" placeholder=\"Usernames to invite, separated by spaces\">"
+            "<button type=\"submit\">Start a group</button></form>"
+            "<p class=\"maildisclose\">Messages on this copy are stored so the operator can read them. "
+            "Direct mail is friends-only until age assurance exists. Unfriending leaves shared groups.</p>"
+            "</div>";
     return html;
 }
 
-// Groups stay real, full-page links (not fetched into the panel) -- a
-// group thread carries member management (invite/accept/leave) the
-// compact widget was never meant to reimplement; only 1:1 messaging gets
-// the in-panel instant-messenger treatment. acc_id is the caller's own,
-// needed to tell an invited-but-not-yet-accepted membership apart.
+// Kept for the widget's "start a group" only — inbox is the unified list.
 std::string mail_groups_list_html(const std::string& user, AccountId acc_id) {
-    (void)user;
-    std::string html = "<div class=\"mailsection\"><p class=\"eyebrow\">Groups</p><ul class=\"plain\">";
-    auto groups = g_store.conversations_for(acc_id);
-    std::string list;
-    for (auto& conv : groups) {
-        if (!conv.is_group) continue;
-        bool pending = false;
-        for (auto& m : conv.members) if (m.account == acc_id) pending = m.state == MemberState::Pending;
-        list += "<li><a class=\"mailgroup\" href=\"/mail/g/"+std::to_string(conv.id)+"\">"+html_escape(group_label(conv, acc_id))+"</a>"+
-                (pending ? " <span class=\"muted\">invited</span>" : "")+"</li>";
-    }
-    html += (list.empty() ? "<li class=\"muted\">No groups yet.</li>" : list) + "</ul>"
-            "<form method=\"POST\" action=\"/mail/group/new\" class=\"mailnewgroup\">"
-            "<input name=\"who\" placeholder=\"Start a group \xE2\x80\x94 usernames\">"
-            "<button type=\"submit\">Create</button></form></div>";
-    return html;
+    return mail_inbox_html(user, acc_id);
+}
+
+std::string mail_friends_list_html(const std::string& user) {
+    auto acc = g_store.find_by_username(user);
+    if (!acc) return "";
+    return mail_inbox_html(user, acc->id);
 }
 
 // The open thread: message bubbles (mine/theirs) plus the composer. Shared
@@ -1584,15 +2323,18 @@ std::string mail_groups_list_html(const std::string& user, AccountId acc_id) {
 std::string mail_thread_html(const std::string& user, const std::string& other,
                               const std::map<std::string,std::string>& qs) {
     if (other.empty() || !g_store.are_friends(user, other) || g_store.is_blocked(user, other)) return "";
+    g_store.mark_thread_read(user, "d:" + other);
     std::string html = "<div class=\"mailthread\">"
         "<div class=\"mailthreadhead\"><a class=\"mailback\" data-with=\"\" href=\"/mail\" aria-label=\"Back to messages\">\xE2\x86\x90</a>"
-        "<strong>"+html_escape(other)+"</strong></div>";
+        + portrait_tag(other, "sm") +
+        "<strong><a href=\"/u/"+html_escape(other)+"\">"+html_escape(other)+"</a></strong></div>";
     if (qs.count("err")) {
         const std::string& e = qs.at("err");
         if (e=="type") html += "<p class=\"warn\">That attachment isn't a usable type. Allowed: PNG/JPEG/GIF, PDF, plain text, macro-free Word/Excel/PowerPoint. No SVG, no archives.</p>";
         else if (e=="large") html += "<p class=\"warn\">That attachment is too large.</p>";
         else if (e=="active") html += "<p class=\"warn\">That document was refused: it declares a macro, embedded object, or OLE content.</p>";
         else if (e=="scan") html += "<p class=\"warn\">That attachment could not be stored.</p>";
+        else if (e=="notfriends") html += "<p class=\"warn\">Mail is friends-only until they accept.</p>";
     }
     auto thread = g_store.mail_with(user, other);
     html += "<div class=\"msglist\" id=\"msglist\">";
@@ -1607,13 +2349,24 @@ std::string mail_thread_html(const std::string& user, const std::string& other,
         html += "<span class=\"bubtime\">"+html_escape(fmt_time(m.ts))+"</span></div></div>";
     }
     html += "</div>"
-        "<form method=\"POST\" action=\"/mail\" enctype=\"multipart/form-data\" class=\"mailcomposer\">"
+        "<form method=\"POST\" action=\"/mail\" enctype=\"multipart/form-data\" class=\"mailcomposer\" id=\"mailcomposer\">"
         "<input type=\"hidden\" name=\"to\" value=\""+html_escape(other)+"\">"
-        "<div class=\"row\" style=\"align-items:center;gap:.4rem;flex-wrap:nowrap\">"
-        "<input name=\"text\" maxlength=\"2000\" placeholder=\"Message\" autocomplete=\"off\" style=\"flex:1;min-width:0\">"
-        "<input type=\"file\" name=\"attachment\" class=\"mailattach\" title=\"Attach a file\" "
-        "accept=\"image/png,image/jpeg,image/gif,application/pdf,text/plain,.docx,.xlsx,.pptx\">"
-        "<button type=\"submit\">Send</button></div></form></div>";
+        "<div class=\"row\" style=\"align-items:flex-end;gap:.4rem;flex-wrap:nowrap\">"
+        "<textarea name=\"text\" id=\"mailtext\" maxlength=\"2000\" rows=\"2\" placeholder=\"Message\" "
+        "autocomplete=\"off\" style=\"flex:1;min-width:0;min-height:44px;resize:vertical\"></textarea>"
+        "<label class=\"mailattbtn\" title=\"Attach a file\">"
+        "<input type=\"file\" name=\"attachment\" accept=\"image/png,image/jpeg,image/gif,application/pdf,text/plain,.docx,.xlsx,.pptx\">"
+        "<span aria-hidden=\"true\">+</span></label>"
+        "<button type=\"submit\">Send</button></div>"
+        "<p class=\"muted\" style=\"margin:.3rem 0 0\">Enter sends. Shift+Enter is a new line.</p></form></div>"
+        "<script>(function(){"
+        "var list=document.getElementById('msglist');if(list)list.scrollTop=list.scrollHeight;"
+        "var form=document.getElementById('mailcomposer'),ta=document.getElementById('mailtext');"
+        "if(!form||!ta)return;"
+        "ta.addEventListener('keydown',function(e){"
+        "if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();form.requestSubmit();}"
+        "});"
+        "})();</script>";
     return html;
 }
 
@@ -1707,7 +2460,7 @@ std::string mail_widget_script() {
         // wholesale on every load, so listeners bound to specific elements
         // would be gone after the very first fetch.
         "mailRoot.addEventListener('click',function(e){"
-        "var a=e.target.closest('a.mailwith,a.mailback');"
+        "var a=e.target.closest('a.mailwith,a.mailback,a.inboxrow.mailwith');"
         "if(a){e.preventDefault();loadMail(a.classList.contains('mailback')?null:a.dataset.with,true);return;}"
         // A group link (unlike mailwith/mailback) is a real navigation,
         // not fetched into the panel -- same "left looking stuck open"
@@ -1722,7 +2475,16 @@ std::string mail_widget_script() {
         "if(!form)return;"
         "e.preventDefault();"
         "var fd=new FormData(form);"
-        "fetch('/mail',{method:'POST',body:fd}).then(function(){loadMail(activeWith,true);});"
+        "fetch('/mail',{method:'POST',body:fd,credentials:'same-origin'}).then(function(){loadMail(activeWith,true);});"
+        "});"
+        "mailRoot.addEventListener('keydown',function(e){"
+        "if(e.key!=='Enter'||e.shiftKey)return;"
+        "var ta=e.target.closest('textarea[name=text]');"
+        "if(!ta)return;"
+        "var form=ta.closest('form.mailcomposer');"
+        "if(!form)return;"
+        "e.preventDefault();"
+        "form.requestSubmit();"
         "});"
         "})();</script>";
 }
@@ -1778,11 +2540,12 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
     int ch = portrait ? 400 : (post_mode ? 480 : 440);
     std::string cws = std::to_string(cw), chs = std::to_string(ch);
     std::string aspect = cws + "/" + chs;
+    // `err` is already-rendered HTML from flash_error(qs) at the call site
+    // (frameimage/framelarge/framefull), not a raw code -- this function
+    // doesn't need to know the code table, just where to put the result.
     std::string errHtml;
     if (!portrait && !post_mode) {
-        if (err=="image") errHtml = "<p class=\"warn\">That frame wasn't a usable image.</p>";
-        else if (err=="large") errHtml = "<p class=\"warn\">That frame was too large.</p>";
-        else if (err=="full") errHtml = "<p class=\"warn\">This drawing already has the max 24 frames.</p>";
+        errHtml = err;
     }
     // Icon buttons, not text labels: each of these already has a symbol
     // recognized from every other editor -- currentColor so they follow
@@ -2714,7 +3477,7 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         // whichever composer route this page was opened for. r.url is the
         // real final URL fetch landed on after following that route's own
         // redirect, so a media error still surfaces as that route's own
-        // ?perr= message -- same pattern as the self-portrait Save above.
+        // ?err= message -- same pattern as the self-portrait Save above.
         html +=
             "function captureFrame(force,done){if(done)done();}"
             "document.getElementById('csave').addEventListener('click',function(){"
@@ -2935,6 +3698,33 @@ void run_community_session(int fd, const std::string& username, const std::strin
     timeval tv{}; tv.tv_sec = 0; tv.tv_usec = 500000; // 500ms — a shared queue doesn't need world's 100ms cadence
     setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
+    // Joining is a 0->1 transition on this station's listener count: if
+    // nobody else is here either, resume from wherever the freeze left
+    // off (durable jpos, so this survives a process restart too, not just
+    // a run of the same process with everyone gone and back). If someone
+    // else is already listening (count already >0), there's nothing to
+    // do here -- community_elapsed_locked already gives this new
+    // connection the same live position everyone else has.
+    {
+        std::lock_guard<std::mutex> lock(g_community_mu);
+        const auto now = std::chrono::duration_cast<std::chrono::seconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        int& count = g_community_listeners_by_station[station];
+        const bool was_zero = (count == 0);
+        ++count;
+        if (was_zero) {
+            if (auto pos = g_store.jukebox_pos(station)) {
+                auto& np = g_community_now_by_station[station];
+                np.video_id = pos->video_id;
+                np.frozen_offset = pos->offset_sec;
+                np.resumed_at = now;
+                np.active = true;
+            } else if (g_community_now_by_station[station].active) {
+                g_community_now_by_station[station].resumed_at = now;
+            }
+        }
+    }
+
     for (;;) {
         auto result = ws_read_frame(fd);
         if (result.status == WsReadStatus::Closed) break;
@@ -2944,23 +3734,36 @@ void run_community_session(int fd, const std::string& username, const std::strin
                 const std::string& s = result.frame.payload;
                 if (auto raw = extract_json_string_field(s, "\"add\"")) {
                     if (auto id = extract_youtube_id(trim_ws(*raw))) {
+                        const auto now = std::chrono::duration_cast<std::chrono::seconds>(
+                            std::chrono::system_clock::now().time_since_epoch()).count();
                         std::lock_guard<std::mutex> lock(g_community_mu);
                         auto& now_playing = g_community_now_by_station[station];
                         auto& upcoming = g_community_upcoming_by_station[station];
                         if (!now_playing.active && upcoming.empty()) {
-                            now_playing = CommunityNowPlaying{*id, username,
-                                std::chrono::duration_cast<std::chrono::seconds>(
-                                    std::chrono::system_clock::now().time_since_epoch()).count(),
-                                true};
+                            now_playing = CommunityNowPlaying{*id, username, 0, now, true};
+                            g_store.set_jukebox_pos(station, *id, 0, now);
+                            g_community_last_flush_by_station[station] = now;
                         } else {
                             upcoming.push_back(CommunityTrack{*id, username});
                         }
                     }
+                } else if (auto raw = extract_json_string_field(s, "\"play\"")) {
+                    if (auto id = extract_youtube_id(trim_ws(*raw))) {
+                        const auto now = std::chrono::duration_cast<std::chrono::seconds>(
+                            std::chrono::system_clock::now().time_since_epoch()).count();
+                        std::lock_guard<std::mutex> lock(g_community_mu);
+                        g_community_now_by_station[station] = CommunityNowPlaying{*id, username, 0, now, true};
+                        lglog::emit("jukebox", "play "+station+" "+*id+" by "+username);
+                    }
                 } else if (s.find("\"ended\"") != std::string::npos) {
+                    const auto now = std::chrono::duration_cast<std::chrono::seconds>(
+                        std::chrono::system_clock::now().time_since_epoch()).count();
                     std::lock_guard<std::mutex> lock(g_community_mu);
                     if (g_community_now_by_station[station].active) {
-                        community_advance_locked(station, std::chrono::duration_cast<std::chrono::seconds>(
-                            std::chrono::system_clock::now().time_since_epoch()).count());
+                        community_advance_locked(station, now);
+                        const auto& np = g_community_now_by_station[station];
+                        if (np.active) g_store.set_jukebox_pos(station, np.video_id, 0, now);
+                        g_community_last_flush_by_station[station] = now;
                     }
                 }
             }
@@ -2972,19 +3775,64 @@ void run_community_session(int fd, const std::string& username, const std::strin
             const auto now = std::chrono::duration_cast<std::chrono::seconds>(
                 std::chrono::system_clock::now().time_since_epoch()).count();
             const auto& now_playing = g_community_now_by_station[station];
+            const auto elapsed = community_elapsed_locked(station, now);
+            // Roughly every 15s while playing, not every ~500ms tick --
+            // shared across however many listeners are connected (only
+            // whichever one's tick crosses the threshold actually writes).
+            if (now_playing.active) {
+                auto& last_flush = g_community_last_flush_by_station[station];
+                if (now - last_flush >= 15) {
+                    last_flush = now;
+                    g_store.set_jukebox_pos(station, now_playing.video_id, elapsed, now);
+                }
+            }
             std::ostringstream os;
             os << "{";
             if (now_playing.active) {
                 os << "\"now\":{\"video_id\":\"" << now_playing.video_id
                    << "\",\"queued_by\":\"" << now_playing.queued_by
-                   << "\",\"elapsed\":" << std::max<std::int64_t>(0, now - now_playing.started_at) << "}";
+                   << "\",\"elapsed\":" << elapsed << "}";
             } else {
                 os << "\"now\":null";
             }
-            os << ",\"upcoming\":" << g_community_upcoming_by_station[station].size() << "}";
+            os << ",\"upcoming\":" << g_community_upcoming_by_station[station].size();
+            os << ",\"queue\":[";
+            {
+                bool qfirst = true;
+                for (const auto& t : g_community_upcoming_by_station[station]) {
+                    if (!qfirst) os << ",";
+                    qfirst = false;
+                    os << "{\"video_id\":\"" << t.video_id << "\",\"queued_by\":\"" << t.queued_by << "\"}";
+                }
+            }
+            os << "]}";
             snapshot = os.str();
         }
         if (!ws_write_frame(fd, WsOpcode::Text, snapshot)) break;
+    }
+
+    // Leaving is a ...->0 transition (or not, if someone else is still
+    // here): only the actual last listener freezes and saves. WS close is
+    // enough on its own to catch this -- no client-side pagehide beacon
+    // needed for community/site-wide stations, unlike the personal
+    // (HTTP-polled) ones below.
+    {
+        std::lock_guard<std::mutex> lock(g_community_mu);
+        const auto now = std::chrono::duration_cast<std::chrono::seconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        // Elapsed has to be computed while the count still reflects this
+        // connection as live -- community_elapsed_locked only adds live
+        // time when count>0, so doing this after decrementing would
+        // freeze at frozen_offset alone, silently dropping this session's
+        // own listening time (caught live: a 5s hold froze at 0, not 5).
+        auto& np = g_community_now_by_station[station];
+        const auto elapsed = community_elapsed_locked(station, now);
+        int& count = g_community_listeners_by_station[station];
+        if (count > 0) --count;
+        if (count == 0 && np.active) {
+            np.frozen_offset = elapsed;
+            g_store.set_jukebox_pos(station, np.video_id, elapsed, now);
+        }
     }
     close(fd);
 }
@@ -3008,17 +3856,27 @@ void run_community_session(int fd, const std::string& username, const std::strin
 // /listen popout window.
 std::string jukebox_panel_body(bool standalone) {
     return
+        // First child of #jbpanel/#jbroot either way this gets embedded
+        // (see global_jukebox_widget and jukebox_standalone_page, both of
+        // which wrap this same body) -- one shared change covers the
+        // floating widget and the /listen popout at once.
+        "<div class=\"juketube-plate\">Juketube</div>"
         "<div class=\"row\" style=\"justify-content:space-between;align-items:center\">"
         "<div class=\"row\" style=\"gap:.3rem\">"
         "<button type=\"button\" class=\"ghost\" id=\"jbtab-community\">Stations</button>"
-        "<button type=\"button\" class=\"ghost\" id=\"jbtab-search\">My search</button>"
+        "<button type=\"button\" class=\"ghost\" id=\"jbtab-search\">Search</button>"
         "</div>"
         "<div class=\"row\" style=\"gap:.3rem\">"
+        // Embedded (the phone widget on every page): collapse/expand is
+        // the round phone button alone, so neither Pop out nor a second
+        // close control belongs here. Standalone (/listen, its own
+        // window) keeps both -- Float above to go always-on-top, and its
+        // own Close to actually close that window.
         + std::string(standalone
             ? "<button type=\"button\" class=\"ghost\" id=\"jbfloat\" hidden>Float above</button>"
-            : "<button type=\"button\" class=\"ghost\" id=\"jbpopout\" title=\"Open in its own window &mdash; keeps playing while you browse\">Pop out</button>")
-        + "<button type=\"button\" class=\"ghost\" id=\"jbclose\" aria-label=\"Close\">\xE2\x9C\x95</button>"
-        "</div>"
+              "<button type=\"button\" class=\"ghost\" id=\"jbclose\" aria-label=\"Close\">\xE2\x9C\x95</button>"
+            : "")
+        + "</div>"
         "</div>"
         "<div id=\"jbplayer\" style=\"margin-top:.6rem;aspect-ratio:16/9;background:#000;"
         "border-radius:var(--rsm)\"></div>"
@@ -3048,11 +3906,20 @@ std::string jukebox_panel_body(bool standalone) {
         "<input id=\"jbadd\" placeholder=\"Add to the queue\" autocomplete=\"off\" "
         "style=\"margin-top:.4rem;width:100%\">"
         "<div id=\"jbaddresults\" style=\"margin-top:.3rem;display:flex;flex-direction:column;gap:.15rem\"></div>"
+        "<p class=\"muted\" id=\"jbadderr\" style=\"margin:.2rem 0 0\" hidden></p>"
         "</div>"
         "<div id=\"jbsearch-ui\" hidden>"
-        "<input id=\"jbsearch\" placeholder=\"Paste a YouTube link\" autocomplete=\"off\" "
-        "style=\"margin-top:.5rem;width:100%\">"
+        "<select id=\"jbsearchcat\" style=\"width:100%\">"
+        "<option value=\"all\">All</option><option value=\"group\">Group</option>"
+        "<option value=\"friends\">Friends</option><option value=\"others\">Others</option>"
+        "<option value=\"self\">Self</option></select>"
+        "<input id=\"jbsearch\" placeholder=\"Search people and communities\" autocomplete=\"off\" "
+        "style=\"margin-top:.4rem;width:100%\">"
         "<div id=\"jbsearchresults\" style=\"margin-top:.3rem;display:flex;flex-direction:column;gap:.15rem\"></div>"
+        "<label class=\"muted\" style=\"display:block;margin-top:.7rem;font-size:.72rem;letter-spacing:.08em;"
+        "text-transform:uppercase\">History</label>"
+        "<select id=\"jbhistorysel\" style=\"width:100%;margin-top:.2rem\">"
+        "<option value=\"\">Something you&rsquo;ve played before&hellip;</option></select>"
         "</div>";
 }
 
@@ -3063,22 +3930,35 @@ std::string jukebox_panel_body(bool standalone) {
 // navigates away as long as it stays open — a working "Float above" button
 // using the real Document Picture-in-Picture API, moving the whole panel
 // into an always-on-top OS-level window for as long as this tab stays open).
-std::string jukebox_script(const std::string& yt_key, bool standalone, const std::string& stations_js) {
+std::string jukebox_script(const std::string& yt_key, bool standalone, const std::string& stations_js,
+                            const std::string& own_username) {
     (void)yt_key; // search goes through /jukebox/search so the key never ships in HTML
     std::string s =
         "<script>(function(){"
         "var STANDALONE="+std::string(standalone ? "true" : "false")+";"
+        "var OWN_USERNAME="+js_string_literal(own_username)+";"
         "var tabC=document.getElementById('jbtab-community'),tabS=document.getElementById('jbtab-search');"
         "var playerDiv=document.getElementById('jbplayer');"
         "var playPauseBtn=document.getElementById('jbplaypause'),muteBtn=document.getElementById('jbmute');"
         "var volumeSlider=document.getElementById('jbvolume');"
         "var nowEl=document.getElementById('jbnow'),upcomingEl=document.getElementById('jbupcoming');"
         "var addInput=document.getElementById('jbadd'),addResults=document.getElementById('jbaddresults');"
+        "var addErr=document.getElementById('jbadderr');"
         "var searchInput=document.getElementById('jbsearch'),searchResults=document.getElementById('jbsearchresults');"
+        "var searchCat=document.getElementById('jbsearchcat'),historySel=document.getElementById('jbhistorysel');"
         "var communityUi=document.getElementById('jbcommunity-ui'),searchUi=document.getElementById('jbsearch-ui');"
         "var stationList=document.getElementById('jbstationlist'),stationAdd=document.getElementById('jbstationadd');"
         "var mode='community',ytPlayer=null,ws=null,muted=false;"
-        "var lastCommunityId=null,lastCommunityElapsed=0,lastKnownDuration=0,stationLoadedAt=0;"
+        "var pastEndReportedFor=null;" // see onStateChange's own comment -- one past-end self-heal report per video_id
+        // ytPlayer itself goes non-null the instant `new YT.Player(...)`
+        // is called -- its actual methods (loadVideoById etc.) aren't
+        // guaranteed to exist until the async onReady event fires later.
+        // playerReady/pendingPlayerCbs track real readiness separately so
+        // a second ensurePlayer() call arriving in that gap queues behind
+        // onReady instead of firing on a half-constructed player (caught
+        // live: "ytPlayer.loadVideoById is not a function").
+        "var playerReady=false,pendingPlayerCbs=[];"
+        "var lastCommunityId=null,lastCommunityElapsed=0,lastKnownDuration=0,stationLoadedAt=0,ignoreEndedUntil=0;"
         "function saneStart(elapsed){"
         "elapsed=Number(elapsed);"
         "if(!isFinite(elapsed)||elapsed<0)return 0;"
@@ -3091,7 +3971,7 @@ std::string jukebox_script(const std::string& yt_key, bool standalone, const std
         "lastCommunityId=id;"
         "lastCommunityElapsed=saneStart(elapsed);"
         "stationLoadedAt=Date.now();"
-        "ytPlayer.loadVideoById({videoId:id,startSeconds:lastCommunityElapsed});"
+        "ignoreEndedUntil=Date.now()+4000;ytPlayer.loadVideoById({videoId:id,startSeconds:0});"
         "}"
         "var pollTimer=null,activePersonalOwner=null;"
         "var followInput=document.getElementById('jbfollow'),followBtn=document.getElementById('jbfollowbtn'),"
@@ -3147,23 +4027,27 @@ std::string jukebox_script(const std::string& yt_key, bool standalone, const std
         "window.onYouTubeIframeAPIReady=function(){if(prev)prev();cb();};"
         "}"
         "function ensurePlayer(cb){"
-        "if(ytPlayer){cb();return;}"
+        "if(playerReady){cb();return;}"
+        "pendingPlayerCbs.push(cb);"
+        "if(ytPlayer)return;" // construction already in flight -- onReady below drains the queue
         "ensureYT(function(){"
         "ytPlayer=new YT.Player('jbplayer',{height:'100%',width:'100%',"
         "playerVars:{rel:0,playsinline:1},events:{"
-        "onReady:function(){ytPlayer.setVolume(Number(volumeSlider.value));cb();},"
+        "onReady:function(){"
+        "playerReady=true;"
+        "ytPlayer.setVolume(Number(volumeSlider.value));"
+        "var cbs=pendingPlayerCbs;pendingPlayerCbs=[];"
+        "cbs.forEach(function(fn){fn();});"
+        "},"
         "onStateChange:function(e){"
-        "if(e.data===YT.PlayerState.PLAYING)playPauseBtn.textContent='Pause';"
+        "if(e.data===YT.PlayerState.PLAYING){playPauseBtn.textContent='Pause';try{var dd=ytPlayer.getDuration();if(dd>1)lastKnownDuration=dd;}catch(err){}}"
         "else if(e.data===YT.PlayerState.PAUSED)playPauseBtn.textContent='Play';"
+        "function reportEnded(){"
+        "if(Date.now()<ignoreEndedUntil)return;"
         "var d=0,t=0;"
         "try{d=ytPlayer.getDuration()||0;t=ytPlayer.getCurrentTime()||0;}catch(err){}"
         "if(d>1)lastKnownDuration=d;"
-        "if(e.data===YT.PlayerState.PLAYING&&d>1&&lastCommunityElapsed>=d-0.5){"
-        "lastCommunityElapsed=0;"
-        "ytPlayer.seekTo(0,true);ytPlayer.playVideo();return;"
-        "}"
-        "if(e.data===YT.PlayerState.ENDED&&mode==='community'){"
-        "if(d<1||(t<3&&(lastCommunityElapsed>5||Date.now()-stationLoadedAt<2500))){"
+        "if(d<1||lastCommunityElapsed>=d-0.5||(t<3&&(lastCommunityElapsed>5||Date.now()-stationLoadedAt<2500))){"
         "lastCommunityElapsed=0;"
         "try{ytPlayer.seekTo(0,true);ytPlayer.playVideo();}catch(err){}"
         "return;"
@@ -3174,13 +4058,41 @@ std::string jukebox_script(const std::string& yt_key, bool standalone, const std
         "headers:{'Content-Type':'application/x-www-form-urlencoded'},"
         "body:'video_id='+encodeURIComponent(lastCommunityId)});"
         "}"
+        "if(e.data===YT.PlayerState.ENDED&&mode==='community')reportEnded();"
+        // The shared elapsed clock only tracks real wall-clock time since
+        // the last freeze/resume (see community_elapsed_locked's own
+        // comment) -- it has no idea how long the actual video is, so
+        // nothing stops it drifting past a short video's real end if
+        // nobody's been actually watching (caught live: a 59s video
+        // frozen at 734s, from an earlier round of WS testing that held
+        // connections open without ever loading a real player). Loading
+        // at or past the real duration would otherwise just sit there
+        // glitching -- self-heal by reporting it finished immediately,
+        // the same path a genuine ENDED event already takes, so the
+        // queue advances instead of getting stuck.
+        "if((e.data===YT.PlayerState.PLAYING||e.data===YT.PlayerState.CUED)&&mode==='community'&&"
+        "typeof ytPlayer.getDuration==='function'){"
+        "var dur=ytPlayer.getDuration();"
+        "if(dur>0&&ytPlayer.getCurrentTime()>=dur-1&&pastEndReportedFor!==lastCommunityId){"
+        "pastEndReportedFor=lastCommunityId;"
+        "reportEnded();"
         "}"
-        "}});"
+        "}"
+        // This closes, in order: the PLAYING/CUED-duration if-block above
+        // (the one just before it), onStateChange's own function body,
+        // and the events:{...} object -- three closes, not two. Missing
+        // one of these left the *entire* jukebox_script IIFE with an
+        // unbalanced brace, which is a parse-time SyntaxError: the whole
+        // script tag silently fails to run, not just this block -- no
+        // listener anywhere in the widget ever attaches. That's the real
+        // explanation for "click never does anything, no console error":
+        // there's no error to see because the script never started.
+        "}}});"
         "});"
         "}"
         "function teardownWs(){"
         "if(ws){try{ws.close();}catch(e){}ws=null;}"
-        "lastCommunityId=null;lastKnownDuration=0;"
+        "lastCommunityId=null;"
         "}"
         "function teardownPoll(){"
         "if(pollTimer){clearInterval(pollTimer);pollTimer=null;}"
@@ -3190,6 +4102,7 @@ std::string jukebox_script(const std::string& yt_key, bool standalone, const std
         "function teardown(){"
         "teardownActive();"
         "if(ytPlayer){try{ytPlayer.destroy();}catch(e){}ytPlayer=null;}"
+        "playerReady=false;pendingPlayerCbs=[];"
         "}"
         // Personal channels have no live sync -- a shared but ordinary HTTP
         // queue (see jukebox_widget), same one the profile page itself
@@ -3208,8 +4121,22 @@ std::string jukebox_script(const std::string& yt_key, bool standalone, const std
         "if(data.now){"
         "nowEl.textContent='Now playing on '+esc(stationName('u:'+owner))+' \\u2014 queued by '+esc(data.now.queued_by);"
         "if(data.now.video_id!==lastCommunityId){"
-        "lastCommunityId=data.now.video_id;"
-        "if(mode==='community')ensurePlayer(function(){ytPlayer.loadVideoById(lastCommunityId);});"
+        "lastCommunityId=data.now.video_id;lastCommunityElapsed=saneStart(data.now.elapsed||0);"
+        "if(mode==='community')ensurePlayer(function(){"
+        "loadStationVideo(lastCommunityId,lastCommunityElapsed);"
+        "});"
+        "}else{"
+        "lastCommunityElapsed=saneStart(data.now.elapsed||0);"
+        // Same shared-playhead drift correction the WS-backed stations
+        // get from connectWs's onmessage -- the server clock is the one
+        // that matters, this just catches a personal station's own
+        // player up to it every few seconds instead of only on a track
+        // change.
+        "if(mode==='community'&&ytPlayer&&typeof ytPlayer.getCurrentTime==='function'"
+        "&&ytPlayer.getPlayerState()===YT.PlayerState.PLAYING){"
+        "var cur=ytPlayer.getCurrentTime();"
+        "if(lastKnownDuration>1){var tgt=saneStart(lastCommunityElapsed);if(tgt<lastKnownDuration-0.5&&Math.abs(cur-tgt)>2)ytPlayer.seekTo(tgt,true);}"
+        "}"
         "}"
         "}else{"
         "nowEl.textContent=esc(stationName('u:'+owner))+': nothing playing \\u2014 add a track below.';"
@@ -3224,6 +4151,41 @@ std::string jukebox_script(const std::string& yt_key, bool standalone, const std
         "}"
         "tick();pollTimer=setInterval(tick,4000);"
         "}"
+        // The polling widget's substitute for a WebSocket connect/
+        // disconnect (see personal_heartbeat_locked/personal_freeze_locked
+        // server-side) -- fires only while a personal station is both the
+        // active one AND actually playing, not just open in the
+        // background. video_id only, on purpose: the server clock is what
+        // advances the shared position, never a client-reported
+        // currentTime (two listeners drift differently; the server can't
+        // referee that from a bare heartbeat, only from an explicit
+        // freeze with its own reconciliation -- see personalFreezeBeacon).
+        "function personalHeartbeatTick(){"
+        "if(mode!=='community'||!activePersonalOwner||!ytPlayer||!lastCommunityId)return;"
+        "if(ytPlayer.getPlayerState()!==YT.PlayerState.PLAYING)return;"
+        "fetch('/u/'+encodeURIComponent(activePersonalOwner)+'/jukebox/pos',{method:'POST',"
+        "headers:{'Content-Type':'application/x-www-form-urlencoded'},"
+        "body:'video_id='+encodeURIComponent(lastCommunityId)});"
+        "}"
+        // Pause or pagehide on a personal station: stop right now instead
+        // of waiting out the server's grace window, so the next listener
+        // (or this same person, back later) resumes from here, not up to
+        // 30s short of it. sendBeacon survives the page actually
+        // unloading; a plain fetch might not finish in time.
+        "function personalFreezeBeacon(){"
+        "if(mode!=='community'||!activePersonalOwner||!ytPlayer||!lastCommunityId)return;"
+        "var cur=0;try{cur=Math.round(ytPlayer.getCurrentTime());}catch(e){}"
+        "var b='video_id='+encodeURIComponent(lastCommunityId)+'&freeze=1&offset='+cur;"
+        "var url='/u/'+encodeURIComponent(activePersonalOwner)+'/jukebox/pos';"
+        "if(navigator.sendBeacon){"
+        "navigator.sendBeacon(url,new Blob([b],{type:'application/x-www-form-urlencoded'}));"
+        "}else{"
+        "fetch(url,{method:'POST',keepalive:true,"
+        "headers:{'Content-Type':'application/x-www-form-urlencoded'},body:b});"
+        "}"
+        "}"
+        "setInterval(personalHeartbeatTick,15000);"
+        "window.addEventListener('pagehide',personalFreezeBeacon);"
         "function connectActive(id){"
         "if(id===null){nowEl.textContent='No station selected \\u2014 add one below.';upcomingEl.textContent='';"
         "if(ytPlayer)ytPlayer.stopVideo();return;}"
@@ -3244,7 +4206,17 @@ std::string jukebox_script(const std::string& yt_key, bool standalone, const std
         "if(mode==='community')ensurePlayer(function(){"
         "loadStationVideo(lastCommunityId,lastCommunityElapsed);"
         "});"
-        "}else{lastCommunityElapsed=saneStart(data.now.elapsed);}"
+        "}else{"
+        "lastCommunityElapsed=saneStart(data.now.elapsed);"
+        // WS ticks every ~500ms, so drift here is normally tiny (a
+        // reconnect or a stalled player are the real cases this catches);
+        // same >2s threshold and reasoning as the personal/poll path.
+        "if(mode==='community'&&ytPlayer&&typeof ytPlayer.getCurrentTime==='function'"
+        "&&ytPlayer.getPlayerState()===YT.PlayerState.PLAYING){"
+        "var cur=ytPlayer.getCurrentTime();"
+        "if(lastKnownDuration>1){var tgt=saneStart(lastCommunityElapsed);if(tgt<lastKnownDuration-0.5&&Math.abs(cur-tgt)>2)ytPlayer.seekTo(tgt,true);}"
+        "}"
+        "}"
         "}else{"
         "nowEl.textContent=esc(stationName(stationId))+': nothing playing \\u2014 add a track below.';"
         "lastCommunityId=null;"
@@ -3390,9 +4362,7 @@ std::string jukebox_script(const std::string& yt_key, bool standalone, const std
         "currentConnectedStation=id;teardownActive();"
         "connectActive(id);"
         "}"
-        "if(lastCommunityId)ensurePlayer(function(){"
-        "loadStationVideo(lastCommunityId,lastCommunityElapsed);"
-        "});"
+        "/* keep current video on Stations tab */"
         "}"
         "}"
         "function attachLiveSearch(input,resultsEl,onPick){"
@@ -3402,13 +4372,20 @@ std::string jukebox_script(const std::string& yt_key, bool standalone, const std
         "if(!val||looksLikeUrl(val)){resultsEl.innerHTML='';return;}"
         "timer=setTimeout(function(){"
         "var my=++gen;"
-        "fetch('/jukebox/search?q='+encodeURIComponent(val))"
-        ".then(function(r){return r.json();})"
+        "resultsEl.textContent='Searching...';"
+        "fetch('/jukebox/search?q='+encodeURIComponent(val),{credentials:'same-origin'})"
+        ".then(function(r){if(!r.ok)throw new Error('http '+r.status);return r.json();})"
         ".then(function(data){"
         "if(my!==gen)return;"
         "resultsEl.innerHTML='';"
-        "(data.items||[]).forEach(function(it){"
-        "var id=it.id.videoId,title=it.snippet.title,thumb=it.snippet.thumbnails.default.url;"
+        "var items=data.items||[];"
+        "if(!items.length){resultsEl.textContent='No matches.';return;}"
+        "items.forEach(function(it){"
+        "var id=(it.id&&it.id.videoId)||'';"
+        "var title=(it.snippet&&it.snippet.title)||'untitled';"
+        "var th=it.snippet&&it.snippet.thumbnails&&(it.snippet.thumbnails.default||it.snippet.thumbnails.medium);"
+        "var thumb=(th&&th.url)||'';"
+        "if(!id)return;"
         "var row=document.createElement('div');row.className='row';"
         "row.style.cssText='align-items:center;cursor:pointer;padding:.25rem;border-radius:var(--rsm)';"
         "row.innerHTML='<img src=\"'+thumb+'\" width=\"48\" height=\"36\" alt=\"\" style=\"border-radius:4px\">"
@@ -3418,7 +4395,7 @@ std::string jukebox_script(const std::string& yt_key, bool standalone, const std
         "});"
         "resultsEl.appendChild(row);"
         "});"
-        "}).catch(function(){});"
+        "}).catch(function(){if(my===gen)resultsEl.textContent='Search failed.';});"
         "},300);"
         "});"
         "input.addEventListener('keydown',function(e){"
@@ -3430,46 +4407,129 @@ std::string jukebox_script(const std::string& yt_key, bool standalone, const std
         "});"
         "}"
         "attachLiveSearch(addInput,addResults,function(url){"
+        "if(addErr)addErr.hidden=true;"
+        // Every mutating fetch below either updates something real (the
+        // widget re-tunes) or, on failure, tells the person right next to
+        // the input -- a POST that just vanishes into an empty .catch is
+        // how "add to queue" used to silently do nothing.
+        "function fail(){if(addErr){addErr.textContent='Could not reach the server. Try again.';addErr.hidden=false;}}"
         "if(activePersonalOwner){"
-        "fetch('/u/'+encodeURIComponent(activePersonalOwner)+'/jukebox/add',{method:'POST',"
+        "fetch('/u/'+encodeURIComponent(activePersonalOwner)+'/jukebox/add',{method:'POST',credentials:'same-origin',"
         "headers:{'Content-Type':'application/x-www-form-urlencoded'},"
-        "body:'url='+encodeURIComponent(url)});"
-        "}else if(ws&&ws.readyState===1)ws.send(JSON.stringify({add:url}));"
+        "body:'url='+encodeURIComponent(url)}).then(function(r){if(!r.ok)fail();}).catch(fail);"
+        "}else if(ws&&ws.readyState===1){"
+        "ws.send(JSON.stringify({add:url}));"
+        "}else{"
+        // Neither a personal channel nor a live community socket is
+        // connected -- tuning to nothing was a silent no-op click. Add to
+        // the viewer's own queue instead and tune the widget there, so
+        // the click both persists (jukebox_of(OWN_USERNAME) actually
+        // gains the track) and plays immediately rather than waiting on
+        // a poll tick that was never going to happen with no station
+        // connected.
+        "fetch('/me/jukebox/add',{method:'POST',credentials:'same-origin',"
+        "headers:{'Content-Type':'application/x-www-form-urlencoded'},"
+        "body:'url='+encodeURIComponent(url)}).then(function(r){"
+        "if(!r.ok){fail();return;}"
+        // tempOverride/onStationsChanged/switchMode are all defined
+        // unconditionally further up this same script -- used directly
+        // (not through window.__lgTuneStation, which only exists in the
+        // embedded, non-standalone widget) so this fallback works the
+        // same way on the /listen popout too.
+        "if(!OWN_USERNAME)return;"
+        "tempOverride='u:'+OWN_USERNAME;"
+        "if(mode!=='community')switchMode('community');else onStationsChanged(false);"
+        "}).catch(fail);"
+        "}"
         "});"
-        "attachLiveSearch(searchInput,searchResults,function(url){"
-        "var m=url.match(/[?&]v=([A-Za-z0-9_-]{11})/)||url.match(/youtu\\.be\\/([A-Za-z0-9_-]{11})/);"
-        "if(!m)return;"
-        "switchMode('search');"
-        // The YT iframe grabbing focus after loadVideoById can also
-        // scroll the document on its own -- save scrollY just before and
-        // reassert it across the next two frames, since the iframe's own
-        // scroll can land a frame after this callback runs.
-        "var y0=window.scrollY;"
-        "ensurePlayer(function(){"
-        "ytPlayer.loadVideoById(m[1]);"
-        "requestAnimationFrame(function(){window.scrollTo(0,y0);"
-        "requestAnimationFrame(function(){window.scrollTo(0,y0);});});"
+        // Search tab: browse people/communities by category and tune the
+        // widget straight to one -- not a YouTube search (that stays on
+        // the Stations tab's "Add to the queue" input above, the existing
+        // /jukebox/search proxy). Clicking a row calls the same
+        // __lgTuneStation bridge a profile's own "Play in Juketube"
+        // button uses, so there's still only ever one player on the page.
+        "var searchTimer=null,searchGen=0;"
+        "function runSearch(){"
+        "var term=searchInput.value.trim();"
+        "clearTimeout(searchTimer);"
+        "searchTimer=setTimeout(function(){"
+        "var my=++searchGen;"
+        "fetch('/jukebox/browse?category='+encodeURIComponent(searchCat.value)+"
+        "'&q='+encodeURIComponent(term))"
+        ".then(function(r){return r.json();})"
+        ".then(function(data){"
+        "if(my!==searchGen)return;"
+        "searchResults.innerHTML='';"
+        "(data.items||[]).forEach(function(it){"
+        "var row=document.createElement('div');row.className='row';"
+        "row.style.cssText='align-items:center;cursor:pointer;padding:.3rem;border-radius:var(--rsm)';"
+        "row.textContent=it.name;"
+        "row.addEventListener('click',function(){window.__lgTuneStation(it.id);});"
+        "searchResults.appendChild(row);"
         "});"
+        "}).catch(function(){});"
+        "},250);"
+        "}"
+        "searchCat.addEventListener('change',runSearch);"
+        "searchInput.addEventListener('input',runSearch);"
+        "runSearch();"
+        // History: newest first, scoped to whatever personal channel is
+        // actually tuned in right now; a community/site-wide station (or
+        // nothing playing yet) has no personal history of its own, so
+        // this falls back to the viewer's own plays instead of staying
+        // empty.
+        "function loadHistory(){"
+        "var owner=personalOwnerFromId(activeStationId())||'';"
+        "fetch('/jukebox/history?for='+encodeURIComponent(owner))"
+        ".then(function(r){return r.json();})"
+        ".then(function(data){"
+        "historySel.innerHTML='<option value=\"\">Something you\\u2019ve played before\\u2026</option>';"
+        "(data.items||[]).forEach(function(it,idx){"
+        "var opt=document.createElement('option');opt.value=String(idx);"
+        "opt.textContent=it.queued_by;"
+        "opt.dataset.videoId=it.video_id;"
+        "historySel.appendChild(opt);"
+        "});"
+        "}).catch(function(){});"
+        "}"
+        "historySel.addEventListener('focus',loadHistory);"
+        "historySel.addEventListener('change',function(){"
+        "var opt=historySel.selectedOptions[0];"
+        "if(!opt||!opt.dataset.videoId)return;"
+        "var videoId=opt.dataset.videoId;"
+        "if(ws&&ws.readyState===1)ws.send(JSON.stringify({play:'https://www.youtube.com/watch?v='+videoId}));"
+        "switchMode('community');"
+        "ensurePlayer(function(){ytPlayer.loadVideoById(videoId);});"
+        "historySel.value='';"
         "});"
         "if(!STANDALONE){"
         "var toggle=document.getElementById('jbtoggle'),panel=document.getElementById('jbpanel');"
-        "toggle.addEventListener('click',function(){"
-        "panel.hidden=!panel.hidden;"
-        "if(!panel.hidden){ensurePlayer(function(){});"
+        "toggle.addEventListener('click',function(e){"
+        "e.stopPropagation();"
+        "var opening=panel.style.display==='none';"
+        "panel.style.display=opening?'block':'none';"
+        // Deferred a frame so the un-hide paints before ensurePlayer's
+        // synchronous new YT.Player(...) iframe creation runs -- see
+        // #jbpanel's own comment for why same-tick was the actual bug.
+        "if(opening)requestAnimationFrame(function(){"
+        "ensurePlayer(function(){});"
         "if(mode==='community'&&!ws&&!pollTimer){currentConnectedStation=activeStationId();connectActive(currentConnectedStation);}"
-        "}"
         "});"
-        // Closing the panel is a minimize, not a stop: audio keeps playing
-        // in the background on this page, same as e.g. a music site's
-        // player bar collapsing. Only Pop-out tears down -- a separate
-        // /listen window is taking over, so this page's copy would
-        // otherwise be a redundant, potentially state-confusing connection.
-        "document.getElementById('jbclose').addEventListener('click',function(){panel.hidden=true;});"
-        "var popoutBtn=document.getElementById('jbpopout');"
-        "if(popoutBtn)popoutBtn.addEventListener('click',function(){"
-        "window.open('/listen','lg_jukebox','width=360,height=560,menubar=no,toolbar=no,location=no,status=no');"
-        "panel.hidden=true;teardown();"
         "});"
+        // No Pop out or Close in the embedded widget anymore -- the round
+        // phone button (jbtoggle, above) is the only collapse/expand
+        // control. window.__lgTuneStation exposes a way for other scripts
+        // on the page (a profile's "Play in Juketube" button, the
+        // autoplay-on-visit script) to open this same panel, switch it to
+        // Stations, and tune it at a station id -- "" for site-wide, a
+        // community slug, or "u:<username>" for a personal channel --
+        // without spinning up a second YT.Player anywhere on the page.
+        "window.__lgTuneStation=function(id){"
+        "panel.style.display='block';"
+        "tempOverride=id;"
+        "if(mode!=='community')switchMode('community');"
+        "else onStationsChanged(false);"
+        "};"
         // Soft navigation: intercept plain same-origin link clicks and swap
         // <main>'s content via fetch instead of a full page load, so the
         // widget (a sibling of <main>, see wrap()) and its live
@@ -3524,7 +4584,13 @@ std::string jukebox_script(const std::string& yt_key, bool standalone, const std
         "}).catch(function(){location.href=url;});"
         "}"
         "}else{"
-        "document.getElementById('jbclose').addEventListener('click',function(){window.close();});"
+        // This whole branch only runs when STANDALONE is true (see its
+        // own var declaration above), which is exactly when jbclose
+        // exists in the DOM -- but guarding the lookup anyway costs
+        // nothing and survives this branch ever being restructured
+        // later without silently reintroducing a null-deref crash.
+        "var closeBtn=document.getElementById('jbclose');"
+        "if(closeBtn)closeBtn.addEventListener('click',function(){window.close();});"
         "ensurePlayer(function(){});"
         "currentConnectedStation=activeStationId();connectActive(currentConnectedStation);"
         "var floatBtn=document.getElementById('jbfloat');"
@@ -3558,7 +4624,7 @@ std::string jukebox_script(const std::string& yt_key, bool standalone, const std
         "tabS.addEventListener('click',function(){switchMode('search');});"
         "playPauseBtn.addEventListener('click',function(){"
         "if(!ytPlayer)return;"
-        "if(ytPlayer.getPlayerState()===YT.PlayerState.PLAYING){ytPlayer.pauseVideo();}"
+        "if(ytPlayer.getPlayerState()===YT.PlayerState.PLAYING){ytPlayer.pauseVideo();personalFreezeBeacon();}"
         "else{if(mode==='community'&&lastCommunityId)ytPlayer.seekTo(saneStart(lastCommunityElapsed),true);ytPlayer.playVideo();}"
         "});"
         "muteBtn.addEventListener('click',function(){"
@@ -3612,39 +4678,22 @@ std::string jukebox_stations_js(const std::string& user) {
     return os.str();
 }
 
-// Floating embedded widget: phone-icon toggle + collapsible panel, injected
-// on every logged-in page via wrap(). "Pop out" opens /listen in a real
+// Floating embedded widget: jukebox-icon toggle + collapsible panel,
+// injected on every logged-in page via wrap(). "Pop out" opens /listen in a real
 // separate window — see jukebox_script's comment for why that, and not
 // requestPictureInPicture, is what actually survives navigating this
 // (deliberately multi-page) site.
 std::string global_jukebox_widget(const std::string& yt_key, const std::string& user) {
-    return
-        "<button id=\"jbtoggle\" type=\"button\" aria-label=\"Jukebox\" "
-        "style=\"position:fixed;right:1rem;bottom:1rem;z-index:30;width:52px;height:52px;"
-        "border-radius:50%;background:var(--accent);color:var(--paper);border:0;"
-        "font-size:1.4rem;line-height:52px;text-align:center;cursor:pointer;"
-        "box-shadow:0 2px 10px rgba(0,0,0,.3)\">\xF0\x9F\x93\xB1</button>"
-        "<div id=\"jbpanel\" hidden style=\"position:fixed;right:1rem;bottom:4.5rem;z-index:30;"
-        "width:320px;max-width:92vw;max-height:min(75vh,540px);overflow-y:auto;"
-        "background:var(--panel);border:1px solid var(--rule);"
-        "border-radius:var(--rlg);padding:.9rem;box-shadow:0 6px 24px rgba(0,0,0,.35)\">"
-        "<div id=\"jbroot\">" + jukebox_panel_body(false) + "</div>"
-        "</div>"
-        + jukebox_script(yt_key, false, jukebox_stations_js(user));
+    (void)yt_key; (void)user;
+    return "<link rel=\"stylesheet\" href=\"/assets/juketube.css?v=14\">"
+           "<div id=\"juketube-root\"></div>"
+           "<script src=\"/assets/juketube.js?v=14\" defer></script>";
 }
 
-// The /listen popout: a real, independent top-level window. Once open, it
-// keeps playing regardless of what the opener tab navigates to — this is
-// what actually delivers "listen while browsing elsewhere" on a multi-page
-// site, unlike requestPictureInPicture (blocked here by the YouTube embed
-// being cross-origin) or the Document Picture-in-Picture API (tied to the
-// opener document's lifetime — closes on real navigation, not just this
-// site's choice). From inside *this* window, Float above uses Document PiP
-// for real, since this window's own document doesn't navigate away.
 std::string jukebox_standalone_page(const std::string& yt_key, const std::string& user) {
     return "<div id=\"jbroot\" style=\"max-width:400px;margin:0 auto\">"
            + jukebox_panel_body(true) + "</div>"
-           + jukebox_script(yt_key, true, jukebox_stations_js(user));
+           + jukebox_script(yt_key, true, jukebox_stations_js(user), user);
 }
 
 // The "Add a track" input + live search box, shared between the owner's own
@@ -3656,6 +4705,7 @@ std::string jukebox_add_form(const std::string& post_target, const std::string& 
             "<input id=\"jinput\" placeholder=\"Paste a YouTube link\" autocomplete=\"off\" style=\"flex:1\">"
             "</div>"
             "<div id=\"jsresults\" style=\"margin-top:.4rem;display:flex;flex-direction:column;gap:.2rem\"></div>"
+            "<p class=\"warn\" id=\"jaerr\" style=\"margin:.3rem 0 0\" hidden></p>"
             "</div>"
             "<p class=\"muted\">"+note+"</p>"
             "<script>(function(){"
@@ -3665,6 +4715,7 @@ std::string jukebox_add_form(const std::string& post_target, const std::string& 
             "if(savedY!==null){sessionStorage.removeItem('lg_scroll');window.scrollTo(0,parseInt(savedY,10)||0);}"
             "var target="+js_string_literal(post_target)+";"
             "var input=document.getElementById('jinput'),out=document.getElementById('jsresults');"
+            "var errEl=document.getElementById('jaerr');"
             "var lastTopId=null,timer=null,gen=0;"
             "function esc(s){"
             "var ta=document.createElement('textarea');ta.innerHTML=s;"
@@ -3673,27 +4724,33 @@ std::string jukebox_add_form(const std::string& post_target, const std::string& 
             "function looksLikeUrl(s){return /^https?:\\/\\//i.test(s)||/youtu\\.?be/i.test(s);}"
             // A picked/pasted track used to always window.location=... ,
             // a full navigation that scrolls the page back to the top
-            // even though nothing about the layout actually moved. If the
-            // in-page player is already showing (a track was already
-            // queued), just repoint it at the new video and stay put.
-            // Only reload when there's no player yet to update in place
-            // -- and even then, restore scroll rather than land at the
-            // top; also the only path that still surfaces a server-side
-            // error (?jerr=...), since that's rendered server-side.
+            // even though nothing about the layout actually moved -- so
+            // this used to try updating #jbplayer's src in place instead
+            // of reloading. But #jbplayer on THIS page is the floating
+            // widget's own player -- always a <div> here, now that the
+            // profile's own embedded iframe is gone -- and setting .src
+            // on a div does nothing. Only take that shortcut when
+            // #jbplayer is genuinely an <iframe> (the /listen standalone
+            // page still embeds one); otherwise a plain reload (with
+            // scroll restored, not reset to the top) is the only way the
+            // new track actually shows up in this list.
             "function queueUrl(url){"
-            "fetch(target,{method:'POST',"
+            "errEl.hidden=true;"
+            "fetch(target,{method:'POST',credentials:'same-origin',"
             "headers:{'Content-Type':'application/x-www-form-urlencoded'},"
             "body:'url='+encodeURIComponent(url)}).then(function(r){"
             "var dest=r.url||location.href;"
-            "var failed=/[?&]jerr=/.test(dest);"
+            "var failed=/[?&]err=/.test(dest);"
             "var player=document.getElementById('jbplayer');"
             "var m=url.match(/[?&]v=([A-Za-z0-9_-]{11})/)||url.match(/youtu\\.be\\/([A-Za-z0-9_-]{11})/);"
-            "if(!failed&&player&&m){"
+            "if(!failed&&player&&player.tagName==='IFRAME'&&m){"
             "player.src='https://www.youtube-nocookie.com/embed/'+m[1]+'?rel=0&enablejsapi=1';"
             "return;"
             "}"
             "sessionStorage.setItem('lg_scroll',String(window.scrollY));"
             "location.reload();"
+            "}).catch(function(){"
+            "errEl.textContent='Could not reach the server. Try again.';errEl.hidden=false;"
             "});"
             "}"
             "function render(items){"
@@ -3744,6 +4801,125 @@ std::string jukebox_add_form(const std::string& post_target, const std::string& 
 // history the moment the embedded player reports it ended (see
 // complete_jukebox_track). `viewer` is the signed-in username, or empty
 // for an anonymous visitor.
+// A CoverFlow-style browser for the owner's own queue on /me: the focused
+// track's thumbnail faces the viewer, the rest recede at an angle to
+// either side like records on a shelf. Arrow clicks and swipes (a harder
+// swipe skips further, scaled by release velocity) move the focus;
+// title/creator for the focused track comes from GET /jukebox/oembed (no
+// API key needed, unlike the Data API v3 search this file also proxies)
+// fetched on demand and cached client-side per session -- JukeboxTrack
+// itself still only ever stores a video id, exactly as before.
+std::string jukebox_coverflow_html(const std::vector<JukeboxTrack>& tracks, const std::string& owner) {
+    std::string tracks_json = "[";
+    for (std::size_t i = 0; i < tracks.size(); ++i) {
+        if (i) tracks_json += ",";
+        tracks_json += "{\"id\":\""+json_escape(tracks[i].video_id)+"\",\"by\":\""+
+                        json_escape(tracks[i].queued_by)+"\"}";
+    }
+    tracks_json += "]";
+    return
+        "<style>"
+        "#jbcoverflow{position:relative;display:flex;align-items:center;justify-content:center;"
+        "height:160px;margin:.8rem 0;touch-action:pan-y;user-select:none}"
+        "#jbcftrack{position:relative;width:100%;height:100%;perspective:900px}"
+        ".jbcf-item{position:absolute;top:50%;left:50%;width:120px;height:120px;margin:-60px 0 0 -60px;"
+        "border-radius:var(--rsm);overflow:hidden;cursor:pointer;background:#000;"
+        "transition:transform .35s ease,opacity .35s ease;box-shadow:0 4px 16px rgba(0,0,0,.3)}"
+        ".jbcf-item img{width:100%;height:100%;object-fit:cover;display:block}"
+        ".jbcf-arrow{background:var(--panel);border:1px solid var(--rule);border-radius:50%;"
+        "width:36px;height:36px;font-size:1.3rem;line-height:1;cursor:pointer;z-index:20;flex-shrink:0;"
+        "color:var(--ink)}"
+        "#jbcfcaption{text-align:center;margin:.2rem 0 .5rem;min-height:2.6em}"
+        "#jbcfcaption strong{display:block}"
+        "</style>"
+        "<div id=\"jbcoverflow\">"
+        "<button type=\"button\" class=\"jbcf-arrow\" id=\"jbcfprev\" aria-label=\"Previous track\">&#8249;</button>"
+        "<div id=\"jbcftrack\"></div>"
+        "<button type=\"button\" class=\"jbcf-arrow\" id=\"jbcfnext\" aria-label=\"Next track\">&#8250;</button>"
+        "</div>"
+        "<p id=\"jbcfcaption\"><strong id=\"jbcftitle\"></strong><span class=\"muted\" id=\"jbcfmeta\"></span></p>"
+        "<p class=\"row\"><button type=\"button\" class=\"ghost\" id=\"jbcfremove\">Remove this track</button></p>"
+        "<script>(function(){"
+        "var TRACKS="+tracks_json+";"
+        "var OWNER="+js_string_literal(owner)+";"
+        "var focus=0;"
+        "var track=document.getElementById('jbcftrack');"
+        "var titleEl=document.getElementById('jbcftitle'),metaEl=document.getElementById('jbcfmeta');"
+        "var wrap=document.getElementById('jbcoverflow'),cap=document.getElementById('jbcfcaption');"
+        "var removeBtn=document.getElementById('jbcfremove');"
+        "var oembedCache={};"
+        "function render(){"
+        "track.innerHTML='';"
+        "TRACKS.forEach(function(t,i){"
+        "var off=i-focus;"
+        "if(Math.abs(off)>3)return;"
+        "var el=document.createElement('div');el.className='jbcf-item';"
+        "var img=document.createElement('img');"
+        "img.src='https://img.youtube.com/vi/'+t.id+'/hqdefault.jpg';img.alt='';"
+        "el.appendChild(img);"
+        "var angle=off*32,tx=off*72,tz=-Math.abs(off)*70,scale=off===0?1:.82;"
+        "el.style.transform='translateX('+tx+'px) translateZ('+tz+'px) rotateY('+(-angle)+'deg) scale('+scale+')';"
+        "el.style.zIndex=String(100-Math.abs(off));"
+        "el.style.opacity=String(Math.max(0,1-Math.abs(off)*.3));"
+        "el.addEventListener('click',function(){if(i!==focus){focus=i;update();}});"
+        "track.appendChild(el);"
+        "});"
+        "}"
+        "function loadCaption(){"
+        "var t=TRACKS[focus];"
+        "if(!t){titleEl.textContent='';metaEl.textContent='';return;}"
+        // "queued by <you>" on your own curated pick is just noise here --
+        // only worth saying when a guest actually requested it.
+        "var pos='Track '+(focus+1)+' of '+TRACKS.length;"
+        "metaEl.textContent=(t.by&&t.by!==OWNER)?(pos+' \\u00b7 queued by '+t.by):pos;"
+        "if(oembedCache[t.id]){titleEl.textContent=oembedCache[t.id];return;}"
+        "titleEl.textContent='Loading\\u2026';"
+        "fetch('/jukebox/oembed?id='+encodeURIComponent(t.id)).then(function(r){return r.json();})"
+        ".then(function(d){"
+        "var txt=d.title?(d.title+(d.author_name?' \\u2014 '+d.author_name:'')):t.id;"
+        "oembedCache[t.id]=txt;"
+        "if(TRACKS[focus]===t)titleEl.textContent=txt;"
+        "}).catch(function(){if(TRACKS[focus]===t)titleEl.textContent=t.id;});"
+        "}"
+        "function update(){"
+        "if(!TRACKS.length){wrap.hidden=true;cap.hidden=true;removeBtn.parentNode.hidden=true;return;}"
+        "render();loadCaption();"
+        "}"
+        "function move(delta){"
+        "focus=Math.max(0,Math.min(TRACKS.length-1,focus+delta));"
+        "update();"
+        "}"
+        "document.getElementById('jbcfprev').addEventListener('click',function(){move(-1);});"
+        "document.getElementById('jbcfnext').addEventListener('click',function(){move(1);});"
+        "removeBtn.addEventListener('click',function(){"
+        "var t=TRACKS[focus];if(!t)return;"
+        "fetch('/me/jukebox/remove',{method:'POST',credentials:'same-origin',"
+        "headers:{'Content-Type':'application/x-www-form-urlencoded'},"
+        "body:'video_id='+encodeURIComponent(t.id)}).then(function(){"
+        "TRACKS.splice(focus,1);"
+        "if(focus>=TRACKS.length)focus=TRACKS.length-1;"
+        "update();"
+        "});"
+        "});"
+        // Swipe: drag distance decides direction, release velocity decides
+        // how many tracks to skip -- a light flick moves one, a hard flick
+        // moves several.
+        "var startX=null,startT=0;"
+        "wrap.addEventListener('pointerdown',function(e){startX=e.clientX;startT=Date.now();});"
+        "wrap.addEventListener('pointerup',function(e){"
+        "if(startX===null)return;"
+        "var dx=e.clientX-startX,dt=Math.max(1,Date.now()-startT);"
+        "startX=null;"
+        "if(Math.abs(dx)<20)return;"
+        "var velocity=Math.abs(dx)/dt;"
+        "var skip=Math.max(1,Math.round(velocity*3.5));"
+        "move(dx<0?skip:-skip);"
+        "});"
+        "wrap.addEventListener('pointercancel',function(){startX=null;});"
+        "update();"
+        "})();</script>";
+}
+
 std::string jukebox_widget(const std::string& owner, bool owner_view, const std::string& viewer,
                             const std::map<std::string,std::string>& qs) {
     auto tracks = g_store.jukebox_of(owner);
@@ -3757,13 +4933,7 @@ std::string jukebox_widget(const std::string& owner, bool owner_view, const std:
         html += " &middot; "+std::to_string(n)+(n==1?" subscriber":" subscribers");
     }
     html += "</p>";
-    if (qs.count("jerr")) {
-        const std::string& e = qs.at("jerr");
-        if (e=="url") html += "<p class=\"warn\">That link wasn't recognized as a YouTube video.</p>";
-        else if (e=="full") html += "<p class=\"warn\">Queue already holds "+std::to_string(kJukeboxQueueCap)+" tracks. Remove one first.</p>";
-        else if (e=="denied") html += "<p class=\"warn\">You can't queue a track here.</p>";
-        else if (e=="pending") html += "<p class=\"warn\">You already have a track queued. Wait for it to play first.</p>";
-    }
+    html += flash_error(qs);
 
     const bool is_guest = !owner_view && !viewer.empty();
     const bool is_friend = is_guest && g_store.are_friends(viewer, owner);
@@ -3777,51 +4947,45 @@ std::string jukebox_widget(const std::string& owner, bool owner_view, const std:
     }
     const bool guest_can_add = is_guest && policy_allows && !has_pending;
 
-    if (tracks.empty()) {
-        html += "<p class=\"empty\">No tracks queued.</p>";
+    // What's actually playing here can be a relay (see "Play this Juketube
+    // instead" on /me) -- resolved at most one hop, never chased further.
+    // Two players on one page was the actual bug this replaces: no more
+    // embedded iframe, no Prev/Next-as-page-nav, no second YT.Player. This
+    // card is just text + a thumbnail; the real playback -- for owner and
+    // visitor alike -- happens once, in the floating widget, via "Play in
+    // Juketube" below.
+    const std::string playback_owner = g_store.jukebox_effective_owner(owner);
+    const bool relayed = playback_owner != owner;
+    auto playing = g_store.jukebox_of(playback_owner);
+    if (relayed) {
+        html += "<p class=\"muted\">Playing <a href=\"/u/"+html_escape(playback_owner)+"\">"+
+                html_escape(playback_owner)+"</a>'s Juketube.</p>";
+    }
+    if (playing.empty()) {
+        html += "<p class=\"empty\">Nothing playing.</p>";
     } else {
-        int idx = 0;
-        auto it = qs.find("t");
-        if (it != qs.end()) { try { idx = std::stoi(it->second); } catch (...) { idx = 0; } }
-        if (idx < 0) idx = 0;
-        if (idx >= static_cast<int>(tracks.size())) idx = static_cast<int>(tracks.size()) - 1;
-        const auto& t = tracks[static_cast<std::size_t>(idx)];
-        html += "<iframe id=\"jbplayer\" src=\"https://www.youtube-nocookie.com/embed/"+html_escape(t.video_id)+
-                "?rel=0&enablejsapi=1\" "
-                "title=\"Queued track\" allow=\"encrypted-media; picture-in-picture\" "
-                "referrerpolicy=\"strict-origin-when-cross-origin\" allowfullscreen></iframe>"
-                "<p class=\"muted\">Track "+std::to_string(idx+1)+" of "+std::to_string(tracks.size())+
-                (t.queued_by != owner ? " · queued by "+html_escape(t.queued_by) : "")+"</p>"
-                "<div class=\"row\">";
-        if (idx > 0) html += "<a class=\"btn ghost\" href=\"?t="+std::to_string(idx-1)+"\">Prev</a>";
-        if (idx+1 < static_cast<int>(tracks.size())) html += "<a class=\"btn ghost\" href=\"?t="+std::to_string(idx+1)+"\">Next</a>";
-        if (owner_view) {
-            html += "<form class=\"inline\" method=\"POST\" action=\"/me/jukebox/remove\">"
-                    "<input type=\"hidden\" name=\"video_id\" value=\""+html_escape(t.video_id)+"\">"
-                    "<button class=\"ghost\" type=\"submit\">Remove this track</button></form>";
+        const auto& t = playing.front();
+        html += "<div class=\"row\" style=\"align-items:center;gap:.6rem\">"
+                "<img src=\"https://img.youtube.com/vi/"+html_escape(t.video_id)+"/hqdefault.jpg\" "
+                "width=\"96\" height=\"72\" alt=\"\" style=\"border-radius:var(--rsm);flex-shrink:0\">"
+                "<div><strong>Now playing</strong><br><span class=\"muted\">queued by "+
+                html_escape(t.queued_by)+"</span></div></div>"
+                "<p class=\"muted\">"+std::to_string(playing.size()-1)+
+                (playing.size()==2?" track":" tracks")+" queued next</p>";
+    }
+    if (!viewer.empty()) {
+        html += "<p class=\"row\"><button type=\"button\" class=\"btn\" "
+                "onclick=\"window.__lgTuneStation&amp;&amp;window.__lgTuneStation('u:"+owner+"')\">"
+                "Play in Juketube</button></p>";
+    }
+    if (owner_view) {
+        html += "<div style=\"margin-top:.6rem\"><label>Your playlist</label>";
+        if (tracks.empty()) {
+            html += "<p class=\"empty\">Nothing queued yet.</p>";
+        } else {
+            html += jukebox_coverflow_html(tracks, owner);
         }
         html += "</div>";
-        // Reports the currently playing track's real end (not just a click
-        // away) so a guest's one-shot request actually gets one shot,
-        // whoever is watching -- owner included. Requires being signed in;
-        // an anonymous visitor can still watch, just never triggers it.
-        if (!viewer.empty()) {
-            html += "<script>(function(){"
-                    "var owner="+js_string_literal(owner)+",videoId="+js_string_literal(t.video_id)+";"
-                    "function fireComplete(){"
-                    "fetch('/u/'+encodeURIComponent(owner)+'/jukebox/complete',{method:'POST',"
-                    "headers:{'Content-Type':'application/x-www-form-urlencoded'},"
-                    "body:'video_id='+encodeURIComponent(videoId)}).then(function(){location.reload();});"
-                    "}"
-                    "var tag=document.createElement('script');tag.src='https://www.youtube.com/iframe_api';"
-                    "document.head.appendChild(tag);"
-                    "window.onYouTubeIframeAPIReady=function(){"
-                    "new YT.Player('jbplayer',{events:{onStateChange:function(e){"
-                    "if(e.data===YT.PlayerState.ENDED)fireComplete();"
-                    "}}});"
-                    "};"
-                    "})();</script>";
-        }
     }
 
     if (owner_view) {
@@ -3844,7 +5008,7 @@ std::string jukebox_widget(const std::string& owner, bool owner_view, const std:
         html += "<p class=\"muted\">Only "+html_escape(owner)+"'s friends can queue a track here.</p>";
     }
 
-    auto hist = g_store.jukebox_history_of(owner);
+    auto hist = g_store.jukebox_history_of(playback_owner);
     if (!hist.empty()) {
         std::reverse(hist.begin(), hist.end());
         html += "<div style=\"margin-top:1rem\"><label>Recently played</label>";
@@ -3855,7 +5019,7 @@ std::string jukebox_widget(const std::string& owner, bool owner_view, const std:
                     "<img src=\"https://img.youtube.com/vi/"+html_escape(h.video_id)+"/default.jpg\" "
                     "width=\"40\" height=\"30\" alt=\"\" style=\"border-radius:4px\">"
                     "<a href=\"https://www.youtube.com/watch?v="+html_escape(h.video_id)+"\" target=\"_blank\" rel=\"noopener\">watch again</a>"
-                    " · "+(h.queued_by==owner?std::string("owner's pick"):html_escape(h.queued_by))+
+                    " · "+(h.queued_by==playback_owner?std::string("owner's pick"):html_escape(h.queued_by))+
                     " · "+html_escape(fmt_time(h.played_at))+"</p>";
         }
         html += "</div>";
@@ -3902,7 +5066,7 @@ std::string genesis_body() {
         "<div class=\"ticker-wrap\"><div class=\"ticker-roll\">" + ticker + "</div></div>"
         "</div>"
         "<div class=\"card isnt-card\">"
-        "<p class=\"eyebrow\" style=\"color:var(--accent)\">What it is not</p>"
+        "<p class=\"eyebrow\" style=\"color:var(--accent)\">Lead Yourself &mdash; together</p>"
         "<p style=\"margin:.6rem 0\"><strong>Not a party</strong><br>"
         "<span class=\"muted\">Nothing here asks you to pick a side, and no side owns it.</span></p>"
         "<p style=\"margin:.6rem 0\"><strong>Not a government</strong><br>"
@@ -3918,6 +5082,7 @@ std::string genesis_body() {
     // unstarred, on a plain card, same as the design's own two different
     // treatments for a named vs. an anonymous testimonial.
     std::string quotes =
+        "<p class=\"eyebrow\" style=\"color:var(--accent)\">Consider Incentives</p>"
         "<div class=\"card quote\"><p>&ldquo;These aren't &lsquo;people problems.&rsquo; They're structural "
         "problems. Good people placed inside broken structures produce broken outcomes. Broken people placed "
         "inside well-designed structures are naturally corrected by them.&rdquo;</p>"
@@ -3973,11 +5138,75 @@ std::string genesis_body() {
         "<div><strong>Live rooms</strong>"
         "<p class=\"muted\" style=\"margin:.3rem 0 0\">The Quad is a shared room. "
         "<a href=\"/login?next=/world\">Sign in to walk in</a>.</p></div></div>";
-    return emblem +
+    // Real recorded narration (Helios), served from /assets/chapter1.mp3.
+    // The latest file already starts on the first sentence (no spoken
+    // title), so no #t= skip is needed anymore. No native <audio controls>
+    // chrome -- the pulsing round button IS the control, a bare <audio>
+    // with no `controls` attribute renders nothing on its own. Icon
+    // markup is defined once in C++ and reused for both the server-
+    // rendered initial state and the JS reset-on-ended/pause swap (via
+    // js_string_literal, not hand-escaped) so the two can't drift.
+    // A play triangle reads unambiguously as "tap to hear this" at 16px;
+    // the earlier speaker-with-sound-waves glyph didn't (too many thin
+    // strokes at this size, and a pale outline against parchment barely
+    // registered as a button at all). Solid accent-filled circle + paper-
+    // colored icon fixes both the contrast and the "is this tappable"
+    // question in one move.
+    const char* listenPlayIcon =
+        "<svg viewBox=\"0 0 24 24\" width=\"16\" height=\"16\" fill=\"currentColor\" aria-hidden=\"true\">"
+        "<path d=\"M6 4l14 8-14 8V4z\"/></svg>";
+    const char* listenPauseIcon =
+        "<svg viewBox=\"0 0 24 24\" width=\"16\" height=\"16\" fill=\"currentColor\" aria-hidden=\"true\">"
+        "<rect x=\"5\" y=\"4\" width=\"5\" height=\"16\" rx=\"1\"/>"
+        "<rect x=\"14\" y=\"4\" width=\"5\" height=\"16\" rx=\"1\"/></svg>";
+    std::string listen_audio =
+        "<button type=\"button\" class=\"listen-pulse\" aria-label=\"Listen to Chapter 1\" "
+        "aria-pressed=\"false\">" + std::string(listenPlayIcon) + "</button>"
+        "<audio id=\"ch1audio\" preload=\"none\" src=\"/assets/chapter1.mp3\"></audio>"
+        "<script>(function(){"
+        "var btn=document.querySelector('.listen-pulse');"
+        "if(!btn)return;"
+        "var audio=document.getElementById('ch1audio');"
+        "var playIcon="+js_string_literal(listenPlayIcon)+";"
+        "var pauseIcon="+js_string_literal(listenPauseIcon)+";"
+        "function reset(){"
+        "btn.classList.remove('playing');"
+        "btn.setAttribute('aria-pressed','false');"
+        "btn.innerHTML=playIcon;"
+        "}"
+        "audio.addEventListener('ended',reset);"
+        // The intro overlay (#lgintro) removes itself from the DOM once
+        // dismissed/finished -- its presence is enough to know it's still
+        // up, no separate flag needed. Ignoring the tap rather than
+        // queuing it: the visitor can just tap again once it's gone.
+        "btn.addEventListener('click',function(){"
+        "if(document.getElementById('lgintro'))return;"
+        "if(audio.paused){"
+        "audio.play();"
+        "btn.classList.add('playing');"
+        "btn.setAttribute('aria-pressed','true');"
+        "btn.innerHTML=pauseIcon;"
+        "}else{"
+        "audio.pause();"
+        "reset();"
+        "}"
+        "});"
+        "})();</script>";
+    // position:relative on the hero block + position:absolute on the
+    // button (see .listen-pulse) pins it to the block's own top-right
+    // corner. Scrolls away with the page like everything else here --
+    // not position:fixed to the viewport, which would either need to
+    // clear the sticky header by a guessed pixel amount or risk sitting
+    // over the iOS install banner (also viewport-bottom-fixed) when
+    // that's showing.
+    return "<div style=\"position:relative\">" +
+           listen_audio +
+           emblem +
            "<p class=\"eyebrow\" style=\"color:var(--accent)\">A Voluntary Natural Democracy</p>"
            "<h1>This is genesis, not a government.</h1>"
            "<p class=\"lede\">LiquidGov.US is a voluntary association and working software for "
            "liquid, natural-law democracy. Anyone here is a guest or a member of that association.</p>"
+           "</div>"
            "<hr style=\"border:0;border-top:1px solid var(--rule);margin:1rem 0\">" +
            lawstrip +
            solution + quotes + inside +
@@ -4453,6 +5682,215 @@ std::string control_body() {
            "explicitly not a binding vote. Sign in to see them.</p></div>";
 }
 
+// Not a native app, not a store listing -- this is what turns the site
+// itself into one, using each browser's own install mechanism. iOS Safari
+// never reads a web manifest for this; it works straight off the page
+// through the Share sheet, which is why its steps are spelled out
+// separately from Chrome/Edge's manifest-driven "Install" prompt (see
+// page_wrap()'s <link rel="manifest">). No native wrapper, no App Store,
+// no separate download -- installing just bookmarks a standalone window
+// to this same site.
+std::string install_body() {
+    return "<h1>Install this as an app</h1>"
+           "<p class=\"lede\">Not a download from a store &mdash; your browser turning this site into its "
+           "own window, with its own icon, and no address bar in the way.</p>"
+           "<div class=\"card\"><h3>iPhone or iPad (Safari)</h3>"
+           "<table class=\"record\">"
+           "<tr><td>1</td><td>Open liquidgov.us in Safari &mdash; not Chrome; iOS only allows this from Safari.</td></tr>"
+           "<tr><td>2</td><td>Tap the Share icon (a square with an arrow pointing up), in the bottom toolbar.</td></tr>"
+           "<tr><td>3</td><td>Scroll down and tap <strong>Add to Home Screen</strong>.</td></tr>"
+           "<tr><td>4</td><td>Tap <strong>Add</strong>. The icon now opens LiquidGov.US on its own, no browser chrome.</td></tr>"
+           "</table></div>"
+           "<div class=\"card\"><h3>Android (Chrome)</h3>"
+           "<table class=\"record\">"
+           "<tr><td>1</td><td>Open liquidgov.us in Chrome.</td></tr>"
+           "<tr><td>2</td><td>Tap the &vellip; menu in the top-right corner.</td></tr>"
+           "<tr><td>3</td><td>Tap <strong>Install app</strong> (some versions show it as \"Add to Home screen\").</td></tr>"
+           "<tr><td>4</td><td>Confirm. Chrome may also offer this itself as a banner or an install icon in the "
+           "address bar &mdash; either one does the same thing.</td></tr>"
+           "</table></div>"
+           "<div class=\"card\"><h3>Windows, Mac, or Linux (Chrome or Edge)</h3>"
+           "<table class=\"record\">"
+           "<tr><td>1</td><td>Open liquidgov.us in Chrome or Edge.</td></tr>"
+           "<tr><td>2</td><td>Look for an install icon in the address bar (a small monitor with a down arrow, "
+           "or a &oplus;) &mdash; or open the &vellip; menu and look for <strong>Install LiquidGov.US&hellip;</strong>.</td></tr>"
+           "<tr><td>3</td><td>Click <strong>Install</strong>. It opens in its own window from now on, and shows up "
+           "in your Start menu, Dock, or applications list like anything else installed.</td></tr>"
+           "</table></div>"
+           "<div class=\"card\"><p class=\"muted\">Any other browser: look for <strong>Add to Home Screen</strong> or "
+           "<strong>Install</strong> in its share or menu button &mdash; the exact wording varies, but nearly every "
+           "current mobile and desktop browser has some version of it. Nothing here needs installing to just use "
+           "the site in a normal browser tab; this only changes how you open it.</p></div>";
+}
+
+// Genesis operator tools -- /admin and friends. Not Phase 2, not CitizenId,
+// not an election: this is whoever is_operator() names keeping the
+// *website* running (locking a spam account, deleting a post, closing a
+// community that's gone bad), not a second office. Same login as everyone
+// else -- is_operator() gates by username, not a second credential -- no
+// shell, no direct file access, no impersonation. Every route below checks
+// is_operator() on both GET and POST; a signed-in non-operator gets a
+// plain 404 (see handle()'s admin_404 lambda), so /admin isn't advertised
+// to anyone it isn't for, and it never appears in the public nav -- only
+// in the operator's own account menu (see nav()).
+std::string admin_nav(const char* active) {
+    auto tab = [&](const char* href, const char* key, const char* label) {
+        const bool on = std::string(active) == key;
+        return "<a class=\"btn"+std::string(on?"":" ghost")+"\" href=\""+href+"\">"+label+"</a>";
+    };
+    return "<div class=\"row\" style=\"margin:.5rem 0 1.2rem\">"
+        +tab("/admin","overview","Overview")
+        +tab("/admin/accounts","accounts","Accounts")
+        +tab("/admin/posts","posts","Posts")
+        +tab("/admin/communities","communities","Communities")
+        +tab("/admin/log","log","Log")
+        +"</div>";
+}
+
+std::string admin_header() {
+    return "<h1>Operator tools</h1>"
+           "<p class=\"muted\">Temporary. Not a seat. See <a href=\"/control\">who holds control</a> "
+           "for the public disclosure this backs.</p>";
+}
+
+std::string fmt_bytes(std::size_t n) {
+    if (n < 1024) return std::to_string(n)+" B";
+    if (n < 1024*1024) return std::to_string(n/1024)+" KiB";
+    return std::to_string(n/(1024*1024))+" MiB";
+}
+
+std::string admin_overview_page() {
+    std::size_t store_bytes = 0;
+    {
+        std::ifstream in(store_path_from_env(), std::ios::binary | std::ios::ate);
+        if (in) store_bytes = static_cast<std::size_t>(in.tellg());
+    }
+    return admin_header() + admin_nav("overview") +
+        "<div class=\"stattiles\">"
+        "<div class=\"stattile\"><strong>"+std::to_string(g_store.account_count())+"</strong><span>Accounts</span></div>"
+        "<div class=\"stattile\"><strong>"+std::to_string(g_store.all_communities().size())+"</strong><span>Communities</span></div>"
+        "<div class=\"stattile\"><strong>"+std::to_string(g_store.post_count())+"</strong><span>Posts</span></div>"
+        "<div class=\"stattile\"><strong>"+std::to_string(g_store.all_proposals().size())+"</strong><span>Open proposals</span></div>"
+        "</div>"
+        "<p class=\"muted\" style=\"margin-top:.8rem\">Store file: "+fmt_bytes(store_bytes)+"</p>"
+        "<p class=\"muted\">You cannot restart the process from here &mdash; that's still SSH and systemd.</p>";
+}
+
+std::string admin_accounts_page(const std::string& viewer, const std::string& q) {
+    std::string html = admin_header() + admin_nav("accounts") +
+        "<form method=\"GET\" action=\"/admin/accounts\" class=\"row\" style=\"margin-bottom:.8rem\">"
+        "<input name=\"q\" value=\""+html_escape(q)+"\" placeholder=\"Filter by username\" style=\"flex:1\">"
+        "<button type=\"submit\" class=\"ghost\">Filter</button></form>";
+    auto accounts = g_store.all_accounts();
+    std::vector<PlatformAccount> shown;
+    for (const auto& a : accounts) {
+        if (q.empty() || a.username.compare(0, q.size(), q) == 0) shown.push_back(a);
+    }
+    if (shown.empty()) {
+        html += "<p class=\"empty\">No accounts match.</p>";
+        return html;
+    }
+    html += "<div style=\"overflow-x:auto\"><table class=\"register\"><tr>"
+            "<th>Username</th><th>Created</th><th>Locked</th><th>Sessions</th><th>Actions</th></tr>";
+    for (const auto& a : shown) {
+        const bool locked = g_store.is_locked(a.username);
+        const bool self = a.username == viewer;
+        html += "<tr><td><a href=\"/u/"+html_escape(a.username)+"\">"+html_escape(a.username)+"</a></td>"
+                "<td>"+html_escape(fmt_time(a.created_at))+"</td>"
+                "<td>"+std::string(locked?"Yes":"No")+"</td>"
+                "<td>"+std::to_string(g_store.sessions_for(a.id).size())+"</td><td>";
+        if (self) {
+            html += "<span class=\"muted\">(you)</span>";
+        } else {
+            html += "<form class=\"inline\" method=\"POST\" action=\"/admin/accounts/"+
+                    std::string(locked?"unlock":"lock")+"\">"
+                    "<input type=\"hidden\" name=\"username\" value=\""+html_escape(a.username)+"\">"
+                    "<button class=\"ghost\" type=\"submit\">"+std::string(locked?"Unlock":"Lock")+"</button></form> "
+                    "<form class=\"inline\" method=\"POST\" action=\"/admin/accounts/logout-all\">"
+                    "<input type=\"hidden\" name=\"username\" value=\""+html_escape(a.username)+"\">"
+                    "<button class=\"ghost\" type=\"submit\">Sign out all devices</button></form> "
+                    "<details style=\"display:inline-block\"><summary class=\"muted\" style=\"cursor:pointer;display:inline\">Delete&hellip;</summary>"
+                    "<form method=\"POST\" action=\"/admin/accounts/delete\" style=\"margin-top:.3rem\">"
+                    "<input type=\"hidden\" name=\"username\" value=\""+html_escape(a.username)+"\">"
+                    "<input name=\"confirm\" placeholder=\"type &ldquo;delete&rdquo;\" autocomplete=\"off\">"
+                    "<button class=\"danger\" type=\"submit\">Delete account</button></form></details>";
+        }
+        html += "</td></tr>";
+    }
+    html += "</table></div>";
+    return html;
+}
+
+std::string admin_posts_page() {
+    std::string html = admin_header() + admin_nav("posts");
+    auto posts = g_store.recent_posts(80);
+    if (posts.empty()) {
+        html += "<p class=\"empty\">No posts yet.</p>";
+        return html;
+    }
+    html += "<div style=\"overflow-x:auto\"><table class=\"register\"><tr>"
+            "<th>Id</th><th>Author</th><th>When</th><th>Text</th><th></th></tr>";
+    for (const auto& p : posts) {
+        std::string excerpt = p.text.substr(0, 80);
+        if (p.text.size() > 80) excerpt += "\xE2\x80\xA6";
+        html += "<tr><td>"+std::to_string(p.id)+"</td>"
+                "<td><a href=\"/u/"+html_escape(p.author)+"\">"+html_escape(p.author)+"</a></td>"
+                "<td>"+html_escape(fmt_time(p.ts))+"</td>"
+                "<td>"+html_escape(excerpt)+"</td>"
+                "<td><form method=\"POST\" action=\"/admin/posts/delete\" "
+                "onsubmit=\"return confirm('Delete this post?');\">"
+                "<input type=\"hidden\" name=\"id\" value=\""+std::to_string(p.id)+"\">"
+                "<button class=\"danger\" type=\"submit\">Delete</button></form></td></tr>";
+    }
+    html += "</table></div>";
+    return html;
+}
+
+std::string admin_communities_page() {
+    std::string html = admin_header() + admin_nav("communities");
+    auto communities = g_store.all_communities();
+    if (communities.empty()) {
+        html += "<p class=\"empty\">No communities yet.</p>";
+        return html;
+    }
+    html += "<div style=\"overflow-x:auto\"><table class=\"register\"><tr>"
+            "<th>Name</th><th>Owner</th><th>Members</th><th>Actions</th></tr>";
+    for (const auto& c : communities) {
+        html += "<tr><td><a href=\"/c/"+html_escape(c.slug)+"\">"+html_escape(c.name)+"</a> "
+                "<span class=\"muted\">/"+html_escape(c.slug)+"</span></td>"
+                "<td><a href=\"/u/"+html_escape(c.owner)+"\">"+html_escape(c.owner)+"</a></td>"
+                "<td>"+std::to_string(g_store.members_of(c.slug).size())+"</td>"
+                "<td><details style=\"display:inline-block\"><summary class=\"muted\" style=\"cursor:pointer;display:inline\">Delete&hellip;</summary>"
+                "<form method=\"POST\" action=\"/admin/communities/delete\" style=\"margin-top:.3rem\">"
+                "<input type=\"hidden\" name=\"slug\" value=\""+html_escape(c.slug)+"\">"
+                "<input name=\"confirm\" placeholder=\"type &ldquo;delete&rdquo;\" autocomplete=\"off\">"
+                "<button class=\"danger\" type=\"submit\">Delete community</button></form></details>"
+                "<p class=\"muted\" style=\"margin:.3rem 0 0\">Posts already made here keep their room "
+                "name but stop being reachable -- they are not deleted.</p></td></tr>";
+    }
+    html += "</table></div>";
+    return html;
+}
+
+std::string admin_log_page() {
+    std::string html = admin_header() + admin_nav("log");
+    auto entries = g_store.recent_audit_log(50);
+    if (entries.empty()) {
+        html += "<p class=\"empty\">No operator actions yet.</p>";
+        return html;
+    }
+    html += "<div style=\"overflow-x:auto\"><table class=\"register\"><tr>"
+            "<th>When</th><th>Operator</th><th>Action</th><th>Target</th></tr>";
+    for (const auto& e : entries) {
+        html += "<tr><td>"+html_escape(fmt_time(e.ts))+"</td>"
+                "<td>"+html_escape(e.operator_name)+"</td>"
+                "<td>"+html_escape(e.action)+"</td>"
+                "<td>"+html_escape(e.target)+"</td></tr>";
+    }
+    html += "</table></div>";
+    return html;
+}
+
 struct SignupDraft {
     std::string username, phone, email, display_name;
     std::string hometown, living, bio, interests, career, school;
@@ -4467,6 +5905,45 @@ bool looks_like_email(const std::string& s) {
     return s.size() <= 200;
 }
 
+// Google Identity Services' own button, wired to POST straight to
+// /login/google as a plain form submit (data-ux_mode="redirect") -- no
+// custom JS callback needed, GIS handles the credential POST itself.
+// Renders nothing at all if no client ID is configured yet, rather than
+// a button that would just fail every click.
+std::string google_signin_button_html() {
+    const char* cid = google_client_id_from_env();
+    if (!cid[0]) return "";
+    return "<div style=\"margin:.8rem 0\">"
+           "<script src=\"https://accounts.google.com/gsi/client\" async defer></script>"
+           "<div id=\"g_id_onload\" data-client_id=\""+html_escape(cid)+"\" "
+           "data-login_uri=\"https://liquidgov.us/login/google\" data-ux_mode=\"redirect\"></div>"
+           "<div class=\"g_id_signin\" data-type=\"standard\" data-shape=\"pill\" data-width=\"300\"></div>"
+           "</div>";
+}
+
+// First-time Google sign-in with no prior LiquidGov account: derives a
+// username from the email's local-part rather than asking for one (the
+// whole point of one-click). Strips anything valid_username() wouldn't
+// accept, pads if too short, then appends a numeric suffix until free.
+std::string username_from_email_local_part(const std::string& email) {
+    auto at = email.find('@');
+    std::string local = at == std::string::npos ? email : email.substr(0, at);
+    std::string base;
+    for (unsigned char c : local) {
+        if ((c>='a'&&c<='z')||(c>='A'&&c<='Z')||(c>='0'&&c<='9')||c=='.'||c=='_'||c=='-')
+            base += static_cast<char>(c);
+    }
+    if (base.size() > 28) base.resize(28); // leaves room for a numeric suffix under the 32 cap
+    if (base.size() < 3) base = "user" + base;
+    std::string candidate = base;
+    int suffix = 2;
+    while (g_store.username_exists(candidate)) {
+        candidate = base + std::to_string(suffix);
+        ++suffix;
+    }
+    return candidate;
+}
+
 std::string signup_page(const std::string& navuser, int unread, const std::string& err,
                         const SignupDraft& d) {
     std::string e;
@@ -4474,9 +5951,11 @@ std::string signup_page(const std::string& navuser, int unread, const std::strin
     return wrap("Sign up", navuser, unread,
         "<div class=\"card\"><h1>Create an account</h1>"
         "<p class=\"muted\">Username is 3–32 characters: letters, numbers, dots, underscores, hyphens. "
-        "No spaces, no @. Password at least 8 characters. Phone and email are signup bindings "
-        "(not used to log in). The phone number and email address themselves are not stored. "
+        "No spaces, no @. Password at least 8 characters. Phone is a signup binding "
+        "(not used to log in, the number itself is not stored). Email is kept so you can "
+        "reset your password if you forget it &mdash; it is not used to log in either. "
         "This is a platform account, not a citizen identity.</p>"+e+
+        google_signin_button_html()+
         "<form method=\"POST\" action=\"/signup\">"
         "<label>Username</label><input name=\"username\" required minlength=\"3\" maxlength=\"32\" "
         "pattern=\"[A-Za-z0-9._-]{3,32}\" title=\"3–32 letters, numbers, dots, underscores, hyphens. No spaces.\" "
@@ -4528,9 +6007,14 @@ std::string post_block(const Post& p, const std::string& viewer) {
     } else if (seconds > 0) {
         secondForm = "<p class=\"muted\">"+std::to_string(seconds)+(seconds==1?" second":" seconded")+"</p>";
     }
+    std::string deleteForm;
+    if (viewer == p.author)
+        deleteForm = "<form class=\"inline\" method=\"POST\" action=\"/post/"+std::to_string(p.id)+"/delete\" "
+                     "onsubmit=\"return confirm('Delete this post?');\">"
+                     "<button class=\"ghost\" type=\"submit\">Delete</button></form>";
     std::string actionsRow;
-    if (!repostForm.empty() || !secondForm.empty())
-        actionsRow = "<div class=\"row\" style=\"margin-top:.3rem\">"+repostForm+secondForm+"</div>";
+    if (!repostForm.empty() || !secondForm.empty() || !deleteForm.empty())
+        actionsRow = "<div class=\"row\" style=\"margin-top:.3rem\">"+repostForm+secondForm+deleteForm+"</div>";
     std::string repliesBlock;
     {
         auto replies = g_store.replies_of(p.id);
@@ -4567,47 +6051,148 @@ std::string post_block(const Post& p, const std::string& viewer) {
             ? "<video controls preload=\"metadata\" style=\"width:100%;height:auto;display:block;border-radius:var(--rsm);margin-top:.4rem\" src=\""+src+"\"></video>"
             : "<img style=\"width:100%;height:auto;display:block;border-radius:var(--rsm);margin-top:.4rem\" src=\""+src+"\" alt=\"\">";
     }
-    return "<article class=\"post\"><p class=\"eyebrow\" style=\"width:100%\">Entry "+std::to_string(p.id)+
-           "</p><div class=\"who\">"+portrait_tag(p.author,"sm")+"<div><a href=\"/u/"+html_escape(p.author)+"\"><strong>"+
+    return "<article class=\"post\"><div class=\"who\">"+portrait_tag(p.author,"sm")+"<div><a href=\"/u/"+html_escape(p.author)+"\"><strong>"+
            html_escape(p.author)+"</strong></a>"+where+
            (when.empty()?"":" <span class=\"muted\">"+html_escape(when)+"</span>")+
            repostLine+
-           "<p>"+html_escape(p.text)+"</p>"+mediaHtml+actionsRow+repliesBlock+"</div></div></article>";
+           "<p>"+linkify_post_text(p.text)+"</p>"+mediaHtml+actionsRow+repliesBlock+"</div></div></article>";
 }
 
 // A proportional Yes/No/Abstain bar plus one-click vote buttons, the
 // current voter's own choice picked out with a filled button instead of a
-// ghost one. viewer empty (logged out) renders the tally with no voting UI.
-std::string proposal_block(const Proposal& p, const std::string& viewer, const ProposalTally& t,
-                            std::optional<ProposalVote> my_vote) {
-    const int total = t.yes + t.no + t.abstain;
-    std::string bar = "<div style=\"display:flex;height:8px;border-radius:4px;overflow:hidden;background:var(--rule);margin:.5rem 0\">";
-    if (total > 0) {
-        if (t.yes) bar += "<div style=\"flex:"+std::to_string(t.yes)+";background:var(--ok)\"></div>";
-        if (t.no) bar += "<div style=\"flex:"+std::to_string(t.no)+";background:var(--danger)\"></div>";
-        if (t.abstain) bar += "<div style=\"flex:"+std::to_string(t.abstain)+";background:var(--stone)\"></div>";
+// ghost one. Number / Date / Choice / Scale use the same card, with a
+// median (or option counts) instead of the yes/no bar. viewer empty
+// (logged out) renders the tally with no voting UI.
+std::string fmt_ballot_num(double v) {
+    std::ostringstream o;
+    if (std::fabs(v - std::round(v)) < 1e-9) o << static_cast<long long>(std::round(v));
+    else { o.setf(std::ios::fixed); o.precision(2); o << v; }
+    return o.str();
+}
+
+std::string proposal_block(const Proposal& p, const std::string& viewer) {
+    std::string kindEyebrow;
+    switch (p.ballot.kind) {
+        case BallotKind::YesNo: kindEyebrow = "Yes / No"; break;
+        case BallotKind::Number: kindEyebrow = p.ballot.unit.empty() ? "Number" : html_escape(p.ballot.unit); break;
+        case BallotKind::Date: kindEyebrow = "Date"; break;
+        case BallotKind::Choice: kindEyebrow = "Choice"; break;
+        case BallotKind::Scale: kindEyebrow = "Scale"; break;
     }
-    bar += "</div><p class=\"muted\">"+std::to_string(t.yes)+" yes · "+std::to_string(t.no)+" no · "+
-           std::to_string(t.abstain)+" abstain · "+std::to_string(total)+" total</p>";
-    std::string voteForm;
-    if (!viewer.empty()) {
-        auto btn = [&](ProposalVote v, const char* label) {
-            const bool active = my_vote.has_value() && *my_vote == v;
-            return "<form class=\"inline\" method=\"POST\" action=\"/proposals/vote\">"
-                   "<input type=\"hidden\" name=\"id\" value=\""+std::to_string(p.id)+"\">"
-                   "<input type=\"hidden\" name=\"choice\" value=\""+std::to_string(static_cast<int>(v))+"\">"
-                   "<button class=\""+std::string(active ? "" : "ghost")+"\" type=\"submit\">"+label+
-                   (active ? " &#10003;" : "")+"</button></form>";
-        };
-        voteForm = "<div class=\"row\">"+btn(ProposalVote::Yes,"Yes")+btn(ProposalVote::No,"No")+
-                   btn(ProposalVote::Abstain,"Abstain")+"</div>";
+    std::string body;
+    if (p.ballot.kind == BallotKind::YesNo) {
+        auto t = g_store.tally_of(p.id);
+        auto my_vote = viewer.empty() ? std::optional<ProposalVote>{} : g_store.proposal_vote_of(p.id, viewer);
+        const int total = t.yes + t.no + t.abstain;
+        std::string bar = "<div style=\"display:flex;height:8px;border-radius:4px;overflow:hidden;background:var(--rule);margin:.5rem 0\">";
+        if (total > 0) {
+            if (t.yes) bar += "<div style=\"flex:"+std::to_string(t.yes)+";background:var(--ok)\"></div>";
+            if (t.no) bar += "<div style=\"flex:"+std::to_string(t.no)+";background:var(--danger)\"></div>";
+            if (t.abstain) bar += "<div style=\"flex:"+std::to_string(t.abstain)+";background:var(--stone)\"></div>";
+        }
+        bar += "</div><p class=\"muted\">"+std::to_string(t.yes)+" yes · "+std::to_string(t.no)+" no · "+
+               std::to_string(t.abstain)+" abstain · "+std::to_string(total)+" total</p>";
+        std::string voteForm;
+        if (!viewer.empty()) {
+            auto btn = [&](ProposalVote v, const char* label) {
+                const bool active = my_vote.has_value() && *my_vote == v;
+                return "<form class=\"inline\" method=\"POST\" action=\"/proposals/vote\">"
+                       "<input type=\"hidden\" name=\"id\" value=\""+std::to_string(p.id)+"\">"
+                       "<input type=\"hidden\" name=\"choice\" value=\""+std::to_string(static_cast<int>(v))+"\">"
+                       "<button class=\""+std::string(active ? "" : "ghost")+"\" type=\"submit\">"+label+
+                       (active ? " &#10003;" : "")+"</button></form>";
+            };
+            voteForm = "<div class=\"row\">"+btn(ProposalVote::Yes,"Yes")+btn(ProposalVote::No,"No")+
+                       btn(ProposalVote::Abstain,"Abstain")+"</div>";
+        }
+        body = bar + voteForm;
+    } else if (p.ballot.kind == BallotKind::Choice) {
+        auto t = g_store.value_tally_of(p.id);
+        auto mine = viewer.empty() ? std::optional<std::string>{} : g_store.ballot_value_of(p.id, viewer);
+        int total = t.n;
+        std::string bar = "<div style=\"display:flex;height:8px;border-radius:4px;overflow:hidden;background:var(--rule);margin:.5rem 0\">";
+        if (total > 0) {
+            for (std::size_t i = 0; i < t.option_counts.size(); ++i) {
+                if (t.option_counts[i])
+                    bar += "<div style=\"flex:"+std::to_string(t.option_counts[i])+";background:var(--accent)\"></div>";
+            }
+        }
+        bar += "</div>";
+        std::string list = "<div class=\"row\" style=\"flex-wrap:wrap;gap:.4rem\">";
+        for (std::size_t i = 0; i < p.ballot.options.size(); ++i) {
+            int n = (i < t.option_counts.size()) ? t.option_counts[i] : 0;
+            const bool active = mine && *mine == std::to_string(i);
+            if (!viewer.empty()) {
+                list += "<form class=\"inline\" method=\"POST\" action=\"/proposals/vote\">"
+                        "<input type=\"hidden\" name=\"id\" value=\""+std::to_string(p.id)+"\">"
+                        "<input type=\"hidden\" name=\"value\" value=\""+std::to_string(i)+"\">"
+                        "<button class=\""+std::string(active ? "" : "ghost")+"\" type=\"submit\">"+
+                        html_escape(p.ballot.options[i])+" · "+std::to_string(n)+
+                        (active ? " &#10003;" : "")+"</button></form>";
+            } else {
+                list += "<span class=\"muted\">"+html_escape(p.ballot.options[i])+" · "+std::to_string(n)+"</span>";
+            }
+        }
+        list += "</div>";
+        body = bar + "<p class=\"muted\">"+std::to_string(total)+" responses</p>" + list;
+    } else {
+        auto t = g_store.value_tally_of(p.id);
+        auto mine = viewer.empty() ? std::optional<std::string>{} : g_store.ballot_value_of(p.id, viewer);
+        std::string summary;
+        if (p.ballot.kind == BallotKind::Date) {
+            if (t.n == 0) summary = "<p class=\"muted\">No dates yet.</p>";
+            else summary = "<p>Median date: <strong>"+html_escape(t.median_date)+"</strong></p>"
+                           "<p class=\"muted\">"+std::to_string(t.n)+" responses · earliest "+html_escape(t.lo_date)+
+                           " · latest "+html_escape(t.hi_date)+"</p>";
+        } else {
+            std::string unit = p.ballot.unit.empty() ? "" : " "+html_escape(p.ballot.unit);
+            if (p.ballot.kind == BallotKind::Scale) {
+                std::string left = (p.ballot.options.empty() || p.ballot.options[0].empty()) ? "0" : html_escape(p.ballot.options[0]);
+                std::string right = (p.ballot.options.size() < 2 || p.ballot.options[1].empty()) ? "100" : html_escape(p.ballot.options[1]);
+                if (t.n == 0) summary = "<p class=\"muted\">"+left+" — "+right+". No responses yet.</p>";
+                else summary = "<p>"+left+" — <strong>"+fmt_ballot_num(t.median)+"</strong> — "+right+"</p>"
+                               "<p class=\"muted\">median of "+std::to_string(t.n)+" · range "+fmt_ballot_num(t.lo)+
+                               "–"+fmt_ballot_num(t.hi)+"</p>";
+            } else {
+                if (t.n == 0) summary = "<p class=\"muted\">No numbers yet.</p>";
+                else summary = "<p>Median: <strong>"+fmt_ballot_num(t.median)+unit+"</strong></p>"
+                               "<p class=\"muted\">"+std::to_string(t.n)+" responses · range "+fmt_ballot_num(t.lo)+
+                               "–"+fmt_ballot_num(t.hi)+unit+"</p>";
+            }
+        }
+        std::string voteForm;
+        if (!viewer.empty()) {
+            voteForm = "<form method=\"POST\" action=\"/proposals/vote\">"
+                       "<input type=\"hidden\" name=\"id\" value=\""+std::to_string(p.id)+"\">";
+            if (p.ballot.kind == BallotKind::Date) {
+                voteForm += "<label>Your date</label><input type=\"date\" name=\"value\" required";
+                if (mine) voteForm += " value=\""+html_escape(*mine)+"\"";
+                voteForm += ">";
+            } else if (p.ballot.kind == BallotKind::Scale) {
+                std::string cur = mine ? html_escape(*mine) : "50";
+                voteForm += "<label>Your mark <span class=\"muted\" id=\"scv"+std::to_string(p.id)+"\">"+cur+"</span></label>"
+                            "<input type=\"range\" name=\"value\" min=\"0\" max=\"100\" value=\""+cur+
+                            "\" oninput=\"document.getElementById('scv"+std::to_string(p.id)+"').textContent=this.value\">";
+            } else {
+                voteForm += "<label>Your number";
+                if (!p.ballot.unit.empty()) voteForm += " ("+html_escape(p.ballot.unit)+")";
+                voteForm += "</label><input type=\"number\" name=\"value\" required step=\"any\"";
+                if (p.ballot.min_v != 0 || p.ballot.max_v != 0) {
+                    voteForm += " min=\""+fmt_ballot_num(p.ballot.min_v)+"\" max=\""+fmt_ballot_num(p.ballot.max_v)+"\"";
+                }
+                if (mine) voteForm += " value=\""+html_escape(*mine)+"\"";
+                voteForm += ">";
+            }
+            voteForm += "<button>Cast</button></form>";
+        }
+        body = summary + voteForm;
     }
     std::string when = fmt_time(p.ts);
-    return "<p class=\"muted eyebrow\">Proposal "+std::to_string(p.id)+"</p>"
+    return "<p class=\"muted eyebrow\">Proposal "+std::to_string(p.id)+" · "+kindEyebrow+"</p>"
            "<h3 style=\"margin:.1rem 0\">"+html_escape(p.title)+"</h3>"
            "<p class=\"muted\">by <a href=\"/u/"+html_escape(p.author)+"\">"+html_escape(p.author)+"</a>"+
            (when.empty()?"":" · "+html_escape(when))+"</p>"
-           "<p style=\"white-space:pre-wrap\">"+html_escape(p.body)+"</p>"+bar+voteForm;
+           "<p style=\"white-space:pre-wrap\">"+html_escape(p.body)+"</p>"+body;
 }
 
 // Shared by every post composer (/me/post, /feed, /c/<slug>): pulls the
@@ -4654,14 +6239,196 @@ ComposerPost read_composer_post(const std::string& hdrs, const std::string& body
     return r;
 }
 
-// Human copy for a composer's ?perr= media-error code, shared by /me,
-// /feed and /c/<slug> so the three pages stay consistent.
-std::string composer_media_error(const std::string& perr) {
-    if (perr=="large") return "<p class=\"warn\">That file was too large (images 10&nbsp;MiB, video 50&nbsp;MiB).</p>";
-    if (perr=="active") return "<p class=\"warn\">That document contains active content and was rejected.</p>";
-    if (perr=="scan") return "<p class=\"warn\">That file could not be stored.</p>";
-    if (perr=="type") return "<p class=\"warn\">That file wasn't a supported image or video type.</p>";
+// Every page's "something went wrong" banner reads this one query key now
+// -- collapses what used to be three (err/perr/jerr), each with its own
+// scattered if/else copied into whichever GET handler needed it. That
+// scattering is exactly how ?err=short (settings, new password too short)
+// ended up wired on the write side but never read on the get side: the
+// redirect fired, the message never rendered. One table, one place to add
+// a code, nothing to forget on the read side ever again.
+//
+// A short code is reused across pages ONLY when the message is actually
+// the same sentence (e.g. "invite", the same contact-settings conflict on
+// a mail group and a community); where two contexts used the same word for
+// a genuinely different limit -- the avatar's 2 MiB cap vs. a post
+// attachment's 10/50 MiB cap, or a canvas frame's own cap -- they get their
+// own name instead (portraitlarge / large / framelarge). That's the
+// discipline this exists to enforce: a code names one sentence, never two.
+std::string flash_error(const std::map<std::string,std::string>& qs) {
+    auto it = qs.find("err");
+    if (it == qs.end()) return "";
+    const std::string& e = it->second;
+    if (e=="login") return "<p class=\"warn\">Invalid username or password.</p>";
+    if (e=="ratelimit") return "<p class=\"warn\">Too many attempts. Wait a moment and try again.</p>";
+    if (e=="empty") return "<p class=\"warn\">Need a title and a body.</p>";
+    if (e=="image") return "<p class=\"warn\">That file was not a usable image (PNG/JPEG/GIF, 2&nbsp;MiB, 1024px). SVG is not accepted.</p>";
+    if (e=="portraitlarge") return "<p class=\"warn\">That file is too large. Cap is 2&nbsp;MiB and 1024 pixels on the long edge.</p>";
+    if (e=="scan") return "<p class=\"warn\">That file could not be stored.</p>";
+    if (e=="profile") return "<p class=\"warn\">Display name is required (up to 80 characters).</p>";
+    if (e=="css") {
+        auto rit = qs.find("reason");
+        return "<p class=\"warn\">"+html_escape(css_reject_message(rit==qs.end()?"":rit->second))+"</p>";
+    }
+    if (e=="inner") return "<p class=\"warn\">Inner circle holds twelve. Take someone out first.</p>";
+    if (e=="invite") return "<p class=\"warn\">Conflicts with another member’s contact settings.</p>";
+    if (e=="address") return "<p class=\"warn\">Need a free address: letters, numbers, dots, underscores, hyphens.</p>";
+    if (e=="subcategory") return "<p class=\"warn\">Pick or name a subcategory.</p>";
+    if (e=="password") return "<p class=\"warn\">Could not change password. Check the current one.</p>";
+    if (e=="short") return "<p class=\"warn\">New password needs at least eight characters.</p>";
+    if (e=="delete") return "<p class=\"warn\">Type your username to delete.</p>";
+    if (e=="large") return "<p class=\"warn\">That file was too large (images 10&nbsp;MiB, video 50&nbsp;MiB).</p>";
+    if (e=="active") return "<p class=\"warn\">That document contains active content and was rejected.</p>";
+    if (e=="type") return "<p class=\"warn\">That file wasn't a supported image or video type.</p>";
+    if (e=="nogroup") return "<p class=\"warn\">Pick at least one group, or turn Groups off.</p>";
+    if (e=="url") return "<p class=\"warn\">That link wasn't recognized as a YouTube video.</p>";
+    if (e=="full") return "<p class=\"warn\">Queue already holds "+std::to_string(kJukeboxQueueCap)+" tracks. Remove one first.</p>";
+    if (e=="denied") return "<p class=\"warn\">You can't queue a track here.</p>";
+    if (e=="pending") return "<p class=\"warn\">You already have a track queued. Wait for it to play first.</p>";
+    if (e=="google") return "<p class=\"warn\">Couldn&rsquo;t verify that Google sign-in. Try again.</p>";
+    if (e=="reset") return "<p class=\"warn\">That link has expired or was already used. Request a new one.</p>";
     return "";
+}
+
+// One checkbox per name, sharing a form field name -- used for both the
+// Anybody hide-list and the Friends show-list (same friend roster, opposite
+// meaning) and for the Groups show-list (community slugs).
+std::string composer_checkbox_list(const std::string& field_name,
+                                    const std::vector<std::pair<std::string,std::string>>& value_label_pairs,
+                                    const char* empty_note) {
+    if (value_label_pairs.empty())
+        return "<p class=\"muted\" style=\"margin:.3rem 0 0\">"+std::string(empty_note)+"</p>";
+    std::string html;
+    for (const auto& vl : value_label_pairs) {
+        html += "<label style=\"display:flex;align-items:center;gap:.4rem;font-weight:400;margin:.25rem 0\">"
+                "<input type=\"checkbox\" name=\""+field_name+"\" value=\""+html_escape(vl.first)+"\">"+
+                html_escape(vl.second)+"</label>";
+    }
+    return html;
+}
+
+// The /feed composer card. Three icon chips replace the old static
+// "Friends only" label -- the glyph carries the reach (globe/people/rooms),
+// so nobody has to read a sentence to know what "Anybody" or "Groups"
+// means, and each opens its own exceptions/allow-list picker (Grok's
+// model, not a Members-relabel and not "post to every group I'm in"):
+//   Anybody  -- a personal post, audience=Anybody. Reaches friends in
+//              /feed same as a Friends post; ALSO shows on the author's own
+//              profile to any other viewer (signed in or not) EXCEPT
+//              whoever is checked in its "Exceptions" hide-list. Never
+//              lands in a stranger's own /feed -- that stays a friends
+//              graph, not a public firehose.
+//   Friends  -- audience=Friends, today's only behavior before this
+//              existed and still the default. Its "Which friends" list is
+//              a show-list: checked names (plus the author) see it in
+//              /feed; empty means every current friend, unchanged.
+//   Groups   -- one or more real community posts (Post.community + extra
+//              extra_groups), same as posting from each community's own
+//              page -- a destination picker, not a visibility bit. Only
+//              offered when the author actually belongs to a community
+//              (join-to-post unchanged), and refused if turned on with
+//              nothing picked.
+// Anybody is exclusive with the other two (public vs. not is a ladder);
+// Friends and Groups can both be on at once -- one Post row, audience
+// stays Friends, with community/extra_groups also set, per the "pau"
+// LGP1 tag's own comment.
+//
+// There used to also be a permanent paragraph under the box spelling all
+// of this out ("Friends shows in your friends' feed... This is not a civic
+// act.") -- gone now. The reach explanation only exists inside each
+// picker's own disclosure, read by whoever actually opens it, not by
+// everyone on every visit (matches the same "don't stack four empty-state
+// lines" note this composer already followed for its media errors).
+std::string feed_composer_card(const std::string& user) {
+    auto friends = g_store.friends_of(user);
+    std::vector<std::pair<std::string,std::string>> friend_pairs;
+    for (const auto& f : friends) friend_pairs.push_back({f, f});
+    auto my_groups = g_store.communities_of(user);
+    std::vector<std::pair<std::string,std::string>> group_pairs;
+    for (const auto& c : my_groups) group_pairs.push_back({c.slug, c.name});
+    const bool has_groups = !my_groups.empty();
+
+    auto ichip = [](const char* id, const char* svg, const char* label, bool on) {
+        return "<button type=\"button\" class=\"ichip"+std::string(on?" on":"")+"\" id=\""+id+"\">"
+               +svg+"<span>"+label+"</span></button>";
+    };
+    std::string groups_chip = has_groups ? ichip("vis-groups", groups_svg(), "Groups", false) : "";
+    std::string groups_picker = has_groups
+        ? "<details id=\"opts-groups\" hidden><summary class=\"muted\">Which groups</summary>"
+          "<p class=\"muted\" style=\"margin:.3rem 0 .5rem\">Pick one or more rooms you belong to.</p>"
+          +composer_checkbox_list("group", group_pairs, "")+ "</details>"
+        : "";
+
+    return
+        "<div class=\"card\"><form method=\"POST\" action=\"/feed\" enctype=\"multipart/form-data\" id=\"feedform\">"
+        "<label style=\"margin:0 0 .5rem;display:block\">Write to people who know you</label>"
+        "<div class=\"row\" style=\"gap:.5rem;margin:0 0 .3rem\">"
+        +ichip("vis-anybody", globe_svg(), "Anybody", false)+
+        ichip("vis-friends", friends_svg(), "Friends", true)+
+        groups_chip+
+        "</div>"
+        "<details id=\"opts-anybody\" hidden><summary class=\"muted\">Exceptions</summary>"
+        "<p class=\"muted\" style=\"margin:.3rem 0 .5rem\">Hide-list &mdash; checked friends won't see "
+        "this, in feed or on your profile.</p>"
+        +composer_checkbox_list("except", friend_pairs, "No friends yet to except -- Anybody reaches everyone.")+
+        "</details>"
+        "<details id=\"opts-friends\" hidden><summary class=\"muted\">Which friends</summary>"
+        "<p class=\"muted\" style=\"margin:.3rem 0 .5rem\">Show-list &mdash; leave everyone unchecked to "
+        "reach all your friends.</p>"
+        +composer_checkbox_list("friend", friend_pairs, "No friends yet -- add some first.")+
+        "</details>"
+        + groups_picker +
+        "<input type=\"hidden\" name=\"anybody\" id=\"anybodyfield\" value=\"0\">"
+        "<input type=\"hidden\" name=\"friends\" id=\"friendsfield\" value=\"1\">"
+        "<input type=\"hidden\" name=\"groups\" id=\"groupsfield\" value=\"0\">"
+        "<textarea name=\"text\" maxlength=\"2000\" placeholder=\"Plain text.\" "
+        "oninput=\"document.getElementById('feedchars').textContent=(2000-this.value.length)+' left'\"></textarea>"
+        "<p class=\"muted\" id=\"feedchars\" style=\"margin:.2rem 0 0;text-align:right\">2000 left</p>"
+        "<div class=\"row\" style=\"justify-content:space-between;align-items:center;margin-top:.4rem\">"
+        "<button type=\"button\" class=\"attachbtn\" id=\"feedattachbtn\" aria-label=\"Attach a photo or video\" "
+        "title=\"Attach a photo or video\">"+std::string(paperclip_svg())+"</button>"
+        "<button type=\"submit\">Post</button></div>"
+        "<input type=\"file\" name=\"media\" id=\"feedmedia\" accept=\"image/*,video/*\" hidden>"
+        "<p class=\"muted\" id=\"feedfilename\" style=\"margin:.3rem 0 0\" hidden></p>"
+        "</form>"
+        "<p class=\"muted\" style=\"margin-top:.5rem\">Or <a href=\"/feed/canvas\">open the canvas</a> "
+        "to draw, crop, layer, or paste one together first.</p></div>"
+        "<script>(function(){"
+        "var state={anybody:false,friends:true,groups:false};"
+        "var chipA=document.getElementById('vis-anybody'),chipF=document.getElementById('vis-friends'),"
+        "chipG=document.getElementById('vis-groups');"
+        "var optsA=document.getElementById('opts-anybody'),optsF=document.getElementById('opts-friends'),"
+        "optsG=document.getElementById('opts-groups');"
+        "var fldA=document.getElementById('anybodyfield'),fldF=document.getElementById('friendsfield'),"
+        "fldG=document.getElementById('groupsfield');"
+        "function render(){"
+        "if(!state.anybody&&!state.friends&&!state.groups)state.friends=true;"
+        "chipA.classList.toggle('on',state.anybody);"
+        "chipF.classList.toggle('on',state.friends);"
+        "if(chipG)chipG.classList.toggle('on',state.groups);"
+        "optsA.hidden=!state.anybody;optsF.hidden=!state.friends;"
+        "if(optsG)optsG.hidden=!state.groups;"
+        "fldA.value=state.anybody?'1':'0';fldF.value=state.friends?'1':'0';fldG.value=state.groups?'1':'0';"
+        "}"
+        "chipA.addEventListener('click',function(){"
+        "state.anybody=!state.anybody;"
+        "if(state.anybody){state.friends=false;state.groups=false;}"
+        "render();"
+        "});"
+        "chipF.addEventListener('click',function(){state.friends=!state.friends;if(state.friends)state.anybody=false;render();});"
+        "if(chipG)chipG.addEventListener('click',function(){state.groups=!state.groups;if(state.groups)state.anybody=false;render();});"
+        "render();"
+        "var attachBtn=document.getElementById('feedattachbtn'),mediaInput=document.getElementById('feedmedia'),"
+        "fileNameEl=document.getElementById('feedfilename');"
+        "attachBtn.addEventListener('click',function(){mediaInput.click();});"
+        "mediaInput.addEventListener('change',function(){"
+        "var has=mediaInput.files&&mediaInput.files.length>0;"
+        "attachBtn.classList.toggle('has-file',has);"
+        "fileNameEl.hidden=!has;fileNameEl.textContent=has?mediaInput.files[0].name:'';"
+        "});"
+        "document.getElementById('feedform').addEventListener('submit',function(e){"
+        "if(state.groups&&optsG&&!optsG.querySelector('input:checked')){e.preventDefault();optsG.open=true;optsG.scrollIntoView({block:'center'});}"
+        "});"
+        "})();</script>";
 }
 
 // Wires up /me's "Editing /me" bar (#medraftbar/#medraftcount/#mediscard/
@@ -4735,6 +6502,138 @@ std::string draft_publish_script() {
         "})();</script>";
 }
 
+// Personal jukeboxes ("u:<owner>" stations) share the exact same
+// frozen_offset + resumed_at + listener_count shape as the WebSocket
+// community stations (see CommunityNowPlaying / community_elapsed_locked
+// above) -- just driven by HTTP heartbeats instead of a live socket,
+// since a personal jukebox has never had one (jukebox_widget's own
+// comment: "an ordinary HTTP queue with no live sync"). No second
+// WebSocket type just for this: a POST roughly every 15s while actually
+// playing stands in for "still connected," pruned on a grace window
+// generous enough to absorb one missed beat plus iOS timer jitter
+// without mistaking a briefly-backgrounded tab for an empty room.
+inline constexpr std::int64_t kPersonalHeartbeatGraceSeconds = 30;
+struct PersonalPlayhead {
+    std::string video_id; // which track frozen_offset/resumed_at apply to
+    std::int64_t frozen_offset = 0;
+    std::int64_t resumed_at = 0;
+};
+std::mutex g_personal_mu;
+std::map<std::string, PersonalPlayhead> g_personal_playhead_by_station;                     // "u:<owner>" -> playhead
+std::map<std::string, std::map<std::string, std::int64_t>> g_personal_listeners_by_station; // "u:<owner>" -> session id -> last_seen_unix
+
+// Caller must hold g_personal_mu. A different track than last time
+// (completed/skipped/reordered) always starts the playhead over at 0,
+// same as community's track-advance -- persisted immediately so a
+// restart right after a track change doesn't fall back to a stale entry
+// for the wrong video. The only place any of the three functions below
+// resets frozen_offset to 0; none of them mix an old elapsed value into
+// a new track.
+PersonalPlayhead& personal_playhead_for_locked(const std::string& station, const std::string& current_video_id,
+                                                std::int64_t now) {
+    auto& ph = g_personal_playhead_by_station[station];
+    if (ph.video_id != current_video_id) {
+        ph = PersonalPlayhead{current_video_id, 0, now};
+        g_personal_listeners_by_station[station].clear();
+        g_store.set_jukebox_pos(station, current_video_id, 0, now);
+    }
+    return ph;
+}
+
+// Caller must hold g_personal_mu. Pure cleanup, no opinion about what a
+// live->empty transition means -- each caller below decides that for
+// itself, in its own correct order (see each function's own comment;
+// getting this order wrong is exactly what turned a real bug -- the
+// community WS side's disconnect handler -- into a freeze that silently
+// landed at 0 instead of the real elapsed, caught only by testing the
+// running server directly, not by the build or the unit tests).
+void personal_prune_locked(const std::string& station, std::int64_t now) {
+    auto& listeners = g_personal_listeners_by_station[station];
+    for (auto it = listeners.begin(); it != listeners.end();) {
+        if (now - it->second > kPersonalHeartbeatGraceSeconds) it = listeners.erase(it);
+        else ++it;
+    }
+}
+
+// Safe to call from GET /jukebox/now, which must never itself count as a
+// listen heartbeat (a paused-but-open widget still polls this) -- never
+// touches or adds a heartbeat entry, only ever removes stale ones.
+// Elapsed is snapshotted BEFORE pruning, using the true pre-prune live
+// state, so the number returned here is never affected by whether this
+// particular call happens to be the one that notices a stale listener.
+std::int64_t personal_jukebox_elapsed(const std::string& station, const std::string& current_video_id) {
+    const auto now = std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+    std::lock_guard<std::mutex> lock(g_personal_mu);
+    auto& ph = personal_playhead_for_locked(station, current_video_id, now);
+    auto& listeners = g_personal_listeners_by_station[station];
+    const bool live_before = !listeners.empty();
+    const std::int64_t elapsed = ph.frozen_offset + (live_before ? std::max<std::int64_t>(0, now - ph.resumed_at) : 0);
+    personal_prune_locked(station, now);
+    // A listener who vanished without ever sending a pause/pagehide
+    // freeze (tab killed, network loss, crash): freeze right here at the
+    // value already snapshotted above, instead of silently losing their
+    // progress back to whatever frozen_offset was before this session
+    // started, and persist it so a restart around now still resumes
+    // from the right place.
+    if (live_before && listeners.empty()) {
+        ph.frozen_offset = elapsed;
+        g_store.set_jukebox_pos(station, ph.video_id, elapsed, now);
+    }
+    return elapsed;
+}
+
+// Called only from POST /jukebox/pos while actually playing (no freeze
+// flag) -- registers/refreshes this session as currently listening. Does
+// NOT trust any client-supplied offset; the server clock is the only
+// thing that ever advances resumed_at, precisely so two listeners
+// reporting drifted currentTime values can't fight over the shared
+// position. Touches this session's own heartbeat BEFORE pruning, so its
+// own (possibly late) arrival can never be the reason the prune sees an
+// empty station and invents a freeze in the middle of what is actually a
+// live check-in; 0->1 (nobody else was here) just resumes -- it never
+// writes jpos itself, since jpos already correctly holds wherever the
+// last listener actually left off.
+void personal_heartbeat_locked(const std::string& station, const std::string& current_video_id,
+                                const std::string& session_id, std::int64_t now) {
+    auto& ph = personal_playhead_for_locked(station, current_video_id, now);
+    auto& listeners = g_personal_listeners_by_station[station];
+    const bool was_live = !listeners.empty();
+    listeners[session_id] = now;
+    personal_prune_locked(station, now); // only genuinely-stale *other* sessions can be removed now
+    if (!was_live) ph.resumed_at = now;
+}
+
+// Called only from POST /jukebox/pos with freeze=1 (a manual pause, or a
+// pagehide sendBeacon) -- this session is stopping right now, not
+// waiting out the grace window. Elapsed is computed while this session's
+// own entry still counts (before it's erased) -- erasing or pruning
+// first would silently drop this session's own listening time, the same
+// ordering mistake already caught and fixed on the community WS side.
+// client_offset is trusted only if it's within 3s of the server's own
+// idea of elapsed; otherwise the server clock wins, same distrust as the
+// live heartbeat path. Only actually freezes (and persists) if this was
+// the last listener once other genuinely-stale sessions are pruned too
+// -- someone else still fresh means the shared playhead keeps running
+// for them.
+void personal_freeze_locked(const std::string& station, const std::string& current_video_id,
+                             const std::string& session_id, std::optional<std::int64_t> client_offset,
+                             std::int64_t now) {
+    auto& ph = personal_playhead_for_locked(station, current_video_id, now);
+    auto& listeners = g_personal_listeners_by_station[station];
+    const bool was_live = !listeners.empty();
+    const std::int64_t server_elapsed = ph.frozen_offset +
+        (was_live ? std::max<std::int64_t>(0, now - ph.resumed_at) : 0);
+    listeners.erase(session_id);
+    personal_prune_locked(station, now);
+    if (!listeners.empty()) return; // someone else is still listening -- their playhead keeps running
+    const std::int64_t diff = client_offset ?
+        (*client_offset > server_elapsed ? *client_offset - server_elapsed : server_elapsed - *client_offset) : -1;
+    const std::int64_t offset = (client_offset && diff <= 3) ? *client_offset : server_elapsed;
+    ph.frozen_offset = offset;
+    g_store.set_jukebox_pos(station, ph.video_id, offset, now);
+}
+
 std::string handle(const std::string& req, const std::string& peer_ip) {
     auto line_end=req.find("\r\n");
     if(line_end==std::string::npos) line_end=req.find('\n');
@@ -4765,6 +6664,13 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         if (method == "GET") return http_redir(login_url(path));
         return http_redir("/login");
     };
+    // A signed-in non-operator gets exactly the same body as a genuinely
+    // missing page -- /admin must not be distinguishable from a 404 to
+    // anyone it isn't for.
+    auto admin_404 = [&]() {
+        return http_code("404 Not Found", wrap("Not found", user, unread,
+            "<div class=\"card\"><h1>Not found</h1><p>That page is not here.</p></div>"));
+    };
 
     if (path.size() > 1 && path.back() == '/') {
         std::string dest = path.substr(0, path.size() - 1);
@@ -4779,6 +6685,26 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
     if(method=="GET"&&path=="/favicon.ico")
         return http_redir("/favicon.svg");
 
+    if(method=="GET"&&path=="/logs") {
+        const char* op = std::getenv("LIQUIDGOV_OPERATOR");
+        if (!op || !op[0] || user != op)
+            return http_raw("404 Not Found", "text/plain", "not found\n");
+        return http_raw("200 OK", "text/plain; charset=utf-8", lglog::dump_text(),
+            "Cache-Control: no-store\r\n");
+    }
+    if(method=="POST"&&path=="/log") {
+        if (!acc) return http_raw("401 Unauthorized", "text/plain", "no\n");
+        static std::map<std::string, long long> lg_last_ms;
+        const auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        auto& last = lg_last_ms[user];
+        if (now_ms - last < 400)
+            return http_raw("204 No Content", "text/plain", "");
+        last = now_ms;
+        lglog::emit("client", user + " " + lglog::clip_client(body));
+        return http_raw("204 No Content", "text/plain", "");
+    }
+
     if(method=="GET"&&path=="/jukebox/search") {
         if(!acc) return http_raw("401 Unauthorized", "application/json", "{\"items\":[]}");
         // Type-to-search used to embed YOUTUBE_API_KEY in every logged-in
@@ -4791,30 +6717,191 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         // [A-Za-z0-9._~%-] -- none of those can break out of the
         // single-quoted argument, so this is not shell-injectable.
         auto term = trim_ws(qs["q"]);
-        const char* key = youtube_api_key_from_env();
-        if (term.empty() || !key[0])
-            return http_raw("200 OK", "application/json", "{\"items\":[]}",
+        std::string q;
+        for (unsigned char ch : term) {
+            if (std::isalnum(ch) || ch==' ' || ch=='.' || ch=='_' || ch=='-') q.push_back((char)ch);
+        }
+        if (q.size() < 3)
+            return http_raw("200 OK", "application/json",
+                "{\"items\":[],\"error\":\"Type at least 3 letters.\"}",
                 "Cache-Control: no-store\r\n");
-        std::string url = "https://www.googleapis.com/youtube/v3/search"
-            "?part=snippet&type=video&videoEmbeddable=true&maxResults=8&order=relevance"
-            "&q=" + url_encode(term) + "&key=" + url_encode(key);
-        std::string cmd = "curl -sS --max-time 8 '" + url + "'";
+        std::string cache_key = q;
+        for (char& c : cache_key) if (c >= 'A' && c <= 'Z') c = static_cast<char>(c + 32);
+        const std::int64_t now_unix = now();
+        {
+            std::lock_guard<std::mutex> lock(g_yt_mu);
+            auto it = g_yt_cache.find(cache_key);
+            if (it != g_yt_cache.end() && it->second.exp > now_unix) {
+                lglog::emit("jukebox", "search-cache qlen="+std::to_string(q.size()));
+                return http_raw("200 OK", "application/json", it->second.body,
+                    "Cache-Control: no-store\r\n");
+            }
+        }
+        std::string cmd = "timeout 12 python3 /opt/liquidgov/scripts/yt_search.py '" + q + "' 2>/dev/null";
         std::string resp;
-        if (FILE* p = popen(cmd.c_str(), "r")) {
+        if (FILE* fp = popen(cmd.c_str(), "r")) {
             char buf[4096];
             size_t n;
-            while ((n = fread(buf, 1, sizeof(buf), p)) > 0) resp.append(buf, n);
-            pclose(p);
+            while ((n = fread(buf, 1, sizeof(buf), fp)) > 0) resp.append(buf, n);
+            pclose(fp);
         }
-        // Anything that doesn't look like the shape attachLiveSearch()
-        // expects (a curl/network failure, an API error body, quota
-        // exhaustion, an HTML error page) degrades to empty items rather
-        // than passing through garbage or 500ing the widget.
-        if (resp.empty() || resp[0] != '{' || resp.find("\"items\"") == std::string::npos)
-            return http_raw("200 OK", "application/json", "{\"items\":[]}",
+        if (resp.empty() || resp[0] != '{' || resp.find("\"items\"") == std::string::npos) {
+            lglog::emit("jukebox", "search-bad qlen="+std::to_string(q.size()));
+            return http_raw("200 OK", "application/json",
+                "{\"items\":[],\"error\":\"Search failed.\"}",
                 "Cache-Control: no-store\r\n");
+        }
+        {
+            std::lock_guard<std::mutex> lock(g_yt_mu);
+            g_yt_cache[cache_key] = YtCacheEntry{resp, now_unix + 600};
+            if (g_yt_cache.size() > 64) g_yt_cache.erase(g_yt_cache.begin());
+        }
+        lglog::emit("jukebox", "search-ok qlen="+std::to_string(q.size())+" bytes="+std::to_string(resp.size()));
         return http_raw("200 OK", "application/json", resp,
             "Cache-Control: no-store\r\n");
+    }
+    if(method=="GET"&&path=="/jukebox/meta") {
+        if(!acc) return http_raw("401 Unauthorized", "application/json", "{}");
+        auto jesc = [](const std::string& in) {
+            std::string o = "\"";
+            for (unsigned char c : in) {
+                if (c=='"' || c=='\\') { o += '\\'; o += char(c); }
+                else if (c>=32) o += char(c);
+            }
+            o += "\"";
+            return o;
+        };
+        std::ostringstream os;
+        os << "{\"me\":" << jesc(user) << ",\"stations\":[";
+        os << "{\"id\":\"\",\"name\":\"Site-wide\",\"kind\":\"site\"}";
+        os << ",{\"id\":" << jesc(std::string("u:")+user) << ",\"name\":\"My Juketube\",\"kind\":\"person\"}";
+        for (const auto& c : g_store.communities_of(user)) {
+            os << ",{\"id\":" << jesc(c.slug) << ",\"name\":" << jesc(c.name) << ",\"kind\":\"group\"}";
+        }
+        for (const auto& owner : g_store.jukebox_subscriptions_of(user)) {
+            os << ",{\"id\":" << jesc(std::string("u:")+owner) << ",\"name\":" << jesc(owner) << ",\"kind\":\"person\"}";
+        }
+        os << "],\"friends\":[";
+        bool first = true;
+        for (const auto& n : g_store.friends_of(user)) {
+            if (!first) os << ",";
+            first = false;
+            os << jesc(n);
+        }
+        os << "],\"groups\":[";
+        first = true;
+        for (const auto& c : g_store.communities_of(user)) {
+            if (!first) os << ",";
+            first = false;
+            os << "{\"id\":" << jesc(c.slug) << ",\"name\":" << jesc(c.name) << "}";
+        }
+        os << "]}";
+        return http_raw("200 OK", "application/json", os.str(), "Cache-Control: no-store\r\n");
+    }
+    if(method=="GET"&&path=="/jukebox/people") {
+        if(!acc) return http_raw("401 Unauthorized", "application/json", "{\"items\":[]}");
+        auto jesc = [](const std::string& in) {
+            std::string o = "\"";
+            for (unsigned char c : in) {
+                if (c=='"' || c=='\\') { o += '\\'; o += char(c); }
+                else if (c>=32) o += char(c);
+            }
+            o += "\"";
+            return o;
+        };
+        auto term = trim_ws(qs["q"]);
+        auto hits = people_hits(user, term);
+        std::ostringstream os;
+        os << "{\"items\":[";
+        bool first = true;
+        for (const auto& n : hits) {
+            if (n == user || g_store.are_friends(user, n)) continue;
+            if (!first) os << ",";
+            first = false;
+            os << "{\"name\":" << jesc(n) << "}";
+        }
+        os << "]}";
+        return http_raw("200 OK", "application/json", os.str(), "Cache-Control: no-store\r\n");
+    }
+    if(method=="GET"&&path=="/jukebox/browse") {
+        if(!acc) return http_raw("401 Unauthorized", "application/json", "{\"items\":[]}");
+        auto category = qs["category"];
+        static const std::set<std::string> kCats = {"all","group","friends","others","self"};
+        if (!kCats.count(category)) category = "all";
+        return http_raw("200 OK", "application/json",
+            jukebox_browse_json(user, category, trim_ws(qs["q"])),
+            "Cache-Control: no-store\r\n");
+    }
+    if(method=="GET"&&path=="/jukebox/history") {
+        if(!acc) return http_raw("401 Unauthorized", "application/json", "{\"items\":[]}");
+        // ?for=<personal-owner> scopes to whatever personal channel is
+        // actively tuned in on the caller's widget; empty (a community/
+        // site-wide station, or nothing tuned yet) falls back to the
+        // viewer's own plays, same as an owner with no plays of their own
+        // yet falls back to nothing rather than erroring.
+        auto for_owner = trim_ws(qs["for"]);
+        auto hist = (!for_owner.empty() && valid_username(for_owner)) ? g_store.jukebox_history_of(for_owner)
+                                                                        : std::vector<JukeboxHistoryEntry>{};
+        if (hist.empty()) hist = g_store.jukebox_history_of(user);
+        std::reverse(hist.begin(), hist.end());
+        if (hist.size() > 15) hist.resize(15);
+        std::string out = "{\"items\":[";
+        for (std::size_t i = 0; i < hist.size(); ++i) {
+            if (i) out += ",";
+            out += "{\"video_id\":\"" + json_escape(hist[i].video_id) + "\",\"queued_by\":\"" +
+                   json_escape(hist[i].queued_by) + "\"}";
+        }
+        out += "]}";
+        return http_raw("200 OK", "application/json", out, "Cache-Control: no-store\r\n");
+    }
+    // Title/creator for one video in the coverflow carousel (see
+    // jukebox_widget's owner-view build). oEmbed needs no API key at all
+    // (unlike the Data API v3 search this file already proxies) -- id is
+    // never anything but an already-queued, already-validated 11-char
+    // YouTube id, checked again here since it's about to go straight into
+    // a shell command via popen.
+    if(method=="GET"&&path=="/jukebox/channel") {
+        if(!acc) return http_raw("401 Unauthorized", "application/json", "{\"items\":[]}");
+        auto cid = trim_ws(qs["id"]);
+        if (cid.size() < 10)
+            return http_raw("200 OK", "application/json",
+                "{\"items\":[],\"error\":\"bad channel\"}", "Cache-Control: no-store\r\n");
+        for (char ch : cid) {
+            if (!(std::isalnum(static_cast<unsigned char>(ch)) || ch=='_' || ch=='-'))
+                return http_raw("200 OK", "application/json",
+                    "{\"items\":[],\"error\":\"bad channel\"}", "Cache-Control: no-store\r\n");
+        }
+        std::string cmd = "timeout 12 python3 /opt/liquidgov/scripts/yt_search.py --channel '" + cid + "' 2>/dev/null";
+        std::string resp;
+        if (FILE* fp = popen(cmd.c_str(), "r")) {
+            char buf[4096]; size_t n;
+            while ((n = fread(buf, 1, sizeof(buf), fp)) > 0) resp.append(buf, n);
+            pclose(fp);
+        }
+        if (resp.empty() || resp[0] != '{' || resp.find("\"items\"") == std::string::npos)
+            return http_raw("200 OK", "application/json",
+                "{\"items\":[],\"error\":\"No videos on that channel.\"}", "Cache-Control: no-store\r\n");
+        return http_raw("200 OK", "application/json", resp, "Cache-Control: no-store\r\n");
+    }
+    if(method=="GET"&&path=="/jukebox/oembed") {
+        if(!acc) return http_raw("401 Unauthorized", "application/json", "{}");
+        auto id = qs["id"];
+        bool valid_id = id.size() == 11;
+        if (valid_id) for (unsigned char c : id)
+            if (!((c>='A'&&c<='Z')||(c>='a'&&c<='z')||(c>='0'&&c<='9')||c=='_'||c=='-')) { valid_id = false; break; }
+        if (!valid_id) return http_raw("400 Bad Request", "application/json", "{}");
+        std::string url = "https://www.youtube.com/oembed?format=json&url=" +
+            url_encode("https://www.youtube.com/watch?v=" + id);
+        std::string resp = curl_get(url, 5);
+        if (resp.empty() || resp[0] != '{')
+            return http_raw("200 OK", "application/json", "{}", "Cache-Control: no-store\r\n");
+        auto title = oembed_json_string_field(resp, "title");
+        auto author = oembed_json_string_field(resp, "author_name");
+        std::string out = "{\"title\":\""+json_escape(title)+"\",\"author_name\":\""+json_escape(author)+"\"}";
+        // A video's title/uploader essentially never changes -- fine to
+        // cache in the browser across the session instead of re-curling
+        // every time the same track scrolls back into focus.
+        return http_raw("200 OK", "application/json", out, "Cache-Control: private, max-age=86400\r\n");
     }
     if(method=="GET"&&path=="/mail/group/new") {
         if(!acc) return need_login();
@@ -4822,7 +6909,34 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
     }
     if(method=="GET"&&path=="/favicon.svg")
         return http_raw("200 OK","image/svg+xml", favicon_svg());
+    if(method=="GET"&&path=="/manifest.webmanifest") {
+        return http_raw("200 OK", "application/manifest+json",
+            "{"
+            "\"name\":\"LiquidGov.US\","
+            "\"short_name\":\"LiquidGov\","
+            "\"description\":\"A voluntary natural democracy -- civic association and working software.\","
+            "\"start_url\":\"/\","
+            "\"display\":\"standalone\","
+            "\"background_color\":\"#f7f1e4\","
+            "\"theme_color\":\"#8a6620\","
+            "\"icons\":[{\"src\":\"/favicon.svg\",\"sizes\":\"any\",\"type\":\"image/svg+xml\",\"purpose\":\"any\"}]"
+            "}");
+    }
 
+    if(method=="GET"&&path=="/assets/juketube.js") {
+        std::ifstream in("assets/juketube.js", std::ios::binary);
+        if(!in) return http_raw("404 Not Found","text/plain; charset=utf-8","not found");
+        std::ostringstream ss; ss << in.rdbuf();
+        return http_raw("200 OK","text/javascript; charset=utf-8", ss.str(),
+            "Cache-Control: no-store\r\n");
+    }
+    if(method=="GET"&&path=="/assets/juketube.css") {
+        std::ifstream in("assets/juketube.css", std::ios::binary);
+        if(!in) return http_raw("404 Not Found","text/plain; charset=utf-8","not found");
+        std::ostringstream ss; ss << in.rdbuf();
+        return http_raw("200 OK","text/css; charset=utf-8", ss.str(),
+            "Cache-Control: no-store\r\n");
+    }
     if(method=="GET"&&path=="/assets/intro.mp4") {
         static std::string cached;
         static bool tried = false;
@@ -4832,7 +6946,59 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             if (in) { std::ostringstream ss; ss << in.rdbuf(); cached = ss.str(); }
         }
         if (cached.empty()) return http_raw("404 Not Found", "text/plain; charset=utf-8", "not found");
-        return http_raw("200 OK", "video/mp4", cached,
+        const std::string cache_hdr = "Cache-Control: public, max-age=31536000, immutable\r\nAccept-Ranges: bytes\r\n";
+        // Real browsers request video with a Range header even on first
+        // play; answering 200-whole-body every time (no 206 support) is
+        // a genuine small smoothness cost, independent of anything else.
+        // Falls straight through to the full 200 response on anything
+        // malformed or out of bounds -- never worth 500ing a video load.
+        const std::string range = header_value(req, "Range");
+        if (range.rfind("bytes=", 0) == 0) {
+            auto dash = range.find('-', 6);
+            if (dash != std::string::npos) {
+                try {
+                    std::string start_s = range.substr(6, dash - 6);
+                    std::string end_s = range.substr(dash + 1);
+                    std::size_t start = start_s.empty() ? 0 : std::stoul(start_s);
+                    std::size_t end = end_s.empty() ? cached.size() - 1 : std::stoul(end_s);
+                    if (start < cached.size() && end < cached.size() && start <= end) {
+                        std::string slice = cached.substr(start, end - start + 1);
+                        std::ostringstream extra;
+                        extra << cache_hdr << "Content-Range: bytes " << start << "-" << end << "/" << cached.size() << "\r\n";
+                        return http_raw("206 Partial Content", "video/mp4", slice, extra.str());
+                    }
+                } catch (...) { /* fall through */ }
+            }
+        }
+        return http_raw("200 OK", "video/mp4", cached, cache_hdr);
+    }
+    // The og:image/twitter:image referenced from every page's <head> (see
+    // page_wrap) -- what a shared liquidgov.us link actually shows on
+    // Facebook/X/Slack/etc. instead of a bare, imageless title card.
+    if(method=="GET"&&path=="/assets/og-image.png") {
+        static std::string cached;
+        static bool tried = false;
+        if (!tried) {
+            tried = true;
+            std::ifstream in("assets/og-image.png", std::ios::binary);
+            if (in) { std::ostringstream ss; ss << in.rdbuf(); cached = ss.str(); }
+        }
+        if (cached.empty()) return http_raw("404 Not Found", "text/plain; charset=utf-8", "not found");
+        return http_raw("200 OK", "image/png", cached,
+            "Cache-Control: public, max-age=31536000, immutable\r\n");
+    }
+    // Real recorded narration (Helios) for the Chapter 1 Listen control --
+    // replaces the earlier browser speechSynthesis approach entirely.
+    if(method=="GET"&&path=="/assets/chapter1.mp3") {
+        static std::string cached;
+        static bool tried = false;
+        if (!tried) {
+            tried = true;
+            std::ifstream in("assets/chapter1.mp3", std::ios::binary);
+            if (in) { std::ostringstream ss; ss << in.rdbuf(); cached = ss.str(); }
+        }
+        if (cached.empty()) return http_raw("404 Not Found", "text/plain; charset=utf-8", "not found");
+        return http_raw("200 OK", "audio/mpeg", cached,
             "Cache-Control: public, max-age=31536000, immutable\r\n");
     }
 
@@ -4875,26 +7041,50 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         return pg("Laws · " + chapters[n-1].title, laws_chapter_body(n));
     }
     if(method=="GET"&&path=="/control") return pg("Who holds control", control_body());
+    if(method=="GET"&&path=="/install") return pg("Install this as an app", install_body());
     if(method=="GET"&&path=="/signup") return http_ok(signup_page(user, unread, "", SignupDraft{}));
     if(method=="GET"&&path=="/login") {
-        std::string err;
         // Deliberately one generic message for bad-username and
         // bad-password alike (and phone-not-verified folded in too) --
         // splitting them would let a caller enumerate which usernames
         // exist. Rate-limit is the one case safe to name specifically:
         // it doesn't depend on whether the account exists.
-        if (qs["err"]=="login") err = "<p class=\"warn\">Invalid username or password.</p>";
-        else if (qs["err"]=="ratelimit") err = "<p class=\"warn\">Too many attempts. Wait a moment and try again.</p>";
+        const std::string err = flash_error(qs);
         const std::string next = safe_next_path(qs["next"]);
         return pg("Log in", "<div class=\"card\"><h1>Log in</h1>"
-            "<p class=\"muted\">Username and password. Phone is not the daily credential. "
-            "There is no email reset in this release &mdash; keep the password somewhere you will not lose it.</p>"+err+
+            "<p class=\"muted\">Username and password. Phone is not the daily credential.</p>"+err+
+            google_signin_button_html()+
             "<form method=\"POST\" action=\"/login\"><label>Username</label>"
             "<input name=\"username\" required autocomplete=\"username\" value=\""+html_escape(qs["username"])+"\">"
             "<label>Password</label><input type=\"password\" name=\"password\" required autocomplete=\"current-password\">"
             +(next.empty()?std::string():"<input type=\"hidden\" name=\"next\" value=\""+html_escape(next)+"\">")+
             "<button>Continue</button></form>"
-            "<p class=\"muted\" style=\"margin-top:.7rem\">New here? <a href=\"/signup\">Create an account</a>.</p></div>");
+            "<p class=\"muted\" style=\"margin-top:.7rem\">"
+            "<a href=\"/forgot\">Forgot password?</a> &middot; "
+            "New here? <a href=\"/signup\">Create an account</a>.</p></div>");
+    }
+    if(method=="GET"&&path=="/forgot") {
+        return pg("Forgot password", "<div class=\"card\"><h1>Forgot your password?</h1>"
+            "<p class=\"muted\">Used Google? <a href=\"/login\">Sign in with Google</a> instead "
+            "&mdash; no reset needed.</p>"
+            +flash_error(qs)+
+            "<form method=\"POST\" action=\"/forgot\">"
+            "<label>Email</label><input type=\"email\" name=\"email\" required autocomplete=\"email\">"
+            "<button>Send reset link</button></form>"
+            "<p class=\"muted\" style=\"margin-top:.7rem\"><a href=\"/login\">Back to log in</a></p></div>");
+    }
+    // GET renders the form regardless of whether t looks valid -- POST
+    // does the actual checking (see its own comment), so this route
+    // can't be used to probe token validity separately from consuming
+    // one.
+    if(method=="GET"&&path=="/reset") {
+        return pg("Reset password", "<div class=\"card\"><h1>Set a new password</h1>"
+            +flash_error(qs)+
+            "<form method=\"POST\" action=\"/reset\">"
+            "<input type=\"hidden\" name=\"t\" value=\""+html_escape(qs["t"])+"\">"
+            "<label>New password</label><input type=\"password\" name=\"password\" required "
+            "minlength=\"8\" autocomplete=\"new-password\">"
+            "<button>Set password</button></form></div>");
     }
     if(method=="GET"&&path=="/logout") {
         logout(g_store, sid);
@@ -4907,11 +7097,11 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
     }
     if(method=="GET"&&path=="/me/canvas") {
         if(!acc) return need_login();
-        return pg("Canvas", canvas_tool_page(user, qs["err"], false));
+        return pg("Canvas", canvas_tool_page(user, flash_error(qs), false));
     }
     if(method=="GET"&&path=="/me/portrait") {
         if(!acc) return need_login();
-        return pg("Self-portrait", canvas_tool_page(user, qs["err"], true));
+        return pg("Self-portrait", canvas_tool_page(user, flash_error(qs), true));
     }
     if(method=="GET"&&path=="/me/post/canvas") {
         if(!acc) return need_login();
@@ -4944,26 +7134,13 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         std::string html = "<h1>Feed</h1><p class=\"muted eyebrow\">"+html_escape(fmt_time(now()))+
             " &middot; "+std::to_string(g_store.account_count())+" members</p>"
             "<div class=\"row\" style=\"margin:.5rem 0 1rem\">"+
-            tab("all","All")+tab("friends","Friends")+tab("committees","Committees")+tab("drawings","Drawings")+
+            tab("all","All")+tab("friends","Friends")+tab("committees","Communities")+tab("drawings","Drawings")+
             "</div>"+
-            composer_media_error(qs["perr"])+
-            "<div class=\"card\"><p class=\"row\" style=\"justify-content:space-between;margin:0 0 .3rem\">"
-            "<label style=\"margin:0\">Write to people who know you</label>"
-            "<span class=\"chip\">Friends only</span></p>"
-            "<form method=\"POST\" action=\"/feed\" enctype=\"multipart/form-data\">"
-            "<textarea name=\"text\" maxlength=\"2000\" placeholder=\"Plain text. Friends see this.\" "
-            "oninput=\"document.getElementById('feedchars').textContent=(2000-this.value.length)+' left'\"></textarea>"
-            "<p class=\"muted\" id=\"feedchars\" style=\"margin:.2rem 0 0;text-align:right\">2000 left</p>"
-            "<label>Photo or video (optional)</label><input type=\"file\" name=\"media\" accept=\"image/*,video/*\">"
-            "<button>Post</button></form>"
-            "<p class=\"muted\" style=\"margin-top:.5rem\">Or <a href=\"/feed/canvas\">open the canvas</a> "
-            "to draw, crop, layer, or paste one together first.</p>"
-            "<p class=\"muted\">Personal posts reach you and your friends. Communities have their own pages. "
-            "This is not a civic act.</p></div>";
+            flash_error(qs)+
+            feed_composer_card(user);
         auto posts = g_store.feed_view(user, 80, filter);
-        if (posts.empty()) html += "<div class=\"card\"><p class=\"empty\">No posts in this view yet.</p>"
-            "<p class=\"muted\">Write one above, or <a href=\"/friends\">add a friend</a> so theirs show up. "
-            "This feed is friends-only &mdash; it stays quiet until someone you know posts.</p></div>";
+        if (posts.empty()) html += "<div class=\"card\"><p class=\"empty\">Nothing in this view yet.</p>"
+            "<p class=\"muted\">Write one above, or <a href=\"/friends\">add a friend</a> so theirs show up.</p></div>";
         for (const auto& p : posts) html += "<div class=\"card\">"+post_block(p, user)+"</div>";
         return pg("Feed", html);
     }
@@ -4973,20 +7150,47 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         std::string html = "<h1>Proposals</h1>"
             "<p class=\"muted\">Unofficial straw polls &mdash; a way to gauge how people feel about "
             "something not yet decided. Not a CitizenId vote, not binding, not this platform's Phase 2.</p>";
-        if (qs["err"]=="empty") html += "<p class=\"warn\">Need a title and a body.</p>";
+        html += flash_error(qs);
         html += "<div class=\"card\"><form method=\"POST\" action=\"/proposals\">"
                 "<label>Title</label><input name=\"title\" maxlength=\"140\" required>"
                 "<label>What's being proposed</label>"
                 "<textarea name=\"body\" maxlength=\"4000\" required placeholder=\"Plain text.\"></textarea>"
-                "<button>Open for votes</button></form></div>";
+                "<label>How should people answer?</label>"
+                "<select name=\"kind\" id=\"bkind\">"
+                "<option value=\"0\">Yes / No / Abstain</option>"
+                "<option value=\"1\">A number</option>"
+                "<option value=\"2\">A date</option>"
+                "<option value=\"3\">Pick one option</option>"
+                "<option value=\"4\">A scale (0–100)</option>"
+                "</select>"
+                "<div id=\"bnum\" hidden>"
+                "<label>Unit (optional)</label><input name=\"unit\" maxlength=\"24\" placeholder=\"days, dollars, people\">"
+                "<label>Minimum (optional)</label><input name=\"min\" type=\"number\" step=\"any\">"
+                "<label>Maximum (optional)</label><input name=\"max\" type=\"number\" step=\"any\">"
+                "</div>"
+                "<div id=\"bchoice\" hidden>"
+                "<label>Options (one per line, 2–12)</label>"
+                "<textarea name=\"options\" maxlength=\"800\" placeholder=\"One option per line\"></textarea>"
+                "</div>"
+                "<div id=\"bscale\" hidden>"
+                "<label>Left label</label><input name=\"left\" maxlength=\"40\" placeholder=\"Too little\">"
+                "<label>Right label</label><input name=\"right\" maxlength=\"40\" placeholder=\"Too much\">"
+                "</div>"
+                "<button>Open for votes</button></form>"
+                "<script>"
+                "(function(){var s=document.getElementById('bkind');if(!s)return;"
+                "function show(){var v=s.value;"
+                "document.getElementById('bnum').hidden=(v!=='1');"
+                "document.getElementById('bchoice').hidden=(v!=='3');"
+                "document.getElementById('bscale').hidden=(v!=='4');}"
+                "s.addEventListener('change',show);show();})();"
+                "</script></div>";
         auto all = g_store.all_proposals();
         std::reverse(all.begin(), all.end());
         if (all.empty()) html += "<div class=\"card\"><p class=\"empty\">None open.</p>"
             "<p class=\"muted\">The form above starts an unofficial straw poll. Not a binding vote.</p></div>";
         for (const auto& p : all) {
-            auto t = g_store.tally_of(p.id);
-            auto mv = g_store.proposal_vote_of(p.id, user);
-            html += "<div class=\"card\">"+proposal_block(p, user, t, mv)+"</div>";
+            html += "<div class=\"card\">"+proposal_block(p, user)+"</div>";
         }
         return pg("Proposals", html);
     }
@@ -5063,11 +7267,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
 
     if(method=="GET"&&path=="/me") {
         if(!acc) return need_login();
-        std::string err;
-        if (qs["err"]=="image") err = "<p class=\"warn\">That file was not a usable image (PNG/JPEG/GIF, 2&nbsp;MiB, 1024px). SVG is not accepted.</p>";
-        else if (qs["err"]=="large") err = "<p class=\"warn\">That file is too large. Cap is 2&nbsp;MiB and 1024 pixels on the long edge.</p>";
-        else if (qs["err"]=="scan") err = "<p class=\"warn\">That file could not be stored.</p>";
-        else if (qs["err"]=="profile") err = "<p class=\"warn\">Display name is required (up to 80 characters).</p>";
+        std::string err = flash_error(qs);
         std::string html;
         // Draft/publish: the two forms directly on this page (Profile CSS,
         // Jukebox permissions) no longer save themselves on their own
@@ -5118,8 +7318,9 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         {
             auto current_css = g_store.author_css(acc->id);
             std::string css_msg;
+            // The page-top banner (see `err` above) already covers ?err=css
+            // -- this is just the success case, which has no other home.
             if (qs["ok"]=="css") css_msg = "<p class=\"ok\">Saved. See it at <a href=\"/u/"+html_escape(user)+"\">your public profile</a>.</p>";
-            else if (qs["err"]=="css") css_msg = "<p class=\"warn\">"+html_escape(css_reject_message(qs["reason"]))+"</p>";
             html += "<div class=\"card\"><h2>Profile CSS</h2>"
                 "<p class=\"muted\">Restyles your public profile page (/u/"+html_escape(user)+
                 "), shown inside a sandboxed frame that can never run scripts. "
@@ -5133,6 +7334,24 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
                 "</form></div>";
         }
         html += jukebox_widget(user, true, user, qs);
+        {
+            // Off by default -- visiting a profile shouldn't ambush anyone
+            // with sound. "Play this Juketube instead" is stored as-is;
+            // an invalid value (self, a stranger who blocked you, a cycle)
+            // is never rejected here, just quietly inert at read time (see
+            // jukebox_effective_owner) -- same posture as findability
+            // elsewhere: a miss looks like a miss, not an error message.
+            std::string jmsg = qs["ok"]=="jplay" ? "<p class=\"ok\">Saved.</p>" : "";
+            html += "<div class=\"card\"><h2>Play settings</h2>"+jmsg+
+                "<form method=\"POST\" action=\"/me/jukebox/play-settings\">"
+                "<label><input type=\"checkbox\" name=\"autoplay\" value=\"1\""+
+                (g_store.jukebox_autoplay(user) ? " checked" : "")+
+                "> Play my Juketube when someone opens my profile</label>"
+                "<label style=\"display:block;margin-top:.5rem\">Play this Juketube instead</label>"
+                "<input name=\"relay\" placeholder=\"username &mdash; leave empty for your own queue\" "
+                "value=\""+html_escape(g_store.jukebox_relay_target(user))+"\">"
+                "<button type=\"submit\">Save</button></form></div>";
+        }
         html += draft_publish_script();
         return pg("Profile", html);
     }
@@ -5198,16 +7417,30 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         const bool is_friend = acc && !is_owner && g_store.are_friends(user, who);
         if (!visible_to(target_prefs.profile_visibility, is_owner, acc.has_value(), is_friend))
             return http_code("404 Not Found", "");
-        auto tracks = g_store.jukebox_of(who);
+        // "Play this Juketube instead" (see /me): who's page this is and
+        // whose queue actually plays here can differ, one hop only.
+        const std::string effective_owner = g_store.jukebox_effective_owner(who);
+        auto tracks = g_store.jukebox_of(effective_owner);
         std::ostringstream os;
         os << "{";
         if (!tracks.empty()) {
             const auto& t = tracks.front();
-            os << "\"now\":{\"video_id\":\"" << t.video_id << "\",\"queued_by\":\"" << t.queued_by << "\"}";
+            os << "\"now\":{\"video_id\":\"" << t.video_id << "\",\"queued_by\":\"" << t.queued_by
+               << "\",\"elapsed\":" << personal_jukebox_elapsed("u:"+effective_owner, t.video_id) << "}";
         } else {
             os << "\"now\":null";
         }
-        os << ",\"upcoming\":" << (tracks.empty() ? 0 : tracks.size() - 1) << "}";
+        os << ",\"upcoming\":" << (tracks.empty() ? 0 : tracks.size() - 1);
+        os << ",\"queue\":[";
+        {
+            bool qfirst = true;
+            for (size_t qi = 1; qi < tracks.size(); ++qi) {
+                if (!qfirst) os << ",";
+                qfirst = false;
+                os << "{\"video_id\":\"" << tracks[qi].video_id << "\",\"queued_by\":\"" << tracks[qi].queued_by << "\"}";
+            }
+        }
+        os << "]}";
         return http_raw("200 OK", "application/json", os.str());
     }
     if(method=="GET"&&path.rfind("/u/",0)==0) {
@@ -5307,7 +7540,8 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             // page (see above) -- nothing further needed here.
         } else if (acc && g_store.are_friends(user, found->username)) {
             html += "<p class=\"row\"><a class=\"btn\" href=\"/mail?with="+html_escape(found->username)+"\">Message</a>"
-                    "<form class=\"inline\" method=\"POST\" action=\"/friends/unfriend\">"
+                    "<form class=\"inline\" method=\"POST\" action=\"/friends/unfriend\" "
+                    "onsubmit=\"return confirm('Unfriend "+html_escape(found->username)+"? You will leave every group you share with them. They stay in those groups.');\">"
                     "<input type=\"hidden\" name=\"who\" value=\""+html_escape(found->username)+"\">"
                     "<button class=\"ghost\" type=\"submit\">Unfriend</button></form></p>";
         } else if (acc) {
@@ -5316,14 +7550,56 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         }
         html += "</div>";
         html += jukebox_widget(found->username, is_owner, user, qs);
+        // "Play my Juketube when someone opens my profile" -- off by
+        // default. Signed-in visitors only (the floating widget doesn't
+        // exist for a logged-out guest, so there'd be nothing to tune),
+        // and never for the owner's own visit to their own page --
+        // is_owner is already computed above for exactly this branch.
+        if (acc && !is_owner && g_store.jukebox_autoplay(found->username)) {
+            // wrap() appends the floating widget's own markup+script right
+            // after </main> (see its comment -- keeps the widget alive
+            // across soft-nav, which only ever touches <main>'s innerHTML),
+            // which means __lgTuneStation isn't defined yet at the point
+            // this inline script -- inside <main> -- actually runs.
+            // setTimeout(0) pushes the call past the rest of this initial
+            // parse, by which point the widget's script further down the
+            // document has already executed and defined it.
+            html += "<script>(function(){"
+                    "setTimeout(function(){"
+                    "if(window.__lgTuneStation)window.__lgTuneStation('u:"+found->username+"');"
+                    "},0);"
+                    "})();</script>";
+        }
         {
-            if (visible_to(target_prefs.posts_visibility, is_owner, acc.has_value(), is_friend)) {
-                auto theirPosts = g_store.posts_by(found->username);
-                std::reverse(theirPosts.begin(), theirPosts.end());
-                html += "<h2>Posts</h2><p class=\"muted eyebrow\">"+std::to_string(theirPosts.size())+
-                        (theirPosts.size()==1?" entry":" entries")+
-                        (target_prefs.posts_visibility==Visibility::Public?" &middot; public":"")+"</p>";
-                for (const auto& p : theirPosts) html += "<div class=\"card\">"+post_block(p, user)+"</div>";
+            // A post's own audience (the /feed "Anybody"/"Friends"/"Groups"
+            // chips) gates it here, not the account-wide posts_visibility
+            // setting -- that blanket still governs only a GroupsOnly post
+            // shown on this list (unchanged; a community's real audience is
+            // its membership, this is just "does this profile show its
+            // posts at all" for those).
+            auto theirPosts = g_store.posts_by(found->username);
+            std::reverse(theirPosts.begin(), theirPosts.end());
+            std::vector<Post> shown;
+            for (const auto& p : theirPosts) {
+                bool ok;
+                if (is_owner) {
+                    ok = true;
+                } else if (p.audience == PostAudience::GroupsOnly) {
+                    ok = visible_to(target_prefs.posts_visibility, is_owner, acc.has_value(), is_friend);
+                } else if (p.audience == PostAudience::Anybody) {
+                    ok = std::find(p.exceptions.begin(), p.exceptions.end(), user) == p.exceptions.end();
+                } else { // Friends, possibly also posted into a community
+                    ok = is_friend && target_prefs.posts_visibility != Visibility::OnlyMe &&
+                         (p.friend_allowlist.empty() ||
+                          std::find(p.friend_allowlist.begin(), p.friend_allowlist.end(), user) !=
+                              p.friend_allowlist.end());
+                }
+                if (ok) shown.push_back(p);
+            }
+            if (is_owner || !shown.empty()) {
+                html += "<h2>Posts</h2><p class=\"muted eyebrow\">"+std::to_string(shown.size())+
+                        (shown.size()==1?" entry":" entries")+"</p>";
+                for (const auto& p : shown) html += "<div class=\"card\">"+post_block(p, user)+"</div>";
             }
         }
         return pg(found->username, html);
@@ -5331,8 +7607,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
 
     if(method=="GET"&&path=="/friends") {
         if(!acc) return need_login();
-        std::string err;
-        if (qs["err"]=="inner") err = "<p class=\"warn\">Inner circle holds twelve. Take someone out first.</p>";
+        std::string err = flash_error(qs);
         std::string html = "<h1>People</h1>"+err+
             "<div class=\"card\"><h2>Find someone</h2>"
             "<form method=\"GET\" action=\"/search\"><label>Type a name</label>"
@@ -5367,7 +7642,8 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
                         "<input type=\"hidden\" name=\"who\" value=\""+html_escape(other)+"\">"
                         "<button class=\"ghost\" type=\"submit\">Inner circle</button></form>";
             }
-            html += "<form class=\"inline\" method=\"POST\" action=\"/friends/unfriend\">"
+            html += "<form class=\"inline\" method=\"POST\" action=\"/friends/unfriend\" "
+                    "onsubmit=\"return confirm('Unfriend this person? You will leave every group you share with them. They stay in those groups.');\">"
                     "<input type=\"hidden\" name=\"who\" value=\""+html_escape(other)+"\">"
                     "<button class=\"ghost\" type=\"submit\">Unfriend</button></form>"
                     "<form class=\"inline\" method=\"POST\" action=\"/friends/block\">"
@@ -5411,27 +7687,25 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
 
     if(method=="GET"&&path=="/mail") {
         if(!acc) return need_login();
-        // Mirrors /notices clearing everything but "message" -- opening
-        // Mail is what actually clears the Messages icon's own badge.
         g_store.mark_notices_read_of_type(user, "message");
         std::string thread = mail_thread_html(user, qs["with"], qs);
-        std::string html = "<h1>Mail</h1><p class=\"muted\">Direct messages are friends-only in this release. "
-            "Open messaging waits on age assurance so a stranger cannot reach a minor. We will not treat a checkbox as age.</p>"
-            "<div class=\"card mailwidget\">"+thread+mail_friends_list_html(user)+"</div>"
-            "<div class=\"card\">"+mail_groups_list_html(user, acc->id)+"</div>";
+        if (!qs["with"].empty() && thread.empty()) {
+            thread = "<div class=\"card\"><p class=\"warn\">Mail is friends-only until they accept. "
+                     "<a href=\"/search?q="+html_escape(qs["with"])+"\">Find "+html_escape(qs["with"])+"</a></p></div>";
+        }
+        std::string html = "<h1>Mail</h1>"
+            "<p class=\"muted\">Direct messages are friends-only in this release. "
+            "Open messaging waits on age assurance so a stranger cannot reach a minor. We will not treat a checkbox as age.</p>";
+        if (qs["skipped"].size()) html += "<p class=\"warn\">Couldn’t include: "+html_escape(qs["skipped"])+
+            ". Unknown, blocked, and contact-settings conflicts are skipped — start a new thread with just them if you still want to talk.</p>";
+        html += "<div class=\"card mailwidget\">"+thread+mail_inbox_html(user, acc->id)+"</div>";
         return pg("Mail", html);
     }
-    // Fetched by the header's Messages widget on open, on picking a friend,
-    // after sending, and on its poll interval while a thread is open --
-    // same content the full /mail page renders (same helper functions), as
-    // a bare fragment for innerHTML instead of a full document. Marking
-    // read here too since opening the widget is opening Mail. Thread first
-    // (when one's open) so it's visible without scrolling past the list.
     if(method=="GET"&&path=="/mail/panel") {
         if(!acc) return http_code("401 Unauthorized", "");
         g_store.mark_notices_read_of_type(user, "message");
         std::string thread = mail_thread_html(user, qs["with"], qs);
-        std::string html = thread+mail_friends_list_html(user)+mail_groups_list_html(user, acc->id);
+        std::string html = thread+mail_inbox_html(user, acc->id);
         return http_ok(html);
     }
 
@@ -5439,7 +7713,17 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         if(!acc) return need_login();
         const std::string blob_id = path.substr(17);
         auto found = g_store.find_mail_attachment(user, blob_id);
-        if (!found) return http_raw("404 Not Found", "text/plain; charset=utf-8", "not found");
+        if (!found) {
+            auto gfound = g_store.find_group_attachment(acc->id, blob_id);
+            if (!gfound) return http_raw("404 Not Found", "text/plain; charset=utf-8", "not found");
+            auto gbytes = g_blobs.get(blob_id);
+            if (!gbytes) return http_raw("404 Not Found", "text/plain; charset=utf-8", "not found");
+            std::string gdata(gbytes->begin(), gbytes->end());
+            const std::string gmime = gfound->attachment_mime.empty() ? "application/octet-stream" : gfound->attachment_mime;
+            std::string gextra = "Content-Disposition: attachment; filename=\""+attachment_filename_for_mime(gmime)+"\"\r\n"
+                                 "Cache-Control: private, no-store\r\n";
+            return http_raw("200 OK", gmime.c_str(), gdata, gextra);
+        }
         const std::string other = (found->from == user) ? found->to : found->from;
         // Same gate as the thread view: attachments do not outlive the
         // friendship they were sent inside of. Do not open stranger DMs.
@@ -5463,73 +7747,141 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         if (conv) for (auto& m : conv->members) if (m.account == acc->id) self_member = &m;
         if (!conv || !conv->is_group || !self_member)
             return http_code("404 Not Found", wrap("Not found", user, unread, "<div class=\"card\"><p>No such group.</p></div>"));
+        g_store.mark_thread_read(user, "g:" + std::to_string(conv_id));
         const std::string base = "/mail/g/" + std::to_string(conv_id);
         const bool active = self_member->state == MemberState::Active;
 
-        std::string html = "<h1>"+html_escape(group_label(*conv, acc->id))+"</h1>"
+        std::string html = "<p><a href=\"/mail\">\xE2\x86\x90 Mail</a></p>"
+            "<h1>"+html_escape(group_label(*conv, acc->id))+"</h1>"
             "<p class=\"muted\">Platform group conversation. Not an AVND locality.</p>";
-        if (qs["err"]=="invite") html += "<p class=\"warn\">Conflicts with another member’s contact settings.</p>";
-        html += "<div class=\"card\"><h2>Members</h2><ul class=\"plain\">";
-        for (auto& m : conv->members) {
-            html += "<li>"+html_escape(display_name_for(m.account))+
-                    (m.state==MemberState::Pending?" <span class=\"muted\">invited</span>":"")+"</li>";
-        }
-        html += "</ul>";
+        if (qs["err"]=="invite") html += "<p class=\"warn\">Couldn’t add them — conflicts with someone’s contact settings. "
+            "Start a new thread with just them if you still want to talk.</p>";
+        if (!qs["skipped"].empty()) html += "<p class=\"warn\">Couldn’t include: "+html_escape(qs["skipped"])+". "
+            "Unknown, blocked, and contact-settings conflicts are skipped.</p>";
+        if (qs["err"]=="type") html += "<p class=\"warn\">That attachment isn't a usable type. Allowed: PNG/JPEG/GIF, PDF, plain text, macro-free Word/Excel/PowerPoint. No SVG, no archives.</p>";
+        else if (qs["err"]=="large") html += "<p class=\"warn\">That attachment is too large.</p>";
+        else if (qs["err"]=="active") html += "<p class=\"warn\">That document was refused: it declares a macro, embedded object, or OLE content.</p>";
+        else if (qs["err"]=="scan") html += "<p class=\"warn\">That attachment could not be stored.</p>";
+
         if (!active) {
-            html += "<p class=\"muted\">You’re invited to this group. Accept to join, or decline — declining is never announced to the room.</p>"
+            html += "<div class=\"mailpending\"><p><strong>Waiting for you to join.</strong> "
+                    "You can’t send until you accept. Declining is never announced to the room.</p>"
                     "<form method=\"POST\" action=\""+base+"/accept\"><button>Accept</button></form>"
-                    "<form method=\"POST\" action=\""+base+"/leave\"><button class=\"ghost\">Decline</button></form>";
-        } else {
-            html += "<form method=\"POST\" action=\""+base+"/invite\"><label>Invite</label>"
-                    "<div class=\"row\"><input name=\"who\" required><button>Invite</button></div></form>"
-                    "<form method=\"POST\" action=\""+base+"/leave\"><button class=\"ghost\">Leave group</button></form>";
+                    "<form method=\"POST\" action=\""+base+"/leave\"><button class=\"ghost\">Decline</button></form></div>";
+        }
+
+        html += "<div class=\"card\">";
+        auto msgs = g_store.messages_in(conv_id);
+        html += "<div class=\"msglist\" id=\"msglist\" style=\"max-height:none\">";
+        bool any = false;
+        for (auto& m : msgs) {
+            if (m.deletion==DeletionState::DeletedForSender && m.sender==acc->id) continue;
+            any = true;
+            const bool mine = m.sender==acc->id;
+            html += "<div class=\"msg "+std::string(mine?"mine":"theirs")+"\"><div class=\"bubble\">";
+            if (!mine) html += "<strong>"+html_escape(display_name_for(m.sender))+"</strong> ";
+            if (m.deletion==DeletionState::DeletedForEveryone) {
+                html += "<em class=\"muted\">Message deleted.</em>";
+            } else {
+                if (!m.text.empty()) html += html_escape(m.text);
+                if (!m.attachment_blob_id.empty())
+                    html += "<div><a href=\"/mail/attachment/"+html_escape(m.attachment_blob_id)+"\">Download attachment</a></div>";
+                if (m.edited_at>0) html += "<span class=\"muted\"> (edited)</span>";
+            }
+            html += "<span class=\"bubtime\">"+html_escape(fmt_time(m.sent_at))+"</span></div></div>";
+        }
+        if (!any) html += "<p class=\"empty\">No messages yet.</p>";
+        html += "</div>";
+        if (active) {
+            html += "<form method=\"POST\" action=\""+base+"/send\" enctype=\"multipart/form-data\" class=\"mailcomposer\" id=\"mailcomposer\">"
+                    "<div class=\"row\" style=\"align-items:flex-end;gap:.4rem;flex-wrap:nowrap\">"
+                    "<textarea name=\"text\" id=\"mailtext\" maxlength=\"2000\" rows=\"2\" placeholder=\"Message\" "
+                    "style=\"flex:1;min-width:0;min-height:44px;resize:vertical\"></textarea>"
+                    "<label class=\"mailattbtn\" title=\"Attach a file\">"
+                    "<input type=\"file\" name=\"attachment\" accept=\"image/png,image/jpeg,image/gif,application/pdf,text/plain,.docx,.xlsx,.pptx\">"
+                    "<span aria-hidden=\"true\">+</span></label>"
+                    "<button type=\"submit\">Send</button></div>"
+                    "<p class=\"muted\" style=\"margin:.3rem 0 0\">Enter sends. Shift+Enter is a new line.</p></form>";
         }
         html += "</div>";
 
-        if (active) {
-            html += "<div class=\"card\">";
-            auto msgs = g_store.messages_in(conv_id);
-            bool any = false;
-            for (auto& m : msgs) {
-                if (m.deletion==DeletionState::DeletedForSender && m.sender==acc->id) continue;
-                any = true;
-                html += "<div class=\"msg\"><div><strong>"+html_escape(display_name_for(m.sender))+"</strong> "
-                        "<span class=\"muted\">"+html_escape(fmt_time(m.sent_at))+"</span>";
-                if (m.deletion==DeletionState::DeletedForEveryone) {
-                    html += "<p class=\"muted\"><em>Message deleted.</em></p>";
-                } else {
-                    html += "<p>"+html_escape(m.text)+"</p>";
-                    if (m.edited_at>0) html += "<p class=\"muted\">(edited)</p>";
-                    if (m.sender==acc->id) {
-                        const std::string mbase = base+"/message/"+std::to_string(m.id);
-                        html += "<form method=\"POST\" action=\""+mbase+"/edit\" class=\"row\">"
-                                "<input name=\"text\" value=\""+html_escape(m.text)+"\" maxlength=\"2000\">"
-                                "<button>Save edit</button></form>"
-                                "<form method=\"POST\" action=\""+mbase+"/delete\">"
-                                "<button class=\"ghost\">Delete</button></form>";
-                    }
-                }
-                html += "</div></div>";
-            }
-            if (!any) html += "<p class=\"empty\">No messages yet.</p>";
-            html += "<form method=\"POST\" action=\""+base+"/send\">"
-                    "<label>Message</label><input name=\"text\" maxlength=\"2000\">"
-                    "<button>Send</button></form></div>";
+        html += "<details class=\"card\"><summary>Members</summary><ul class=\"plain\">";
+        for (auto& m : conv->members) {
+            html += "<li>"+html_escape(display_name_for(m.account))+
+                    (m.state==MemberState::Pending?" <span class=\"muted\">invited \xE2\x80\x94 not in yet</span>":"")+"</li>";
         }
+        html += "</ul>";
+        if (active) {
+            html += "<form method=\"POST\" action=\""+base+"/invite\"><label>Invite</label>"
+                    "<div class=\"row\"><input name=\"who\" required><button>Invite</button></div></form>"
+                    "<form method=\"POST\" action=\""+base+"/title\" class=\"mailnewgroup\">"
+                    "<label>Group name</label><input name=\"title\" maxlength=\"80\" value=\""+html_escape(conv->title)+"\">"
+                    "<button class=\"ghost\">Save name</button></form>"
+                    "<form method=\"POST\" action=\""+base+"/leave\" onsubmit=\"return confirm('Leave this group? You will not be told if others stay.');\">"
+                    "<button class=\"ghost\">Leave group</button></form>";
+        }
+        html += "</details>"
+            "<script>(function(){"
+            "var list=document.getElementById('msglist');if(list)list.scrollTop=list.scrollHeight;"
+            "var form=document.getElementById('mailcomposer'),ta=document.getElementById('mailtext');"
+            "if(!form||!ta)return;"
+            "ta.addEventListener('keydown',function(e){"
+            "if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();form.requestSubmit();}"
+            "});"
+            "})();</script>";
         return pg("Group", html);
     }
 
     if(method=="GET"&&path=="/communities") {
         if(!acc) return http_redir("/login");
-        std::string err;
-        if (qs["err"]=="address") err = "<p class=\"warn\">Need a free address: letters, numbers, dots, underscores, hyphens.</p>";
-        else if (qs["err"]=="subcategory") err = "<p class=\"warn\">Pick or name a subcategory.</p>";
-        std::string html = "<h1>Communities</h1>"+err+
-            "<p class=\"lede\">These are platform groups. They are not AVND localities and they do not confer standing.</p>"
-            "<div class=\"card\"><h2>Start one</h2><form method=\"POST\" action=\"/communities\">"
-            "<label>Address</label><input name=\"slug\" required maxlength=\"32\" pattern=\"[A-Za-z0-9._-]+\" placeholder=\"town-hall\">"
-            "<p class=\"muted\" style=\"margin-top:-.3rem\">Your community's web address -- for example, /c/town-hall.</p>"
-            "<label>Name</label><input name=\"name\" required maxlength=\"80\">"
+        std::string err = flash_error(qs);
+        std::string html = "<h1>Groups</h1>"+err+
+            "<p class=\"lede\">Platform groups. Not AVND localities, and they do not confer standing.</p>";
+        auto all = g_store.all_communities();
+        std::vector<Community> mine;
+        for (auto& c : all) if (g_store.is_member(c.slug, user)) mine.push_back(c);
+        if (!mine.empty()) {
+            html += "<div class=\"card\"><h2>Yours</h2><ul class=\"plain\">";
+            for (auto& c : mine) {
+                html += "<li class=\"who\" style=\"margin:.4rem 0\"><div><a href=\"/c/"+html_escape(c.slug)+"\"><strong>"+
+                        html_escape(c.name)+"</strong></a> <span class=\"muted\">/"+html_escape(c.slug)+"</span></div></li>";
+            }
+            html += "</ul></div>";
+        }
+        html += "<div class=\"card\"><h2>Find a group</h2>"
+            "<input id=\"commfilter\" type=\"search\" placeholder=\"Search by name or address\" "
+            "oninput=\"var q=this.value.toLowerCase();document.querySelectorAll('.commrow').forEach(function(el){"
+            "el.style.display=el.getAttribute('data-q').indexOf(q)>=0?'':'none';});\">";
+        if (all.empty()) html += "<p class=\"empty\">None yet. Start one below.</p>";
+        else {
+            std::map<int, std::map<std::string, std::vector<Community>>> grouped;
+            for (auto& c : all) grouped[static_cast<int>(c.category)][c.subcategory].push_back(c);
+            for (const auto& ci : kCommunityCategories) {
+                auto git = grouped.find(static_cast<int>(ci.value));
+                if (git == grouped.end()) continue;
+                std::size_t total = 0;
+                for (auto& [subcat, list] : git->second) total += list.size();
+                html += "<details open><summary>"+std::string(ci.label)+" &middot; "+std::to_string(total)+"</summary>";
+                for (auto& [subcat, list] : git->second) {
+                    html += "<div style=\"margin:.5rem 0 .5rem 1rem\">"
+                            "<p class=\"eyebrow\">"+html_escape(subcat.empty() ? "General" : subcat)+"</p><ul class=\"plain\">";
+                    for (auto& c : list) {
+                        std::string q = c.name + " " + c.slug + " " + c.about + " " + c.subcategory;
+                        for (char& ch : q) if (ch >= 'A' && ch <= 'Z') ch = static_cast<char>(ch - 'A' + 'a');
+                        html += "<li class=\"commrow\" data-q=\""+html_escape(q)+"\"><a href=\"/c/"+html_escape(c.slug)+"\"><strong>"+
+                                html_escape(c.name)+"</strong></a> <span class=\"muted\">/"+html_escape(c.slug)+"</span>"
+                                "<p class=\"muted\">"+html_escape(c.about)+"</p></li>";
+                    }
+                    html += "</ul></div>";
+                }
+                html += "</details>";
+            }
+        }
+        html += "</div><div class=\"card\"><details><summary>Start a group</summary>"
+            "<form method=\"POST\" action=\"/communities\" style=\"margin-top:.7rem\">"
+            "<label>Name</label><input name=\"name\" required maxlength=\"80\" placeholder=\"Neighborhood watch\">"
+            "<label>Link</label><input name=\"slug\" required maxlength=\"32\" pattern=\"[A-Za-z0-9._-]+\" placeholder=\"watch\">"
+            "<p class=\"muted\" style=\"margin-top:-.3rem\">Becomes /c/watch &mdash; letters, numbers, dots, dashes.</p>"
             "<label>Category</label><select name=\"category\" id=\"catselect\">";
         for (const auto& ci : kCommunityCategories) {
             html += "<option value=\""+std::to_string(static_cast<int>(ci.value))+"\">"+ci.label+"</option>";
@@ -5539,8 +7891,8 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             "<input name=\"subcategory\" id=\"subcatinput\" required maxlength=\"60\" list=\"subcatlist\" "
             "placeholder=\"e.g. Neighborhood Watch\" autocomplete=\"off\">"
             "<datalist id=\"subcatlist\"></datalist>"
-            "<p class=\"muted\" style=\"margin-top:-.3rem\">Pick an existing one from the list for this category, or type a new one.</p>"
-            "<label>About</label><textarea name=\"about\" maxlength=\"2000\"></textarea>"
+            "<p class=\"muted\" style=\"margin-top:-.3rem\">Pick an existing one, or type a new one.</p>"
+            "<label>About</label><textarea name=\"about\" maxlength=\"2000\" placeholder=\"What this group is for.\"></textarea>"
             "<button>Create</button></form>"
             "<script>(function(){"
             "var SUB="+community_subcats_js()+";"
@@ -5553,36 +7905,8 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             "}"
             "sel.addEventListener('change',refresh);refresh();"
             "})();</script>"
-            "</div><div class=\"card\"><h2>All communities</h2>";
-        auto all = g_store.all_communities();
-        if (all.empty()) html += "<p class=\"empty\">No communities yet. Start one with the form above.</p>";
-        else {
-            // Grouped category -> subcategory -> communities, in that
-            // fixed category order, so the directory reads as an actual
-            // hierarchy instead of one long flat list.
-            std::map<int, std::map<std::string, std::vector<Community>>> grouped;
-            for (auto& c : all) grouped[static_cast<int>(c.category)][c.subcategory].push_back(c);
-            for (const auto& ci : kCommunityCategories) {
-                auto git = grouped.find(static_cast<int>(ci.value));
-                if (git == grouped.end()) continue;
-                std::size_t total = 0;
-                for (auto& [subcat, list] : git->second) total += list.size();
-                html += "<details><summary>"+std::string(ci.label)+" &middot; "+std::to_string(total)+"</summary>";
-                for (auto& [subcat, list] : git->second) {
-                    html += "<div style=\"margin:.5rem 0 .5rem 1rem\">"
-                            "<p class=\"eyebrow\">"+html_escape(subcat.empty() ? "General" : subcat)+"</p><ul class=\"plain\">";
-                    for (auto& c : list) {
-                        html += "<li><a href=\"/c/"+html_escape(c.slug)+"\"><strong>"+html_escape(c.name)+
-                                "</strong></a> <span class=\"muted\">/"+html_escape(c.slug)+"</span>"
-                                "<p class=\"muted\">"+html_escape(c.about)+"</p></li>";
-                    }
-                    html += "</ul></div>";
-                }
-                html += "</details>";
-            }
-        }
-        html += "</div>";
-        return pg("Communities", html);
+            "</details></div>";
+        return pg("Groups", html);
     }
 
     if(method=="GET"&&path.rfind("/c/",0)==0&&path.size()>10&&path.compare(path.size()-7,7,"/canvas")==0) {
@@ -5603,41 +7927,43 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         std::string html = "<h1>"+html_escape(c->name)+"</h1>"
             "<p class=\"muted\">"+html_escape(category_label(c->category))+" &middot; "+
             html_escape(c->subcategory.empty() ? "General" : c->subcategory)+
-            " · /"+html_escape(c->slug)+" · started by "+html_escape(c->owner)+
-            " · a platform community, not a locality</p>";
-        if (qs["err"]=="invite") html += "<p class=\"warn\">Conflicts with another member’s contact settings.</p>";
-        html += composer_media_error(qs["perr"]);
-        html += "<div class=\"card\"><p>"+html_escape(c->about.empty()?"No description.":c->about)+"</p>";
+            " · /"+html_escape(c->slug)+" · started by <a href=\"/u/"+html_escape(c->owner)+"\">"+html_escape(c->owner)+"</a></p>";
+        html += flash_error(qs);
+        html += "<div class=\"card\"><p>"+html_escape(c->about.empty()?"No description yet.":c->about)+"</p>";
         if (!member) {
-            html += "<form method=\"POST\" action=\"/c/"+html_escape(slug)+"/join\"><button>Join</button></form>";
+            html += "<form method=\"POST\" action=\"/c/"+html_escape(slug)+"/join\"><button>Join this group</button></form>";
         } else if (!owner) {
             html += "<form method=\"POST\" action=\"/c/"+html_escape(slug)+"/leave\"><button class=\"ghost\">Leave</button></form>";
         } else {
-            html += "<form method=\"POST\" action=\"/c/"+html_escape(slug)+"/delete\" onsubmit=\"return confirm('Delete this community?');\">"
-                    "<button class=\"danger\">Delete community</button></form>";
+            html += "<form method=\"POST\" action=\"/c/"+html_escape(slug)+"/delete\" onsubmit=\"return confirm('Delete this group and its posts?');\">"
+                    "<button class=\"ghost\">Delete group</button></form>";
         }
         html += "</div>";
         if (member) {
-            html += "<div class=\"card\"><form method=\"POST\" action=\"/c/"+html_escape(slug)+"\" enctype=\"multipart/form-data\">"
-                    "<label>Post in "+html_escape(c->name)+"</label>"
-                    "<textarea name=\"text\" maxlength=\"2000\"></textarea>"
-                    "<label>Photo or video (optional)</label><input type=\"file\" name=\"media\" accept=\"image/*,video/*\">"
-                    "<button>Post</button></form>"
-                    "<p class=\"muted\" style=\"margin-top:.5rem\">Or <a href=\"/c/"+html_escape(slug)+"/canvas\">open the canvas</a> "
-                    "to draw, crop, layer, or paste one together first.</p></div>";
-            html += "<div class=\"card\"><h2>Invite</h2>"
-                    "<form method=\"POST\" action=\"/c/"+html_escape(slug)+"/invite\">"
-                    "<label>Username</label><div class=\"row\"><input name=\"who\" required><button>Invite</button></div></form>"
-                    "<p class=\"muted\">People can also join themselves. An invite that conflicts with contact settings is refused with a generic error.</p></div>";
+            html += "<div class=\"card\">"
+                    "<form method=\"POST\" action=\"/c/"+html_escape(slug)+"\" enctype=\"multipart/form-data\">"
+                    "<textarea name=\"text\" maxlength=\"2000\" placeholder=\"Post in "+html_escape(c->name)+"\" "
+                    "oninput=\"document.getElementById('cchars').textContent=(2000-this.value.length)+' left'\"></textarea>"
+                    + composer_attach_bar("cchars") +
+                    "</form>"
+                    "<p class=\"muted\" style=\"margin-top:.5rem\"><a href=\"/c/"+html_escape(slug)+"/canvas\">Draw instead</a></p></div>";
         }
-        html += "<div class=\"card\"><h2>Members</h2><ul class=\"plain\">";
-        for (auto& n : g_store.members_of(slug)) {
-            html += "<li><a href=\"/u/"+html_escape(n)+"\">"+html_escape(n)+"</a>"+(n==c->owner?" <span class=\"muted\">starter</span>":"")+"</li>";
-        }
-        html += "</ul></div>";
         auto posts = g_store.posts_in(slug, 80);
-        if (posts.empty()) html += "<p class=\"empty\">No posts yet.</p>";
+        if (posts.empty()) html += "<div class=\"card\"><p class=\"empty\">No posts yet.</p>"
+            "<p class=\"muted\">"+(member ? std::string("You're in. Write the first one.") : "Join to post.")+"</p></div>";
         for (const auto& p : posts) html += "<div class=\"card\">"+post_block(p, user)+"</div>";
+        html += "<div class=\"card\"><details><summary>Members · "+std::to_string(g_store.members_of(slug).size())+"</summary><ul class=\"plain\">";
+        for (auto& n : g_store.members_of(slug)) {
+            html += "<li class=\"who\" style=\"margin:.35rem 0\">"+portrait_tag(n,"sm")+
+                    "<div><a href=\"/u/"+html_escape(n)+"\">"+html_escape(n)+"</a>"+
+                    (n==c->owner?" <span class=\"muted\">starter</span>":"")+"</div></li>";
+        }
+        html += "</ul>";
+        if (member) {
+            html += "<form method=\"POST\" action=\"/c/"+html_escape(slug)+"/invite\" style=\"margin-top:.6rem\">"
+                    "<label>Invite by username</label><div class=\"row\"><input name=\"who\" required placeholder=\"username\"><button>Invite</button></div></form>";
+        }
+        html += "</details></div>";
         return pg(c->name, html);
     }
 
@@ -5647,14 +7973,16 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         // badge now, not this page's -- clearing it here would make an
         // unread message vanish from its own badge without the message
         // ever having been opened.
-        g_store.mark_notices_read_except_type(user, "message");
+        g_store.mark_notices_read_of_type(user, "friend_accept");
+        g_store.mark_notices_read_of_type(user, "group_invite");
         return pg("Notices", "<h1>Notices</h1>"+notices_list_html(user));
     }
     // Fetched by the header's Notifications widget on open -- same content
     // as the full page (same helper), as a bare fragment for innerHTML.
     if(method=="GET"&&path=="/notices/panel") {
         if(!acc) return http_code("401 Unauthorized", "");
-        g_store.mark_notices_read_except_type(user, "message");
+        g_store.mark_notices_read_of_type(user, "friend_accept");
+        g_store.mark_notices_read_of_type(user, "group_invite");
         return http_ok(notices_list_html(user));
     }
 
@@ -5665,8 +7993,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         std::string html = "<h1>Settings</h1>"
             "<p class=\"muted\">Account, privacy, data, and notifications.</p>";
         if (qs["ok"]=="password") html += "<p class=\"ok\">Password changed.</p>";
-        if (qs["err"]=="password") html += "<p class=\"warn\">Could not change password. Check the current one.</p>";
-        if (qs["err"]=="delete") html += "<p class=\"warn\">Type your username to delete.</p>";
+        html += flash_error(qs);
 
         html += "<div class=\"card\"><h2>Security</h2>"
             "<form method=\"POST\" action=\"/settings/password\">"
@@ -5706,7 +8033,9 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             + "<br><span class=\"muted\">Anyone can find you, including as a partial match while they're still typing.</span></p>"
             + "<p><label><input type=\"checkbox\" name=\"group_invite_confirm\" value=\"1\"" + (p.group_invite_confirm?" checked":"") + "> "
             + "Don't add me to groups without asking</label></p>"
-            + "<p class=\"muted\">Direct messages are friends-only until we can tell who is a minor without a checkbox.</p>"
+            + "<p class=\"muted\">Direct messages are friends-only until we can tell who is a minor without a checkbox. "
+            + "Unfriending or blocking leaves every group conversation you share with that person. "
+            + "Messages on this copy are stored so the operator can read them.</p>"
             + "<label>Visibility register</label>"
             + "<p class=\"muted\">Each level admits every level after it too: public sees everything members do, "
             + "members see everything friends do, friends see everything only-me hides from everyone else.</p>";
@@ -5725,6 +8054,9 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         html += "<table class=\"register\"><tr><th>Surface</th><th>Who can see it</th></tr>"
                 "<tr><td>Profile</td><td>" + vis_select("profile_visibility", p.profile_visibility) + "</td></tr>"
                 "<tr><td>Posts</td><td>" + vis_select("posts_visibility", p.posts_visibility) + "</td></tr>"
+                "<tr><td></td><td><span class=\"muted\">Each post on /feed now picks its own reach "
+                "(Anybody/Friends/Groups) -- this row is the fallback for Groups-only posts on your "
+                "profile, and Only me still hides everything from everyone but you.</span></td></tr>"
                 "</table>"
                 "<button>Save privacy</button></form><h2>Block list</h2>";
         auto bl = g_store.block_entries_of(user);
@@ -5847,7 +8179,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         if (pass.size() < 8)
             return fail("Password needs at least eight characters.");
         if (!looks_like_email(d.email))
-            return fail("Need a real email address. It is a signup binding, not stored as the address itself, and not used to log in.");
+            return fail("Need a real email address, kept only so you can reset your password if you forget it.");
         if (count_digits(d.phone) < 10)
             return fail("Need a real phone number (at least ten digits). It is a signup binding, not stored as the number itself, and not used to log in.");
         if (pass.empty() || d.phone.empty())
@@ -5859,6 +8191,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             if (auto created = g_store.find_by_username(d.username)) {
                 g_store.set_phone_fp(created->id, fingerprint_phone(d.phone));
                 if (!d.bio.empty()) g_store.set_blurb(created->id, d.bio.substr(0, 500));
+                g_store.set_email(d.username, lowercase_ascii(d.email));
                 Profile p;
                 p.display_name = d.display_name.substr(0, 80);
                 p.email_fp = fingerprint_phone(d.email);
@@ -5894,12 +8227,119 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         if (dest.empty()) dest = "/feed";
         return http_redir(dest, set_cookie(r.session->id));
     }
+    // Always the same response whether or not the address is on an
+    // account -- checked deliberately before ever looking anything up,
+    // not just by coincidence of the code path. Never let mail-delivery
+    // status (or even the timing of a real lookup+send vs. a no-op)
+    // leak back to the caller; that's exactly how account enumeration
+    // via a password-reset form usually happens.
+    if(method=="POST"&&path=="/forgot") {
+        auto f = parse_form(body);
+        std::string email = lowercase_ascii(trim_ws(f["email"]));
+        if (looks_like_email(email)) {
+            if (auto username = g_store.username_by_email(email)) {
+                std::string token = generate_session_id(); // same crypto-random 32-byte-hex primitive as a session id
+                g_store.set_reset_token(*username, sha256_hex_of(token), now() + 3600);
+                send_password_reset_email(email, "https://liquidgov.us/reset?t=" + token);
+            }
+        }
+        return pg("Forgot password", "<div class=\"card\"><h1>Check your email</h1>"
+            "<p class=\"muted\">If that address is on an account, a link is on its way. "
+            "It works once, for the next hour.</p>"
+            "<p class=\"muted\"><a href=\"/login\">Back to log in</a></p></div>");
+    }
+    if(method=="POST"&&path=="/reset") {
+        auto f = parse_form(body);
+        std::string t = trim_ws(f["t"]);
+        std::string pass = f["password"];
+        if (t.empty()) return http_redir("/reset?err=reset");
+        if (pass.size() < 8) return http_redir("/reset?t="+url_encode(t)+"&err=short");
+        if (g_breach.is_breached(pass)) return http_redir("/reset?t="+url_encode(t)+"&err=password");
+        // consume_reset_token erases it either way (found-and-expired or
+        // found-and-valid) -- a token is good for exactly one attempt,
+        // successful or not, same as any other one-time credential.
+        auto username = g_store.consume_reset_token(sha256_hex_of(t));
+        if (!username) return http_redir("/reset?err=reset");
+        auto acc2 = g_store.find_by_username(*username);
+        if (!acc2) return http_redir("/reset?err=reset");
+        g_store.set_password_hash(acc2->id, hash_password(pass));
+        logout_all_devices(g_store, acc2->id, "");
+        auto session = create_session(g_store, acc2->id, device_label_from(req, ip));
+        return http_redir("/", set_cookie(session.id));
+    }
+    // Google Identity Services posts here directly (data-ux_mode="redirect"
+    // in google_signin_button_html()) -- no custom JS callback, just a
+    // plain form POST carrying the ID token as "credential". Verified
+    // against Google's own tokeninfo endpoint (a plain HTTPS GET, no JWT/
+    // JWKS library needed) rather than trusting anything the browser says
+    // about itself.
+    if(method=="POST"&&path=="/login/google") {
+        const char* client_id = google_client_id_from_env();
+        if (!client_id[0]) return http_redir("/login?err=google");
+        auto f = parse_form(body);
+        std::string credential = trim_ws(f["credential"]);
+        if (credential.empty()) return http_redir("/login?err=google");
+
+        std::string resp = curl_get(
+            "https://oauth2.googleapis.com/tokeninfo?id_token=" + url_encode(credential), 8);
+        if (resp.empty() || resp[0] != '{') return http_redir("/login?err=google");
+
+        std::string aud = oembed_json_string_field(resp, "aud");
+        std::string iss = oembed_json_string_field(resp, "iss");
+        std::string sub = oembed_json_string_field(resp, "sub");
+        std::string email = lowercase_ascii(oembed_json_string_field(resp, "email"));
+        std::string email_verified = oembed_json_string_field(resp, "email_verified");
+
+        if (aud != client_id || sub.empty()) return http_redir("/login?err=google");
+        if (iss != "accounts.google.com" && iss != "https://accounts.google.com")
+            return http_redir("/login?err=google");
+        if (email_verified != "true") return http_redir("/login?err=google");
+
+        const std::string device_label = device_label_from(req, ip);
+
+        // gid hit: this Google identity is already linked to an account.
+        if (auto existing = g_store.username_by_google_sub(sub)) {
+            auto acc2 = g_store.find_by_username(*existing);
+            if (!acc2) return http_redir("/login?err=google");
+            auto session = create_session(g_store, acc2->id, device_label);
+            return http_redir("/", set_cookie(session.id));
+        }
+        // gid miss, ml hit: same email as an existing password account --
+        // link it (never auto-link on anything looser than a verified
+        // email match).
+        if (!email.empty()) {
+            if (auto linked = g_store.username_by_email(email)) {
+                auto acc2 = g_store.find_by_username(*linked);
+                if (acc2) {
+                    g_store.set_google_id(*linked, sub);
+                    auto session = create_session(g_store, acc2->id, device_label);
+                    return http_redir("/", set_cookie(session.id));
+                }
+            }
+        }
+        // Neither: brand new account, no phone required on this path
+        // (bypasses create_account()'s phone-required contract on
+        // purpose -- see username_from_email_local_part's own comment --
+        // by calling the raw AccountStore::create directly, same as
+        // every other FileStore-only account field this file sets right
+        // after signup).
+        PlatformAccount account;
+        account.username = username_from_email_local_part(email.empty() ? sub : email);
+        account.password_hash = dummy_hash();
+        account.phone_verified = false;
+        account.created_at = now();
+        AccountId new_id = g_store.create(account);
+        if (!email.empty()) g_store.set_email(account.username, email);
+        g_store.set_google_id(account.username, sub);
+        auto session = create_session(g_store, new_id, device_label);
+        return http_redir("/", set_cookie(session.id));
+    }
     if(method=="POST"&&path=="/me/post") {
         if(!acc) return need_login();
         auto hdr_end = req.find("\r\n\r\n");
         std::string hdrs = hdr_end==std::string::npos ? req : req.substr(0, hdr_end);
         auto c = read_composer_post(hdrs, body);
-        if (!c.ok) return http_redir(std::string("/me?perr=")+c.err);
+        if (!c.ok) return http_redir(std::string("/me?err=")+c.err);
         if (!c.text.empty() || !c.attachment_blob_id.empty())
             g_store.add_post(user, c.text, "", "", 0, c.attachment_blob_id, c.attachment_mime);
         return http_redir("/me");
@@ -5959,6 +8399,19 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         g_store.toggle_second(pid, user);
         return http_redir(back);
     }
+    if(method=="POST"&&path.rfind("/post/",0)==0&&path.size()>13&&
+       path.compare(path.size()-7,7,"/delete")==0) {
+        if(!acc) return need_login();
+        std::string back = header_value(req, "Referer");
+        if (back.empty() || back.rfind("http",0)!=0) back = "/feed";
+        std::uint64_t pid = 0;
+        try { pid = std::stoull(path.substr(6, path.size()-6-7)); } catch (...) { return http_redir(back); }
+        auto target = g_store.post_by_id(pid);
+        if (!target) return http_redir(back); // already gone
+        if (target->author != user) return http_code("403 Forbidden", "not your post");
+        g_store.delete_post(pid, user);
+        return http_redir(back);
+    }
     if(method=="POST"&&path=="/me/profile") {
         if(!acc) return need_login();
         auto f = parse_form(body);
@@ -5991,7 +8444,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         auto file = multipart_file(header_value(hdrs, "Content-Type"), body, "photo");
         if (!file || file->empty()) return http_redir("/me?err=image");
         auto r = save_avatar(g_blobs, g_store, g_scanner, acc->id, *file);
-        if (r.error == SaveAvatarError::TooLarge) return http_redir("/me?err=large");
+        if (r.error == SaveAvatarError::TooLarge) return http_redir("/me?err=portraitlarge");
         if (r.error == SaveAvatarError::FailedScan) return http_redir("/me?err=scan");
         if (r.error != SaveAvatarError::None) return http_redir("/me?err=image");
         return http_redir("/me");
@@ -6023,12 +8476,12 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         auto hdr_end = req.find("\r\n\r\n");
         std::string hdrs = hdr_end==std::string::npos ? req : req.substr(0, hdr_end);
         auto file = multipart_file(header_value(hdrs, "Content-Type"), body, "frame");
-        if (!file || file->empty()) return http_redir("/me/canvas?err=image");
+        if (!file || file->empty()) return http_redir("/me/canvas?err=frameimage");
         if (g_store.canvas_frames(acc->id).size() >= kCanvasMaxFrames)
-            return http_redir("/me/canvas?err=full");
+            return http_redir("/me/canvas?err=framefull");
         auto r = save_avatar(g_blobs, capture, g_scanner, acc->id, *file);
-        if (r.error == SaveAvatarError::TooLarge) return http_redir("/me/canvas?err=large");
-        if (r.error != SaveAvatarError::None) return http_redir("/me/canvas?err=image");
+        if (r.error == SaveAvatarError::TooLarge) return http_redir("/me/canvas?err=framelarge");
+        if (r.error != SaveAvatarError::None) return http_redir("/me/canvas?err=frameimage");
         g_store.add_canvas_frame(acc->id, capture.blob_id);
         return http_ok("ok");
     }
@@ -6042,14 +8495,21 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         if(!acc) return need_login();
         auto url = trim_ws(parse_form(body)["url"]);
         auto id = extract_youtube_id(url);
-        if (!id) return http_redir("/me?jerr=url");
-        if (!g_store.add_jukebox_track(user, *id, user)) return http_redir("/me?jerr=full");
+        if (!id) return http_redir("/me?err=url");
+        if (!g_store.add_jukebox_track(user, *id, user)) return http_redir("/me?err=full");
         return http_redir("/me");
     }
     if(method=="POST"&&path=="/me/jukebox/remove") {
         if(!acc) return need_login();
         g_store.remove_jukebox_track(user, parse_form(body)["video_id"]);
         return http_redir("/me");
+    }
+    if(method=="POST"&&path=="/me/jukebox/play-settings") {
+        if(!acc) return need_login();
+        auto f = parse_form(body);
+        g_store.set_jukebox_autoplay(user, f["autoplay"]=="1");
+        g_store.set_jukebox_relay_target(user, trim_ws(f["relay"]));
+        return http_redir("/me?ok=jplay");
     }
     if(method=="POST"&&path=="/me/jukebox/policy") {
         if(!acc) return need_login();
@@ -6076,31 +8536,77 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         auto found = g_store.find_by_username(who);
         if (!found) return http_redir("/");
         if (who != user) {
-            if (g_store.is_blocked(who, user)) return http_redir("/u/"+who+"?jerr=denied");
+            if (g_store.is_blocked(who, user)) return http_redir("/u/"+who+"?err=denied");
             auto policy = g_store.prefs_of(who).jukebox_policy;
             bool allowed = policy == JukeboxPolicy::Anyone ||
                            (policy == JukeboxPolicy::Friends && g_store.are_friends(user, who));
-            if (!allowed) return http_redir("/u/"+who+"?jerr=denied");
+            if (!allowed) return http_redir("/u/"+who+"?err=denied");
             for (const auto& t : g_store.jukebox_of(who)) {
-                if (t.queued_by == user) return http_redir("/u/"+who+"?jerr=pending");
+                if (t.queued_by == user) return http_redir("/u/"+who+"?err=pending");
             }
         }
         auto url = trim_ws(parse_form(body)["url"]);
         auto id = extract_youtube_id(url);
-        if (!id) return http_redir("/u/"+who+"?jerr=url");
-        if (!g_store.add_jukebox_track(who, *id, user)) return http_redir("/u/"+who+"?jerr=full");
+        if (!id) return http_redir("/u/"+who+"?err=url");
+        if (!g_store.add_jukebox_track(who, *id, user)) return http_redir("/u/"+who+"?err=full");
         return http_redir("/u/"+who);
     }
-    // Fired by the embedded player when the currently displayed track
-    // actually finishes -- see jukebox_widget's onStateChange script.
-    // complete_jukebox_track looks up the track's own stored queued_by
-    // itself (never trusts anything from the client beyond the video id),
-    // so this is safe to call from anyone signed in, owner or visitor.
+    // Fired by the floating widget's own player when a personal channel's
+    // current track actually finishes -- see pollPersonal's onStateChange
+    // handling in jukebox_script. complete_jukebox_track looks up the
+    // track's own stored queued_by itself (never trusts anything from the
+    // client beyond the video id), so this is safe to call from anyone
+    // signed in, owner or visitor. Resolved through the same one-hop
+    // relay as /jukebox/now -- a completion has to land on whichever
+    // queue is actually playing, not the page it was fired from.
     if(method=="POST"&&path.rfind("/u/",0)==0&&path.size()>20&&
        path.compare(path.size()-17,17,"/jukebox/complete")==0) {
         const std::string who = path.substr(3, path.size()-3-17);
         if(!acc) return need_login();
-        if (valid_username(who)) g_store.complete_jukebox_track(who, parse_form(body)["video_id"]);
+        if (valid_username(who)) {
+            auto jf = parse_form(body);
+            const auto jb_owner = g_store.jukebox_effective_owner(who);
+            if (jf["skip"] == "1") g_store.skip_jukebox_track(jb_owner, jf["video_id"]);
+            else g_store.complete_jukebox_track(jb_owner, jf["video_id"]);
+        }
+        return http_ok("ok");
+    }
+    // The polling widget's substitute for a WebSocket connect/disconnect
+    // on a personal station (see personal_heartbeat_locked/
+    // personal_freeze_locked above) -- a personal jukebox has never had a
+    // live socket. Signed-in only, unlike listening itself (open to any
+    // visitor who can view the profile): an anonymous visitor can still
+    // hear it, it just never counts toward who's "still here" for
+    // freeze/resume. video_id must match what's actually at the front of
+    // the effective queue right now -- same distrust as complete_
+    // jukebox_track, so a stale or mismatched client can't stomp another
+    // track's saved position.
+    if(method=="POST"&&path.rfind("/u/",0)==0&&path.size()>15&&
+       path.compare(path.size()-12,12,"/jukebox/pos")==0) {
+        const std::string who = path.substr(3, path.size()-3-12);
+        if(!acc) return need_login();
+        if (!valid_username(who)) return http_ok("ok");
+        auto found_pos = g_store.find_by_username(who);
+        if (!found_pos) return http_ok("ok");
+        const std::string effective_owner = g_store.jukebox_effective_owner(who);
+        auto tracks = g_store.jukebox_of(effective_owner);
+        if (tracks.empty()) return http_ok("ok");
+        auto form = parse_form(body);
+        if (form["video_id"] != tracks.front().video_id) return http_ok("ok");
+        const std::string station = "u:" + effective_owner;
+        const std::string sid = cookie_of(req);
+        const auto now = std::chrono::duration_cast<std::chrono::seconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        std::lock_guard<std::mutex> lock(g_personal_mu);
+        if (form["freeze"] == "1") {
+            std::optional<std::int64_t> client_offset;
+            if (!form["offset"].empty()) {
+                try { client_offset = std::stoll(form["offset"]); } catch (...) {}
+            }
+            personal_freeze_locked(station, tracks.front().video_id, sid, client_offset, now);
+        } else {
+            personal_heartbeat_locked(station, tracks.front().video_id, sid, now);
+        }
         return http_ok("ok");
     }
     // A signed-in viewer follows someone's personal jukebox as a "channel"
@@ -6137,10 +8643,71 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         auto hdr_end = req.find("\r\n\r\n");
         std::string hdrs = hdr_end==std::string::npos ? req : req.substr(0, hdr_end);
         auto c = read_composer_post(hdrs, body);
-        if (!c.ok) return http_redir(std::string("/feed?perr=")+c.err);
+        if (!c.ok) return http_redir(std::string("/feed?err=")+c.err);
         auto text = trim_ws(c.text);
-        if (!text.empty() || !c.attachment_blob_id.empty())
-            g_store.add_post(user, text, "", "", 0, c.attachment_blob_id, c.attachment_mime);
+        if (!text.empty() || !c.attachment_blob_id.empty()) {
+            // anybody/friends/groups and the except/friend/group lists come
+            // from feed_composer_card's own hidden fields and checkbox
+            // groups -- absent (JS-off, or an older cached page) means the
+            // same static defaults that markup ships with: Friends, all
+            // friends, no group, exactly today's one and only behavior
+            // before this existed.
+            std::string ctype = header_value(hdrs, "Content-Type");
+            bool anybody, friends_on, groups_on;
+            std::vector<std::string> except_raw, friend_raw, group_raw;
+            if (ctype.find("multipart/form-data") != std::string::npos) {
+                anybody = multipart_field(ctype, body, "anybody") == "1";
+                friends_on = multipart_field(ctype, body, "friends") == "1";
+                groups_on = multipart_field(ctype, body, "groups") == "1";
+                except_raw = multipart_field_all(ctype, body, "except");
+                friend_raw = multipart_field_all(ctype, body, "friend");
+                group_raw = multipart_field_all(ctype, body, "group");
+            } else {
+                auto f = parse_form(body);
+                anybody = f["anybody"] == "1";
+                friends_on = f["friends"] == "1";
+                groups_on = f["groups"] == "1";
+                except_raw = parse_form_multi(body, "except");
+                friend_raw = parse_form_multi(body, "friend");
+                group_raw = parse_form_multi(body, "group");
+            }
+            // Anybody is exclusive; "nothing chosen" falls back to today's
+            // only behavior (Friends, all friends) -- never trust the
+            // client's own idea of these three past this normalization.
+            if (anybody) { friends_on = false; groups_on = false; }
+            if (!anybody && !friends_on && !groups_on) friends_on = true;
+
+            const auto my_friends = g_store.friends_of(user);
+            auto is_a_friend = [&](const std::string& n) {
+                return std::find(my_friends.begin(), my_friends.end(), n) != my_friends.end();
+            };
+            std::vector<std::string> exceptions, friend_allowlist, groups;
+            if (anybody) {
+                for (const auto& n : except_raw) if (is_a_friend(trim_ws(n))) exceptions.push_back(trim_ws(n));
+            }
+            if (friends_on) {
+                for (const auto& n : friend_raw) if (is_a_friend(trim_ws(n))) friend_allowlist.push_back(trim_ws(n));
+            }
+            // A group needs an actual, current membership -- same
+            // join-to-post rule as posting from the community's own page
+            // (see POST /c/<slug>). A checked slug that isn't (anymore) a
+            // real membership is just dropped, not trusted from the client.
+            if (groups_on) {
+                for (const auto& s : group_raw) {
+                    auto slug = trim_ws(s);
+                    if (!slug.empty() && g_store.is_member(slug, user)) groups.push_back(slug);
+                }
+                if (groups.empty()) return http_redir("/feed?err=nogroup");
+            }
+
+            std::string community = groups.empty() ? "" : groups.front();
+            std::vector<std::string> extra_groups(groups.empty() ? groups : std::vector<std::string>(groups.begin()+1, groups.end()));
+            const PostAudience audience = anybody ? PostAudience::Anybody
+                : (groups_on && !friends_on) ? PostAudience::GroupsOnly
+                : PostAudience::Friends;
+            g_store.add_post(user, text, community, "", 0, c.attachment_blob_id, c.attachment_mime,
+                              audience, exceptions, friend_allowlist, extra_groups);
+        }
         return http_redir("/feed");
     }
     if(method=="POST"&&path=="/proposals") {
@@ -6149,7 +8716,36 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         auto title = trim_ws(f["title"]);
         auto ptext = trim_ws(f["body"]);
         if (title.empty() || ptext.empty()) return http_redir("/proposals?err=empty");
-        g_store.add_proposal(user, title, ptext);
+        BallotSpec spec;
+        int kind = 0;
+        try { kind = std::stoi(f["kind"]); } catch (...) { kind = 0; }
+        if (kind < 0 || kind > 4) kind = 0;
+        spec.kind = static_cast<BallotKind>(kind);
+        if (spec.kind == BallotKind::Number) {
+            spec.unit = trim_ws(f["unit"]);
+            if (spec.unit.size() > 24) spec.unit.resize(24);
+            auto mins = trim_ws(f["min"]);
+            auto maxs = trim_ws(f["max"]);
+            if (!mins.empty() || !maxs.empty()) {
+                try { spec.min_v = std::stod(mins); } catch (...) { return http_redir("/proposals?err=range"); }
+                try { spec.max_v = std::stod(maxs); } catch (...) { return http_redir("/proposals?err=range"); }
+                if (!(spec.min_v < spec.max_v)) return http_redir("/proposals?err=range");
+            }
+        } else if (spec.kind == BallotKind::Choice) {
+            std::istringstream in(f["options"]);
+            std::string line;
+            while (std::getline(in, line)) {
+                auto o = trim_ws(line);
+                if (!o.empty()) spec.options.push_back(o);
+            }
+            if (spec.options.size() < 2 || spec.options.size() > 12) return http_redir("/proposals?err=options");
+        } else if (spec.kind == BallotKind::Scale) {
+            auto left = trim_ws(f["left"]);
+            auto right = trim_ws(f["right"]);
+            spec.options = {left, right};
+        }
+        auto id = g_store.add_proposal(user, title, ptext, spec);
+        if (id == 0) return http_redir("/proposals?err=range");
         return http_redir("/proposals");
     }
     if(method=="POST"&&path=="/proposals/vote") {
@@ -6157,11 +8753,16 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         auto f = parse_form(body);
         std::uint64_t id = 0;
         try { id = std::stoull(f["id"]); } catch (...) { return http_redir("/proposals"); }
-        if (!g_store.proposal_by_id(id)) return http_redir("/proposals");
-        int cv = 2;
-        try { cv = std::stoi(f["choice"]); } catch (...) { cv = 2; }
-        if (cv < 0 || cv > 2) cv = 2;
-        g_store.cast_proposal_vote(id, user, static_cast<ProposalVote>(cv));
+        auto p = g_store.proposal_by_id(id);
+        if (!p) return http_redir("/proposals");
+        if (p->ballot.kind == BallotKind::YesNo) {
+            int cv = 2;
+            try { cv = std::stoi(f["choice"]); } catch (...) { cv = 2; }
+            if (cv < 0 || cv > 2) cv = 2;
+            g_store.cast_proposal_vote(id, user, static_cast<ProposalVote>(cv));
+        } else {
+            g_store.cast_ballot_value(id, user, trim_ws(f["value"]));
+        }
         return http_redir("/proposals");
     }
     if(method=="POST"&&path=="/friends") {
@@ -6180,6 +8781,8 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         if(!acc) return need_login();
         auto who=parse_form(body)["who"];
         g_store.accept_friend_request(who, user);
+        if (g_store.incoming_requests(user).empty())
+            g_store.mark_notices_read_of_type(user, "friend_request");
         return http_redir("/friends");
     }
     if(method=="POST"&&path=="/friends/unfriend") {
@@ -6223,7 +8826,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         // Do not open stranger DMs: friends-only, both directions unblocked,
         // exactly as before attachments existed.
         if(to.empty() || !g_store.are_friends(user,to) || g_store.is_blocked(user,to) || g_store.is_blocked(to,user))
-            return http_redir("/mail?with="+to);
+            return http_redir("/mail?with="+to+"&err=notfriends");
 
         std::optional<std::string> blob_id, mime;
         if (file && !file->empty()) {
@@ -6247,17 +8850,23 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
 
     if(method=="POST"&&path=="/mail/group/new") {
         if(!acc) return need_login();
-        const auto who = parse_form(body)["who"];
+        auto form = parse_form(body);
+        const auto who = form["who"];
+        auto title = trim_ws(form["title"]);
+        if (title.size() > 80) title.resize(80);
         std::vector<AccountId> invitees;
+        std::vector<std::string> skipped;
         std::string cur;
         auto flush_tok = [&]() {
             const auto name = trim_ws(cur);
             cur.clear();
             if (name.empty() || name == user) return;
             auto found = g_store.find_by_username(name);
-            if (!found) return; // unknown username: silently dropped
-            if (g_store.is_blocked(user, name) || g_store.is_blocked(name, user)) return;
-            for (auto id : invitees) if (id == found->id) return; // dedupe
+            if (!found || g_store.is_blocked(user, name) || g_store.is_blocked(name, user)) {
+                skipped.push_back(name);
+                return;
+            }
+            for (auto id : invitees) if (id == found->id) return;
             invitees.push_back(found->id);
         };
         for (char c : who) {
@@ -6266,7 +8875,32 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         }
         flush_tok();
         auto result = create_conversation(g_store, g_social_graph, acc->id, invitees, /*is_group=*/true);
-        return http_redir("/mail/g/"+std::to_string(*result.conversation_id));
+        auto conv = g_store.get_conversation(*result.conversation_id);
+        if (conv && !title.empty()) {
+            conv->title = title;
+            g_store.save_conversation(*conv);
+        }
+        if (conv) {
+            std::set<AccountId> kept;
+            for (auto& m : conv->members) kept.insert(m.account);
+            for (auto id : invitees) {
+                if (!kept.count(id)) {
+                    if (auto a = g_store.find_by_id(id)) skipped.push_back(a->username);
+                } else if (auto a = g_store.find_by_id(id)) {
+                    auto pr = g_store.prefs_of(a->username);
+                    if (pr.notify_message) g_store.add_notice(a->username, "mail_group", user, std::to_string(conv->id));
+                }
+            }
+        }
+        std::string loc = "/mail/g/"+std::to_string(*result.conversation_id);
+        if (!skipped.empty()) {
+            loc += "?skipped=";
+            for (size_t i=0;i<skipped.size();++i) {
+                if (i) loc += ",";
+                loc += url_encode(skipped[i]);
+            }
+        }
+        return http_redir(loc);
     }
 
     if(method=="POST"&&path.rfind("/mail/g/",0)==0) {
@@ -6303,14 +8937,60 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             if (!refuse) {
                 auto r = add_member(g_store, g_social_graph, acc->id, found->id, conv_id);
                 refuse = r.error != MessengerError::None;
+                if (!refuse) {
+                    auto pr = g_store.prefs_of(found->username);
+                    if (pr.notify_message) g_store.add_notice(found->username, "mail_group", user, id_str);
+                }
             }
             return http_redir(refuse ? (base+"?err=invite") : base);
         }
+        if (action=="title") {
+            auto title = trim_ws(parse_form(body)["title"]);
+            if (title.size() > 80) title.resize(80);
+            conv->title = title;
+            g_store.save_conversation(*conv);
+            return http_redir(base);
+        }
         if (action=="send") {
-            auto text = trim_ws(parse_form(body)["text"]);
-            if (!text.empty()) {
-                if (text.size()>2000) text.resize(2000);
-                send_message(g_store, acc->id, conv_id, text);
+            auto hdr_end = req.find("\r\n\r\n");
+            std::string hdrs = hdr_end==std::string::npos ? req : req.substr(0, hdr_end);
+            std::string ctype = header_value(hdrs, "Content-Type");
+            std::string text;
+            std::optional<std::vector<std::uint8_t>> file;
+            if (ctype.find("multipart/form-data") != std::string::npos) {
+                text = multipart_field(ctype, body, "text");
+                file = multipart_file(ctype, body, "attachment");
+            } else {
+                text = parse_form(body)["text"];
+            }
+            text = trim_ws(text);
+            if (text.size()>2000) text.resize(2000);
+            std::optional<std::string> blob_id, mime;
+            if (file && !file->empty()) {
+                auto r = ingest_file(g_blobs, g_mail_scanner, g_mail_caps, *file);
+                if (r.error != FileTransferError::None || !r.blob_id) {
+                    const char* code = "type";
+                    switch (r.error) {
+                        case FileTransferError::TooLarge: code = "large"; break;
+                        case FileTransferError::ActiveContentBlocked: code = "active"; break;
+                        case FileTransferError::FailedScan: code = "scan"; break;
+                        default: code = "type"; break;
+                    }
+                    return http_redir(base+"?err="+code);
+                }
+                blob_id = r.blob_id;
+                mime = r.stored_mime_type;
+            }
+            if (!text.empty() || blob_id) {
+                auto sent = send_message(g_store, acc->id, conv_id, text);
+                if (sent.message_id && blob_id) {
+                    auto msg = g_store.get_message(*sent.message_id);
+                    if (msg) {
+                        msg->attachment_blob_id = *blob_id;
+                        msg->attachment_mime = mime.value_or("");
+                        g_store.update_message(*msg);
+                    }
+                }
             }
             return http_redir(base);
         }
@@ -6374,7 +9054,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             auto hdr_end = req.find("\r\n\r\n");
             std::string hdrs = hdr_end==std::string::npos ? req : req.substr(0, hdr_end);
             auto c = read_composer_post(hdrs, body);
-            if (!c.ok) return http_redir("/c/"+slug+"?perr="+c.err);
+            if (!c.ok) return http_redir("/c/"+slug+"?err="+c.err);
             auto text = trim_ws(c.text);
             if (!text.empty() || !c.attachment_blob_id.empty())
                 g_store.add_post(user, text, slug, "", 0, c.attachment_blob_id, c.attachment_mime);
@@ -6402,7 +9082,14 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
     if(method=="POST"&&path=="/settings/password") {
         if(!acc) return need_login();
         auto f=parse_form(body);
-        if (!verify_password(f["current"], acc->password_hash) || f["next"].empty())
+        // A Google-only account has no real password yet -- its hash is
+        // the same dummy_hash() placeholder login() uses for a timing-
+        // safe "unknown username" rejection, which by design never
+        // verifies against anything. Skip the current-password check
+        // only for that exact placeholder; a real account still has to
+        // prove its current password like always.
+        const bool has_real_password = acc->password_hash != dummy_hash();
+        if ((has_real_password && !verify_password(f["current"], acc->password_hash)) || f["next"].empty())
             return http_redir("/settings?err=password");
         if (f["next"].size() < 8)
             return http_redir("/settings?err=short");
@@ -6463,6 +9150,105 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         g_store.delete_account(acc->id);
         return http_redir("/", clear_cookie());
     }
+
+    if(method=="GET"&&path=="/admin") {
+        if(!acc) return need_login();
+        if(!is_operator(user)) return admin_404();
+        return pg("Operator tools", admin_overview_page());
+    }
+    if(method=="GET"&&path=="/admin/accounts") {
+        if(!acc) return need_login();
+        if(!is_operator(user)) return admin_404();
+        return pg("Operator tools", admin_accounts_page(user, trim_ws(qs["q"])));
+    }
+    if(method=="GET"&&path=="/admin/posts") {
+        if(!acc) return need_login();
+        if(!is_operator(user)) return admin_404();
+        return pg("Operator tools", admin_posts_page());
+    }
+    if(method=="GET"&&path=="/admin/communities") {
+        if(!acc) return need_login();
+        if(!is_operator(user)) return admin_404();
+        return pg("Operator tools", admin_communities_page());
+    }
+    if(method=="GET"&&path=="/admin/log") {
+        if(!acc) return need_login();
+        if(!is_operator(user)) return admin_404();
+        return pg("Operator tools", admin_log_page());
+    }
+    if(method=="POST"&&path=="/admin/accounts/lock") {
+        if(!acc) return need_login();
+        if(!is_operator(user)) return admin_404();
+        auto target = trim_ws(parse_form(body)["username"]);
+        if (!target.empty() && target != user && g_store.find_by_username(target)) {
+            g_store.set_locked(target, true);
+            g_store.add_audit_log(user, "lock", target);
+        }
+        return http_redir("/admin/accounts");
+    }
+    if(method=="POST"&&path=="/admin/accounts/unlock") {
+        if(!acc) return need_login();
+        if(!is_operator(user)) return admin_404();
+        auto target = trim_ws(parse_form(body)["username"]);
+        if (!target.empty() && g_store.find_by_username(target)) {
+            g_store.set_locked(target, false);
+            g_store.add_audit_log(user, "unlock", target);
+        }
+        return http_redir("/admin/accounts");
+    }
+    if(method=="POST"&&path=="/admin/accounts/logout-all") {
+        if(!acc) return need_login();
+        if(!is_operator(user)) return admin_404();
+        auto target = trim_ws(parse_form(body)["username"]);
+        if (!target.empty() && target != user) {
+            if (auto ta = g_store.find_by_username(target)) {
+                logout_all_devices(g_store, ta->id, "");
+                g_store.add_audit_log(user, "logout_all", target);
+            }
+        }
+        return http_redir("/admin/accounts");
+    }
+    if(method=="POST"&&path=="/admin/accounts/delete") {
+        if(!acc) return need_login();
+        if(!is_operator(user)) return admin_404();
+        auto f = parse_form(body);
+        auto target = trim_ws(f["username"]);
+        auto confirm = trim_ws(f["confirm"]);
+        if (!target.empty() && target != user && confirm_says_delete(confirm)) {
+            if (auto ta = g_store.find_by_username(target)) {
+                clear_avatar(g_blobs, g_store, ta->id);
+                g_store.delete_account(ta->id);
+                g_store.add_audit_log(user, "delete_account", target);
+            }
+        }
+        return http_redir("/admin/accounts");
+    }
+    if(method=="POST"&&path=="/admin/posts/delete") {
+        if(!acc) return need_login();
+        if(!is_operator(user)) return admin_404();
+        std::uint64_t pid = 0;
+        try { pid = std::stoull(parse_form(body)["id"]); } catch (...) { return http_redir("/admin/posts"); }
+        if (auto target = g_store.post_by_id(pid)) {
+            g_store.delete_post(pid, target->author);
+            g_store.add_audit_log(user, "delete_post", std::to_string(pid));
+        }
+        return http_redir("/admin/posts");
+    }
+    if(method=="POST"&&path=="/admin/communities/delete") {
+        if(!acc) return need_login();
+        if(!is_operator(user)) return admin_404();
+        auto f = parse_form(body);
+        auto slug = trim_ws(f["slug"]);
+        auto confirm = trim_ws(f["confirm"]);
+        if (!slug.empty() && confirm_says_delete(confirm)) {
+            if (auto c = g_store.community(slug)) {
+                g_store.delete_community(slug, c->owner);
+                g_store.add_audit_log(user, "delete_community", slug);
+            }
+        }
+        return http_redir("/admin/communities");
+    }
+
     return http_code("404 Not Found", wrap("Not found", user, unread, "<div class=\"card\"><h1>Not found</h1><p>That page is not here.</p></div>"));
 }
 }
@@ -6481,6 +9267,10 @@ int main() {
         g_blobs.adopt(av.blob_id, "image/png");
     for (const auto& m : g_store.all_mail_with_attachments())
         g_blobs.adopt(*m.attachment_blob_id, m.attachment_mime.value_or("application/octet-stream"));
+    for (const auto& m : g_store.all_group_messages_with_attachments())
+        g_blobs.adopt(m.attachment_blob_id, m.attachment_mime.empty() ? "application/octet-stream" : m.attachment_mime);
+    constexpr std::int64_t kMailRetention = 7 * 24 * 60 * 60;
+    purge_expired_deletions(g_store, now(), kMailRetention);
     for (const auto& blob_id : g_store.all_canvas_frame_blob_ids())
         g_blobs.adopt(blob_id, "image/png");
     for (const auto& p : g_store.all_posts_with_attachments())
@@ -6490,6 +9280,7 @@ int main() {
     sockaddr_in addr{}; addr.sin_family=AF_INET; addr.sin_port=htons(kPort); addr.sin_addr.s_addr=htonl(INADDR_ANY);
     if(bind(fd,reinterpret_cast<sockaddr*>(&addr),sizeof(addr))<0){ perror("bind"); return 1; }
     listen(fd,16);
+    lglog::emit("boot", "listen");
     std::cerr<<"LiquidGov http://0.0.0.0:"<<kPort<<" store="<<g_store.path()
              <<" blobs="<<blob_path_from_env()<<" (auth.cpp + FileStore LGP1)\n";
     for(;;){
@@ -6602,7 +9393,9 @@ int main() {
         std::string resp;
         try {
             resp = handle(req,ipbuf);
+            lglog::access(req, resp);
         } catch (const std::exception& e) {
+            lglog::emit("error", e.what());
             std::cerr<<"handle error: "<<e.what()<<"\n";
             resp = http_code("500 Internal Server Error",
                 page_wrap("Error", nav("",0), "<div class=\"card\"><p>Could not save. Try again.</p></div>"));

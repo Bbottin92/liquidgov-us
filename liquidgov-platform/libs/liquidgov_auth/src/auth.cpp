@@ -42,7 +42,12 @@ AuthResult login(AccountStore& store, RateLimiter& limiter,
 
     bool ok;
     if (account) {
+        // Always run the real verify (even when locked) so a locked
+        // account's login attempt takes the same time as a wrong-password
+        // one -- the operator-panel lock must not be timing-detectable
+        // from outside, same as it isn't detectable from the error text.
         ok = verify_password(password, account->password_hash);
+        if (store.is_locked(username)) ok = false;
     } else {
         verify_password(password, dummy_hash());
         ok = false;
@@ -52,15 +57,18 @@ AuthResult login(AccountStore& store, RateLimiter& limiter,
         return {AuthError::InvalidCredentials, std::nullopt};
     }
 
+    return {AuthError::None, create_session(store, account->id, device_label)};
+}
+
+Session create_session(AccountStore& store, AccountId account, const std::string& device_label) {
     Session session;
     session.id = generate_session_id();
-    session.account = account->id;
+    session.account = account;
     session.created_at = session.last_seen = now();
     session.expires_at = now() + kSessionAbsoluteLifetimeSeconds;
     session.device_label = device_label;
     store.save_session(session);
-
-    return {AuthError::None, session};
+    return session;
 }
 
 void logout(AccountStore& store, const SessionId& id) {

@@ -36,6 +36,10 @@ public:
     virtual void save_session(const Session& session) = 0;
     virtual std::vector<Session> sessions_for(AccountId account) const = 0;
     virtual void revoke_session(const SessionId& id) = 0;
+    // Operator-panel account lock (see FileStore's own "lk" tag comment).
+    // Defaulted here, not pure, so a plain test double that never locks
+    // anyone doesn't have to know this exists.
+    virtual bool is_locked(const std::string&) const { return false; }
 };
 
 class RateLimiter {
@@ -52,6 +56,14 @@ AuthResult create_account(AccountStore& store, const BreachChecker& breach_check
 AuthResult login(AccountStore& store, RateLimiter& limiter,
                   const std::string& username, const std::string& password,
                   const std::string& device_label, const std::string& ip);
+
+// Constructs, saves, and returns a fresh session for an account already
+// authenticated some other way (a consumed password-reset token, a
+// verified Google ID token) -- the exact same session shape login()
+// itself produces (login() is implemented in terms of this), not a
+// second session mechanism. Does no verification of its own; callers
+// outside this file must establish authenticity themselves first.
+Session create_session(AccountStore& store, AccountId account, const std::string& device_label);
 
 void logout(AccountStore& store, const SessionId& id);
 void logout_all_devices(AccountStore& store, AccountId account, const SessionId& keep_session);

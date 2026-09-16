@@ -27,8 +27,7 @@
     document.body.appendChild(root);
   }
 
-  var ICON =
-    '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="3" fill="currentColor" opacity=".95"/><circle cx="12" cy="13" r="5" fill="none" stroke="var(--paper,#f7f1e4)" stroke-width="1.6"/><circle cx="12" cy="13" r="1.4" fill="var(--paper,#f7f1e4)"/><rect x="8" y="5.2" width="8" height="1.6" rx=".4" fill="var(--paper,#f7f1e4)"/></svg>';
+  var ICON = '<svg viewBox="0 0 32 32"><path fill="#1c1610" stroke="#c4a574" stroke-width="1.5" d="M6 12c0-6 4-9 10-9s10 3 10 9v14c0 1.5-2 2.5-10 2.5S6 27.5 6 26z"/><rect x="9" y="6.5" width="14" height="4" rx="1" fill="#c4a574"/><circle cx="16" cy="19.5" r="6" fill="#0a0806" stroke="#c4a574"/><circle cx="16" cy="19.5" r="1.8" fill="#c4a574"/></svg>';
 
   root.innerHTML =
     '<button id="jbtoggle" type="button" aria-label="Juketube" aria-expanded="false">' + ICON + "</button>" +
@@ -62,6 +61,7 @@
     "</div>" +
     '<div class="jb-searchwrap">' +
     '<input id="jbsearch" type="search" placeholder="Search" autocomplete="off" enterkeyhint="search">' +
+    '<button type="button" id="jbclear" aria-label="Clear search">×</button>' +
     '<div id="jbresults"></div>' +
     "</div>" +
     '<div id="jbnow"><span class="muted">Connecting…</span></div>' +
@@ -85,6 +85,23 @@
   var resultsEl = document.getElementById("jbresults");
   var upcomingEl = document.getElementById("jbupcoming");
   var search = document.getElementById("jbsearch");
+  var clearBtn = document.getElementById("jbclear");
+  function syncClear() {
+    if (!clearBtn) return;
+    clearBtn.style.display = search.value ? "flex" : "none";
+  }
+  if (clearBtn) {
+    clearBtn.addEventListener("pointerdown", function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      search.value = "";
+      resultsEl.textContent = "";
+      panel.classList.remove("has-results", "kb");
+      gen++;
+      syncClear();
+      search.focus();
+    });
+  }
   var pauseBtn = document.getElementById("jbpause");
   var skipBtn = document.getElementById("jbskip");
   var muteBtn = document.getElementById("jbmute");
@@ -910,7 +927,8 @@
   new MutationObserver(function () {
     panel.classList.toggle("has-results", !!resultsEl.firstChild);
   }).observe(resultsEl, { childList: true, subtree: true });
-  search.addEventListener("input", scheduleSearch);
+  search.addEventListener("input", function () { syncClear(); scheduleSearch(); });
+  syncClear();
   search.addEventListener("search", runSearch);
   search.addEventListener("focus", function () {
     setTimeout(syncViewport, 50);

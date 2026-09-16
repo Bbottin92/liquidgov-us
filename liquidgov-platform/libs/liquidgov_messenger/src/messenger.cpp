@@ -48,6 +48,13 @@ AddMemberResult add_member(ConversationStore& store, const SocialGraph& graph, A
     auto conv = store.get_conversation(conv_id);
     if (!conv) return {MessengerError::ConversationNotFound};
 
+    bool actor_active = false;
+    for (const auto& m : conv->members) {
+        if (m.account == actor && m.state == MemberState::Active) actor_active = true;
+        if (m.account == candidate) return {MessengerError::None}; // already on the roster
+    }
+    if (!actor_active) return {MessengerError::NotAMember};
+
     if (violates_minor_invariant(graph, candidate, conv->members)) {
         // Hard refuse — no roster mutation. Same generic failure
         // regardless of whether the cause is the minor invariant or,

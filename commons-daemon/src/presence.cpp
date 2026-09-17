@@ -41,12 +41,31 @@ bool PresenceStore::erase_id_locked(const std::string& id) {
     return false;
 }
 
+std::string PresenceStore::disambiguate_name_locked(const std::string& region, const std::string& base_name,
+                                                     const std::string& exclude_id) {
+    auto it = regions_.find(region);
+    if (it == regions_.end()) return base_name;
+    auto taken = [&](const std::string& name) {
+        for (const auto& o : it->second) {
+            if (o.id != exclude_id && o.display_name == name) return true;
+        }
+        return false;
+    };
+    if (!taken(base_name)) return base_name;
+    for (std::size_t n = 2; n <= kPerRegionCap + 1; ++n) {
+        std::string candidate = base_name + " (" + std::to_string(n) + ")";
+        if (!taken(candidate)) return candidate;
+    }
+    return base_name; // region already at cap with every suffix somehow taken -- fall back rather than loop forever
+}
+
 PresenceStore::JoinResult PresenceStore::join_locked(const std::string& region, const Occupant& occ) {
     auto it = regions_.find(region);
     if (it != regions_.end()) {
         for (auto& o : it->second) {
             if (o.id == occ.id) {
                 o = occ; // same region: replace, do not ++total_
+                o.display_name = disambiguate_name_locked(region, occ.display_name, occ.id);
                 return JoinResult::Ok;
             }
         }
@@ -61,7 +80,9 @@ PresenceStore::JoinResult PresenceStore::join_locked(const std::string& region, 
     const bool existed = erase_id_locked(occ.id);
     if (!existed && total_ >= kGlobalCap) return JoinResult::GlobalFull;
 
-    regions_[region].push_back(occ);
+    Occupant final_occ = occ;
+    final_occ.display_name = disambiguate_name_locked(region, occ.display_name, occ.id);
+    regions_[region].push_back(final_occ);
     ++total_;
     return JoinResult::Ok;
 }

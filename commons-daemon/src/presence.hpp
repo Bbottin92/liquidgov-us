@@ -62,6 +62,19 @@ private:
     // `now`. Called at the top of every public method, under mu_, so no
     // caller ever sees or mutates a stale entry.
     void reap_locked(long long now);
+    // Should-fix (GROK_PRESENCE_REVIEW.md): display_name is still
+    // client-chosen -- id/secret closes the *row* hijack, but nothing
+    // stopped a second guest from typing the exact name of someone
+    // already standing in the same region and visually passing as them.
+    // Guests have no bound identity to protect yet (no lg_username until
+    // glue lands), so this doesn't try to reserve a name globally or
+    // across time -- it only guarantees no two *simultaneously present*
+    // occupants in one region share a display_name, appending " (2)",
+    // " (3)", etc. `exclude_id` skips the caller's own current row (the
+    // same-id "replace" path in join_locked, which would otherwise always
+    // collide with itself).
+    std::string disambiguate_name_locked(const std::string& region, const std::string& base_name,
+                                          const std::string& exclude_id);
 };
 
 } // namespace commons

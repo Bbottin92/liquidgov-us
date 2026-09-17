@@ -18,6 +18,36 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-17 — commons: region-local display_name disambiguation
+  (should-fix, closed).** `GROK_PRESENCE_REVIEW.md`: "Row hijack is
+  closed; name spoof is not. Fine until cookie bind." Guests have no
+  bound identity yet (no `lg_username` until glue lands), so this doesn't
+  try to reserve a name globally or across time -- `display_name` is
+  still whatever a guest types, and reusing an old name after everyone's
+  gone is fine, by design ("nothing is saved"). What it does guarantee
+  now: no two *simultaneously present* occupants in the same region share
+  a `display_name`. `PresenceStore::disambiguate_name_locked` (daemon
+  only, `presence.hpp`/`.cpp`) checks the destination region's current
+  occupants before every insert in `join_locked` (covers both `join` and
+  `rekey`, its only caller) and appends " (2)", " (3)", etc. until unique,
+  excluding the caller's own row so a returning guest never collides with
+  itself. `move` never touches `display_name`, so this only needed to
+  land in one place. No client change needed: the client always resends
+  its original chosen name on join/rekey, and the daemon re-disambiguates
+  fresh against whichever region it's actually entering each time.
+  Verified live: two guests both joining as "Ash" in the same region get
+  "Ash" and "Ash (2)"; a third guest naming themselves "Ash" in a
+  *different* region is untouched (no false global collision); rekeying
+  into a region that already has "Ash" and "Ash (2)" correctly lands on
+  "Ash (3)"; `move` leaves an already-disambiguated name alone. Full
+  regression (catalogs, 413 cap, missing-field 400, wrong-secret 403,
+  restart boundary) still holds. Civic untouched, no deploy. Found and
+  fixed an unrelated test-hygiene issue while verifying this: a browser
+  tab left open from an earlier round kept running its game loop in the
+  background against the live daemon across a `preview_stop` (which only
+  tears down the static file server, not an already-loaded page's JS) --
+  closing stray tabs matters, not just stopping the dev server, when
+  actually verifying a "fresh restart."
 - **2026-09-17 — commons: camera-neighbor region polling (should-fix, closed).**
   `70bc5b8` shipped presence networking as a stated V1 simplification:
   only the player's own joined region was polled/rendered, not every

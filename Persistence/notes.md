@@ -27,6 +27,10 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Game — atlas locked, no code until BUILD
 
+- **2026-09-16 — canvas 2D notes.** `Persistence/TheCommons/canvas.md`:
+  P0 blit is the big win. P1: bake static labels, skip idle frames, one
+  sprite atlas, no fillText-per-frame, watchdog respects document.hidden.
+  Not a patch to commons/ yet. P1 still waits on Brandon.
 - **2026-09-16 — P0 closed.** Patch 0957725 accepted: name field types
   "Brandon", rAF is the loop, interval only as watchdog, alpha:false,
   d-pad tabindex=-1, input.blur() on enter. Civic untouched. P1 not

@@ -27,6 +27,10 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Game — atlas locked, no code until BUILD
 
+- **2026-09-16 — blit pipeline.** `tilemap.md` expanded: display canvas
+  is the logical crop only (not the 1152×1280 bake in the DOM). Floor
+  camera, smoothing off, alpha:false, ignore DPR, no worker. Giant-canvas
+  + CSS-translate is the fail.
 - **2026-09-16 — P0 shipped.** `commons/index.html`: vanilla HTML/canvas,
   one file, no build step. Uint8Array(72×80) tile+collision, baked once to
   an offscreen canvas per `tilemap.md`, blitted per tick — no per-frame

@@ -57,6 +57,70 @@ AABB, not the world). The player, passerby, and nameplates stay
 over-blit. If water ever animates, a second tiny overlay for those tiles
 only — not a second supermap.
 
+## Blit pipeline (the actual offscreen optimization)
+
+The bake is not the display. A 1152×1280 canvas **in the DOM** (CSS
+translate as “camera”) uploads a 5.6 MB layer every frame and is the
+thing to avoid on a phone. Offscreen bake + **small** logical canvas is
+the optimization.
+
+```
+Uint8Array tiles
+    → bake once  (canvas 1152×1280, not in the DOM, alpha:false)
+    → optional createImageBitmap(bake)  (GPU-friendly source)
+    → each frame: drawImage(src, camX, camY, vw, vh, 0, 0, vw, vh)
+                  onto display canvas  (vw×vh, alpha:false)
+    → CSS scale 3× or 2×, image-rendering: pixelated
+    → then player + labels in viewport space
+```
+
+### Rules that actually change cost or sharpness
+
+| Do | Don’t |
+|---|---|
+| Display bitmap = logical crop (240×160 or 160×240) | Display bitmap = 1152×1280 |
+| `imageSmoothingEnabled = false` on bake **and** display | Scale the bake in `drawImage` (9-arg dest bigger than vw×vh) |
+| `floor` camX/camY to integers before drawImage | Subpixel camera (shimmer) |
+| `{ alpha: false }` on both 2D contexts | Default alpha on an opaque world |
+| Ignore `devicePixelRatio` (GBA integer CSS scale is the point) | `canvas.width = 240 * dpr` |
+| Reuse bake + display canvases for the session | `new OffscreenCanvas` / `getImageData` every frame |
+| Change `display.width/height` only on crop switch | Resize every rAF |
+| Skip rAF work if camera/player/resize unchanged | Blit while idle |
+
+`OffscreenCanvas` in a **worker** is not a win here. Bake is once, on
+the main thread, at init. A detached `document.createElement('canvas')`
+is the same blit. Don’t add a worker.
+
+`createImageBitmap(bake)` after the bake is the one optional upgrade:
+some browsers blit a bitmap faster than a canvas source. Still one
+`drawImage`. If it complicates Safari, skip it.
+
+### Clamp (blit fails closed, not empty)
+
+```
+camX = clamp(floor(playerX - vw/2), 0, 1152 - vw)
+camY = clamp(floor(playerY - vh/2), 0, 1280 - vh)
+```
+
+If the source rect pokes outside the bake, Chromium may draw nothing
+that frame. Clamp first, then blit.
+
+### Crop switch
+
+On resize/orientation: recompute `vw,vh,scale` from `innerWidth >= innerHeight`.
+If crop changed, set `display.width = vw; display.height = vh` (clears
+the bitmap — expected), set CSS size to `vw*scale × vh*scale`. **Do not
+rebake.** Same 1152×1280 source.
+
+### What is not an optimization
+
+- 9-arg `drawImage` that stretches 240×160 → 720×480 on the 2D context
+  (you pay 9× pixels and still need smoothing off; CSS scale is cheaper
+  and matches `art.md`)
+- `putImageData` of the crop (CPU, no GPU blit)
+- Stacking a second full-size canvas for the player
+- `willReadFrequently: true` (we never read)
+
 ## Failure modes (reviewer will check)
 
 - Blit source rect not clamped → seams or empty bars at the world edge
@@ -64,3 +128,6 @@ only — not a second supermap.
 - Camera in tile units mixed with pixel units → A still “works,” world
   crawls wrong
 - Recreating the bake every frame → you didn’t optimize, you inverted it
+- Giant DOM canvas + CSS translate as camera → 5.6 MB layer on a phone
+- `imageSmoothingEnabled` left on → blurry tiles
+- Subpixel camX/camY → shimmer while walking

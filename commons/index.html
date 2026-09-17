@@ -194,7 +194,11 @@ var T_GRASS_A = 0, T_GRASS_B = 1, T_PATH = 2, T_WATER = 3, T_DIRT = 4,
     // (the same T_TREE dresses North Woods and Orchard, T_BENCH is every
     // sit-log/sit-rock/sitting-wall) not by collapsing them into one id.
     T_TREE = 26, T_RAILING = 27, T_PLATEAU = 28, T_FLOWERBED = 29,
-    T_LOWWALL = 30, T_CRATE = 31, T_ADIT = 32;
+    T_LOWWALL = 30, T_CRATE = 31, T_ADIT = 32,
+    // V4 (GROK_V4_ANSWER.md): the one Homestead door that unboards for
+    // the bound self. Its own tile, not a reuse of T_DOOR_DEMO -- a
+    // guest and a bound player see the same wall from a different door.
+    T_DOOR_HOUSE = 33;
 
 // Palette, from art.md -- outdoor stays grass/dirt/water, never parchment.
 // Brass stays "sparingly" for the Hall door only, per art.md -- the
@@ -235,6 +239,7 @@ COLOR[T_FLOWERBED]    = "#8a5a6a";
 COLOR[T_LOWWALL]      = "#7a7468";
 COLOR[T_CRATE]        = "#8a6a46";
 COLOR[T_ADIT]         = "#5d564c";
+COLOR[T_DOOR_HOUSE]   = "#5a7a8a";
 var INK = "#1a1814";
 
 // collision.md: doors are solid -- "stand next to them, press Enter," not
@@ -250,6 +255,7 @@ SOLID_TILE[T_NOTICE_POST] = 1;
 SOLID_TILE[T_BENCH] = 1;
 SOLID_TILE[T_DOOR_DEMO] = 1;
 SOLID_TILE[T_DOOR_BOARDED] = 1;
+SOLID_TILE[T_DOOR_HOUSE] = 1;
 SOLID_TILE[T_HALL_DOOR] = 1;
 SOLID_TILE[T_SIGN] = 1;
 SOLID_TILE[T_IWALL] = 1;
@@ -387,6 +393,15 @@ function dressRegions() {
       prompt: isDemo ? "Enter" : "Closed"
     });
   }
+  // V4 (GROK_V4_ANSWER.md): an 8th door, one tile west of the demo door,
+  // for the bound self only -- "not the six friend lots," so doorXs
+  // above is untouched. Always physically present (guests see it too,
+  // same as they see the demo door), but tryInteract() only ever lets a
+  // bound player actually walk through it; a guest gets a toast instead
+  // of a silent wall, same honesty as "Closed." on the six boarded ones.
+  var houseDoorX = homestead.x0 + 1; // x=25, just left of doorXs[0]=26
+  tiles[idx(houseDoorX, wallY)] = T_DOOR_HOUSE;
+  interactables.push({ type: "houseDoor", x: houseDoorX, y: wallY, prompt: "Enter" });
 
   // Creek: a bench directly beside the bridge -- collision.md flagged the
   // previous spot as stranded out in flooded water, disconnected from the
@@ -944,9 +959,12 @@ var DAEMON = (function () {
   }
 })();
 var NET_INTERVAL_MS = 500; // presence.md: per-region ~2Hz
-// V2 (GROK_V2_ANSWER.md): the only two interior spaces this game has,
-// each a single shared instance -- not per-player houses, which need
-// real accounts (post-glue). A fixed key per mode is correct here.
+// V2 (GROK_V2_ANSWER.md): demoHouse/lab are fixed, shared instances.
+// V4 (GROK_V4_ANSWER.md) adds "house" -- per-bound-player, so its key
+// isn't known at load time; netHandleJoinResponse fills it in once a
+// cookie actually resolves. Absent (guest, or not bound yet), the
+// house branch in frame()'s network tick just never fires -- the same
+// "if (netReady && instanceKey)" guard already used for demoHouse/lab.
 var INTERIOR_INSTANCE_KEY = { demoHouse: "instance:demo", lab: "instance:lab" };
 var netId = null, netSecret = null, netReady = false;
 var netRegion = null;        // an outdoor REGIONS entry, an interior instance key string, or null
@@ -1039,6 +1057,11 @@ function netHandleAuthFailure() {
 // never the raw typed input -- the daemon may have appended " (2)" etc.
 // Falls back to playerName until the first join response lands.
 var acceptedDisplayName = null;
+// V4 (GROK_V4_ANSWER.md): "bound: true" on join/rekey, so the client
+// doesn't have to guess bound state from the nameplate string. Once
+// true it stays true -- a resolved civic cookie doesn't un-resolve
+// mid-session, so there's no downgrade path to handle.
+var isBound = false;
 
 function netHandleJoinResponse(r) {
   if (r.status === 403) { netHandleAuthFailure(); return; }
@@ -1046,6 +1069,12 @@ function netHandleJoinResponse(r) {
     if (j && j.display_name && j.display_name !== acceptedDisplayName) {
       acceptedDisplayName = j.display_name;
       forceRedraw = true; // the name can change (or first appear) with nothing else moving that frame
+    }
+    if (j && j.bound && !isBound) {
+      isBound = true;
+      // The daemon enforces a bound occupant's display_name as the real
+      // lg_username (main.cpp) -- safe to build the instance key from it.
+      INTERIOR_INSTANCE_KEY.house = "instance:house:" + j.display_name;
     }
   }).catch(function () {});
 }
@@ -1244,7 +1273,7 @@ function currentDY() {
 // ---- Interact system ----------------------------------------------------
 // One prompt at doors/set pieces, no RPG menu (locked, art.md). Range is
 // "on or next to the tile" -- Chebyshev distance <= 1.
-// mode: "outdoor" | "demoHouse" | "lab". The demo house keeps its P1
+// mode: "outdoor" | "demoHouse" | "lab" | "house" (V4). The demo house keeps its P1
 // Enter-to-enter/Enter-to-exit pattern unchanged. The Lab is a walk-in
 // trigger both ways (atlas.md is explicit that this door, unlike Hall or
 // the demo house, isn't an Enter-to-confirm interaction) -- Enter also
@@ -1317,6 +1346,12 @@ function tryInteract() {
       enterInterior("demoHouse", demoHouseSpace, DEMO_ENTRY);
     } else if (it.type === "boardedDoor") {
       showToast("Closed.");
+    } else if (it.type === "houseDoor") {
+      // Same interior template as the demo house (V4: mechanically just
+      // another shared-shape instance, like lab/demo already are) --
+      // what makes it "yours" is the instance key, not different art.
+      if (isBound) enterInterior("house", demoHouseSpace, DEMO_ENTRY);
+      else showToast("Log in on LiquidGov to open your own house.");
     } else if (it.type === "labStation") {
       var r = LAB_RECIPES[it.recipe];
       inventory[r.item] = (inventory[r.item] || 0) + 1;
@@ -1340,7 +1375,7 @@ function tryInteract() {
   // Nothing in range: in an interior, Enter is the fallback exit. The lab
   // spawn point is one tile south of the outdoor door -- the same spot
   // the walk-in trigger uses -- so there's no re-entry oscillation.
-  if (mode === "demoHouse") { exitToOutdoor(null); return; }
+  if (mode === "demoHouse" || mode === "house") { exitToOutdoor(null); return; }
   if (mode === "lab") { exitToOutdoor({ x: LAB_DOOR_TILE.x, y: LAB_DOOR_TILE.y + 1 }); return; }
 }
 
@@ -1364,7 +1399,7 @@ function drawSpace(camX, camY) {
   // V2 stretch: the placed lab item, drawn over the baked wall-slot tile
   // itself -- a flat color square + label, not a sprite (this game has
   // no item-sprite assets, see art.md's locked figure-only atlas).
-  if (mode === "demoHouse" && placedItem) {
+  if ((mode === "demoHouse" || mode === "house") && placedItem) {
     var info = PLACED_ITEM_INFO[placedItem];
     if (info) {
       var wx = 7 * TILE - camX, wy = 0 * TILE - camY;

@@ -311,11 +311,17 @@ int main(int argc, char** argv) {
         auto result = presence.join(*region, occ, &accepted_name);
         // GROK_NAME_REVIEW.md: echo the *accepted* name (post-disambiguation)
         // so a self-nameplate draws what other clients actually see, not
-        // the raw typed input.
+        // the raw typed input. GROK_V4_ANSWER.md: also echo whether this
+        // occupant is bound, so the client knows without having to guess
+        // from the nameplate string (a guest could type a name that looks
+        // like a username).
         r.body = std::string("{\"ok\":") + (result == commons::PresenceStore::JoinResult::Ok ? "true" : "false")
             + ",\"reason\":\"" + (result == commons::PresenceStore::JoinResult::Ok ? "" :
                 result == commons::PresenceStore::JoinResult::RegionFull ? "region_full" : "global_full") + "\""
-            + (result == commons::PresenceStore::JoinResult::Ok ? ",\"display_name\":" + commons::json::str(accepted_name) : "")
+            + (result == commons::PresenceStore::JoinResult::Ok
+                ? ",\"display_name\":" + commons::json::str(accepted_name) +
+                  ",\"bound\":" + (eff_id->rfind("u:", 0) == 0 ? "true" : "false")
+                : "")
             + "}";
         return r;
     });
@@ -378,7 +384,10 @@ int main(int argc, char** argv) {
         r.body = std::string("{\"ok\":") + (result == commons::PresenceStore::JoinResult::Ok ? "true" : "false")
             + ",\"reason\":\"" + (result == commons::PresenceStore::JoinResult::Ok ? "" :
                 result == commons::PresenceStore::JoinResult::RegionFull ? "region_full" : "global_full") + "\""
-            + (result == commons::PresenceStore::JoinResult::Ok ? ",\"display_name\":" + commons::json::str(accepted_name) : "")
+            + (result == commons::PresenceStore::JoinResult::Ok
+                ? ",\"display_name\":" + commons::json::str(accepted_name) +
+                  ",\"bound\":" + (eff_id->rfind("u:", 0) == 0 ? "true" : "false")
+                : "")
             + "}";
         return r;
     });

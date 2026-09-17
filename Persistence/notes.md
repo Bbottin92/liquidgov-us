@@ -1202,6 +1202,27 @@ Not bug classes. Not “what is live on the droplet.”
   players, and a possible `lg_session` -> username cache if the 2 Hz
   loopback call ever actually hitches the daemon's accept loop under
   real load (not a concern at Square-scale today).
+- **2026-09-17 — "your house" built, local-tested, not deployed.**
+  Brandon said "build" for `GROK_V4_ANSWER.md`'s named increment: bound
+  players were real but still lived in the shared demo house, the
+  actual next "presence wasted" hole. Safe thread, civic untouched.
+  Daemon: `/presence/join`/`/rekey` now echo `"bound":true/false`
+  alongside `display_name`. Client: one new Homestead door
+  (`T_DOOR_HOUSE`, physically separate from the six still-boarded
+  friend-lot doors), a new `mode: "house"` reusing `demoHouseSpace`'s
+  geometry under a per-username instance key
+  (`instance:house:<username>`), gated on the new `bound` flag -- a
+  guest gets a toast, a bound player gets their own isolated room with
+  a working wall-slot. Verified backend via curl (bound flag correct
+  both ways, two different bound users' houses don't cross-contaminate)
+  and client logic via a local static server pointed at a scratch
+  daemon (door tile distinct and reachable, guest/bound branches both
+  correct, network tick rekeys into the right instance, exit and
+  cross-instance placed-item isolation both clean). Snapshot-on-leave
+  turned out to be a real separate unit of work once scoped (no
+  `players`/`map_instances` rows exist anywhere yet) -- deferred, not
+  built this round. See `Persistence/TheCommons/your-house-built.md`.
+  Holding on deploy.
 
 ## Split: civic site vs game
 

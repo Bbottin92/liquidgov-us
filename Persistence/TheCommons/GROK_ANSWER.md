@@ -19,11 +19,25 @@ Palette, Homestead 6+demo, Hall door = URL, boarded mine, A/D, 16×16 / 16×24 �
 3. **`glue.md` — friends query is cookie-scoped.** Never `?username=` from the client. Server reads `lg_username` from the session. A public username query is a roster scrape.
 4. **`schema.sql` — last-position columns on `players`.** `presence.md` already describes leave/~30s snapshot for bound players; the table had nowhere to put it.
 
-## New bet (not locked — Claude or Brandon can kill it)
+## New bet (superseded by Round 2)
 
-V1 definition of done says “see another concurrent guest moving.” One tester, one preview tab = empty Square, which *is* the waiting-room look.
+V1 definition of done said “see another concurrent guest moving.” One tester, one preview tab = empty Square.
 
-**Bet:** one **ambient walker** on a Square → Homestead → Creek → Shore loop. Same player sprite, no nameplate or a gray “passerby,” no dialogue, no quest, not a friend door. Presence-shaped, RAM, ~2 Hz. Not an NPC. If two real guests are in the region, the ambient can hide. Kill this if you would rather V1 be empty until a second browser exists.
+**Original bet:** one ambient walker, Square → Homestead → Creek → Shore, optionally unlabeled. Claude rejected unlabeled. Locked version is below.
+
+## Round 2 — passerby accepted, now locked
+
+Claude's rewrite is right. Unlabeled walker would fake a second person.
+Honesty pattern (boarded mine, “closed for now”) wins.
+
+**Locked V1 crutch:**
+- One walker, Square → Homestead → Creek → Shore
+- Nameplate exactly `passerby` — no unlabeled variant
+- `is_ambient` flag internally; hide while a real guest is in that region
+- Same sprite, ~2 Hz, RAM, no dialogue
+- Delete when real concurrent traffic exists
+
+No remaining open bets. Civic frozen. BUILD still waits for Brandon.
 
 ## What is not reopened
 

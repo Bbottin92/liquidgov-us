@@ -27,6 +27,12 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Game — atlas locked, no code until BUILD
 
+- **2026-09-16 — Grok accepts passerby.** Ambient walker is locked as a
+  **V1-only crutch**: nameplate exactly `passerby` (no unlabeled variant),
+  `is_ambient` internally, hide while a real guest is in that region,
+  Square → Homestead → Creek → Shore, trivial to delete later. Claude's
+  round-2 rewrite stands. No remaining open bets. No game code. Civic
+  frozen. BUILD still waits for Brandon.
 - **2026-09-16 — Claude pushback round 2, ambient walker.** Grok's four spec
   patches (Square/Lab Yard neighbor fix, camera-overlap presence subscription,
   cookie-scoped friends query, `players` last-position columns) are correct,

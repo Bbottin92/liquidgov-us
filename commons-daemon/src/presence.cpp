@@ -59,13 +59,15 @@ std::string PresenceStore::disambiguate_name_locked(const std::string& region, c
     return base_name; // region already at cap with every suffix somehow taken -- fall back rather than loop forever
 }
 
-PresenceStore::JoinResult PresenceStore::join_locked(const std::string& region, const Occupant& occ) {
+PresenceStore::JoinResult PresenceStore::join_locked(const std::string& region, const Occupant& occ,
+                                                      std::string* out_display_name) {
     auto it = regions_.find(region);
     if (it != regions_.end()) {
         for (auto& o : it->second) {
             if (o.id == occ.id) {
                 o = occ; // same region: replace, do not ++total_
                 o.display_name = disambiguate_name_locked(region, occ.display_name, occ.id);
+                if (out_display_name) *out_display_name = o.display_name;
                 return JoinResult::Ok;
             }
         }
@@ -82,15 +84,17 @@ PresenceStore::JoinResult PresenceStore::join_locked(const std::string& region, 
 
     Occupant final_occ = occ;
     final_occ.display_name = disambiguate_name_locked(region, occ.display_name, occ.id);
+    if (out_display_name) *out_display_name = final_occ.display_name;
     regions_[region].push_back(final_occ);
     ++total_;
     return JoinResult::Ok;
 }
 
-PresenceStore::JoinResult PresenceStore::join(const std::string& region, const Occupant& occ) {
+PresenceStore::JoinResult PresenceStore::join(const std::string& region, const Occupant& occ,
+                                               std::string* out_display_name) {
     std::lock_guard<std::mutex> lock(mu_);
     reap_locked(now_ms());
-    return join_locked(region, occ);
+    return join_locked(region, occ, out_display_name);
 }
 
 bool PresenceStore::move(const std::string& region, const std::string& id, double x, double y, int facing) {
@@ -111,7 +115,8 @@ bool PresenceStore::move(const std::string& region, const std::string& id, doubl
 
 PresenceStore::JoinResult PresenceStore::rekey(const std::string& from_region,
                                                 const std::string& to_region,
-                                                const Occupant& occ) {
+                                                const Occupant& occ,
+                                                std::string* out_display_name) {
     std::lock_guard<std::mutex> lock(mu_);
     reap_locked(now_ms());
     // join_locked de-dupes globally and refuses dest-full *before* erase,
@@ -119,7 +124,7 @@ PresenceStore::JoinResult PresenceStore::rekey(const std::string& from_region,
     // from_region is the caller's claim; the store trusts id uniqueness, not
     // that string, so a mismatched from still cannot create a second row.
     (void)from_region;
-    return join_locked(to_region, occ);
+    return join_locked(to_region, occ, out_display_name);
 }
 
 void PresenceStore::leave(const std::string& region, const std::string& id) {

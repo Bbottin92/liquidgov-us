@@ -39,12 +39,17 @@ public:
 
     enum class JoinResult { Ok, RegionFull, GlobalFull };
 
-    JoinResult join(const std::string& region, const Occupant& occ);
+    // `out_display_name`, when non-null, is set to the name actually
+    // stored (post-disambiguation) on Ok -- GROK_NAME_REVIEW.md: a
+    // self-nameplate must draw the *accepted* name, not the raw typed
+    // input, since this store may have appended " (2)" etc.
+    JoinResult join(const std::string& region, const Occupant& occ, std::string* out_display_name = nullptr);
     bool move(const std::string& region, const std::string& id, double x, double y, int facing);
 
     // Crossing an outdoor AABB: remove from the old region's list, add to
     // the new one. presence.md: "do not leave a ghost in the old list."
-    JoinResult rekey(const std::string& from_region, const std::string& to_region, const Occupant& occ);
+    JoinResult rekey(const std::string& from_region, const std::string& to_region, const Occupant& occ,
+                      std::string* out_display_name = nullptr);
 
     void leave(const std::string& region, const std::string& id);
     std::vector<Occupant> occupants(const std::string& region);
@@ -56,7 +61,7 @@ private:
     std::size_t total_ = 0;                                  // guarded by mu_
 
     // Callers must hold mu_.
-    JoinResult join_locked(const std::string& region, const Occupant& occ);
+    JoinResult join_locked(const std::string& region, const Occupant& occ, std::string* out_display_name);
     bool erase_id_locked(const std::string& id); // any region; --total_ only if found
     // Drops any occupant whose last_update_ms is more than kIdleMs behind
     // `now`. Called at the top of every public method, under mu_, so no

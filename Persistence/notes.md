@@ -18,6 +18,62 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-17 — V2 stretch: self-nameplate + lab placeables (repo
+  commit, not yet copied live).** Both remaining "if there's room" items
+  from `GROK_V2_ANSWER.md`.
+  **Self-nameplate**: `GROK_NAME_REVIEW.md`'s exact ask -- `join`/`rekey`
+  now echo the *accepted* `display_name` (post-disambiguation) instead
+  of the client trusting its own raw typed input. Daemon:
+  `PresenceStore::join`/`rekey` take an optional `std::string*
+  out_display_name`, populated from the same `disambiguate_name_locked`
+  call that was already computing it internally -- no new logic, just
+  exposing what was already being thrown away. Client: `netJoin`/
+  `netRekey` capture it into `acceptedDisplayName`, drawn over the local
+  player's own sprite the same way other occupants' nameplates already
+  render. No nameplate draws until the first join response actually
+  lands (never shows the raw typed name as a stand-in).
+  **Lab placeables**: one placed item per shared interior instance, RAM
+  only (new tiny `PlacedStore`, same shape as `GuestRegistry` --
+  mutex-guarded map, matching this codebase's existing convention even
+  though the single-threaded server doesn't strictly need the lock).
+  `GET`/`POST /placed/<instance>`; POST requires a valid guest credential
+  (griefing bar, not a security boundary) and validates the item slug is
+  a real row in the `items` catalog table (a client that doesn't
+  recognize an unknown slug can't happen, and a typo doesn't wedge the
+  one shared slot with something nothing can render) -- explicitly not
+  the same thing as `items.wall_slot_ok`, which is reserved for the
+  real, later civic profile-canvas wall slot; this is "not a civic PNG"
+  per the spec, any catalog item is eligible here. **Found and fixed a
+  real bug while wiring this, not by inspection**: `LAB_RECIPES.item`
+  held display-style strings ("copper acetate bottle", spaces) instead
+  of the real catalog slugs ("copper_acetate_bottle", underscores) --
+  harmless as long as it was only ever used as a local JS object key,
+  but every `POST /placed/` call would have 400'd against the real
+  `items.slug` column. Fixed at the source since nothing displays
+  `.item` as text (confirmed by grep before changing it) -- one
+  representation, not a translation table between two schemes. Demo
+  house's wall-slot tile (previously pure decoration, explicitly "stays
+  empty until glue exists" per its own P2-era lock) is now interactable
+  -- placing there sends whatever item was most recently picked up at a
+  lab station (no inventory-picker UI exists, so "most recent" is the
+  only unambiguous choice); this reuses the exact tile position for a
+  different, simpler, explicitly-authorized purpose than the real
+  civic wall-slot feature (`GROK_V2_ANSWER.md`'s own "not a civic PNG"
+  distinction), which stays exactly as parked as before.
+  Verified live across two independent browser tabs: self-nameplate
+  renders correctly for both the local player and (via the existing
+  other-occupant path) a second guest; picked up chalk at the lab
+  station with the real slug recorded; placed it in the demo house
+  wall-slot; a second guest's tab, joining fresh, saw the exact same
+  placed item rendered (flat color + label) with no code shared beyond
+  the poll; placement persisted across an exit-and-re-enter (proving
+  it's real daemon-side RAM state, not client-local); restart boundary
+  re-verified for both `PresenceStore` and the new `PlacedStore`
+  (RAM clears, SQLite catalogs survive); full regression suite (missing
+  field 400, wrong-secret 403) still holds. Not yet copied to
+  `/opt/commons/index.html` or rebuilt on the droplet -- repo commit
+  only, same as shared interiors was before "copy." Civic untouched, no
+  deploy, no nginx.
 - **2026-09-17 — shared interiors copied live.** Brandon said **copy**
   after `GROK_V2_REVIEW.md` accepted `6ce42cf` with two checks named
   before doing it: passerby must not draw/walk indoors, and the

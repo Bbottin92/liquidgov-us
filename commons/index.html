@@ -576,6 +576,14 @@ var demoHouseSpace = buildInterior(16, 16, function (t, w) {
   t[idxIn(w, 7, 8)] = T_RUG;
   t[idxIn(w, 7, 9)] = T_RUG;
 });
+// V2 stretch (GROK_V2_ANSWER.md): the wall-slot is interactable now, but
+// only to place a lab item as a game tile -- explicitly "not a civic
+// PNG." The real profile-canvas wall slot (glue.md/canvas-frame.md) is a
+// different feature entirely and stays parked on civic's /latest route;
+// this reuses the same physical tile for a simpler, local-only purpose.
+demoHouseSpace.interactables = [
+  { type: "wallSlot", x: 7, y: 0, prompt: "Place" }
+];
 
 // Lab -- 20x16. Three lookup stations (pushback.md's chalk-only recipe
 // #3, no lime) plus a workbench visual. Output goes to session RAM only
@@ -584,10 +592,24 @@ var demoHouseSpace = buildInterior(16, 16, function (t, w) {
 // its outdoor half (atlas.md), not the demo house's Enter pattern.
 var LAB_ENTRY = { x: 10, y: 14 };
 var LAB_DOOR = { x: 10, y: 15 };
+// item is the real catalog slug (schema.sql/seed.sql's items.slug), not
+// a display string -- V2 lab placeables (below) sends it straight to
+// POST /placed/<instance>, which validates against that same column.
+// Nothing renders `item` as text (the toast uses `name`), so there was
+// no display-string reason for these to ever have been spaced out.
 var LAB_RECIPES = {
-  copper: { name: "Copper + acetic acid → copper acetate", item: "copper acetate bottle" },
-  iron:   { name: "Iron + tannin → iron-gall ink", item: "iron-gall ink page" },
-  chalk:  { name: "Calcium carbonate, ground and washed → chalk", item: "chalk block" }
+  copper: { name: "Copper + acetic acid → copper acetate", item: "copper_acetate_bottle" },
+  iron:   { name: "Iron + tannin → iron-gall ink", item: "iron_gall_ink_page" },
+  chalk:  { name: "Calcium carbonate, ground and washed → chalk", item: "chalk_block" }
+};
+// V2 stretch: how a placed slug renders in the wall-slot -- a flat
+// color + short label, matching this game's existing no-sprite-assets
+// look for anything that isn't the player/passerby figure. Keyed by the
+// same real catalog slugs LAB_RECIPES.item now uses.
+var PLACED_ITEM_INFO = {
+  chalk_block:            { color: "#e8e2d0", label: "chalk" },
+  iron_gall_ink_page:     { color: "#2a2320", label: "ink" },
+  copper_acetate_bottle:  { color: "#4a8a6a", label: "acetate" }
 };
 var labSpace = buildInterior(20, 16, function (t, w) {
   t[idxIn(w, LAB_DOOR.x, LAB_DOOR.y)] = T_IDOOR;
@@ -606,8 +628,12 @@ labSpace.interactables = [
 ];
 
 // Session-only pickups (v1.md: RAM, vanishes on refresh -- no SQLite in
-// this preview, and nothing else reads this yet).
+// this preview). V2: lastPickedItem is what the wall-slot places --
+// simplest possible "which item" choice given there's no inventory menu
+// to pick from; the most recent lookup is what a player would expect to
+// be holding.
 var inventory = {};
+var lastPickedItem = null;
 
 // ---- Player/passerby sprite atlas (art.md: 16x24, 4-dir, 2-frame walk,
 // one look, no character creator; canvas.md: one atlas, one drawImage per
@@ -1009,15 +1035,31 @@ function netHandleAuthFailure() {
 // `region` can be an outdoor REGIONS entry or a shared interior instance
 // key ("instance:demo" / "instance:lab"). worldToRegionLocal/regionKeyFor
 // already handle both, so one set of functions covers both cases.
+// GROK_NAME_REVIEW.md: draw the *accepted* name (post-disambiguation),
+// never the raw typed input -- the daemon may have appended " (2)" etc.
+// Falls back to playerName until the first join response lands.
+var acceptedDisplayName = null;
+
+function netHandleJoinResponse(r) {
+  if (r.status === 403) { netHandleAuthFailure(); return; }
+  r.json().then(function (j) {
+    if (j && j.display_name && j.display_name !== acceptedDisplayName) {
+      acceptedDisplayName = j.display_name;
+      forceRedraw = true; // the name can change (or first appear) with nothing else moving that frame
+    }
+  }).catch(function () {});
+}
+
 function netJoin(region) {
   if (!netReady) return;
   var lp = worldToRegionLocal(region, player.x, player.y);
   netRegion = region; // optimistic -- matches the existing join_locked/rekey de-dupe on the daemon side either way
   otherOccupants = []; // stale data from whatever region we were just in shouldn't render for a frame in the new one
+  placedItem = null;   // likewise -- a different room's placed item must not bleed into this one's render
   fetch(DAEMON + "/presence/join", {
     method: "POST",
     body: netBody({ region: regionKeyFor(region), x: lp.x, y: lp.y, facing: player.dir, display_name: playerName })
-  }).then(function (r) { if (r.status === 403) netHandleAuthFailure(); }).catch(function () {});
+  }).then(netHandleJoinResponse).catch(function () {});
 }
 
 function netRekey(fromRegion, toRegion) {
@@ -1025,13 +1067,14 @@ function netRekey(fromRegion, toRegion) {
   var lp = worldToRegionLocal(toRegion, player.x, player.y);
   netRegion = toRegion;
   otherOccupants = [];
+  placedItem = null;
   fetch(DAEMON + "/presence/rekey", {
     method: "POST",
     body: netBody({
       from_region: regionKeyFor(fromRegion), to_region: regionKeyFor(toRegion),
       x: lp.x, y: lp.y, facing: player.dir, display_name: playerName
     })
-  }).then(function (r) { if (r.status === 403) netHandleAuthFailure(); }).catch(function () {});
+  }).then(netHandleJoinResponse).catch(function () {});
 }
 
 function netMove() {
@@ -1060,6 +1103,36 @@ function netPollCurrentRegion() {
     })
     .catch(function () {})
     .finally(function () { netPollBusy = false; });
+}
+
+// V2 stretch: lab output placed in a shared interior's wall slot as a
+// game tile (GROK_V2_ANSWER.md). One placed item per instance, RAM only
+// on the daemon side (PlacedStore) -- polled the same throttled cadence
+// as presence, not its own faster loop.
+var placedItem = null;    // last polled slug for the CURRENT interior instance, or null
+var netPlacedPollBusy = false;
+
+function netPlace(item) {
+  if (!netReady || !netRegion || typeof netRegion !== "string") return;
+  placedItem = item; // optimistic, same shape as netJoin/netRekey's own region assignment
+  forceRedraw = true;
+  fetch(DAEMON + "/placed/" + regionKeyFor(netRegion), {
+    method: "POST",
+    body: netBody({ item: item })
+  }).then(function (r) { if (r.status === 403) netHandleAuthFailure(); }).catch(function () {});
+}
+
+function netPollPlaced() {
+  if (!netReady || !netRegion || typeof netRegion !== "string" || netPlacedPollBusy) return;
+  netPlacedPollBusy = true;
+  fetch(DAEMON + "/placed/" + regionKeyFor(netRegion))
+    .then(function (r) { return r.json(); })
+    .then(function (j) {
+      var item = (j && j.item) ? j.item : null;
+      if (item !== placedItem) { placedItem = item; forceRedraw = true; }
+    })
+    .catch(function () {})
+    .finally(function () { netPlacedPollBusy = false; });
 }
 
 function netPollRegions(regions) {
@@ -1247,11 +1320,19 @@ function tryInteract() {
     } else if (it.type === "labStation") {
       var r = LAB_RECIPES[it.recipe];
       inventory[r.item] = (inventory[r.item] || 0) + 1;
+      lastPickedItem = r.item;
       showToast(r.name + ".");
     } else if (it.type === "shutter") {
       showToast("Closed for now.");
     } else if (it.type === "sign") {
       showToast("Closed.");
+    } else if (it.type === "wallSlot") {
+      if (!lastPickedItem) {
+        showToast("Nothing to place yet -- visit the lab first.");
+      } else {
+        netPlace(lastPickedItem);
+        showToast("Placed.");
+      }
     }
     return;
   }
@@ -1279,6 +1360,23 @@ var prevToastActive = false;
 // "is there a passerby" (outdoor only) and what's in `interactables`.
 function drawSpace(camX, camY) {
   ctx.drawImage(activeSpace.baked, camX, camY, crop.vw, crop.vh, 0, 0, crop.vw, crop.vh);
+
+  // V2 stretch: the placed lab item, drawn over the baked wall-slot tile
+  // itself -- a flat color square + label, not a sprite (this game has
+  // no item-sprite assets, see art.md's locked figure-only atlas).
+  if (mode === "demoHouse" && placedItem) {
+    var info = PLACED_ITEM_INFO[placedItem];
+    if (info) {
+      var wx = 7 * TILE - camX, wy = 0 * TILE - camY;
+      ctx.fillStyle = info.color;
+      ctx.fillRect(wx + 2, wy + 2, TILE - 4, TILE - 4);
+      ctx.fillStyle = INK;
+      ctx.font = "7px monospace";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(info.label, wx + TILE / 2, wy + TILE + 6);
+    }
+  }
 
   if (mode === "outdoor" && passerby.visible) {
     var pbsx = passerby.x - camX, pbsy = passerby.y - camY;
@@ -1318,8 +1416,21 @@ function drawSpace(camX, camY) {
   }
 
   var sx = player.x - camX, sy = player.y - camY;
+  var sDestY = spriteDestY(sy, player.half);
   ctx.drawImage(spriteAtlas, spriteSrcX(player.dir, player.animFrame), 0, SPRITE_W, SPRITE_H,
-    spriteDestX(sx), spriteDestY(sy, player.half), SPRITE_W, SPRITE_H);
+    spriteDestX(sx), sDestY, SPRITE_W, SPRITE_H);
+  // Self-nameplate (GROK_V2_ANSWER.md stretch item): only once the
+  // daemon has actually accepted a name -- before the first join
+  // response lands, or if the daemon was never reachable at all, no
+  // nameplate draws rather than showing the raw typed input that might
+  // not match what other clients see (GROK_NAME_REVIEW.md).
+  if (acceptedDisplayName) {
+    ctx.fillStyle = INK;
+    ctx.font = "8px monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(acceptedDisplayName, sx, sDestY - 4);
+  }
 
   if (nearestInteractable) {
     var ix = (nearestInteractable.x * TILE + 8) - camX;
@@ -1417,6 +1528,7 @@ function frame(t) {
       } else if (t - lastNetSendAt > NET_INTERVAL_MS) {
         netMove();
         netPollCurrentRegion();
+        netPollPlaced();
         lastNetSendAt = t;
       }
     }

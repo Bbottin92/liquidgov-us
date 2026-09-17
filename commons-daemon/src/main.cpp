@@ -26,6 +26,7 @@
 #include "guest.hpp"
 #include "http.hpp"
 #include "json.hpp"
+#include "placed.hpp"
 #include "presence.hpp"
 #include "reqjson.hpp"
 
@@ -122,6 +123,22 @@ std::string maps_json(sqlite3* db) {
     return out.str();
 }
 
+// V2 lab placeables: a placed item slug must be a real catalog item, so
+// a client that doesn't recognize the slug can't happen anyway, and so
+// a broken/typo'd request doesn't wedge the one shared slot with
+// something nothing can render. Not the same thing as items.wall_slot_ok
+// -- that flag is reserved for the real, later profile-canvas wall slot
+// (glue.md/canvas-frame.md); this placed slot is explicitly "not a civic
+// PNG" (GROK_V2_ANSWER.md), any catalog item is eligible.
+bool item_exists(sqlite3* db, const std::string& slug) {
+    sqlite3_stmt* st = nullptr;
+    sqlite3_prepare_v2(db, "SELECT 1 FROM items WHERE slug = ? LIMIT 1;", -1, &st, nullptr);
+    sqlite3_bind_text(st, 1, slug.c_str(), -1, SQLITE_TRANSIENT);
+    bool found = sqlite3_step(st) == SQLITE_ROW;
+    sqlite3_finalize(st);
+    return found;
+}
+
 std::string occupants_json(const std::vector<commons::Occupant>& occ) {
     std::ostringstream out;
     out << "[";
@@ -155,6 +172,7 @@ int main(int argc, char** argv) {
 
     commons::PresenceStore presence;
     commons::GuestRegistry guests;
+    commons::PlacedStore placed;
     commons::HttpServer server(bind_addr, port);
 
     server.route("GET", "/health", [](const commons::HttpRequest&) {
@@ -228,10 +246,16 @@ int main(int argc, char** argv) {
         occ.x = *x; occ.y = *y;
         occ.facing = static_cast<int>(field_num(req.body, "facing").value_or(0));
         occ.last_update_ms = now_ms();
-        auto result = presence.join(*region, occ);
+        std::string accepted_name;
+        auto result = presence.join(*region, occ, &accepted_name);
+        // GROK_NAME_REVIEW.md: echo the *accepted* name (post-disambiguation)
+        // so a self-nameplate draws what other clients actually see, not
+        // the raw typed input.
         r.body = std::string("{\"ok\":") + (result == commons::PresenceStore::JoinResult::Ok ? "true" : "false")
             + ",\"reason\":\"" + (result == commons::PresenceStore::JoinResult::Ok ? "" :
-                result == commons::PresenceStore::JoinResult::RegionFull ? "region_full" : "global_full") + "\"}";
+                result == commons::PresenceStore::JoinResult::RegionFull ? "region_full" : "global_full") + "\""
+            + (result == commons::PresenceStore::JoinResult::Ok ? ",\"display_name\":" + commons::json::str(accepted_name) : "")
+            + "}";
         return r;
     });
 
@@ -284,10 +308,13 @@ int main(int argc, char** argv) {
         occ.x = *x; occ.y = *y;
         occ.facing = static_cast<int>(field_num(req.body, "facing").value_or(0));
         occ.last_update_ms = now_ms();
-        auto result = presence.rekey(*from_region, *to_region, occ);
+        std::string accepted_name;
+        auto result = presence.rekey(*from_region, *to_region, occ, &accepted_name);
         r.body = std::string("{\"ok\":") + (result == commons::PresenceStore::JoinResult::Ok ? "true" : "false")
             + ",\"reason\":\"" + (result == commons::PresenceStore::JoinResult::Ok ? "" :
-                result == commons::PresenceStore::JoinResult::RegionFull ? "region_full" : "global_full") + "\"}";
+                result == commons::PresenceStore::JoinResult::RegionFull ? "region_full" : "global_full") + "\""
+            + (result == commons::PresenceStore::JoinResult::Ok ? ",\"display_name\":" + commons::json::str(accepted_name) : "")
+            + "}";
         return r;
     });
 
@@ -311,6 +338,51 @@ int main(int argc, char** argv) {
         r.body = "{\"ok\":true}";
         return r;
     });
+
+    // V2 lab placeables (GROK_V2_ANSWER.md): one placed item slug per
+    // shared interior instance, RAM only, "not a civic PNG." GET is
+    // public same as /presence/<region> (an item slug is not sensitive);
+    // POST still requires a valid guest credential so an arbitrary
+    // stranger can't grief the one shared slot, but does not check that
+    // the caller is actually *in* that instance right now -- a light
+    // integrity bar consistent with how low the stakes are here (a
+    // display string, not a security boundary).
+    server.route("GET", "/placed/", [&](const commons::HttpRequest& req) {
+        std::string instance = req.path.substr(std::string("/placed/").size());
+        commons::HttpResponse r;
+        r.body = "{\"item\":" + commons::json::str(placed.get(instance)) + "}";
+        return r;
+    }, /*prefix=*/true);
+
+    server.route("POST", "/placed/", [&](const commons::HttpRequest& req) {
+        using namespace commons::reqjson;
+        std::string instance = req.path.substr(std::string("/placed/").size());
+        commons::HttpResponse r;
+        auto id = field_str(req.body, "id");
+        auto secret = field_str(req.body, "secret");
+        auto item = field_str(req.body, "item");
+        if (!id || !secret || !item) {
+            r.status = 400; r.status_text = "Bad Request";
+            r.body = "{\"ok\":false,\"reason\":\"missing_field\"}";
+            return r;
+        }
+        if (!guests.verify(*id, *secret)) {
+            r.status = 403; r.status_text = "Forbidden";
+            r.body = "{\"ok\":false,\"reason\":\"bad_credential\"}";
+            return r;
+        }
+        // Empty string clears the slot; anything else must be a real,
+        // known catalog item -- never an arbitrary client string nothing
+        // can render.
+        if (!item->empty() && !item_exists(db.handle(), *item)) {
+            r.status = 400; r.status_text = "Bad Request";
+            r.body = "{\"ok\":false,\"reason\":\"unknown_item\"}";
+            return r;
+        }
+        placed.set(instance, *item);
+        r.body = "{\"ok\":true}";
+        return r;
+    }, /*prefix=*/true);
 
     server.run();
     return 0;

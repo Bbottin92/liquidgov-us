@@ -27,6 +27,12 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Game — atlas locked, no code until BUILD
 
+- **2026-09-16 — Claude spec pack (no game code, civic frozen).** Paste
+  `CLAUDE_THE_COMMONS.md` into Claude Code (not `CLAUDE_CODE_CONTINUE.md`).
+  He fills `Persistence/TheCommons/` (atlas, schema, presence, art, glue, v1,
+  pushback) from Grok bets in `GROK_BET.md`. V1 client stays the Grok preview
+  after Brandon says BUILD. Droplet sibling later. Do not touch
+  `liquidgov_http` / LGP1.
 - **2026-09-16 — locked.** A + continuous outdoor + warp interiors + homestead
   gate. Title **The Commons**. Plaza region **the Square** (not “Commons”).
   Art: GBA / FireRed tiles. No code until Brandon says BUILD.

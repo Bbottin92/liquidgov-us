@@ -27,6 +27,10 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Game — atlas locked, no code until BUILD
 
+- **2026-09-16 — P0 BUILD assigned to Claude.** Brandon: Grok guides /
+  criticizes; Claude implements to save Grok tokens. Paste `CLAUDE_P0.md`.
+  Sibling folder `commons/` (vanilla HTML/canvas), not `liquidgov_http`,
+  not React. P0 only. Grok reviews after the commit. Civic frozen.
 - **2026-09-16 — first BUILD = P0 only.** Brandon chose P0, not P0+P1.
   Empty walkable 72×80, dual crop, d-pad, A/D = left/right, throwaway name,
   spawn Square, region labels, no set pieces, no doors, no passerby.

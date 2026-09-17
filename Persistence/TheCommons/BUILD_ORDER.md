@@ -133,3 +133,7 @@ Lab Yard is already in P2. Don’t reopen P1 regions.
 **P0 only — locked 2026-09-16.** Empty walkable 72×80, dual crop, d-pad,
 A/D = left/right. No set pieces, no doors, no passerby. P1 (spine +
 notice-post + Hall + passerby) is the next BUILD, not this one.
+
+**Implementer:** Claude (`CLAUDE_P0.md`, folder `commons/`). Grok reviews.
+The Grok preview app is not the P0 host.
+

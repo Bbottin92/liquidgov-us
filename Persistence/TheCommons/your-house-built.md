@@ -169,3 +169,43 @@ placed via curl showed up correctly in `otherOccupants`), and
 `netHandleJoinResponse` builds the house key from `username` while
 `isBound` correctly flips back to `false` on a subsequent guest-shaped
 response.
+
+## Deployed 2026-09-17
+
+Brandon: "deploy" (client + daemon only, no civic, no nginx -- exactly
+as scoped). Drift-checked `main.cpp`/`http.cpp` against the droplet
+first: both diffs matched this round's changes exactly, nothing
+unexpected. Synced daemon source and client source, rebuilt the daemon
+(`cmake --build`, no reconfigure needed -- no new source files this
+round), restarted `commons-daemon` only. `liquidgov.service` was never
+touched or restarted (confirmed via its uptime before and after).
+
+Verified against production:
+
+- Reproduced the exact collision scenario for real: a guest claimed
+  `housekeytest2` in the Square first; the real bound account joined
+  the same region afterward and came back `"display_name":
+  "housekeytest2 (2)"`, `"username":"housekeytest2"`, `"bound":true`.
+  Rekeying into `"instance:house:" + username` landed in the clean
+  `instance:house:housekeytest2`; the wrong, space-suffixed key
+  (`...housekeytest2%20(2)`) was confirmed empty.
+- Real browser, real logged-in account, real cookie: walked to the new
+  door with a decoy throwaway name typed into the Square's own
+  name-entry modal, entered the house for real. `GET` request in the
+  network log was the real client's own `encodeURIComponent`'d
+  fetch -- `instance%3Ahouse%3Ahousekeytest2` -- returning `200`,
+  proving the encode (client) / decode (`http.cpp`) round trip works
+  through the whole real stack: browser -> nginx -> daemon. Nameplate
+  read the real account name, not the decoy. Wall-slot accepted a
+  placed item in the house too.
+- Both services' logs clean post-restart; `liquidgov` uptime
+  unaffected, confirming it was genuinely never restarted this round.
+- Both throwaway accounts (`housekeytest2`; `housekeytest` never
+  actually got created -- its first signup attempt failed validation
+  for unrelated reasons and was abandoned in favor of the `2` suffix)
+  cleaned up the same way as every prior round: the account's own
+  `/settings/delete`, confirmed dead via a failed login attempt
+  afterward. No filesystem or LGP1 touch.
+
+Live. The house door, the bound/guest branch, and the corrected
+instance key are all now exactly what's live at `liquidgov.us/commons/`.

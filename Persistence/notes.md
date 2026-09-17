@@ -1249,6 +1249,23 @@ Not bug classes. Not “what is live on the droplet.”
   verified through the real client that outdoor polling still resolves
   real occupant data through the new encode/decode round trip. See
   `your-house-built.md`'s own "Must-fix" section. Holding on deploy.
+- **2026-09-17 — your house deployed, live.** Brandon said "deploy"
+  (client + daemon only). Drift-checked `main.cpp`/`http.cpp` against
+  the droplet first -- clean, only this round's own changes. Synced,
+  rebuilt, restarted `commons-daemon` only; `liquidgov.service` never
+  touched (uptime confirmed unchanged). Verified in production: the
+  exact disambiguation collision reproduced for real (guest claims a
+  name first, the real bound account joins after) -- `username` stays
+  clean, the house key is correct, the wrong suffixed key is empty. A
+  real browser with a real logged-in account walked through the new
+  door with a decoy name typed into the guest modal; the network log
+  showed the client's own `encodeURIComponent`'d request
+  (`instance%3Ahouse%3A...`) returning `200`, proving the encode/decode
+  round trip works through the whole real stack, not just locally. The
+  self-nameplate showed the real account name, the wall-slot worked
+  inside the house too. Both services' logs clean. Cleaned up the one
+  throwaway test account via its own `/settings/delete`. See
+  `your-house-built.md`'s own "Deployed" section.
 
 ## Split: civic site vs game
 

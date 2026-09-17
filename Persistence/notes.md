@@ -27,6 +27,11 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Game — atlas locked, no code until BUILD
 
+- **2026-09-16 — sibling mechanics.** `Persistence/TheCommons/sibling.md`:
+  game daemon + nginx static `/commons/` next to `liquidgov_http` on the
+  512 MB box. Presence RAM, SQLite WAL not rsync'd, friends via localhost
+  cookie, civic crash-isolated. Path vs subdomain waits on a real
+  Set-Cookie read. Not a BUILD. P3 still closed.
 - **2026-09-16 — P3 closed.** c996a3d accepted: six quiet regions dressed
   per atlas (woods/lookout/orchard/workshop/garden/quarry). Shutter and
   quarry sign toast only. No new interiors. Civic untouched. Outdoor V1

@@ -1,40 +1,50 @@
 # nginx — reverse proxy for the sibling
 
 Not a BUILD. Do not edit production nginx until Brandon says sibling.
-Do not invent the civic cookie name — read `Set-Cookie` in
-`http_server.cpp` when glue starts (`glue.md`).
 
-Goal: `https://liquidgov.us/commons/` is same-origin with civic so the
-existing session cookie is sent. Game port stays on loopback.
+Cookie is locked: **`lg_session`**, HttpOnly, Path=/, SameSite=Lax,
+host-only, Secure when civic sees `X-Forwarded-Proto: https` (`cookie.md`,
+`glue.md`). Path `/commons/` is the deploy shape. Subdomain needs a civic
+`Domain=` it does not have.
+
+Goal: `https://liquidgov.us/commons/` is same-origin so the browser
+**sends** `lg_session`. Game port stays on loopback.
 
 ## Split of work
 
 | URL | Who |
 |---|---|
-| `/` `/login` `/mail` `/proposals` `/u/…` | civic (`liquidgov_http`) — **unchanged** |
-| `/commons/` `/commons/index.html` | nginx static (`alias`, not the daemon) |
-| `/commons/presence` (name TBD) | `proxy_pass` `http://127.0.0.1:<gameport>/` |
-| Hall door | still a full URL to `/proposals`; not proxied through the game |
+| `/` `/login` `/mail` `/proposals` `/u/…` `/canvas-frame/…` | civic — **unchanged** |
+| `/commons/` `/commons/index.html` | nginx static (`alias`) |
+| `/commons/presence` | `proxy_pass` `http://127.0.0.1:<gameport>/` |
+| Hall door | full URL to `/proposals`; not through the game |
 
 Bind the daemon to **127.0.0.1 only**. If nginx dies, the game port is
 not on the public NIC.
+
+Do **not** `proxy_pass` `/canvas-frame/` to the daemon. The wall-slot
+(sibling-era) hits civic on the same host. `/latest` is a civic path
+(`frame-index.md`).
 
 ## Static `location` (trailing-slash trap)
 
 ```
 location /commons/ {
     alias /opt/commons/;
-    try_files $uri $uri/ /commons/index.html;
+    index index.html;
+    add_header Cache-Control "no-cache" always;
 }
 ```
 
 `alias` **must** have a trailing slash to match `location`’s slash or
-nginx concatenates wrong (`/opt/commonsindex.html`). Prefer `alias`
-over `root` so files live beside `/opt/liquidgov`, not inside the LGP1
-store.
+nginx concatenates `/opt/commonsindex.html`.
 
-`index.html`: `Cache-Control: no-cache`. Hashed tilesets later can be
-immutable. Do not `proxy_pass` HTML through the daemon.
+**Do not `try_files` under `alias`.** nginx `try_files` uses `$uri` as a
+filesystem path and fights `alias` (wrong file or a redirect loop).
+One `index.html` does not need an SPA fallback.
+
+Prefer `alias` over `root` so files live beside `/opt/liquidgov`, not
+inside the LGP1 store. Do not `proxy_pass` HTML through the daemon.
 
 ## Presence `location` (more specific, so it wins)
 
@@ -53,45 +63,46 @@ location /commons/presence {
 }
 ```
 
-Map `$connection_upgrade` the usual way (`upgrade` if `$http_upgrade`).
-2 Hz presence is either WebSocket or SSE; both need buffering off and a
-long read timeout or nginx kills idle walkers.
+Map `$connection_upgrade` the usual way. Buffering off, long read
+timeout, or nginx kills idle walkers.
 
-**Cookie:** forward `$http_cookie` as-is. The daemon may then call civic
-on localhost with that same header. Do not strip `HttpOnly` cookies in
-JS and re-send them as query params.
+**Cookie:** `$http_cookie` as-is. Daemon forwards that header to civic
+localhost — it does not parse `lg_session` and open LGP1
+(`GROK_GLUE_REVIEW.md`).
 
 `location /commons/presence` is longer than `/commons/`, so it wins
-without `^~` tricks. Do not `proxy_pass` the static tree “just in case.”
+without `^~`.
+
+## Civic `location /` must keep proto
+
+Existing civic proxy already (must still) send `X-Forwarded-Proto
+$scheme`. Drop that when adding `/commons/` and `g_https` goes false →
+login cookies lose `Secure`. Add two locations; do not rewrite civic’s.
 
 ## What not to touch
 
-- Civic `server { }` TLS, `root`, existing `location /`.
-- `client_max_body_size` until photo POST exists (then raise **only**
-  the photo location, not globally).
-- Adding CORS headers on `/commons/` — same origin, none needed.
-- Exposing `:8091` in a `listen` / ufw hole.
-- `proxy_pass` to civic from the game location (friends query is
-  daemon → `127.0.0.1:<civic>` , not the browser).
+- Civic TLS, `root`, `location /`.
+- `client_max_body_size` globally (photo later: one location only).
+- CORS on `/commons/` — same origin, none needed.
+- Exposing `:8091` in `listen` / ufw.
+- Browser talking to civic via the game proxy (friends is daemon →
+  `127.0.0.1:<civic>`).
 
-## Civic still in front
+If `/commons` falls through to civic, civic 404s. That is a missing
+`location`, not a reason to teach `http_server.cpp` the game.
 
-Today nginx already reverse-proxies to `liquidgov_http`. Add two
-`location` blocks; do not rebuild that server. If a `/commons` request
-falls through to civic, civic will 404 — that’s a missing `location`,
-not a reason to teach `http_server.cpp` the game.
+## Subdomain (not this deploy)
 
-## Subdomain (not assumed)
-
-`commons.liquidgov.us` needs a second `server { }` and a cookie
-`Domain=` change on civic login. More blast radius. Path `/commons/`
-avoids it. Do not cut a cert for the subdomain until that cookie read
-says we must.
+Needs a second `server { }` **and** civic `Domain=.liquidgov.us`.
+Path `/commons/` avoids both. Do not cut a cert for it.
 
 ## Reviewer fail
 
 - Game daemon `listen 0.0.0.0`
 - `alias /opt/commons` without the trailing slash
+- `try_files` under `alias`
 - Buffering left on a presence stream
-- Putting `commons.sqlite` under the static alias (downloadable DB)
+- `commons.sqlite` under the static alias (downloadable DB)
+- Proxying `/canvas-frame/` through the game
 - Rewriting civic locations to “make room”
+- Stripping Cookie and putting `lg_session` on the query string

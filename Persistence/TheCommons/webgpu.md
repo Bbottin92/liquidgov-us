@@ -45,3 +45,4 @@ walk cycle) and **glue**, not shaders.
 
 Mapping / readback crib: `webgpu-mapping.md`.
 Textures / UV crib: `webgpu-textures.md` (not mappable).
+Sprite quads / instancing crib: `webgpu-sprites.md` (two `drawImage`s stay).

@@ -39,6 +39,7 @@ add_executable(commons_daemon
     src/main.cpp
     src/db.cpp
     src/presence.cpp
+    src/guest.cpp
     src/http.cpp
 )
 target_link_libraries(commons_daemon PRIVATE sqlite3_vendored)

@@ -23,6 +23,7 @@
 #include <vector>
 
 #include "db.hpp"
+#include "guest.hpp"
 #include "http.hpp"
 #include "json.hpp"
 #include "presence.hpp"
@@ -153,6 +154,7 @@ int main(int argc, char** argv) {
     std::cerr << "commons-daemon: DB ready at " << db_path << "\n";
 
     commons::PresenceStore presence;
+    commons::GuestRegistry guests;
     commons::HttpServer server(bind_addr, port);
 
     server.route("GET", "/health", [](const commons::HttpRequest&) {
@@ -179,6 +181,20 @@ int main(int argc, char** argv) {
         return r;
     });
 
+    // Must-fix (should-fix #3): mints a fresh, server-issued (id, secret)
+    // pair. `id` is safe to broadcast (it's what every /presence/<region>
+    // GET returns for rendering); `secret` is returned only here and must
+    // accompany every join/move/rekey/leave call below. Closes the gap
+    // where a client could otherwise pick any id -- including one it
+    // observed belonging to someone else -- and hijack that occupant.
+    server.route("POST", "/presence/guest", [&](const commons::HttpRequest&) {
+        commons::HttpResponse r;
+        auto cred = guests.mint();
+        r.body = "{\"id\":" + commons::json::str(cred.id) +
+                 ",\"secret\":" + commons::json::str(cred.secret) + "}";
+        return r;
+    });
+
     // GET /presence/<region> -- region is whatever's after the prefix,
     // e.g. "1,1" for outdoor col=1,row=1, or "instance:3" for an interior.
     server.route("GET", "/presence/", [&](const commons::HttpRequest& req) {
@@ -192,12 +208,18 @@ int main(int argc, char** argv) {
         using namespace commons::reqjson;
         commons::HttpResponse r;
         auto id = field_str(req.body, "id");
+        auto secret = field_str(req.body, "secret");
         auto region = field_str(req.body, "region");
         auto x = field_num(req.body, "x");
         auto y = field_num(req.body, "y");
-        if (!id || !region || !x || !y) {
+        if (!id || !secret || !region || !x || !y) {
             r.status = 400; r.status_text = "Bad Request";
             r.body = "{\"ok\":false,\"reason\":\"missing_field\"}";
+            return r;
+        }
+        if (!guests.verify(*id, *secret)) {
+            r.status = 403; r.status_text = "Forbidden";
+            r.body = "{\"ok\":false,\"reason\":\"bad_credential\"}";
             return r;
         }
         commons::Occupant occ;
@@ -217,12 +239,18 @@ int main(int argc, char** argv) {
         using namespace commons::reqjson;
         commons::HttpResponse r;
         auto id = field_str(req.body, "id");
+        auto secret = field_str(req.body, "secret");
         auto region = field_str(req.body, "region");
         auto x = field_num(req.body, "x");
         auto y = field_num(req.body, "y");
-        if (!id || !region || !x || !y) {
+        if (!id || !secret || !region || !x || !y) {
             r.status = 400; r.status_text = "Bad Request";
             r.body = "{\"ok\":false,\"reason\":\"missing_field\"}";
+            return r;
+        }
+        if (!guests.verify(*id, *secret)) {
+            r.status = 403; r.status_text = "Forbidden";
+            r.body = "{\"ok\":false,\"reason\":\"bad_credential\"}";
             return r;
         }
         int facing = static_cast<int>(field_num(req.body, "facing").value_or(0));
@@ -235,13 +263,19 @@ int main(int argc, char** argv) {
         using namespace commons::reqjson;
         commons::HttpResponse r;
         auto id = field_str(req.body, "id");
+        auto secret = field_str(req.body, "secret");
         auto from_region = field_str(req.body, "from_region");
         auto to_region = field_str(req.body, "to_region");
         auto x = field_num(req.body, "x");
         auto y = field_num(req.body, "y");
-        if (!id || !from_region || !to_region || !x || !y) {
+        if (!id || !secret || !from_region || !to_region || !x || !y) {
             r.status = 400; r.status_text = "Bad Request";
             r.body = "{\"ok\":false,\"reason\":\"missing_field\"}";
+            return r;
+        }
+        if (!guests.verify(*id, *secret)) {
+            r.status = 403; r.status_text = "Forbidden";
+            r.body = "{\"ok\":false,\"reason\":\"bad_credential\"}";
             return r;
         }
         commons::Occupant occ;
@@ -261,10 +295,16 @@ int main(int argc, char** argv) {
         using namespace commons::reqjson;
         commons::HttpResponse r;
         auto id = field_str(req.body, "id");
+        auto secret = field_str(req.body, "secret");
         auto region = field_str(req.body, "region");
-        if (!id || !region) {
+        if (!id || !secret || !region) {
             r.status = 400; r.status_text = "Bad Request";
             r.body = "{\"ok\":false,\"reason\":\"missing_field\"}";
+            return r;
+        }
+        if (!guests.verify(*id, *secret)) {
+            r.status = 403; r.status_text = "Forbidden";
+            r.body = "{\"ok\":false,\"reason\":\"bad_credential\"}";
             return r;
         }
         presence.leave(*region, *id);

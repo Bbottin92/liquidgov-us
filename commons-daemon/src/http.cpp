@@ -60,6 +60,18 @@ long content_length_of(const std::string& headers) {
     try { return std::stol(v); } catch (...) { return 0; }
 }
 
+// This daemon has exactly one intended client (commons/index.html), served
+// from whatever origin the game's dev server happens to use -- a browser
+// fetch() to 127.0.0.1:8765 is cross-origin from any of those, and JSON
+// POSTs trigger a CORS preflight. Loopback-only, no cookies/credentials
+// involved (guest auth travels in the JSON body, not a cookie), so a
+// wildcard origin is fine here; nginx gets to decide its own CORS story
+// once this is ever public (out of scope, see sibling.md).
+const char* kCorsHeaders =
+    "Access-Control-Allow-Origin: *\r\n"
+    "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n"
+    "Access-Control-Allow-Headers: Content-Type\r\n";
+
 } // namespace
 
 HttpServer::HttpServer(std::string bind_addr, int port) : bind_addr_(std::move(bind_addr)), port_(port) {}
@@ -73,6 +85,15 @@ void HttpServer::route(const std::string& method, const std::string& path, Handl
 }
 
 HttpResponse HttpServer::dispatch(const HttpRequest& req) {
+    // CORS preflight: the browser sends this before the real POST/GET
+    // whenever the request is cross-origin with a JSON content-type.
+    // Answered generically for any path -- this daemon has one client
+    // and no per-route CORS policy to differentiate.
+    if (req.method == "OPTIONS") {
+        HttpResponse resp;
+        resp.status = 204; resp.status_text = "No Content";
+        return resp;
+    }
     for (const auto& r : routes_) {
         if (r.method != req.method) continue;
         bool matches = r.prefix ? (req.path.rfind(r.path, 0) == 0) : (req.path == r.path);
@@ -120,6 +141,7 @@ void HttpServer::serve_one(int client_fd) {
         out << "HTTP/1.1 413 Payload Too Large\r\n"
             << "Content-Type: application/json\r\n"
             << "Content-Length: " << kMsg.size() << "\r\n"
+            << kCorsHeaders
             << "Connection: close\r\n\r\n"
             << kMsg;
         std::string out_str = out.str();
@@ -163,6 +185,7 @@ void HttpServer::serve_one(int client_fd) {
     out << "HTTP/1.1 " << resp.status << " " << resp.status_text << "\r\n"
         << "Content-Type: " << resp.content_type << "\r\n"
         << "Content-Length: " << resp.body.size() << "\r\n"
+        << kCorsHeaders
         << "Connection: close\r\n\r\n"
         << resp.body;
     std::string out_str = out.str();

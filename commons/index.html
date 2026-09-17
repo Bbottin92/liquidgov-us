@@ -833,12 +833,132 @@ function updatePasserby(dt) {
   return moved;
 }
 
+// ---- Presence networking (commons-daemon, loopback) --------------------
+// Wires the client to the real daemon for the first time (previously this
+// was a named seam only -- see the comment above updatePasserby()).
+// Server-issued guest ids (GROK_DAEMON_REVIEW.md should-fix #3): the
+// daemon mints (id, secret) via POST /presence/guest and every
+// join/move/rekey/leave call must present both. `id` is safe to show (the
+// GET feed broadcasts it so other clients can render this occupant);
+// `secret` never leaves this tab except in those authenticated calls.
+//
+// V1 scope, deliberately: outdoor only. Interiors use "instance:<id>"
+// region keys that need a map_instances row, and presence.md is explicit
+// that V1 doesn't wire SQLite for guests at all -- so entering a house or
+// the lab calls netLeave() rather than pretending to track a region that
+// doesn't exist yet. Only the player's OWN current region is polled
+// (not every region whose AABB intersects the camera, which is what
+// presence.md's tick-rate section actually describes) -- enough to prove
+// real multiplayer works and to drive the passerby's hide rule correctly,
+// but occupants in a neighboring region just past the camera edge won't
+// appear yet. That's a known, explicit V1 simplification, not a bug.
+var DAEMON = "http://127.0.0.1:8765";
+var NET_INTERVAL_MS = 500; // presence.md: per-region ~2Hz
+var netId = null, netSecret = null, netReady = false;
+var netRegion = null;        // the REGIONS entry currently joined server-side, or null
+var otherOccupants = [];     // last poll for netRegion, self already filtered out
+var netOccupantsDirty = false;
+var netPollInFlight = false;
+var lastNetSendAt = -Infinity;
+
+function regionKeyFor(region) { return region.col + "," + region.row; }
+
+function worldToRegionLocal(region, worldPx, worldPy) {
+  var aabb = regionAABB(region);
+  return { x: (worldPx / TILE) - aabb.x0, y: (worldPy / TILE) - aabb.y0 };
+}
+
+function regionLocalToWorld(region, lx, ly) {
+  var aabb = regionAABB(region);
+  return { x: (aabb.x0 + lx) * TILE, y: (aabb.y0 + ly) * TILE };
+}
+
+function netBody(extra) {
+  var body = { id: netId, secret: netSecret };
+  for (var k in extra) body[k] = extra[k];
+  return JSON.stringify(body);
+}
+
+function netMint() {
+  return fetch(DAEMON + "/presence/guest", { method: "POST" })
+    .then(function (r) { return r.json(); })
+    .then(function (j) { netId = j.id; netSecret = j.secret; netReady = true; })
+    .catch(function (e) {
+      console.error("Commons: presence/guest failed -- staying local-only this session", e);
+    });
+}
+
+function netJoinOutdoor(region) {
+  if (!netReady) return;
+  var lp = worldToRegionLocal(region, player.x, player.y);
+  netRegion = region; // optimistic -- matches the existing join_locked/rekey de-dupe on the daemon side either way
+  fetch(DAEMON + "/presence/join", {
+    method: "POST",
+    body: netBody({ region: regionKeyFor(region), x: lp.x, y: lp.y, facing: player.dir, display_name: playerName })
+  }).catch(function () {});
+}
+
+function netRekeyOutdoor(fromRegion, toRegion) {
+  if (!netReady) return;
+  var lp = worldToRegionLocal(toRegion, player.x, player.y);
+  netRegion = toRegion;
+  fetch(DAEMON + "/presence/rekey", {
+    method: "POST",
+    body: netBody({
+      from_region: regionKeyFor(fromRegion), to_region: regionKeyFor(toRegion),
+      x: lp.x, y: lp.y, facing: player.dir, display_name: playerName
+    })
+  }).catch(function () {});
+}
+
+function netMoveOutdoor() {
+  if (!netReady || !netRegion) return;
+  var lp = worldToRegionLocal(netRegion, player.x, player.y);
+  fetch(DAEMON + "/presence/move", {
+    method: "POST",
+    body: netBody({ region: regionKeyFor(netRegion), x: lp.x, y: lp.y, facing: player.dir })
+  }).catch(function () {});
+}
+
+function netPoll() {
+  if (!netReady || !netRegion || netPollInFlight) return;
+  netPollInFlight = true;
+  fetch(DAEMON + "/presence/" + regionKeyFor(netRegion))
+    .then(function (r) { return r.json(); })
+    .then(function (list) {
+      otherOccupants = list.filter(function (o) { return o.id !== netId; });
+      netOccupantsDirty = true;
+    })
+    .catch(function () {})
+    .finally(function () { netPollInFlight = false; });
+}
+
+// Tab close, reload, or navigating away -- sendBeacon fires reliably even
+// as the page is unloading, which a normal fetch() promise is not
+// guaranteed to complete. Best-effort: if the daemon never sees this, the
+// idle reap in presence.cpp cleans it up within 30s anyway.
+function netLeave() {
+  if (!netReady || !netRegion) return;
+  var body = netBody({ region: regionKeyFor(netRegion) });
+  // sendBeacon looked like the standard choice here, but its JSON Blob
+  // body makes this a cross-origin *preflighted* request, and testing
+  // against this daemon live showed the actual POST failing
+  // (net::ERR_FAILED) after a successful OPTIONS -- while sendBeacon()
+  // still returns true, since that return only means "queued," not
+  // "delivered." A silent, undetectable failure on the one call meant to
+  // guarantee cleanup is worse than not trying sendBeacon at all. Plain
+  // fetch with keepalive is already proven working against this daemon
+  // (every join/move/rekey call uses it) and survives page unload the
+  // same way beacon is meant to.
+  fetch(DAEMON + "/presence/leave", { method: "POST", body: body, keepalive: true }).catch(function () {});
+  netRegion = null;
+  otherOccupants = [];
+}
+window.addEventListener("pagehide", netLeave);
+
 function otherRealOccupantsInRegion(region) {
-  // No real multiplayer transport in this preview (BUILD_ORDER.md / v1.md)
-  // -- the only "real occupant" that could ever exist is the local player,
-  // and they are not "other" relative to their own passerby. Always 0
-  // until presence.md's real feed lands.
-  return 0;
+  if (!region || !netRegion || region !== netRegion) return 0;
+  return otherOccupants.length;
 }
 
 // ---- Input: keyboard --------------------------------------------------
@@ -934,6 +1054,13 @@ function enterInterior(key, space, entry) {
   player.y = entry.y * TILE + 8;
   mode = key;
   forceRedraw = true;
+  // Interiors aren't networked in V1 (see the presence networking comment
+  // above otherRealOccupantsInRegion) -- leave outdoor presence rather
+  // than leaving a frozen ghost standing at the door. exitToOutdoor()
+  // rejoins automatically: frame()'s network tick sees netRegion === null
+  // on the first outdoor frame back and joins fresh from wherever the
+  // player actually re-emerges.
+  netLeave();
 }
 
 function exitToOutdoor(spawnTile) {
@@ -1013,6 +1140,27 @@ function drawSpace(camX, camY) {
     ctx.fillText("passerby", pbsx, pbDestY - 4);
   }
 
+  if (mode === "outdoor" && netRegion) {
+    for (var oi = 0; oi < otherOccupants.length; oi++) {
+      var o = otherOccupants[oi];
+      var owp = regionLocalToWorld(netRegion, o.x, o.y);
+      var osx = owp.x - camX, osy = owp.y - camY;
+      var oDir = (typeof o.facing === "number" && o.facing >= 0 && o.facing <= 3) ? o.facing : DIR_DOWN;
+      // No animFrame in the occupant feed (2Hz snapshots, not a walk
+      // cycle) -- a static standing frame per poll is enough to prove
+      // real multiplayer works; smoothing/interpolating between polls is
+      // a later nice-to-have, not attempted here.
+      var oDestY = spriteDestY(osy, 6);
+      ctx.drawImage(spriteAtlas, spriteSrcX(oDir, 0), 0, SPRITE_W, SPRITE_H,
+        spriteDestX(osx), oDestY, SPRITE_W, SPRITE_H);
+      ctx.fillStyle = INK;
+      ctx.font = "8px monospace";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(o.display_name || o.id, osx, oDestY - 4);
+    }
+  }
+
   var sx = player.x - camX, sy = player.y - camY;
   ctx.drawImage(spriteAtlas, spriteSrcX(player.dir, player.animFrame), 0, SPRITE_W, SPRITE_H,
     spriteDestX(sx), spriteDestY(sy, player.half), SPRITE_W, SPRITE_H);
@@ -1065,6 +1213,24 @@ function frame(t) {
     if (LAB_DOOR_TILE && ptx === LAB_DOOR_TILE.x && pty === LAB_DOOR_TILE.y) {
       enterInterior("lab", labSpace, LAB_ENTRY);
     }
+
+    // Presence networking tick. Join happens the first outdoor frame after
+    // netMint() resolves (netRegion still null); crossing an outdoor AABB
+    // rekeys instead of a raw join/leave pair (presence.md: "do not leave
+    // a ghost in the old list"); otherwise move+poll are throttled to
+    // NET_INTERVAL_MS, not every frame -- this is a ~60Hz render loop, the
+    // daemon's own tick-rate target is ~2Hz per region.
+    if (netReady) {
+      var curRegion = regionAt(ptx, pty);
+      if (curRegion && curRegion !== netRegion) {
+        if (netRegion === null) netJoinOutdoor(curRegion);
+        else netRekeyOutdoor(netRegion, curRegion);
+      } else if (curRegion && t - lastNetSendAt > NET_INTERVAL_MS) {
+        netMoveOutdoor();
+        netPoll();
+        lastNetSendAt = t;
+      }
+    }
   } else if (mode === "lab") {
     var ltx = Math.floor(player.x / TILE), lty = Math.floor(player.y / TILE);
     if (ltx === LAB_DOOR.x && lty === LAB_DOOR.y) {
@@ -1104,6 +1270,11 @@ function frame(t) {
     changed = changed ||
       (passerby.visible && (pbMoved || pbFacingChanged || passerby.x !== prevPbX || passerby.y !== prevPbY)) ||
       (passerby.visible !== prevPbVisible);
+    // A fresh /presence/<region> poll can update otherOccupants between
+    // frames with the local player and passerby both otherwise idle --
+    // without this, a remote player's new position wouldn't redraw until
+    // something local also happened to change.
+    changed = changed || netOccupantsDirty;
   }
 
   if (!changed) return;
@@ -1117,6 +1288,7 @@ function frame(t) {
 
   forceRedraw = false;
   cropChangedThisFrame = false;
+  netOccupantsDirty = false;
   prevPlayerX = player.x; prevPlayerY = player.y;
   prevPlayerDir = player.dir; prevPlayerAnim = player.animFrame;
   prevPbVisible = passerby.visible; prevPbX = passerby.x; prevPbY = passerby.y;
@@ -1183,6 +1355,10 @@ function enter() {
   input.blur(); // else document.activeElement is still the input and the
                 // typingInField() guard would keep eating movement keys
   start();
+  // Fire-and-forget: if the daemon is unreachable, netReady just stays
+  // false and the game runs exactly as it did before this round (local
+  // simulation only, no presence networking) -- see netMint()'s catch.
+  netMint();
 }
 go.addEventListener("click", enter);
 input.addEventListener("keydown", function (e) {

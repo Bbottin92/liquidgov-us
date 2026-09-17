@@ -18,6 +18,73 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-16 — commons real presence networking + server-issued guest ids.**
+  Brandon asked for a client-side round; found first that `commons/index.html`
+  had zero daemon wiring at all (no `fetch` calls anywhere -- presence was a
+  pure local simulation, `otherRealOccupantsInRegion` was a hardcoded 0).
+  Rescoped with Brandon to full presence wiring, id-first, rather than
+  building an inert guest-id endpoint nothing would call. Landed both sides:
+  - **Daemon**: new `GuestRegistry` (`src/guest.hpp/.cpp`) mints a fresh,
+    unguessable `(id, secret)` pair via `POST /presence/guest` --
+    `id` is the public occupant label already broadcast by every
+    `/presence/<region>` GET; `secret` is a private bearer credential
+    returned only once and never echoed back. `join/move/rekey/leave` now
+    all require a matching `secret`, constant-time compared, closing a real
+    (not just hypothetical) hijack: any client in a region can already see
+    every occupant's `id` from the GET feed, so before this a client could
+    replay someone else's `id` in a `join` call and steal/rename their row
+    outright -- confirmed live (wrong secret -> 403, occupant row
+    untouched; unknown id -> 403; missing secret -> 400 same as any other
+    missing field). Unclaimed credentials expire after 30s
+    (`GuestRegistry`'s own idle window, same shape as `PresenceStore`'s).
+    Also added CORS (`Access-Control-Allow-Origin: *` + an `OPTIONS`
+    preflight handler in `http.cpp`) -- needed the moment any browser page
+    calls this loopback daemon cross-origin, which nothing did before now.
+  - **Client**: `commons/index.html` now really talks to the daemon.
+    `enter()` mints a credential; the outdoor frame loop joins on first
+    tick, rekeys on crossing an outdoor AABB (no raw leave+join, matching
+    presence.md's "no ghost in the old list"), and throttles move+poll to
+    ~2Hz (presence.md's tick rate) rather than every render frame.
+    `otherRealOccupantsInRegion` now reflects a real poll instead of a
+    hardcoded 0, so the passerby's hide-rule reacts to actual other
+    players for the first time. Entering a house/lab calls a clean
+    `netLeave()` (interiors use `instance:<id>` keys presence.md says V1
+    doesn't wire for guests); exiting rejoins automatically via the same
+    join-on-null-region path used at login, no separate code path needed.
+    `x,y` sent as fractional region-local tile coordinates (not integers,
+    not world-absolute) -- satisfies presence.md's literal "tile
+    coordinates local to that region" while keeping sub-tile smoothness.
+    **Known V1 simplification, stated not hidden**: only the player's own
+    current region is polled/rendered, not every region whose AABB
+    intersects the camera (presence.md's actual tick-rate spec) -- proves
+    real multiplayer works, but a neighbor just past the camera edge won't
+    show yet. Remote occupants render at a static standing frame (no
+    animFrame in the occupant feed); smoothing between polls is a later
+    nice-to-have.
+  - **Bug found and fixed during live testing, not by inspection**:
+    `netLeave()` first used `navigator.sendBeacon` with a JSON `Blob` body.
+    That's cross-origin-preflighted, and the actual POST failed
+    (`net::ERR_FAILED`) against this daemon even though the `OPTIONS`
+    preflight itself succeeded -- and `sendBeacon()` still returned `true`
+    regardless (that return value means "queued," not "delivered"), so the
+    `if (!sent) fetch(...)` fallback never fired and a house/lab entry
+    silently never told the daemon to leave. Switched to plain
+    `fetch(..., {keepalive:true})`, already proven working for every other
+    call; interior-entry leave now verified reaching the daemon (200 OK).
+    A genuinely undelivered leave (e.g. an abruptly closed tab, tested via
+    closing the tab outright) still isn't guaranteed -- no browser
+    guarantees that -- but `PresenceStore`'s existing 30s idle reap is the
+    correct backstop and was reconfirmed cleaning up that exact case live.
+  Verified end-to-end in two real browser tabs against the live daemon
+  (not just curl): two guests join, see each other by name (not the
+  passerby), region-crossing rekeys with no ghost left in the old region,
+  interior entry/exit leave-and-rejoin correctly, an unreachable daemon
+  degrades to the pre-existing local-only simulation with no thrown
+  errors, and the full prior regression set (catalogs, 413 cap, missing-
+  field 400, restart boundary) still holds. Added `commons-client` to the
+  shared (global, not project-local) `.claude/launch.json` alongside the
+  existing `liquidgov-http` entry -- a static `python3 -m http.server` for
+  `commons/`, port 8090, `liquidgov-http`'s own entry untouched.
 - **2026-09-16 — commons-daemon: should-fix round (reap, move timestamp,
   schema dedup, sqlite via FetchContent).** Brandon scoped this round to
   "should-fix daemon items" only (not client, not sibling/deploy) via

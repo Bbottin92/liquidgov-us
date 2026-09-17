@@ -18,6 +18,30 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-17 — commons: cookie bind, design-only (`cookie-bind.md`), no
+  code.** "Should-fix cookie bind next" was flagged before doing anything
+  else this round: unlike every prior should-fix, this one is
+  structurally blocked by *two* of the project's hardest standing rules
+  at once, not just deferred by choice. `lg_session` is `HttpOnly` +
+  host-only with no `Domain=` (`cookie.md`) so the browser will never
+  send it to the daemon's current, different origin without the
+  same-origin nginx round; and resolving the token to an account needs
+  `account_from_req()`'s chain, which lives entirely inside
+  `http_server.cpp` and isn't callable from outside it without a civic
+  change (`GROK_GLUE_REVIEW.md` already parks exactly this as "not this
+  week"). Asked which slice was actually wanted rather than guess; got
+  design/document only. Wrote `Persistence/TheCommons/cookie-bind.md`:
+  the presence-specific contract that `glue.md`/`cookie.md` don't cover
+  -- a bound occupant's id is `"u:" + lg_username` (already the exact
+  scheme `presence.hpp`'s own `Occupant::id` comment named, written
+  before this doc existed), authenticated per-request by a *resolved
+  cookie*, never a client-supplied `id`, and never mixed with this
+  session's guest `(id, secret)` scheme for the same request; promotion
+  is meant to relabel an active guest's row in place per `presence.md`,
+  but no `PresenceStore` primitive does that today -- flagged as an open
+  design question (a new `rebind()` vs. an unobservably-fast leave+join)
+  rather than picked. No code changed. Civic untouched, no deploy, no
+  nginx.
 - **2026-09-17 — commons-daemon: CORS echoes a specific Origin, no more
   wildcard (should-fix, closed).** `cors-preflight.md`'s "What `*`
   forbids later": a credentialed request (`credentials: include`, a

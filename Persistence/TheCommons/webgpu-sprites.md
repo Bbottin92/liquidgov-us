@@ -41,7 +41,7 @@ buffer when `dir`/`animFrame` changes.
 | Phone | Canvas 2D | WebGPU still uneven on iOS Safari |
 
 Two sprites is not a batching problem. Instancing pays off at hundreds
-of quads, not passerby + player.
+of quads, not passerby + player. Technique crib: `webgpu-instancing.md`.
 
 ## Do not GPU-blit the world either
 

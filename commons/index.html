@@ -83,10 +83,10 @@
 <div id="stage"><canvas id="game"></canvas></div>
 
 <div id="dpad">
-  <button id="dUp" type="button" aria-label="Up">&#9650;</button>
-  <button id="dLeft" type="button" aria-label="Left">&#9664;</button>
-  <button id="dRight" type="button" aria-label="Right">&#9654;</button>
-  <button id="dDown" type="button" aria-label="Down">&#9660;</button>
+  <button id="dUp" type="button" tabindex="-1" aria-label="Up">&#9650;</button>
+  <button id="dLeft" type="button" tabindex="-1" aria-label="Left">&#9664;</button>
+  <button id="dRight" type="button" tabindex="-1" aria-label="Right">&#9654;</button>
+  <button id="dDown" type="button" tabindex="-1" aria-label="Down">&#9660;</button>
 </div>
 
 <div id="nameOverlay">
@@ -208,8 +208,11 @@ function findRegion(name) {
 // blit the crop -- never loop 72x80 per frame). ---------------------------
 var baked = document.createElement("canvas");
 baked.width = WORLD_PW; baked.height = WORLD_PH;
+// alpha:false on the bake too -- it's an opaque world, no reason to pay for
+// a compositing channel nothing ever uses.
+var bctx = baked.getContext("2d", { alpha: false });
+bctx.imageSmoothingEnabled = false;
 (function paintBake() {
-  var bctx = baked.getContext("2d");
   for (var y = 0; y < WORLD_H; y++) {
     for (var x = 0; x < WORLD_W; x++) {
       bctx.fillStyle = COLOR[tiles[idx(x, y)]];
@@ -231,7 +234,7 @@ function computeCrop() {
 }
 
 var canvas = document.getElementById("game");
-var ctx = canvas.getContext("2d");
+var ctx = canvas.getContext("2d", { alpha: false });
 
 function applyCrop() {
   crop = computeCrop();
@@ -297,11 +300,21 @@ var KEY_TO_DIR = {
   w: "up", s: "down", a: "left", d: "right",
   W: "up", S: "down", A: "left", D: "right"
 };
+// Typing a name must win over movement keys: while the name overlay is up,
+// or while any text field has focus, don't touch these events at all -- no
+// preventDefault, no keys[] tracking. "Brandon" has an a and a d in it.
+function typingInField(e) {
+  if (document.getElementById("nameOverlay").style.display !== "none") return true;
+  var t = e.target;
+  return !!(t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA"));
+}
 window.addEventListener("keydown", function (e) {
+  if (typingInField(e)) return;
   var dir = KEY_TO_DIR[e.key];
   if (dir) { keys[dir] = true; e.preventDefault(); }
 });
 window.addEventListener("keyup", function (e) {
+  if (typingInField(e)) return;
   var dir = KEY_TO_DIR[e.key];
   if (dir) { keys[dir] = false; e.preventDefault(); }
 });
@@ -348,11 +361,13 @@ function drawLabels(camX, camY) {
 // ---- Main loop ----------------------------------------------------------
 var running = false;
 var lastT = 0;
+var lastTickAt = 0; // performance.now() of the last frame() call, any source
 
 function frame(t) {
   if (!running) return;
   var dt = Math.min((t - lastT) / 1000, 1 / 20) || 0;
   lastT = t;
+  lastTickAt = t;
 
   movePlayer(currentDX(), currentDY(), dt);
 
@@ -372,20 +387,45 @@ function frame(t) {
   drawLabels(camX, camY);
 }
 
-// setInterval, not requestAnimationFrame: rAF ties the tick to the
-// compositor's paint schedule, which some embedded/headless views never
-// run on their own (confirmed while testing this build -- a bare rAF
-// counter stayed at 0 in that view even fully visible and focused).
-// setInterval has no such dependency and is exactly as correct here --
-// movement is already delta-time based, not frame-count based.
-var TICK_MS = 1000 / 60;
-var tickHandle = null;
+// requestAnimationFrame is the loop -- real browsers (including phones)
+// fire it reliably and it pauses correctly in a background tab, which a
+// timer-only loop wouldn't. setInterval only exists as a watchdog fallback
+// for the rare view that never calls rAF at all (one such view showed up
+// while testing this build: a bare rAF counter stayed at 0 for 500ms fully
+// visible and focused -- a tool quirk, not something to design the real
+// loop around). The watchdog checks every ~300ms whether a frame has
+// actually landed recently; it only starts the fallback interval if rAF
+// has gone completely silent, and tears it back down if rAF resumes.
+var WATCHDOG_MS = 300;
+var usingFallback = false;
+var fallbackHandle = null;
+
+function rafLoop(t) {
+  if (!running) return;
+  frame(t);
+  requestAnimationFrame(rafLoop);
+}
+
+function watchdogTick() {
+  if (!running) return;
+  var stale = performance.now() - lastTickAt > WATCHDOG_MS;
+  if (stale && !usingFallback) {
+    usingFallback = true;
+    fallbackHandle = setInterval(function () { frame(performance.now()); }, 1000 / 60);
+  } else if (!stale && usingFallback) {
+    usingFallback = false;
+    clearInterval(fallbackHandle);
+    fallbackHandle = null;
+  }
+}
 
 function start() {
   if (running) return;
   running = true;
   lastT = performance.now();
-  tickHandle = setInterval(function () { frame(performance.now()); }, TICK_MS);
+  lastTickAt = lastT;
+  requestAnimationFrame(rafLoop);
+  setInterval(watchdogTick, WATCHDOG_MS);
 }
 
 // ---- Name prompt ----------------------------------------------------------
@@ -396,6 +436,8 @@ var go = document.getElementById("nameGo");
 function enter() {
   playerName = (input.value || "Guest").trim().slice(0, 20) || "Guest";
   overlay.style.display = "none";
+  input.blur(); // else document.activeElement is still the input and the
+                // typingInField() guard would keep eating movement keys
   start();
 }
 go.addEventListener("click", enter);

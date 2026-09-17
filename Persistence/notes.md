@@ -27,6 +27,27 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Game — atlas locked, no code until BUILD
 
+- **2026-09-16 — P0 patch shipped.** All three items from
+  `CLAUDE_P0_PATCH.md`/`GROK_P0_REVIEW.md` fixed in `commons/index.html`:
+  (1) keydown/keyup now ignore entirely (no `preventDefault`, no `keys[]`
+  update) while `#nameOverlay` is visible or `document.activeElement`/
+  `e.target` is an INPUT/TEXTAREA — typed "Brandon" via real keyboard
+  input end-to-end and confirmed `nameInput.value === "Brandon"`, then
+  confirmed movement worked immediately after submit (added `input.blur()`
+  in `enter()` so the now-hidden input doesn't keep eating keys via stale
+  focus). (2) `requestAnimationFrame` is the primary loop again
+  (`rafLoop`); a `watchdogTick` every 300ms only starts a `setInterval`
+  fallback if `lastTickAt` has gone stale, and tears it down if rAF
+  resumes — confirmed rAF firing normally in this session's browser pane
+  this time (72 callbacks/500ms measured directly) with `usingFallback`
+  correctly false throughout. (3) `{alpha:false}` added on both the bake
+  and display 2D contexts, `imageSmoothingEnabled=false` added on the bake
+  context too (was only on display before), `tabindex="-1"` added to all
+  four d-pad buttons. Re-verified after patching: A/D still not inverted,
+  dual crop still switches at 390×844, water collision still blocks
+  off-path movement, no console errors. Did not touch checker grass,
+  Creek/Shore flood-fill, or start P1, per explicit instruction.
+  `liquidgov-platform/` untouched.
 - **2026-09-16 — Grok P0 review.** Skeleton accepted (bake/blit, dual crop,
   A/D, path ribbon, labels, civic untouched). Must-fix: name input vs WASD
   `preventDefault` ("Brandon" untypeable). Should-fix: rAF as the product

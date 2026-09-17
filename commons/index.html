@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
-<title>The Commons — P2</title>
+<title>The Commons — P3</title>
 <style>
   :root{
     --ink:#1a1814;
@@ -119,14 +119,15 @@
 "use strict";
 
 /* ---------------------------------------------------------------------
- * The Commons -- P2: interiors.
- * P1's spine (Square/Homestead Row/Creek/Shore/Hall Lawn, Hall door,
- * Homestead's demo + 6 boarded doors, the passerby) stays as shipped.
- * New this round: Lab Yard's exterior + walk-in Lab door, a real demo
- * house interior (table, two chairs, rug, empty wall-slot frame), and
- * the Lab interior with its three lookup stations. North Woods, Lookout,
- * Orchard, Workshop Lane, Garden, Quarry Ridge are still untouched -- P3.
- * See BUILD_ORDER.md (P2), atlas.md, canvas.md, collision.md, glue.md.
+ * The Commons -- P3: fill. All 12 regions are dressed now.
+ * P1's spine and P2's Lab Yard / demo house / lab interior stay as
+ * shipped. New this round: the six quiet regions -- North Woods, Lookout,
+ * Orchard, Workshop Lane, Garden, Quarry Ridge -- each with the one set
+ * piece atlas.md names for it. Same tileset throughout; no new doors, no
+ * new interiors, no new interact behavior beyond two toasts (Workshop's
+ * shutter, Quarry Ridge's sign). This is the full v1.md definition of
+ * done for the outdoor world.
+ * See BUILD_ORDER.md (P3), atlas.md, art.md.
  * ------------------------------------------------------------------- */
 
 // ---- World constants (locked in atlas.md) -----------------------------
@@ -186,7 +187,14 @@ var T_GRASS_A = 0, T_GRASS_B = 1, T_PATH = 2, T_WATER = 3, T_DIRT = 4,
     T_FLOOR = 15, T_IWALL = 16, T_TABLE = 17, T_CHAIR = 18, T_RUG = 19,
     T_WALLSLOT = 20, T_WORKBENCH = 21,
     T_STATION_COPPER = 22, T_STATION_IRON = 23, T_STATION_CHALK = 24,
-    T_IDOOR = 25; // interior side of a walk-in doorway (entrance/exit)
+    T_IDOOR = 25, // interior side of a walk-in doorway (entrance/exit)
+    // P3: the six quiet regions. art.md's own drawable list names these as
+    // distinct props (fence/railing, flower bed, boarded-adit face) rather
+    // than reuses of an unrelated tile -- reuse happens *within* this set
+    // (the same T_TREE dresses North Woods and Orchard, T_BENCH is every
+    // sit-log/sit-rock/sitting-wall) not by collapsing them into one id.
+    T_TREE = 26, T_RAILING = 27, T_PLATEAU = 28, T_FLOWERBED = 29,
+    T_LOWWALL = 30, T_CRATE = 31, T_ADIT = 32;
 
 // Palette, from art.md -- outdoor stays grass/dirt/water, never parchment.
 // Brass stays "sparingly" for the Hall door only, per art.md -- the
@@ -220,6 +228,13 @@ COLOR[T_STATION_COPPER] = "#4a8a6a";
 COLOR[T_STATION_IRON]   = "#2a2a3a";
 COLOR[T_STATION_CHALK]  = "#e8e0d0";
 COLOR[T_IDOOR]        = "#b08a5a";
+COLOR[T_TREE]         = "#2f5a3f";
+COLOR[T_RAILING]      = "#9a9488";
+COLOR[T_PLATEAU]      = "#5a8f68";
+COLOR[T_FLOWERBED]    = "#8a5a6a";
+COLOR[T_LOWWALL]      = "#7a7468";
+COLOR[T_CRATE]        = "#8a6a46";
+COLOR[T_ADIT]         = "#5d564c";
 var INK = "#1a1814";
 
 // collision.md: doors are solid -- "stand next to them, press Enter," not
@@ -245,6 +260,14 @@ SOLID_TILE[T_WORKBENCH] = 1;
 SOLID_TILE[T_STATION_COPPER] = 1;
 SOLID_TILE[T_STATION_IRON] = 1;
 SOLID_TILE[T_STATION_CHALK] = 1;
+// P3: T_PLATEAU is walkable ground (raised visual layer only, per
+// atlas.md), not a wall -- everything else here is a real obstacle.
+SOLID_TILE[T_TREE] = 1;
+SOLID_TILE[T_RAILING] = 1;
+SOLID_TILE[T_FLOWERBED] = 1;
+SOLID_TILE[T_LOWWALL] = 1;
+SOLID_TILE[T_CRATE] = 1;
+SOLID_TILE[T_ADIT] = 1;
 
 // ---- Build the tile + collision arrays (once) ---------------------------
 var tiles = new Uint8Array(WORLD_W * WORLD_H);
@@ -312,9 +335,9 @@ var LAB_DOOR_TILE = null;
   }
 })();
 
-// P1 + P2: dress the spine regions and Lab Yard (set piece + collision
-// land together). North Woods, Lookout, Orchard, Workshop Lane, Garden,
-// Quarry Ridge stay untouched -- P3, not this round.
+// P1 + P2 + P3: every region is dressed now (set piece + collision land
+// together, per region). Same tileset throughout -- T_TREE/T_BENCH/etc.
+// reappear across regions; only the arrangement differs (art.md).
 function dressRegions() {
   var square = regionAABB(findRegion("the Square"));
   var hall = regionAABB(findRegion("Hall Lawn"));
@@ -391,6 +414,81 @@ function dressRegions() {
   tiles[idx(labDoorX, labDoorY)] = T_LAB_DOOR;
   tiles[idx(labDoorX + 3, labDoorY + 1)] = T_SIGN;
   LAB_DOOR_TILE = { x: labDoorX, y: labDoorY };
+
+  // ---- P3: the six quiet regions. One sitting each (BUILD_ORDER.md), same
+  // tileset, no doors, no new interiors -- Workshop Lane's shutter and
+  // Quarry Ridge's sign are the only two interactables, and both just
+  // toast; nothing here changes state or warps.
+
+  // North Woods: tree line along the world's north edge (a hard wall,
+  // matches the world boundary honestly instead of an invisible clamp),
+  // scattered solitary trees, one cluster with a sit-log.
+  var northWoods = regionAABB(findRegion("North Woods"));
+  for (var nwx = northWoods.x0 + 1; nwx <= northWoods.x1 - 1; nwx++) {
+    tiles[idx(nwx, northWoods.y0)] = T_TREE;
+  }
+  tiles[idx(5, 14)] = T_TREE;
+  tiles[idx(17, 6)] = T_TREE;
+  tiles[idx(6, 5)] = T_TREE;
+  tiles[idx(10, 10)] = T_TREE;
+  tiles[idx(11, 10)] = T_TREE;
+  tiles[idx(10, 11)] = T_TREE;
+  tiles[idx(11, 11)] = T_BENCH; // the sit-log
+
+  // Lookout: a raised plateau (walkable, +1 visual layer), a railing along
+  // the south edge facing the Square (the sightline the P1 patch fixed --
+  // Shore is off-camera from here, don't reintroduce that promise), one
+  // bench, one tree just off the plateau.
+  for (var lkx = 30; lkx <= 41; lkx++) {
+    for (var lky = 4; lky <= 9; lky++) tiles[idx(lkx, lky)] = T_PLATEAU;
+    tiles[idx(lkx, 10)] = T_RAILING;
+  }
+  tiles[idx(35, 8)] = T_BENCH;
+  tiles[idx(28, 8)] = T_TREE;
+
+  // Orchard: 4-6 decorative fruit trees in loose rows, wide walk lanes
+  // between them -- no farming, no harvest interaction, just trees.
+  var orchardTrees = [[54, 8], [58, 8], [62, 8], [54, 12], [58, 12], [62, 12]];
+  for (var ot = 0; ot < orchardTrees.length; ot++) {
+    tiles[idx(orchardTrees[ot][0], orchardTrees[ot][1])] = T_TREE;
+  }
+
+  // Workshop Lane: closed-shutter facade (decorative -- interacting says
+  // it's closed, nothing else, same honesty as the boarded doors) + a
+  // bench + light street scatter. No interior, ever, this phase or later
+  // without Brandon reopening the pin.
+  var wsFacadeX0 = 8, wsFacadeX1 = 14, wsFacadeY0 = 24, wsFacadeY1 = 27;
+  for (var wsx = wsFacadeX0; wsx <= wsFacadeX1; wsx++) {
+    for (var wsy = wsFacadeY0; wsy <= wsFacadeY1; wsy++) tiles[idx(wsx, wsy)] = T_WALL;
+  }
+  var shutterX = 11, shutterY = wsFacadeY1;
+  tiles[idx(shutterX, shutterY)] = T_DOOR_BOARDED; // same "closed" look, different message
+  interactables.push({ type: "shutter", x: shutterX, y: shutterY, prompt: "Try" });
+  tiles[idx(9, 29)] = T_BENCH;
+  tiles[idx(16, 28)] = T_CRATE;
+  tiles[idx(17, 30)] = T_CRATE;
+
+  // Garden: flower-bed cluster + a low sitting wall, Homestead's front
+  // yard -- calmer than Orchard, still just two props.
+  var garden = regionAABB(findRegion("Garden"));
+  for (var gfx = garden.x0 + 8; gfx <= garden.x0 + 10; gfx++) {
+    for (var gfy = garden.y0 + 8; gfy <= garden.y0 + 9; gfy++) tiles[idx(gfx, gfy)] = T_FLOWERBED;
+  }
+  for (var glx = garden.x0 + 13; glx <= garden.x0 + 15; glx++) {
+    tiles[idx(glx, garden.y0 + 9)] = T_LOWWALL;
+  }
+
+  // Quarry Ridge: boarded mine adit + sit-rock + a small sign. The adit is
+  // decorative -- no ore, no interior, matches the locked pin. Only the
+  // sign is interactable (a look/read prompt, atlas.md), not the adit.
+  var quarry = regionAABB(findRegion("Quarry Ridge"));
+  for (var qax = quarry.x0 + 8; qax <= quarry.x0 + 12; qax++) {
+    for (var qay = quarry.y0 + 4; qay <= quarry.y0 + 7; qay++) tiles[idx(qax, qay)] = T_ADIT;
+  }
+  tiles[idx(quarry.x0 + 9, quarry.y0 + 10)] = T_BENCH; // the sit-rock
+  var signX = quarry.x0 + 14, signY = quarry.y0 + 8;
+  tiles[idx(signX, signY)] = T_SIGN;
+  interactables.push({ type: "sign", x: signX, y: signY, prompt: "Read" });
 }
 
 // ---- Bake the world once to an offscreen canvas (tilemap.md: bake once,
@@ -792,6 +890,10 @@ function tryInteract() {
       var r = LAB_RECIPES[it.recipe];
       inventory[r.item] = (inventory[r.item] || 0) + 1;
       showToast(r.name + ".");
+    } else if (it.type === "shutter") {
+      showToast("Closed for now.");
+    } else if (it.type === "sign") {
+      showToast("Closed.");
     }
     return;
   }

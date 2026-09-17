@@ -27,6 +27,28 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Game — atlas locked, no code until BUILD
 
+- **2026-09-16 — P3 shipped.** `commons/index.html`: all 12 regions now
+  dressed, matching `v1.md`'s full outdoor definition of done. North Woods
+  (tree line on the world's north edge, scattered solitary trees, one
+  cluster + sit-log), Lookout (a walkable plateau, a solid railing along
+  its south edge facing the Square, a bench, one tree off the plateau),
+  Orchard (six trees in loose rows), Workshop Lane (closed-shutter facade
+  + bench + two crates — shutter interact toasts "Closed for now.", no
+  interior, ever, without Brandon reopening that pin), Garden (flower-bed
+  cluster + a low sitting wall), Quarry Ridge (boarded adit + sit-rock +
+  a sign — only the **sign** is interactable, "Read" → "Closed.", the adit
+  itself stays decorative, no ore, no interior, matches the locked pin).
+  Same tileset throughout — new tile ids (tree, railing, plateau,
+  flower-bed, low-wall, crate, adit) reused across regions per art.md,
+  not one-off per-region art. No new doors, no new interiors, no state
+  changes beyond two toasts. Verified in-browser: all six regions' set
+  pieces render and collide correctly (adit/flowerbed/lowwall/crate/tree
+  all solid, plateau walkable, railing solid), shutter and sign toast
+  correctly, the adit itself confirmed *not* interactable, and the full
+  P0-P2 regression set still holds (A/D, water/bridge, Homestead's
+  boarded-door toast, Hall confirm/open, spawn still free, dual crop at
+  390×844, no console errors). `liquidgov-platform/` untouched. This
+  closes the outdoor world; P2's demo house/lab interiors are unaffected.
 - **2026-09-16 — inventory is RAM.** `Persistence/TheCommons/inventory.md`:
   P2 `inventory = {}` vanishing on refresh is the spec, not a bug. Do not
   sessionStorage/localStorage/SQLite in this preview. Write-only object

@@ -1264,8 +1264,15 @@ Not bug classes. Not “what is live on the droplet.”
   round trip works through the whole real stack, not just locally. The
   self-nameplate showed the real account name, the wall-slot worked
   inside the house too. Both services' logs clean. Cleaned up the one
-  throwaway test account via its own `/settings/delete`. See
-  `your-house-built.md`'s own "Deployed" section.
+  throwaway test account via its own `/settings/delete`. **Process
+  lesson, caught after the fact by `GROK_HOUSE_KEY_REVIEW.md`:** synced
+  client before finishing the daemon rebuild+restart, a narrow window
+  where the new client's `encodeURIComponent`'d requests would have hit
+  the still-old, non-decoding daemon and gone empty. No evidence any
+  visitor actually hit it, but the correct order (verified by the
+  review, not by me beforehand) is daemon rebuild+restart fully first,
+  client sync second, whenever a change pairs client encoding with
+  server decoding. See `your-house-built.md`'s own "Deployed" section.
 
 ## Split: civic site vs game
 

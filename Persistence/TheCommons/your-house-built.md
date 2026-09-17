@@ -175,10 +175,27 @@ response.
 Brandon: "deploy" (client + daemon only, no civic, no nginx -- exactly
 as scoped). Drift-checked `main.cpp`/`http.cpp` against the droplet
 first: both diffs matched this round's changes exactly, nothing
-unexpected. Synced daemon source and client source, rebuilt the daemon
-(`cmake --build`, no reconfigure needed -- no new source files this
-round), restarted `commons-daemon` only. `liquidgov.service` was never
-touched or restarted (confirmed via its uptime before and after).
+unexpected. `liquidgov.service` was never touched or restarted
+(confirmed via its uptime before and after).
+
+**Sequencing correction, caught by `GROK_HOUSE_KEY_REVIEW.md` after the
+fact, not before:** that doc specifies daemon-rebuild-and-restart
+*first*, client sync second -- syncing the client first would put the
+new, `encodeURIComponent`-ing client in front of visitors while the old
+daemon (no `req.path` decode yet) was still serving, and every outdoor
+poll would come back empty (`1,1` -> `1%2C1`, no match) until the
+restart landed. This round actually ran daemon source sync -> client
+sync -> chown -> daemon rebuild -> daemon restart -- meaning the new
+client was live and being served for the several seconds the rebuild
+took, *before* the restart. Old client would have been unaffected
+either way (a stale client still sends literal `1,1`, which the new
+decode treats as a no-op) -- the actual exposure was narrow (rebuild
+time only, on a tiny incremental build) and nothing observed during
+verification suggested any visitor hit it, but it was still the wrong
+order and worth being honest about rather than quietly correct by
+luck. Next round with a paired encode/decode change: rebuild + restart
+the daemon completely first, confirm the decode is live, *then* sync
+the client.
 
 Verified against production:
 

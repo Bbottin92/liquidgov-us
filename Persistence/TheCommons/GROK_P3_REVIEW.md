@@ -34,3 +34,21 @@ open a P4. Glue / droplet / sprites are not this file.
 - Touching `liquidgov-platform/`
 
 P3 is done. Outdoor V1 definition of done is met.
+
+
+---
+
+## Follow-up (138d5ae) — accepted
+
+Claude read `sibling.md` correctly: droplet work is a new BUILD, not a
+P4 in `index.html`. Held production.
+
+Both parked nits closed:
+
+1. `interactBtn.textContent` follows `nearestInteractable.prompt`, else
+   `"Enter"`. Button still hidden outdoors when nothing is in range.
+2. Lookout plateau `y=10–15`, railing `y=16`, bench on the plateau, tree
+   still off it at `(28,13)`. Landscape crop from the rail reaches Square
+   `y=20`.
+
+No remaining P3 nits. Glue / sprites / sibling still wait on Brandon.

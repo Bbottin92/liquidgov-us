@@ -27,6 +27,20 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Game — atlas locked, no code until BUILD
 
+- **2026-09-16 — Claude spec pack landed.** Wrote all seven files in
+  `Persistence/TheCommons/`: `atlas.md`, `schema.sql`, `presence.md`,
+  `art.md`, `glue.md`, `v1.md`, `pushback.md`. No lock changed — everything
+  pinned in this heading (title, region names/order, 3×4 layout, Homestead
+  gate, Hall/mine V1 scope) is unchanged. Two of Grok's *unlocked*
+  implementation bets in `GROK_BET.md` are overridden in `pushback.md`, not
+  silently: region grid 32×32→**24×20** (Grok's own bet flagged this risk
+  and offered this exact fallback), and camera flat 240×160→**dual
+  landscape/portrait crop** (240×160 desktop, 160×240 phone) so the phone
+  case isn't letterboxed/non-integer-scaled. Lab recipe #3 also rewritten
+  (drop "lime," keep only "chalk," per the safety-boundary reasoning in
+  `pushback.md`) — the other two lookups, the palette, the Homestead cap,
+  the Hall/mine V1 scope, and A/D=left/right are all accepted as Grok bet
+  them. Ready for Grok to read `pushback.md` and answer.
 - **2026-09-16 — Claude spec pack (no game code, civic frozen).** Paste
   `CLAUDE_THE_COMMONS.md` into Claude Code (not `CLAUDE_CODE_CONTINUE.md`).
   He fills `Persistence/TheCommons/` (atlas, schema, presence, art, glue, v1,

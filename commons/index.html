@@ -846,20 +846,39 @@ function updatePasserby(dt) {
 // region keys that need a map_instances row, and presence.md is explicit
 // that V1 doesn't wire SQLite for guests at all -- so entering a house or
 // the lab calls netLeave() rather than pretending to track a region that
-// doesn't exist yet. Only the player's OWN current region is polled
-// (not every region whose AABB intersects the camera, which is what
-// presence.md's tick-rate section actually describes) -- enough to prove
-// real multiplayer works and to drive the passerby's hide rule correctly,
-// but occupants in a neighboring region just past the camera edge won't
-// appear yet. That's a known, explicit V1 simplification, not a bug.
+// doesn't exist yet.
+//
+// Should-fix (GROK_PRESENCE_REVIEW.md): polling now covers every region
+// whose AABB intersects the camera, matching presence.md's tick-rate
+// section literally ("A client subscribes to every region whose AABB
+// intersects the camera... Not 'one tile-row of the neighbor'"), not just
+// the single region the player's own occupant lives in. `netRegion` still
+// means exactly one thing -- which region the player's own row is
+// joined/rekeyed into on the daemon, the presence.md "per-region tick"
+// membership -- polling breadth is a separate, wider concern layered on
+// top of it.
 var DAEMON = "http://127.0.0.1:8765";
 var NET_INTERVAL_MS = 500; // presence.md: per-region ~2Hz
 var netId = null, netSecret = null, netReady = false;
-var netRegion = null;        // the REGIONS entry currently joined server-side, or null
-var otherOccupants = [];     // last poll for netRegion, self already filtered out
+var netRegion = null;        // the REGIONS entry the player's OWN row is joined into, or null
+var otherOccupants = [];     // merged poll across every camera-intersecting region, self filtered out
 var netOccupantsDirty = false;
-var netPollInFlight = false;
+var netPollBusy = false;     // one batch of camera-region GETs in flight at a time
 var lastNetSendAt = -Infinity;
+
+// Every REGIONS entry whose outdoor tile AABB intersects the camera's
+// current viewport (in world tile coordinates) -- typically 1-4 regions
+// on a 24x20 region grid per presence.md's own worked example.
+function regionsIntersectingCamera(camX, camY) {
+  var vx0 = Math.floor(camX / TILE), vy0 = Math.floor(camY / TILE);
+  var vx1 = Math.floor((camX + crop.vw - 1) / TILE), vy1 = Math.floor((camY + crop.vh - 1) / TILE);
+  var out = [];
+  for (var i = 0; i < REGIONS.length; i++) {
+    var ab = regionAABB(REGIONS[i]);
+    if (ab.x0 <= vx1 && ab.x1 >= vx0 && ab.y0 <= vy1 && ab.y1 >= vy0) out.push(REGIONS[i]);
+  }
+  return out;
+}
 
 function regionKeyFor(region) { return region.col + "," + region.row; }
 
@@ -945,17 +964,24 @@ function netMoveOutdoor() {
   }).then(function (r) { if (r.status === 403) netHandleAuthFailure(); }).catch(function () {});
 }
 
-function netPoll() {
-  if (!netReady || !netRegion || netPollInFlight) return;
-  netPollInFlight = true;
-  fetch(DAEMON + "/presence/" + regionKeyFor(netRegion))
-    .then(function (r) { return r.json(); })
-    .then(function (list) {
-      otherOccupants = list.filter(function (o) { return o.id !== netId; });
-      netOccupantsDirty = true;
-    })
-    .catch(function () {})
-    .finally(function () { netPollInFlight = false; });
+function netPollRegions(regions) {
+  if (!netReady || !regions.length || netPollBusy) return;
+  netPollBusy = true;
+  Promise.all(regions.map(function (region) {
+    return fetch(DAEMON + "/presence/" + regionKeyFor(region))
+      .then(function (r) { return r.json(); })
+      .then(function (list) {
+        return list
+          .filter(function (o) { return o.id !== netId; })
+          .map(function (o) {
+            return { region: region, id: o.id, display_name: o.display_name, x: o.x, y: o.y, facing: o.facing };
+          });
+      })
+      .catch(function () { return []; }); // one region's GET failing shouldn't drop every other region's occupants
+  })).then(function (perRegion) {
+    otherOccupants = perRegion.reduce(function (acc, list) { return acc.concat(list); }, []);
+    netOccupantsDirty = true;
+  }).finally(function () { netPollBusy = false; });
 }
 
 // Tab close, reload, or navigating away, plus entering an interior.
@@ -981,8 +1007,12 @@ function netLeave() {
 window.addEventListener("pagehide", netLeave);
 
 function otherRealOccupantsInRegion(region) {
-  if (!region || !netRegion || region !== netRegion) return 0;
-  return otherOccupants.length;
+  if (!region || !netReady) return 0;
+  var n = 0;
+  for (var i = 0; i < otherOccupants.length; i++) {
+    if (otherOccupants[i].region === region) n++;
+  }
+  return n;
 }
 
 // ---- Input: keyboard --------------------------------------------------
@@ -1164,10 +1194,10 @@ function drawSpace(camX, camY) {
     ctx.fillText("passerby", pbsx, pbDestY - 4);
   }
 
-  if (mode === "outdoor" && netRegion) {
+  if (mode === "outdoor" && netReady) {
     for (var oi = 0; oi < otherOccupants.length; oi++) {
       var o = otherOccupants[oi];
-      var owp = regionLocalToWorld(netRegion, o.x, o.y);
+      var owp = regionLocalToWorld(o.region, o.x, o.y);
       var osx = owp.x - camX, osy = owp.y - camY;
       var oDir = (typeof o.facing === "number" && o.facing >= 0 && o.facing <= 3) ? o.facing : DIR_DOWN;
       // No animFrame in the occupant feed (2Hz snapshots, not a walk
@@ -1228,6 +1258,15 @@ function frame(t) {
 
   var playerMoved = movePlayer(currentDX(), currentDY(), dt);
 
+  // Hoisted above the outdoor block (not just above drawSpace, where it
+  // used to live) so the presence networking tick can compute which
+  // regions the camera currently overlaps -- same values, reused for the
+  // actual draw below instead of recomputing them.
+  var camX = Math.round(player.x - crop.vw / 2);
+  var camY = Math.round(player.y - crop.vh / 2);
+  camX = Math.max(0, Math.min(camX, activeSpace.pw - crop.vw));
+  camY = Math.max(0, Math.min(camY, activeSpace.ph - crop.vh));
+
   var pbMoved = false;
   if (mode === "outdoor") {
     pbMoved = updatePasserby(dt);
@@ -1251,7 +1290,7 @@ function frame(t) {
         else netRekeyOutdoor(netRegion, curRegion);
       } else if (curRegion && t - lastNetSendAt > NET_INTERVAL_MS) {
         netMoveOutdoor();
-        netPoll();
+        netPollRegions(regionsIntersectingCamera(camX, camY));
         lastNetSendAt = t;
       }
     }
@@ -1302,11 +1341,6 @@ function frame(t) {
   }
 
   if (!changed) return;
-
-  var camX = Math.round(player.x - crop.vw / 2);
-  var camY = Math.round(player.y - crop.vh / 2);
-  camX = Math.max(0, Math.min(camX, activeSpace.pw - crop.vw));
-  camY = Math.max(0, Math.min(camY, activeSpace.ph - crop.vh));
 
   drawSpace(camX, camY);
 

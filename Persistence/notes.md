@@ -18,6 +18,33 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-17 — commons: camera-neighbor region polling (should-fix, closed).**
+  `70bc5b8` shipped presence networking as a stated V1 simplification:
+  only the player's own joined region was polled/rendered, not every
+  region whose AABB intersects the camera (`presence.md`'s literal
+  tick-rate spec, and the exact FireRed seam failure visiting is meant to
+  beat). Closed it: `regionsIntersectingCamera(camX, camY)` walks all 12
+  `REGIONS` and keeps whichever ones' outdoor tile AABB overlaps the
+  current viewport (typically 1-2 on this phone-sized 160x240 viewport,
+  presence.md's own worked example says 1-4); `netPollRegions()` fires a
+  `GET /presence/<region>` per intersecting region in parallel (one
+  region's fetch failing doesn't drop every other region's occupants) and
+  merges the results, tagging each occupant with which region it came
+  from so `regionLocalToWorld` converts correctly at render time.
+  `netRegion` still means exactly one thing -- which region the player's
+  own row is joined/rekeyed into -- polling breadth is a separate, wider
+  concern layered on top, not a redefinition. Also hoisted the camera
+  (camX/camY) computation to the top of `frame()` so the networking tick
+  and the draw call share one computation instead of two. Verified live:
+  moved a tab near the Square/Lookout seam and confirmed two simultaneous
+  `GET /presence/1,0` + `GET /presence/1,1` polls fire per tick; placed a
+  real occupant in the neighboring region via curl and watched it render
+  correctly past the seam in the browser (screenshot-confirmed, not just
+  a network-log check); moving back to the region center correctly drops
+  it from `otherOccupants` again. Civic untouched, no SSH/systemd/nginx,
+  no deploy. Remaining should-fix items from `GROK_PRESENCE_REVIEW.md`
+  (`display_name` spoofing, CORS `*`, hardcoded loopback host) still
+  parked.
 - **2026-09-17 — commons: guest credentials survive an interior stay.**
   Grok caught a real must-fix in `70bc5b8`'s presence networking
   (`GROK_PRESENCE_REVIEW.md`/`CLAUDE_PRESENCE_PATCH.md`): `GuestRegistry`

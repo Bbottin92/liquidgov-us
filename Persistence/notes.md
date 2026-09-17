@@ -18,6 +18,36 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-17 — commons: allowlist `?daemon=` before this file can ever
+  be public (should-fix, closed).** `GROK_DAEMON_URL_REVIEW.md` flagged
+  the override added in `92daa22`: a shared link with
+  `?daemon=https://evil.example` would make the page mint a guest secret
+  and POST it straight to the attacker, harmless only because the page
+  is loopback-only today. Gated it *now*, before any deploy, per the
+  review's exact spec:
+  - `?daemon=` is honored at all only while the page itself is being
+    viewed from loopback (`127.0.0.1`/`localhost`/`::1`) -- on a real
+    deploy the param is ignored outright, not just untrusted *values* of
+    it, since the eventual fix there is the relative proxy, not this
+    param.
+  - Even then, the value must parse as a `URL` with `protocol === "http:"`
+    and a host that's loopback or RFC1918 private (`10.*`,
+    `172.16-31.*`, `192.168.*`) -- no `https:`, no `javascript:`, no
+    arbitrary DNS name.
+  - Anything that fails either check falls back to the same
+    `http://127.0.0.1:8765` default as before; nothing untrusted is ever
+    used.
+  Verified live: default unaffected (real join/poll still works exactly
+  as before); a trusted loopback override (`127.0.0.1:9999`) is honored;
+  `https://evil.example`, `http://evil.example` (untrusted DNS, even
+  over plain http), and `javascript:alert(1)` are all rejected and fall
+  back to the default; the RFC1918 boundary itself checked directly
+  (`172.15.*` rejected, `172.16.*`/`172.31.*` accepted, `192.169.*`
+  rejected, `192.168.*` accepted). Civic untouched, no deploy. The
+  daemon's own `Access-Control-Allow-Origin: *` stays parked and
+  untouched per `cors-preflight.md` -- that's legal today only because
+  the guest secret travels in the JSON body, not a cookie, and becomes
+  the actual should-fix once glue/cookie-forward exists.
 - **2026-09-17 — commons: `?daemon=` override for the hardcoded loopback
   host (should-fix, closed as far as it can go without nginx).**
   `GROK_PRESENCE_REVIEW.md`: "`NET` host is loopback `:8765`. Grok

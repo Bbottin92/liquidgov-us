@@ -868,7 +868,42 @@ function updatePasserby(dt) {
 // a tunnel, another dev box) -- an optional ?daemon= query param
 // overrides the default without touching code. Doesn't fix reachability
 // by itself; just removes the friction until the real proxy exists.
-var DAEMON = new URLSearchParams(location.search).get("daemon") || "http://127.0.0.1:8765";
+//
+// Should-fix (GROK_DAEMON_URL_REVIEW.md): a shared link with
+// ?daemon=https://evil.example would make this page mint a guest secret
+// and POST it straight to the attacker -- harmless today only because
+// this page is loopback-only. Gated *before* this file could ever be
+// on a public origin, not after: honor ?daemon= only while the page
+// itself is being viewed from loopback (on a real deploy, ignore the
+// param outright and use the eventual relative proxy instead), and even
+// then only accept an http: URL whose host is loopback or RFC1918
+// private -- no https:, no javascript:, no arbitrary DNS name.
+function isLoopbackPage() {
+  var h = location.hostname;
+  return h === "127.0.0.1" || h === "localhost" || h === "::1" || h === "[::1]";
+}
+
+function isTrustedDaemonHost(hostname) {
+  if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1" || hostname === "[::1]") return true;
+  var m = /^(\d{1,3})\.(\d{1,3})\.\d{1,3}\.\d{1,3}$/.exec(hostname);
+  if (!m) return false;
+  var a = Number(m[1]), b = Number(m[2]);
+  return a === 127 || a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
+}
+
+var DAEMON = (function () {
+  var fallback = "http://127.0.0.1:8765";
+  if (!isLoopbackPage()) return fallback; // a public origin ignores ?daemon= entirely, not just untrusted values of it
+  var raw = new URLSearchParams(location.search).get("daemon");
+  if (!raw) return fallback;
+  try {
+    var u = new URL(raw);
+    if (u.protocol !== "http:" || !isTrustedDaemonHost(u.hostname)) return fallback;
+    return u.origin;
+  } catch (e) {
+    return fallback;
+  }
+})();
 var NET_INTERVAL_MS = 500; // presence.md: per-region ~2Hz
 var netId = null, netSecret = null, netReady = false;
 var netRegion = null;        // the REGIONS entry the player's OWN row is joined into, or null

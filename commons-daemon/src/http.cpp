@@ -60,17 +60,54 @@ long content_length_of(const std::string& headers) {
     try { return std::stol(v); } catch (...) { return 0; }
 }
 
-// This daemon has exactly one intended client (commons/index.html), served
-// from whatever origin the game's dev server happens to use -- a browser
-// fetch() to 127.0.0.1:8765 is cross-origin from any of those, and JSON
-// POSTs trigger a CORS preflight. Loopback-only, no cookies/credentials
-// involved (guest auth travels in the JSON body, not a cookie), so a
-// wildcard origin is fine here; nginx gets to decide its own CORS story
-// once this is ever public (out of scope, see sibling.md).
-const char* kCorsHeaders =
-    "Access-Control-Allow-Origin: *\r\n"
-    "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n"
-    "Access-Control-Allow-Headers: Content-Type\r\n";
+std::string origin_of(const std::string& headers) {
+    auto pos = headers.find("Origin:");
+    if (pos == std::string::npos) pos = headers.find("origin:");
+    if (pos == std::string::npos) return "";
+    pos = headers.find(':', pos) + 1;
+    auto end = headers.find("\r\n", pos);
+    std::string v = headers.substr(pos, end == std::string::npos ? std::string::npos : end - pos);
+    auto start = v.find_first_not_of(' ');
+    return start == std::string::npos ? "" : v.substr(start);
+}
+
+// Host-only check (scheme/port don't matter here): does this Origin
+// value's host look like loopback? Deliberately narrower than the
+// client's own ?daemon= allowlist (which also trusts RFC1918 LAN boxes,
+// see commons/index.html) -- that param picks which backend *this*
+// client trusts; this is the actual security boundary deciding which
+// *other* pages get to read this daemon's responses, so it stays tight.
+bool is_loopback_origin(const std::string& origin) {
+    if (origin.empty() || origin == "null") return false; // reviewer fail: never reflect null/blank
+    auto scheme_end = origin.find("://");
+    if (scheme_end == std::string::npos) return false;
+    std::string rest = origin.substr(scheme_end + 3);
+    auto host_end = rest.find_first_of(":/");
+    std::string host = host_end == std::string::npos ? rest : rest.substr(0, host_end);
+    return host == "127.0.0.1" || host == "localhost" || host == "::1" || host == "[::1]";
+}
+
+// Should-fix (cors-preflight.md, "What * forbids later"): echo the
+// caller's own Origin instead of a wildcard, and advertise
+// Allow-Credentials -- the shape glue/cookie-forward will actually need
+// later, built now while nothing yet *sends* a credentialed request
+// (this daemon has no cookie of its own, and the client never sets
+// `credentials: include`), so turning this on today is inert, not a new
+// hole. "loopback list now; https://liquidgov.us later" -- only loopback
+// is allowlisted until the deploy round adds the real production origin.
+// A request with no Origin header (curl, same-origin) needs no CORS
+// header at all -- browsers only consult it for a cross-origin fetch. An
+// Origin that fails the allowlist also gets nothing back: fails closed,
+// never reflected blindly (reviewer fail: "Reflecting Origin blindly,
+// including null / https://evil"). Never `*` + Allow-Credentials
+// together -- that combination is invalid and browsers reject it outright.
+std::string cors_header_for(const std::string& origin) {
+    if (!is_loopback_origin(origin)) return "";
+    return "Access-Control-Allow-Origin: " + origin + "\r\n"
+           "Access-Control-Allow-Credentials: true\r\n"
+           "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n"
+           "Access-Control-Allow-Headers: Content-Type\r\n";
+}
 
 } // namespace
 
@@ -129,6 +166,7 @@ void HttpServer::serve_one(int client_fd) {
     }
     std::string head = raw.substr(0, header_end);
     std::string body = raw.substr(header_end + 4);
+    std::string cors = cors_header_for(origin_of(head));
     long need = content_length_of(head);
     // Must-fix: the 1MB header guard above bounds head, but Content-Length
     // itself is client-declared and unbounded -- a negative or huge value
@@ -141,7 +179,7 @@ void HttpServer::serve_one(int client_fd) {
         out << "HTTP/1.1 413 Payload Too Large\r\n"
             << "Content-Type: application/json\r\n"
             << "Content-Length: " << kMsg.size() << "\r\n"
-            << kCorsHeaders
+            << cors
             << "Connection: close\r\n\r\n"
             << kMsg;
         std::string out_str = out.str();
@@ -185,7 +223,7 @@ void HttpServer::serve_one(int client_fd) {
     out << "HTTP/1.1 " << resp.status << " " << resp.status_text << "\r\n"
         << "Content-Type: " << resp.content_type << "\r\n"
         << "Content-Length: " << resp.body.size() << "\r\n"
-        << kCorsHeaders
+        << cors
         << "Connection: close\r\n\r\n"
         << resp.body;
     std::string out_str = out.str();

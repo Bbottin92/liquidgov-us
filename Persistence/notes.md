@@ -18,6 +18,42 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-17 — commons-daemon: CORS echoes a specific Origin, no more
+  wildcard (should-fix, closed).** `cors-preflight.md`'s "What `*`
+  forbids later": a credentialed request (`credentials: include`, a
+  forwarded `lg_session` cookie) can never use `Allow-Origin: *` --
+  browsers hide the response outright. Built that target shape now,
+  ahead of glue/cookie-forward actually existing, since nothing about it
+  is unsafe to ship early: this daemon has no cookie of its own and the
+  client never sets `credentials: include` today, so
+  `Allow-Credentials: true` is inert until something actually needs it,
+  not a new hole. `http.cpp`: `cors_header_for(origin_of(head))` computed
+  once per request --
+  - Trusted (loopback) `Origin` -> that exact value echoed back plus
+    `Access-Control-Allow-Credentials: true`. Never `*` + Credentials
+    together (invalid, browsers reject it) -- this is why the header
+    block only exists in the "echo one exact origin" shape, no wildcard
+    path left in the code at all.
+  - Untrusted `Origin` (anything not loopback, including literal `null`
+    from a `file://` page) -> no CORS header at all. Fails closed;
+    `Origin` is never reflected blindly.
+  - No `Origin` header (curl, same-origin, non-browser callers) -> no
+    CORS header either -- harmless, browsers only consult it for an
+    actual cross-origin fetch.
+  Deliberately narrower than the client's own `?daemon=` allowlist
+  (`4e9bfbd`, which also trusts RFC1918 LAN boxes): that param decides
+  which *backend* the client will talk to, this decides which *other
+  pages* get to read this daemon's responses, so it stays loopback-only
+  per the review's literal "loopback list now; `https://liquidgov.us`
+  later" -- the production origin gets added at the actual deploy round,
+  not now. Verified live: curl with `Origin: http://localhost:8090` and
+  `http://127.0.0.1:8090` both get the header echoed + Credentials;
+  `https://evil.example`, literal `null`, and no-Origin-at-all all get
+  no CORS header, checked on the normal response path, the `OPTIONS`
+  preflight, and the 413 path; the real client in a real browser (not
+  just curl) still joins/polls normally against the new header shape.
+  Full regression (catalogs, missing-field 400, wrong-secret 403) holds.
+  Civic untouched, no deploy.
 - **2026-09-17 — commons: allowlist `?daemon=` before this file can ever
   be public (should-fix, closed).** `GROK_DAEMON_URL_REVIEW.md` flagged
   the override added in `92daa22`: a shared link with

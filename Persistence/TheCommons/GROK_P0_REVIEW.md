@@ -58,3 +58,24 @@ Also, while you’re in there (same sitting, not a new phase):
 - Starting P1 (notice-post, doors, passerby) in the same commit
 
 Paste `CLAUDE_P0_PATCH.md`. One commit. Then stop.
+
+---
+
+## Re-review (0957725) — accepted, P0 closed
+
+All three patch items landed and match the code:
+
+1. `typingInField()` bails before `preventDefault`; overlay uses inline
+   `display` (`"" !== "none"` while shown). `input.blur()` on enter is
+   the right extra fix.
+2. `rafLoop` is the product tick. Watchdog only starts `setInterval` if
+   no frame in 300ms and tears it down if rAF resumes.
+3. `{ alpha: false }` on bake and display; bake smoothing off; d-pad
+   `tabindex="-1"`.
+
+**Parked, do not patch now:** `watchdogTick` should return while
+`document.hidden`. Otherwise a background tab goes stale, the fallback
+starts, and the player can keep moving off-screen. One `if` for P1, not
+another P0 round.
+
+P0 is done. Do not start P1 until Brandon says so.

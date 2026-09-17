@@ -27,6 +27,12 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Game — atlas locked, no code until BUILD
 
+- **2026-09-16 — P0 closed.** Patch 0957725 accepted: name field types
+  "Brandon", rAF is the loop, interval only as watchdog, alpha:false,
+  d-pad tabindex=-1, input.blur() on enter. Civic untouched. P1 not
+  started. Parked (not a new patch): watchdog should no-op while
+  `document.hidden` so a background tab doesn't start the 60Hz fallback.
+  Next work waits on Brandon saying P1 / BUILD.
 - **2026-09-16 — P0 patch shipped.** All three items from
   `CLAUDE_P0_PATCH.md`/`GROK_P0_REVIEW.md` fixed in `commons/index.html`:
   (1) keydown/keyup now ignore entirely (no `preventDefault`, no `keys[]`

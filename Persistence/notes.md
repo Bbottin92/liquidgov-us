@@ -18,6 +18,21 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-17 — decided: world-reachable guest mint is the product, not
+  a hole.** Independently confirmed by Grok (`GROK_LIVE_CHECK.md`, no
+  SSH) after the deploy: civic still 200, `/commons/` shows the real
+  client, `GET /commons/presence/1,1` returns `[]` (JSON, proving the
+  slash rewrite holds in front of a second independent check, not just
+  Claude's own). Explicit product decision, not an open question:
+  anyone reaching `POST /commons/presence/guest` and joining presence
+  (bounded by the existing 24/region, 96/global caps) is the intended
+  anonymous-visiting design, same as walking into the Square in person
+  — do **not** "fix" this later by gating it behind a real LiquidGov
+  account or opening LGP1 from the daemon. Cookie bind (a *promotion*
+  once it exists, per `presence.md`/`cookie-bind.md`) stays the next
+  queued item, not triggered yet. `/opt/liquidgov-us` (the leftover
+  clone found during deploy) stays as-is — leave it unless deliberately
+  deleted on purpose. No further deploy this hour.
 - **2026-09-17 — commons-daemon is live on the droplet.** Brandon said
   "go" after `c024c27`'s deploy-preflight fixes. Ran the full
   `Persistence/TheCommons/deploy-plan.md` sequence for real against

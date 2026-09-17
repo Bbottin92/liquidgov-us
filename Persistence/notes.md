@@ -18,6 +18,33 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-17 — self-nameplate + lab placeables deployed live.**
+  Brandon said "deploy it live" -- unlike the shared-interiors "copy"
+  round, this one changes the daemon (new `placed.hpp/.cpp`, changed
+  `PresenceStore::join`/`rekey` signatures), so it needed the full
+  sequence, not a file copy. Found one more real gap before applying
+  anything: the live nginx config only proxies `/commons/presence/` --
+  the new `/placed/<instance>` daemon route had **no matching location
+  at all**, so a request to `/commons/placed/...` would have hit the
+  `/commons/` *static alias* and tried to serve a file that doesn't
+  exist. Added `location /commons/placed/` to `nginx-commons.conf`
+  (same trailing-slash shape as presence, same reasoning) before
+  touching the live box. Sequence: synced+rebuilt the daemon
+  (`cmake --build -j1` on the real box), restarted the service,
+  verified the new routes on loopback first, synced the client, backed
+  up the live nginx config again, added the one new location, tested
+  with `nginx -t` on disk (no effect on the running process) before
+  reloading. Civic stayed 200 throughout, confirmed before, during
+  (mid-config-swap), and after. Verified live at
+  `https://liquidgov.us/commons/` in a real browser: self-nameplate
+  renders over the local player for the first time in production;
+  picked up chalk at the lab, placed it in the demo house wall-slot,
+  confirmed on the daemon's own `/commons/placed/instance:demo`
+  response and visually in a screenshot with the player moved clear of
+  it. No console errors. `deploy-plan.md` updated to reflect the new
+  proxied route. Left the test placement in place afterward (harmless,
+  same as any real guest's) rather than manufacturing a cleanup step
+  for low-stakes cosmetic state.
 - **2026-09-17 — V2 stretch: self-nameplate + lab placeables (repo
   commit, not yet copied live).** Both remaining "if there's room" items
   from `GROK_V2_ANSWER.md`.

@@ -61,9 +61,14 @@ obvious proxy failure).
   plan makes the *transport* same-origin (so `lg_session` would be
   sent), but nothing on civic resolves that cookie into an account yet.
   That's still a civic-side change, still not done here.
-- **Photo/wall-slot/friends routes.** Not built, not proxied. Only
-  `/commons/` (static) and `/commons/presence/` (the presence API that
-  actually exists today) are covered.
+- **Photo/friends routes.** Not built, not proxied. (The *real* civic
+  profile-canvas wall-slot route is a separate thing from the game's own
+  lab-placeables wall-slot tile, and is also not built/proxied here --
+  it's still parked on civic's `/latest` route, `cookie-bind.md`.)
+- ~~Only `/commons/` and `/commons/presence/` are covered~~ — as of the
+  V2 stretch deploy (2026-09-17), `/commons/placed/` (V2 lab
+  placeables, `83c9029`) is also proxied, same trailing-slash shape as
+  presence. `nginx-commons.conf` and the live config are both current.
 - **`/health`, `/items`, `/recipes`, `/maps`.** The daemon has these
   routes but `commons/index.html` never calls any of them over the
   network today (catalog data is baked into the client's own JS). Not

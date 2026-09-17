@@ -16,13 +16,24 @@ time passes; this is a point-in-time match, not a standing guarantee.
 ## Session cookie
 
 **Read from `http_server.cpp` directly (WSL copy), not invented.**
+Correction to this session's own first pass, caught by Grok citing
+`deploy/ux-on-droplet.patch` independently and rechecked directly in the
+source rather than taken on trust: the first read of `set_cookie()`
+missed a conditional two lines below the literal string and reported "no
+`Secure`" as flat fact. Wrong — see below.
 
-- **Name: `lg_session`.** Set by `set_cookie(sid)` (line 1110):
+- **Name: `lg_session`.** Built in `set_cookie(sid)` (line 1110):
   `Set-Cookie: lg_session=<sid>; HttpOnly; Path=/; SameSite=Lax;
-  Max-Age=2592000` (30 days). Cleared the same way with `Max-Age=0`.
-  **No `Secure` attribute** in the literal string — reported as fact, not
-  a recommendation either way; whatever reasoning put it there (nginx
-  terminates TLS in front of the app, presumably) predates this file.
+  Max-Age=2592000` (30 days), **then `; Secure` appended if `g_https`**
+  (line 1112). `g_https` is set once per request (line 6824) from
+  `X-Forwarded-Proto` (case-folded, compared to `"https"`) — i.e. it
+  reflects what nginx tells the app, not TLS the app terminates itself.
+  On the real site behind nginx this is true for real traffic, so the
+  cookie the browser actually receives in production **does** carry
+  `Secure`. `clear_cookie()` (line 1116) mirrors the same conditional.
+  Whoever proxies `/commons/` needs to keep forwarding
+  `X-Forwarded-Proto` correctly, or `g_https` (and therefore `Secure`)
+  silently goes false — an nginx concern (`nginx.md`), not this file's.
 - **No `Domain=` attribute anywhere.** This is a host-only cookie —
   browsers do not send it to a subdomain unless `Domain=.liquidgov.us` is
   added. That answers the "path vs subdomain" question this file used to
@@ -31,6 +42,12 @@ time passes; this is a point-in-time match, not a standing guarantee.
   needs `http_server.cpp` to gain a `Domain=` it does not have today.**
   Not deciding which to use here — just removing the "assume nothing"
   caveat, since one side of it no longer needs to be assumed.
+- **`HttpOnly` means the canvas cannot `document.cookie` this, ever** —
+  not a V1 restriction, a browser one. Any cookie-based glue reads the
+  `Cookie` header **server-side** (the daemon, or civic), never client JS.
+  See `cookie.md` for the actual per-request parse algorithm (split on
+  `;`, exact `lg_session=` prefix match — not a `Cookie:`-header-wide
+  `strstr`, which `not_lg_session=` would false-positive on).
 - **`sid` is an opaque session id, not a username.** Resolution chain,
   exactly what any future glue endpoint should replicate rather than
   reinvent (`account_from_req()`, line 1632):
@@ -134,7 +151,7 @@ wrong: there is no single "profile-canvas bitmap."** The public
 
 | Contract | V1 preview | Eventually needs |
 |---|---|---|
-| Session cookie | Not checked at all; throwaway name | `lg_session` exists today; needs `/commons/` (path) or a new `Domain=` on it (subdomain) — path needs zero civic change |
+| Session cookie | Not checked at all; throwaway name | `lg_session` exists today (`Secure` when `g_https`); daemon parses it server-side (`cookie.md`); path `/commons/` receives it, subdomain needs a civic `Domain=` |
 | Friends query | Not called; doors render boarded | New `/internal/friends`-shaped route reusing `account_from_req()`'s existing chain — no new auth to invent |
 | Hall door | Live today, zero glue needed | Nothing further |
 | Photo → blob+feed | Feature does not exist in V1 | New civic upload endpoint (future work) |

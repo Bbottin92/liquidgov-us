@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
-<title>The Commons — P1</title>
+<title>The Commons — P2</title>
 <style>
   :root{
     --ink:#1a1814;
@@ -119,11 +119,14 @@
 "use strict";
 
 /* ---------------------------------------------------------------------
- * The Commons -- P1: the spine.
- * P0's bare supermap, now with the Square/Homestead Row/Creek/Shore/
- * Hall Lawn dressed, the Hall door live, Homestead's demo + 6 boarded
- * doors, and the passerby. Everything else stays exactly as P0 left it.
- * See BUILD_ORDER.md (P1), atlas.md, canvas.md, glue.md, GROK_ANSWER.md.
+ * The Commons -- P2: interiors.
+ * P1's spine (Square/Homestead Row/Creek/Shore/Hall Lawn, Hall door,
+ * Homestead's demo + 6 boarded doors, the passerby) stays as shipped.
+ * New this round: Lab Yard's exterior + walk-in Lab door, a real demo
+ * house interior (table, two chairs, rug, empty wall-slot frame), and
+ * the Lab interior with its three lookup stations. North Woods, Lookout,
+ * Orchard, Workshop Lane, Garden, Quarry Ridge are still untouched -- P3.
+ * See BUILD_ORDER.md (P2), atlas.md, canvas.md, collision.md, glue.md.
  * ------------------------------------------------------------------- */
 
 // ---- World constants (locked in atlas.md) -----------------------------
@@ -174,11 +177,22 @@ function regionAt(tx, ty) {
 // ---- Tile ids -----------------------------------------------------------
 var T_GRASS_A = 0, T_GRASS_B = 1, T_PATH = 2, T_WATER = 3, T_DIRT = 4,
     T_WALL = 5, T_DOOR_DEMO = 6, T_DOOR_BOARDED = 7, T_HEDGE = 8,
-    T_HALL_DOOR = 9, T_NOTICE_POST = 10, T_BENCH = 11, T_BRIDGE = 12;
+    T_HALL_DOOR = 9, T_NOTICE_POST = 10, T_BENCH = 11, T_BRIDGE = 12,
+    // P2: Lab Yard exterior. The Lab door is deliberately NOT in the same
+    // family as demo/boarded/Hall -- atlas.md calls it a "walk-in
+    // trigger," not an Enter-to-confirm door, so it stays non-solid.
+    T_LAB_DOOR = 13, T_SIGN = 14,
+    // P2: interior-only tiles (demo house + lab), never placed outdoors.
+    T_FLOOR = 15, T_IWALL = 16, T_TABLE = 17, T_CHAIR = 18, T_RUG = 19,
+    T_WALLSLOT = 20, T_WORKBENCH = 21,
+    T_STATION_COPPER = 22, T_STATION_IRON = 23, T_STATION_CHALK = 24,
+    T_IDOOR = 25; // interior side of a walk-in doorway (entrance/exit)
 
 // Palette, from art.md -- outdoor stays grass/dirt/water, never parchment.
 // Brass stays "sparingly" for the Hall door only, per art.md -- the
 // notice-post gets its own dark ink-brown, not a fountain, not brass.
+// Interior walls run warm/paper (art.md) so the wall-slot reads as the
+// civic site hung in a house, not more outdoor palette indoors.
 var COLOR = {};
 COLOR[T_GRASS_A]      = "#4a7c59";
 COLOR[T_GRASS_B]      = "#3d6b4f";
@@ -193,11 +207,26 @@ COLOR[T_HALL_DOOR]    = "#c4a574";
 COLOR[T_NOTICE_POST]  = "#4a3a28";
 COLOR[T_BENCH]        = "#6b4a32";
 COLOR[T_BRIDGE]       = "#7a5a3a";
+COLOR[T_LAB_DOOR]     = "#9a7a4a";
+COLOR[T_SIGN]         = "#3a3226";
+COLOR[T_FLOOR]        = "#b08a5a";
+COLOR[T_IWALL]        = "#f7f1e4";
+COLOR[T_TABLE]        = "#6b4a32";
+COLOR[T_CHAIR]        = "#8a6a46";
+COLOR[T_RUG]          = "#7a4a4a";
+COLOR[T_WALLSLOT]     = "#d8cdb0";
+COLOR[T_WORKBENCH]    = "#6b4a32";
+COLOR[T_STATION_COPPER] = "#4a8a6a";
+COLOR[T_STATION_IRON]   = "#2a2a3a";
+COLOR[T_STATION_CHALK]  = "#e8e0d0";
+COLOR[T_IDOOR]        = "#b08a5a";
 var INK = "#1a1814";
 
 // collision.md: doors are solid -- "stand next to them, press Enter," not
 // walk-through. A boarded door reads as a wall with a prompt, same as any
 // other closed door; Hall's confirm() is the interaction, not stepping in.
+// The Lab door and any interior doorway tile are the one deliberate
+// exception (walk-in trigger, per atlas.md) and stay off this table.
 var SOLID_TILE = {};
 SOLID_TILE[T_WATER] = 1;
 SOLID_TILE[T_WALL] = 1;
@@ -207,6 +236,15 @@ SOLID_TILE[T_BENCH] = 1;
 SOLID_TILE[T_DOOR_DEMO] = 1;
 SOLID_TILE[T_DOOR_BOARDED] = 1;
 SOLID_TILE[T_HALL_DOOR] = 1;
+SOLID_TILE[T_SIGN] = 1;
+SOLID_TILE[T_IWALL] = 1;
+SOLID_TILE[T_TABLE] = 1;
+SOLID_TILE[T_CHAIR] = 1;
+SOLID_TILE[T_WALLSLOT] = 1;
+SOLID_TILE[T_WORKBENCH] = 1;
+SOLID_TILE[T_STATION_COPPER] = 1;
+SOLID_TILE[T_STATION_IRON] = 1;
+SOLID_TILE[T_STATION_CHALK] = 1;
 
 // ---- Build the tile + collision arrays (once) ---------------------------
 var tiles = new Uint8Array(WORLD_W * WORLD_H);
@@ -216,6 +254,10 @@ function idx(x, y) { return y * WORLD_W + x; }
 
 // Interactables: filled in by dressRegions() below with real tile coords.
 var interactables = [];
+// The Lab door's outdoor tile coords -- filled in by dressRegions(). Read
+// by frame()'s outdoor branch since it's a walk-in trigger, not something
+// in `interactables` (which is the Enter-to-confirm family).
+var LAB_DOOR_TILE = null;
 
 (function bakeTileIds() {
   var creek = regionAABB(findRegion("Creek"));
@@ -270,9 +312,9 @@ var interactables = [];
   }
 })();
 
-// P1: dress the spine regions (set piece + collision land together).
-// Everything else (North Woods, Lookout, Orchard, Workshop Lane, Lab Yard,
-// Garden, Quarry Ridge) is untouched -- P2/P3, not this round.
+// P1 + P2: dress the spine regions and Lab Yard (set piece + collision
+// land together). North Woods, Lookout, Orchard, Workshop Lane, Garden,
+// Quarry Ridge stay untouched -- P3, not this round.
 function dressRegions() {
   var square = regionAABB(findRegion("the Square"));
   var hall = regionAABB(findRegion("Hall Lawn"));
@@ -333,6 +375,22 @@ function dressRegions() {
   // (reuse the bench tile/color -- same "small sittable prop" language as
   // atlas.md, no new art needed), not off alone in open water.
   tiles[idx(60, 71)] = T_BENCH;
+
+  // Lab Yard (P2): the building exterior + a small sign. The door is a
+  // walk-in trigger (atlas.md), not an Enter-to-confirm door like Hall or
+  // the demo house -- it's deliberately not solid and not pushed into
+  // `interactables`. LAB_DOOR_TILE is read by frame()'s outdoor branch to
+  // detect the crossing.
+  var lab = regionAABB(findRegion("Lab Yard"));
+  var labDoorX = lab.x0 + 11, labDoorY = lab.y0 + 8; // (11,48)
+  for (var lx = lab.x0 + 8; lx <= lab.x0 + 14; lx++) {
+    for (var ly = lab.y0 + 3; ly <= lab.y0 + 8; ly++) {
+      tiles[idx(lx, ly)] = T_WALL;
+    }
+  }
+  tiles[idx(labDoorX, labDoorY)] = T_LAB_DOOR;
+  tiles[idx(labDoorX + 3, labDoorY + 1)] = T_SIGN;
+  LAB_DOOR_TILE = { x: labDoorX, y: labDoorY };
 }
 
 // ---- Bake the world once to an offscreen canvas (tilemap.md: bake once,
@@ -364,6 +422,88 @@ bctx.imageSmoothingEnabled = false;
     bctx.fillText(REGIONS[i].name, cx, cy);
   }
 })();
+
+// ---- Interiors (P2): demo house + lab. Same bake-once/blit shape as
+// outdoor, swapped in via `activeSpace` so movement/collision/rendering
+// don't need a second copy of that logic. Warp instances only -- the
+// outdoor camera/crop rules are unchanged (BUILD_ORDER.md P2).
+var outdoorSpace = {
+  tiles: tiles, solid: solid, w: WORLD_W, h: WORLD_H,
+  pw: WORLD_PW, ph: WORLD_PH, baked: baked, interactables: interactables
+};
+var activeSpace = outdoorSpace;
+
+function idxIn(w, x, y) { return y * w + x; }
+
+function buildInterior(w, h, fillFn) {
+  var t = new Uint8Array(w * h);
+  var s = new Uint8Array(w * h);
+  for (var y = 0; y < h; y++) for (var x = 0; x < w; x++) t[idxIn(w, x, y)] = T_FLOOR;
+  for (var x2 = 0; x2 < w; x2++) { t[idxIn(w, x2, 0)] = T_IWALL; t[idxIn(w, x2, h - 1)] = T_IWALL; }
+  for (var y2 = 0; y2 < h; y2++) { t[idxIn(w, 0, y2)] = T_IWALL; t[idxIn(w, w - 1, y2)] = T_IWALL; }
+  fillFn(t, w, h);
+  for (var i = 0; i < t.length; i++) s[i] = SOLID_TILE[t[i]] ? 1 : 0;
+
+  var bake = document.createElement("canvas");
+  bake.width = w * TILE; bake.height = h * TILE;
+  var bc = bake.getContext("2d", { alpha: false });
+  bc.imageSmoothingEnabled = false;
+  for (var yy = 0; yy < h; yy++) {
+    for (var xx = 0; xx < w; xx++) {
+      bc.fillStyle = COLOR[t[idxIn(w, xx, yy)]];
+      bc.fillRect(xx * TILE, yy * TILE, TILE, TILE);
+    }
+  }
+  return { tiles: t, solid: s, w: w, h: h, pw: w * TILE, ph: h * TILE, baked: bake, interactables: [] };
+}
+
+// Demo house -- 16x16. Table, two chairs, rug, empty wall-slot frame
+// (locked: stays empty until glue exists -- do not fake a bitmap here).
+// Entrance/exit stays Enter-based, unchanged from P1; only the black
+// placeholder is replaced with real content this round.
+var DEMO_ENTRY = { x: 7, y: 14 };
+var DEMO_DOOR = { x: 7, y: 15 };
+var demoHouseSpace = buildInterior(16, 16, function (t, w) {
+  t[idxIn(w, DEMO_DOOR.x, DEMO_DOOR.y)] = T_IDOOR;
+  t[idxIn(w, 7, 0)] = T_WALLSLOT; // on the wall itself, not standing on the floor
+  t[idxIn(w, 7, 7)] = T_TABLE;
+  t[idxIn(w, 6, 7)] = T_CHAIR;
+  t[idxIn(w, 8, 7)] = T_CHAIR;
+  t[idxIn(w, 7, 8)] = T_RUG;
+  t[idxIn(w, 7, 9)] = T_RUG;
+});
+
+// Lab -- 20x16. Three lookup stations (pushback.md's chalk-only recipe
+// #3, no lime) plus a workbench visual. Output goes to session RAM only
+// (v1.md) -- there is no SQLite in this preview and no reason to invent
+// one for three toasts. Door is a walk-in trigger both ways, matching
+// its outdoor half (atlas.md), not the demo house's Enter pattern.
+var LAB_ENTRY = { x: 10, y: 14 };
+var LAB_DOOR = { x: 10, y: 15 };
+var LAB_RECIPES = {
+  copper: { name: "Copper + acetic acid → copper acetate", item: "copper acetate bottle" },
+  iron:   { name: "Iron + tannin → iron-gall ink", item: "iron-gall ink page" },
+  chalk:  { name: "Calcium carbonate, ground and washed → chalk", item: "chalk block" }
+};
+var labSpace = buildInterior(20, 16, function (t, w) {
+  t[idxIn(w, LAB_DOOR.x, LAB_DOOR.y)] = T_IDOOR;
+  t[idxIn(w, 8, 1)]  = T_WORKBENCH;
+  t[idxIn(w, 9, 1)]  = T_WORKBENCH;
+  t[idxIn(w, 10, 1)] = T_WORKBENCH;
+  t[idxIn(w, 11, 1)] = T_WORKBENCH;
+  t[idxIn(w, 5, 7)]  = T_STATION_COPPER;
+  t[idxIn(w, 10, 7)] = T_STATION_IRON;
+  t[idxIn(w, 14, 7)] = T_STATION_CHALK;
+});
+labSpace.interactables = [
+  { type: "labStation", recipe: "copper", x: 5, y: 7, prompt: "Look" },
+  { type: "labStation", recipe: "iron", x: 10, y: 7, prompt: "Look" },
+  { type: "labStation", recipe: "chalk", x: 14, y: 7, prompt: "Look" }
+];
+
+// Session-only pickups (v1.md: RAM, vanishes on refresh -- no SQLite in
+// this preview, and nothing else reads this yet).
+var inventory = {};
 
 // ---- Camera / dual crop (art.md) ----------------------------------------
 // Landscape (width >= height): 240x160 logical @ 3x.
@@ -414,10 +554,15 @@ var playerName = "";
   }
 })();
 
+// P2: these three read `activeSpace` instead of the outdoor globals
+// directly, so the exact same collision.md rules (12x12 box, 4 corners,
+// axis split, no tile-snap, no CCD) apply unchanged inside an interior --
+// only which tile/solid array and which pixel bounds are "the world"
+// changes. collision.md's dt-clamp reasoning is untouched either way.
 function tileBlockedAtPixel(px, py) {
   var tx = Math.floor(px / TILE), ty = Math.floor(py / TILE);
-  if (tx < 0 || ty < 0 || tx >= WORLD_W || ty >= WORLD_H) return true;
-  return solid[idx(tx, ty)] === 1;
+  if (tx < 0 || ty < 0 || tx >= activeSpace.w || ty >= activeSpace.h) return true;
+  return activeSpace.solid[idxIn(activeSpace.w, tx, ty)] === 1;
 }
 
 function boxBlockedAt(cx, cy, half) {
@@ -439,12 +584,12 @@ function movePlayer(dx, dy, dt) {
   var ny = player.y + vy;
   if (!boxBlockedAt(player.x, ny, player.half)) { player.y = ny; moved = true; }
 
-  // World edge: clamp, don't wall-tile it.
+  // Edge of the current space: clamp, don't wall-tile it.
   var h = player.half;
   if (player.x < h) player.x = h;
   if (player.y < h) player.y = h;
-  if (player.x > WORLD_PW - h) player.x = WORLD_PW - h;
-  if (player.y > WORLD_PH - h) player.y = WORLD_PH - h;
+  if (player.x > activeSpace.pw - h) player.x = activeSpace.pw - h;
+  if (player.y > activeSpace.ph - h) player.y = activeSpace.ph - h;
   return moved;
 }
 
@@ -577,9 +722,16 @@ function currentDY() {
 // ---- Interact system ----------------------------------------------------
 // One prompt at doors/set pieces, no RPG menu (locked, art.md). Range is
 // "on or next to the tile" -- Chebyshev distance <= 1.
-var mode = "outdoor"; // "outdoor" | "interior"
+// mode: "outdoor" | "demoHouse" | "lab". The demo house keeps its P1
+// Enter-to-enter/Enter-to-exit pattern unchanged. The Lab is a walk-in
+// trigger both ways (atlas.md is explicit that this door, unlike Hall or
+// the demo house, isn't an Enter-to-confirm interaction) -- Enter also
+// works as a fallback exit from it, for anyone who doesn't think to walk
+// back onto the doorway tile.
+var mode = "outdoor";
 var nearestInteractable = null;
 var toast = { msg: "", until: 0 };
+var savedOutdoorX = player.x, savedOutdoorY = player.y;
 
 function showToast(msg, ms) {
   toast.msg = msg;
@@ -589,27 +741,66 @@ function showToast(msg, ms) {
 function findNearestInteractable() {
   var ptx = Math.floor(player.x / TILE), pty = Math.floor(player.y / TILE);
   var best = null, bestDist = Infinity;
-  for (var i = 0; i < interactables.length; i++) {
-    var it = interactables[i];
+  var list = activeSpace.interactables;
+  for (var i = 0; i < list.length; i++) {
+    var it = list[i];
     var d = Math.max(Math.abs(ptx - it.x), Math.abs(pty - it.y));
     if (d <= 1 && d < bestDist) { best = it; bestDist = d; }
   }
   return best;
 }
 
-function tryInteract() {
-  if (mode === "interior") { mode = "outdoor"; forceRedraw = true; return; }
-  var it = nearestInteractable;
-  if (!it) return;
-  if (it.type === "hall") {
-    var ok = window.confirm("Open liquidgov.us/proposals in a new tab?");
-    if (ok) window.open("https://liquidgov.us/proposals", "_blank", "noopener");
-  } else if (it.type === "demoDoor") {
-    mode = "interior";
-    forceRedraw = true;
-  } else if (it.type === "boardedDoor") {
-    showToast("Closed.");
+function enterInterior(key, space, entry) {
+  savedOutdoorX = player.x; savedOutdoorY = player.y;
+  activeSpace = space;
+  player.x = entry.x * TILE + 8;
+  player.y = entry.y * TILE + 8;
+  mode = key;
+  forceRedraw = true;
+}
+
+function exitToOutdoor(spawnTile) {
+  activeSpace = outdoorSpace;
+  if (spawnTile) {
+    player.x = spawnTile.x * TILE + 8;
+    player.y = spawnTile.y * TILE + 8;
+  } else {
+    player.x = savedOutdoorX;
+    player.y = savedOutdoorY;
   }
+  mode = "outdoor";
+  forceRedraw = true;
+}
+
+function tryInteract() {
+  // A real interactable in range always wins -- checked first. Without
+  // this order, standing right next to a lab station and pressing Enter
+  // would just exit the lab (mode === "lab" caught it first) and a
+  // station could never actually be reached (found while testing this
+  // build, not by inspection: the toast never appeared no matter how
+  // close to a station the player stood).
+  var it = nearestInteractable;
+  if (it) {
+    if (it.type === "hall") {
+      var ok = window.confirm("Open liquidgov.us/proposals in a new tab?");
+      if (ok) window.open("https://liquidgov.us/proposals", "_blank", "noopener");
+    } else if (it.type === "demoDoor") {
+      enterInterior("demoHouse", demoHouseSpace, DEMO_ENTRY);
+    } else if (it.type === "boardedDoor") {
+      showToast("Closed.");
+    } else if (it.type === "labStation") {
+      var r = LAB_RECIPES[it.recipe];
+      inventory[r.item] = (inventory[r.item] || 0) + 1;
+      showToast(r.name + ".");
+    }
+    return;
+  }
+
+  // Nothing in range: in an interior, Enter is the fallback exit. The lab
+  // spawn point is one tile south of the outdoor door -- the same spot
+  // the walk-in trigger uses -- so there's no re-entry oscillation.
+  if (mode === "demoHouse") { exitToOutdoor(null); return; }
+  if (mode === "lab") { exitToOutdoor({ x: LAB_DOOR_TILE.x, y: LAB_DOOR_TILE.y + 1 }); return; }
 }
 
 // ---- Main loop ----------------------------------------------------------
@@ -621,10 +812,13 @@ var prevPlayerX = player.x, prevPlayerY = player.y;
 var prevPbVisible = false, prevPbX = passerby.x, prevPbY = passerby.y;
 var prevToastActive = false;
 
-function drawOutdoor(camX, camY) {
-  ctx.drawImage(baked, camX, camY, crop.vw, crop.vh, 0, 0, crop.vw, crop.vh);
+// One draw path for outdoor and both interiors -- they already share the
+// same bake/blit/collision shape, so the only per-space differences are
+// "is there a passerby" (outdoor only) and what's in `interactables`.
+function drawSpace(camX, camY) {
+  ctx.drawImage(activeSpace.baked, camX, camY, crop.vw, crop.vh, 0, 0, crop.vw, crop.vh);
 
-  if (passerby.visible) {
+  if (mode === "outdoor" && passerby.visible) {
     var pbsx = passerby.x - camX, pbsy = passerby.y - camY;
     ctx.fillStyle = INK;
     ctx.fillRect(pbsx - passerby.half, pbsy - passerby.half, passerby.half * 2, passerby.half * 2);
@@ -638,7 +832,7 @@ function drawOutdoor(camX, camY) {
   ctx.fillStyle = INK;
   ctx.fillRect(sx - player.half, sy - player.half, player.half * 2, player.half * 2);
 
-  if (nearestInteractable && mode === "outdoor") {
+  if (nearestInteractable) {
     var ix = (nearestInteractable.x * TILE + 8) - camX;
     var iy = (nearestInteractable.y * TILE + 8) - camY - 14;
     ctx.fillStyle = INK;
@@ -646,6 +840,18 @@ function drawOutdoor(camX, camY) {
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText("[" + nearestInteractable.prompt + "]", ix, iy);
+  } else if (mode !== "outdoor") {
+    // Demo house has no interactables at all (the wall slot is decoration,
+    // not a station) and the lab's walk-in exit needs no station nearby
+    // either -- without this, losing P1's static "[Enter] to step back
+    // outside" stub text would leave keyboard users with no on-screen cue
+    // that Enter still leaves (the interact button covers touch). Drawn
+    // higher than the toast line so a lab-station toast can't overlap it.
+    ctx.fillStyle = INK;
+    ctx.font = "8px monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("[Enter] to step back outside", crop.vw / 2, crop.vh - 26);
   }
 
   if (performance.now() < toast.until) {
@@ -657,32 +863,32 @@ function drawOutdoor(camX, camY) {
   }
 }
 
-function drawInterior() {
-  ctx.fillStyle = "#000";
-  ctx.fillRect(0, 0, crop.vw, crop.vh);
-  ctx.fillStyle = "#f2ead8";
-  ctx.font = "8px monospace";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText("The house is quiet.", crop.vw / 2, crop.vh / 2 - 6);
-  ctx.fillText("[Enter] to step back outside", crop.vw / 2, crop.vh / 2 + 6);
-}
-
 function frame(t) {
   if (!running) return;
   var dt = Math.min((t - lastT) / 1000, 1 / 20) || 0;
   lastT = t;
   lastTickAt = t;
 
-  if (mode === "interior") {
-    if (forceRedraw) { drawInterior(); forceRedraw = false; }
-    return;
+  var playerMoved = movePlayer(currentDX(), currentDY(), dt);
+
+  var pbMoved = false;
+  if (mode === "outdoor") {
+    pbMoved = updatePasserby(dt);
+    // Lab door is a walk-in trigger (atlas.md), not Enter-to-confirm --
+    // fires the instant the player's own tile matches it.
+    var ptx = Math.floor(player.x / TILE), pty = Math.floor(player.y / TILE);
+    if (LAB_DOOR_TILE && ptx === LAB_DOOR_TILE.x && pty === LAB_DOOR_TILE.y) {
+      enterInterior("lab", labSpace, LAB_ENTRY);
+    }
+  } else if (mode === "lab") {
+    var ltx = Math.floor(player.x / TILE), lty = Math.floor(player.y / TILE);
+    if (ltx === LAB_DOOR.x && lty === LAB_DOOR.y) {
+      exitToOutdoor({ x: LAB_DOOR_TILE.x, y: LAB_DOOR_TILE.y + 1 });
+    }
   }
 
-  var playerMoved = movePlayer(currentDX(), currentDY(), dt);
-  var pbMoved = updatePasserby(dt);
   nearestInteractable = findNearestInteractable();
-  interactBtn.classList.toggle("show", !!nearestInteractable || mode === "interior");
+  interactBtn.classList.toggle("show", !!nearestInteractable || mode !== "outdoor");
 
   var toastActive = performance.now() < toast.until;
 
@@ -695,17 +901,21 @@ function frame(t) {
   // that exact frame. Found by testing the actual expiry, not by reading
   // the code.
   var changed = forceRedraw || cropChangedThisFrame || playerMoved ||
-    (passerby.visible && (pbMoved || passerby.x !== prevPbX || passerby.y !== prevPbY)) ||
-    (passerby.visible !== prevPbVisible) || toastActive || (toastActive !== prevToastActive);
+    toastActive || (toastActive !== prevToastActive);
+  if (mode === "outdoor") {
+    changed = changed ||
+      (passerby.visible && (pbMoved || passerby.x !== prevPbX || passerby.y !== prevPbY)) ||
+      (passerby.visible !== prevPbVisible);
+  }
 
   if (!changed) return;
 
   var camX = Math.round(player.x - crop.vw / 2);
   var camY = Math.round(player.y - crop.vh / 2);
-  camX = Math.max(0, Math.min(camX, WORLD_PW - crop.vw));
-  camY = Math.max(0, Math.min(camY, WORLD_PH - crop.vh));
+  camX = Math.max(0, Math.min(camX, activeSpace.pw - crop.vw));
+  camY = Math.max(0, Math.min(camY, activeSpace.ph - crop.vh));
 
-  drawOutdoor(camX, camY);
+  drawSpace(camX, camY);
 
   forceRedraw = false;
   cropChangedThisFrame = false;

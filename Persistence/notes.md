@@ -27,6 +27,46 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Game — atlas locked, no code until BUILD
 
+- **2026-09-16 — P2 shipped.** `commons/index.html` extended per
+  `BUILD_ORDER.md`'s P2 list. Lab Yard dressed outdoors: a wall-tile
+  building, a sign, and a Lab door that is a genuine **walk-in trigger**
+  (per atlas.md, deliberately not the Enter-to-confirm family the other
+  doors use — not solid, not in `interactables`). Demo house's P1 black
+  stub replaced with a real 16×16 interior: table, two chairs, rug, and
+  an empty wall-slot frame embedded in the wall itself (still empty —
+  no glue, per `glue.md`). New 20×16 Lab interior with a workbench visual
+  and three lookup stations (copper acetate, iron-gall ink, chalk-only —
+  pushback.md's fix, no lime), each showing the real recipe name in a
+  toast and recording one pickup in a plain in-memory `inventory` object
+  (v1.md: session RAM, vanishes on refresh, no SQLite in this preview).
+  Collision/movement/rendering generalized behind a single `activeSpace`
+  (outdoor / demoHouse / lab) rather than copy-pasting the outdoor logic
+  twice — same 12×12-box/4-corner/axis-split rules from collision.md
+  apply unchanged inside either interior, only which tile/solid array and
+  pixel bounds count as "the world" changes. Demo house keeps its P1
+  Enter-to-enter/Enter-to-exit pattern exactly as shipped; the Lab is
+  walk-in both ways, with Enter also working as a fallback exit. Real bug
+  caught by testing, not review: `tryInteract()` originally checked
+  `mode === "lab"` before checking `nearestInteractable`, so standing
+  right next to a lab station and pressing Enter always exited the lab
+  instead of triggering the station — no toast ever fired, at any
+  distance. Fixed by checking the interactable first; the interior-exit
+  fallback only applies when nothing is in range. Also fixed on sight
+  (not asked, but the same class of bug as the P0 fountain trap): the
+  wall-slot frame was placed one tile off the actual wall, floating on
+  the open floor instead of embedded in it. Verified in-browser: Lab door
+  auto-warps in and back out (both via walking onto the interior door and
+  via the Enter fallback, landing at the intended spot outside each time,
+  no oscillation), demo house enter/exit round-trips to the exact saved
+  outdoor position, both entry tiles confirmed unblocked
+  (`boxBlockedAt` false), all three lab stations produce the correct
+  recipe text and inventory entry, and the full P0/P1 regression set
+  still holds (A/D not inverted, water solid off the path, bridge still
+  crosses it, boarded-door toast, Hall's `confirm()`/`window.open()`
+  stubbed and verified, dual crop switches at 390×844, no console
+  errors). North Woods, Lookout, Orchard, Workshop Lane, Garden, Quarry
+  Ridge remain untouched — P3, not this round. `liquidgov-platform/`
+  untouched.
 - **2026-09-16 — dt clamp notes.** `Persistence/TheCommons/dt.md`: keep
   1/20; that is what stops tab-return tunneling through 1-tile doors.
   Do not add CCD to satisfy a dt=1 test. P1 still closed. P2 waits.

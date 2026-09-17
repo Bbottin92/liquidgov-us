@@ -27,6 +27,10 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Game — atlas locked, no code until BUILD
 
+- **2026-09-16 — first BUILD = P0 only.** Brandon chose P0, not P0+P1.
+  Empty walkable 72×80, dual crop, d-pad, A/D = left/right, throwaway name,
+  spawn Square, region labels, no set pieces, no doors, no passerby.
+  P1+ wait for a later BUILD. Still no code until Brandon says BUILD.
 - **2026-09-16 — Grok build order.** Answer in
   `Persistence/TheCommons/BUILD_ORDER.md`. Greater map = empty walkable
   72×80 first (one array, not 12 maps). Chunk = a **system**, then a

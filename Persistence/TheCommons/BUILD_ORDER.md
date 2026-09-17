@@ -130,9 +130,6 @@ Lab Yard is already in P2. Don’t reopen P1 regions.
 
 ## Recommended first BUILD
 
-**P0 + P1.** Greater map walkable *and* the visiting spine with passerby
-and Hall. P2/P3 are the next BUILD, not a surprise bolted onto a broken
-camera.
-
-If Brandon wants an even smaller first BUILD: **P0 only**, then look at it
-on a phone before anyone paints a fountain.
+**P0 only — locked 2026-09-16.** Empty walkable 72×80, dual crop, d-pad,
+A/D = left/right. No set pieces, no doors, no passerby. P1 (spine +
+notice-post + Hall + passerby) is the next BUILD, not this one.

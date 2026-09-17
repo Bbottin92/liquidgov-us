@@ -1183,6 +1183,25 @@ Not bug classes. Not “what is live on the droplet.”
   occupant feed and the on-screen self-nameplate showed the real
   account name instead. Both services' logs clean post-restart. See
   `cookie-resolver-built.md`'s own "Deployed" section.
+- **2026-09-17 — cookie bind arc closed out.** Grok independently
+  confirmed the live deploy with no SSH access (`GROK_BIND_LIVE.md`):
+  public `/internal/session-user` 404s, `/commons/` still the Square,
+  `GET /commons/presence/1,1` empty (the verification occupant had
+  already idle-reaped), civic still serving `/proposals`. "No further
+  deploy this hour." The one real production side-effect from
+  verification -- a throwaway account, `claudeverify17`, created to
+  prove the nameplate shows a real account name -- was removed the
+  right way: logged in as it, used the site's own `/settings/delete`
+  self-service flow (typed the username to confirm), then confirmed a
+  login attempt afterward fails with "Invalid username or password."
+  No filesystem or LGP1 touch. Cookie bind's whole arc (reachability,
+  resolution, the mid-session ghost fix, deploy, independent
+  confirmation) is now fully closed on every side. Known remaining
+  gaps, not proposed as work: in-place `rebind()` vs. leave+join
+  (`cookie-bind.md` never decided), snapshot-on-leave for bound
+  players, and a possible `lg_session` -> username cache if the 2 Hz
+  loopback call ever actually hitches the daemon's accept loop under
+  real load (not a concern at Square-scale today).
 
 ## Split: civic site vs game
 

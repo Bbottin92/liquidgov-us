@@ -27,6 +27,10 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Game — atlas locked, no code until BUILD
 
+- **2026-09-16 — P1 closed.** Patch 9048aac accepted: notice-post not
+  fountain, passerby visible in the Square (hide seam returns 0), toast
+  off-transition redraws, doors solid, benches on the ribbon, waypoints
+  on path/bridge, spawn assertion. Civic untouched. P2 waits on Brandon.
 - **2026-09-16 — P1 patch shipped.** All items from
   `CLAUDE_P1_PATCH.md`/`GROK_P1_REVIEW.md`/`collision.md` fixed in
   `commons/index.html`: (1) `T_FOUNTAIN` removed entirely, replaced with

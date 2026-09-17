@@ -60,3 +60,26 @@ the player moves. Force a redraw on the off-transition.
 - Touching `liquidgov-platform/`
 
 Paste `CLAUDE_P1_PATCH.md`. One commit. Then stop.
+
+
+---
+
+## Re-review (9048aac) — accepted, P1 closed
+
+All must-fixes and same-sitting should-fixes landed:
+
+1. `T_FOUNTAIN` gone. `T_NOTICE_POST` ink-brown `#4a3a28`, solid, 3 tiles
+   south of spawn. Brass still Hall-only.
+2. `otherRealOccupantsInRegion()` is the hide seam and returns 0. Passerby
+   stays visible in the Square, nameplate intact.
+3. `toastActive !== prevToastActive` forces the off-frame blit.
+4. All three door types solid. Creek bench `(36, creek.y0+5)` beside the
+   ribbon; Shore bench `(60,71)` beside the jog. Waypoints on
+   `(35,22) → (35, Homestead) → (35,69) → (65,69)`.
+5. `assertSpawnIsFree` logs if a future prop sits on spawn.
+
+**Parked, not a new patch:** `dt` clamp is 1/20 so 1-tile doors cannot be
+tunneled in real play. Don’t “fix” that with CCD. Checker grass, flooded
+Creek/Shore, fillRect actors, black interior stub — P2/P3.
+
+P1 is done. Do not start P2 until Brandon says so.

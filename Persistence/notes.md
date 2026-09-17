@@ -27,6 +27,9 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Game — atlas locked, no code until BUILD
 
+- **2026-09-16 — dt clamp notes.** `Persistence/TheCommons/dt.md`: keep
+  1/20; that is what stops tab-return tunneling through 1-tile doors.
+  Do not add CCD to satisfy a dt=1 test. P1 still closed. P2 waits.
 - **2026-09-16 — P1 closed.** Patch 9048aac accepted: notice-post not
   fountain, passerby visible in the Square (hide seam returns 0), toast
   off-transition redraws, doors solid, benches on the ribbon, waypoints

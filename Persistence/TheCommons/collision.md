@@ -73,3 +73,10 @@ That’s a data bug, not a reason to add NPC collision.
 - Walk through a boarded door
 - Passerby waypoint in water
 - `solid[]` rebuilt from a table that still lists `T_FOUNTAIN`
+
+## `dt` (see `dt.md`)
+
+`frame()` clamps to 1/20 s so a tab-return cannot step ~28 px and
+4-corner through a 1-tile door. Do not add CCD. If speed changes, derive
+`DT_MAX = TILE / (speed * 2)`.
+

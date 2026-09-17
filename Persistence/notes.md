@@ -27,6 +27,24 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Game — atlas locked, no code until BUILD
 
+- **2026-09-16 — Correction: `lg_session` does get `Secure`, conditionally.**
+  My own first pass on the cookie (same session, bullet below) grepped
+  only the literal `Set-Cookie:` string in `set_cookie()` and reported
+  "no `Secure`" as flat fact — missed the very next line,
+  `if (g_https) o += "; Secure";` (line 1112), and `clear_cookie()`'s
+  matching one. `g_https` is set per-request (line 6824) from
+  `X-Forwarded-Proto`, so on the real site behind nginx it's true for
+  real traffic and the cookie the browser actually gets **does** carry
+  `Secure`. Caught by Grok independently citing
+  `deploy/ux-on-droplet.patch` and writing `cookie.md` concurrently — a
+  real overlap this time, not just a doc-only commit alongside — merged
+  by rechecking the source directly rather than taking either version on
+  trust, confirming Grok's finding first-hand before writing it into
+  `glue.md`. Lesson for next time reading this file cold: a `+= "..."` or
+  a conditional two lines past the literal string you grepped for is easy
+  to miss with a narrow grep; read the whole function, not just the match
+  line. `glue.md`'s host-only/no-`Domain=` finding was independently
+  correct and unaffected.
 - **2026-09-16 — Glue: cookie and wall-slot are now verified facts.**
   Brandon delegated the choice; picked glue over sibling (order of
   operations — sibling needs glue's cookie name, glue needed nothing

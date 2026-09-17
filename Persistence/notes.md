@@ -18,6 +18,34 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-17 — commons-daemon is live on the droplet.** Brandon said
+  "go" after `c024c27`'s deploy-preflight fixes. Ran the full
+  `Persistence/TheCommons/deploy-plan.md` sequence for real against
+  `143.198.159.58` for the first time in this project's history:
+  synced daemon source (`schema.sql` landed as a real dereferenced
+  file, confirmed, not a dangling symlink) and the client separately,
+  built with `cmake --build -j1` on the actual 512MB box (`FetchContent`
+  reached sqlite.org fine, no tarball fallback needed), installed
+  `commons-daemon.service` (`active (running)`, ~1-2MB RSS, well under
+  the 64M cap), verified the daemon on loopback *before* touching
+  nginx, backed up the live nginx config, edited in the three
+  `/commons` locations, tested on disk with `nginx -t` (which does not
+  touch the running process) before reloading, then reloaded. Civic
+  stayed `200` the entire time, never interrupted. Verified end-to-end
+  including **a real browser loading `https://liquidgov.us/commons/`
+  for the first time ever** — minted a real credential, joined
+  presence, and the daemon's own feed showed the exact same occupant.
+  Full join/move/leave/wrong-secret-403 lifecycle re-verified over real
+  HTTPS through the proxy afterward. `deploy-plan.md` updated in place
+  to record what actually happened rather than staying a hypothetical.
+  **New, unexpected, non-blocking finding from actually being on the
+  box:** `/opt/liquidgov-us` exists — a full git clone of this repo
+  (`origin` remote, at `4d38c92`), separate from `/opt/liquidgov` (the
+  real running app, confirmed via the systemd unit and the live
+  process's own cwd). Not touched, not part of this deploy, flagged for
+  Brandon since it was genuinely unknown before today (possibly a
+  staging/migration experiment from another session) — worth him
+  knowing what's actually sitting on his own droplet.
 - **2026-09-17 — commons: deploy preflight, two real holes closed, still
   no SSH.** `GROK_DEPLOY_REVIEW.md`/`CLAUDE_DEPLOY_PREFLIGHT.md` on
   `fb889c0`: accepted the slash fix, found two more real problems before

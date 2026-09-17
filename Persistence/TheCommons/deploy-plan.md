@@ -1,9 +1,16 @@
-# Sibling deploy plan — staged, not applied
+# Sibling deploy plan — applied 2026-09-17, live
 
-**Nothing in this file has been run against the droplet.** Per explicit
-scope for this round: stage the systemd unit, nginx config, and sync
-script as reviewable files; SSH and apply only after Brandon reviews and
-says go. This doc is the staged plan itself.
+**Applied.** Brandon said go after `GROK_DEPLOY_REVIEW.md`/
+`CLAUDE_DEPLOY_PREFLIGHT.md`'s two must-fixes landed
+(`c024c27`). Every step below was actually run against
+`143.198.159.58` on 2026-09-17 and verified end-to-end, including a
+real browser loading `https://liquidgov.us/commons/` for the first
+time. See the "Applied 2026-09-17" section at the bottom for exactly
+what was verified and the one new thing found only by actually
+deploying (`/opt/liquidgov-us`, a second unrelated git checkout on the
+droplet — not the running app, not touched, flagged for Brandon).
+The sequence below is kept as the accurate record of what happened,
+not a hypothetical anymore.
 
 Reference docs this plan implements, unchanged: `sibling.md` (what
 "sibling" means, memory budget, deploy split), `nginx.md` (exact
@@ -46,14 +53,10 @@ obvious proxy failure).
 
 ## What this plan does NOT include
 
-- **Wiring `commons/index.html` to actually use the same-origin path.**
-  The client today talks to `DAEMON` (`http://127.0.0.1:8765` by
-  default, or a validated `?daemon=` override, both loopback-only —
-  `4e9bfbd`). Switching it to default to the relative
-  `/commons/presence/` path when served same-origin, while keeping the
-  loopback default for local dev, is a separate, small client change
-  not made this round — flagging it as the next piece once the droplet
-  side below is actually applied and verified reachable.
+- ~~Wiring `commons/index.html` to actually use the same-origin path~~
+  — **done and live**, `c024c27`: off loopback, `DAEMON` is
+  `location.origin + "/commons"`. Confirmed in a real browser at
+  `https://liquidgov.us/commons/`.
 - **Cookie bind itself.** `cookie-bind.md` already covers why: this
   plan makes the *transport* same-origin (so `lg_session` would be
   sent), but nothing on civic resolves that cookie into an account yet.
@@ -90,7 +93,7 @@ obvious proxy failure).
    `/var/lib/commons`** once those directories are created (see below) —
    they don't exist yet on the droplet.
 
-## Sequence (SSH steps -- not run yet)
+## Sequence (SSH steps -- all run, 2026-09-17, exactly as below)
 
 ```bash
 # 1. From the local repo, sync the DAEMON's source (dereferences the
@@ -125,9 +128,11 @@ systemctl status commons-daemon   # expect "active (running)"
 curl -s http://127.0.0.1:8765/health
 # expect {"status":"ok"} -- if this fails, stop, do not touch nginx yet.
 
-# 7. nginx -- paste nginx-commons.conf's two location{} blocks into the
-#    existing liquidgov.us server{} block (see that file's own header
-#    for exactly where/how), then:
+# 7. nginx -- backed up the live /etc/nginx/sites-available/liquidgov
+#    first (liquidgov.bak-pre-commons-<timestamp>), pasted
+#    nginx-commons.conf's three location{} blocks into the existing
+#    server{} block, then tested on disk BEFORE reloading (nginx -t
+#    does not affect the running process -- safe to fail):
 nginx -t
 systemctl reload nginx
 
@@ -165,4 +170,35 @@ undo, since civic's own `location /` was never touched.
 - Opening `liquidgov_accounts.lgp` from the daemon, ever
 - Building with `-j` (unqualified, i.e. all cores) on a 512MB box
 
-No deploy has happened. This is the plan for review.
+## Applied 2026-09-17
+
+Every step above ran for real against `143.198.159.58`. Result:
+
+- `cmake -S`/`--build -j1` succeeded on the actual 512MB/1vCPU box,
+  `FetchContent` reached sqlite.org fine (pre-flight check #1 passed,
+  no tarball fallback needed) — first time this daemon has ever been
+  built anywhere but a dev machine.
+- `commons-daemon.service`: `active (running)`, ~1-2MB RSS (well under
+  `MemoryMax=64M`), `IPAddressAllow`/`Deny` accepted by the kernel (no
+  eBPF fallback needed).
+- nginx reload: civic stayed `200` before, during, and after: never
+  interrupted. `/commons/` served real `index.html`; `/commons`
+  (no slash) 301'd correctly; `POST /commons/presence/guest` and the
+  full join/move/leave/wrong-secret-403 lifecycle all verified over
+  real HTTPS through the proxy.
+- **A real browser** loaded `https://liquidgov.us/commons/` for the
+  first time ever, minted a credential, joined presence, and the
+  daemon's own `GET /presence/1,1` showed the exact same occupant --
+  the full client-to-daemon path proven end-to-end, not just curl.
+- **New, unexpected finding, not a blocker:** `/opt/liquidgov-us`
+  exists on the droplet -- a full git clone of `Bbottin92/liquidgov-us`
+  (`origin` remote, at `4d38c92` at the time of this deploy), separate
+  from `/opt/liquidgov` (confirmed via the systemd unit's `ExecStart`
+  and the live process's own `cwd` to be the actual running app).
+  Not the running civic instance, not touched, not part of this plan --
+  flagged here because it was genuinely unknown before this deploy and
+  is worth Brandon knowing about (possibly a staging/migration
+  experiment from another session). Investigated read-only only.
+
+No rollback needed -- nothing failed. The rollback section above still
+describes how, if this ever needs undoing.

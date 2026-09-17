@@ -18,6 +18,44 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-17 — V2: shared interiors (BUILD).** `GROK_V2_ANSWER.md`:
+  V1's actual hole wasn't a 13th region, it was that "indoors is a
+  single-player cutscene" — the client called `netLeave()` on every
+  house/lab entry, so real presence was wasted the instant two guests
+  would have been in the same room. Mine/Workshop/Hall stay shut (each
+  needs a different *kind* of feature, not "one more 16x16") — this
+  round only networks the two interiors that already exist, as one
+  **shared** instance each (`instance:demo`, `instance:lab`), not
+  per-player houses. No daemon changes at all: `PresenceStore` already
+  treats region as an opaque string key, so an instance key is just
+  another region to it, same 2Hz/secret/24-cap.
+  Client refactor: generalized `regionKeyFor`/`worldToRegionLocal`/
+  `regionLocalToWorld` to accept either an outdoor `REGIONS` entry or a
+  plain instance-key string (interior local coords need no supermap
+  AABB offset — the instance's own tile space IS the whole region);
+  unified `netJoinOutdoor`/`netRekeyOutdoor`/`netMoveOutdoor` into
+  plain `netJoin`/`netRekey`/`netMove` that work for both; added
+  `netPollCurrentRegion` (single-region poll, no camera-neighbor union
+  needed since there's only ever one instance to be in); frame()'s
+  network tick now runs the same join-on-null/rekey-on-mismatch pattern
+  for whichever `mode` is active, indoors or out, so `enterInterior()`/
+  `exitToOutdoor()` need **zero** explicit network calls — the very
+  next tick detects the region mismatch and rekeys automatically, the
+  same mechanism that already handled outdoor-to-outdoor crossings.
+  `netHandleAuthFailure`'s remint path simplified the same way (resets
+  `netRegion` to null, the natural tick picks up wherever the player
+  actually is). Rendering generalized to fire for either mode.
+  Verified live: entering the demo house rekeys clean (no ghost in the
+  outdoor region, correct region-local coords in the daemon's feed); a
+  second tab entering the same house sees the first guest as a real
+  occupant (the actual hole, closed); exiting rekeys back outdoors with
+  no ghost in the instance; the lab's walk-in door trigger (not just
+  the demo house's Enter-to-exit) also rekeys correctly; outdoor
+  camera-neighbor polling re-verified unaffected by the refactor; no
+  console errors either tab. Not deployed to the live droplet yet —
+  this is a repo commit only, separate explicit go-ahead needed before
+  touching `/opt/commons/index.html` again. Civic untouched, no deploy,
+  no nginx.
 - **2026-09-17 — decided: world-reachable guest mint is the product, not
   a hole.** Independently confirmed by Grok (`GROK_LIVE_CHECK.md`, no
   SSH) after the deploy: civic still 200, `/commons/` shows the real

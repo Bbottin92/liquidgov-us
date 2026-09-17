@@ -918,8 +918,12 @@ var DAEMON = (function () {
   }
 })();
 var NET_INTERVAL_MS = 500; // presence.md: per-region ~2Hz
+// V2 (GROK_V2_ANSWER.md): the only two interior spaces this game has,
+// each a single shared instance -- not per-player houses, which need
+// real accounts (post-glue). A fixed key per mode is correct here.
+var INTERIOR_INSTANCE_KEY = { demoHouse: "instance:demo", lab: "instance:lab" };
 var netId = null, netSecret = null, netReady = false;
-var netRegion = null;        // the REGIONS entry the player's OWN row is joined into, or null
+var netRegion = null;        // an outdoor REGIONS entry, an interior instance key string, or null
 var otherOccupants = [];     // merged poll across every camera-intersecting region, self filtered out
 var netOccupantsDirty = false;
 var netPollBusy = false;     // one batch of camera-region GETs in flight at a time
@@ -939,14 +943,23 @@ function regionsIntersectingCamera(camX, camY) {
   return out;
 }
 
-function regionKeyFor(region) { return region.col + "," + region.row; }
+// V2 (GROK_V2_ANSWER.md): region is either an outdoor REGIONS entry
+// (object) or a shared interior instance key (plain string, e.g.
+// "instance:demo") -- presence.md always intended interior region ids
+// to look like this, V1 just never joined one. A string region has no
+// supermap AABB to offset by: the instance's own local tile space IS
+// the whole region, same shape as an outdoor region's own local space,
+// just with no (x0,y0) origin to add.
+function regionKeyFor(region) { return typeof region === "string" ? region : (region.col + "," + region.row); }
 
 function worldToRegionLocal(region, worldPx, worldPy) {
+  if (typeof region === "string") return { x: worldPx / TILE, y: worldPy / TILE };
   var aabb = regionAABB(region);
   return { x: (worldPx / TILE) - aabb.x0, y: (worldPy / TILE) - aabb.y0 };
 }
 
 function regionLocalToWorld(region, lx, ly) {
+  if (typeof region === "string") return { x: lx * TILE, y: ly * TILE };
   var aabb = regionAABB(region);
   return { x: (aabb.x0 + lx) * TILE, y: (aabb.y0 + ly) * TILE };
 }
@@ -984,27 +997,34 @@ function netHandleAuthFailure() {
   otherOccupants = [];
   netMint().then(function () {
     netReauthInFlight = false;
-    if (netReady && mode === "outdoor") {
-      var r = regionAt(Math.floor(player.x / TILE), Math.floor(player.y / TILE));
-      if (r) netJoinOutdoor(r);
-    }
+    // No mode-specific rejoin here on purpose: the next frame() network
+    // tick (outdoor or interior branch, whichever `mode` currently is)
+    // sees netRegion === null and rejoins on its own -- the exact same
+    // path used at initial login, so this doesn't need to know whether
+    // the player is outdoors or in a shared interior right now.
   });
 }
 
-function netJoinOutdoor(region) {
+// V2 (GROK_V2_ANSWER.md): join/rekey/move are no longer outdoor-only --
+// `region` can be an outdoor REGIONS entry or a shared interior instance
+// key ("instance:demo" / "instance:lab"). worldToRegionLocal/regionKeyFor
+// already handle both, so one set of functions covers both cases.
+function netJoin(region) {
   if (!netReady) return;
   var lp = worldToRegionLocal(region, player.x, player.y);
   netRegion = region; // optimistic -- matches the existing join_locked/rekey de-dupe on the daemon side either way
+  otherOccupants = []; // stale data from whatever region we were just in shouldn't render for a frame in the new one
   fetch(DAEMON + "/presence/join", {
     method: "POST",
     body: netBody({ region: regionKeyFor(region), x: lp.x, y: lp.y, facing: player.dir, display_name: playerName })
   }).then(function (r) { if (r.status === 403) netHandleAuthFailure(); }).catch(function () {});
 }
 
-function netRekeyOutdoor(fromRegion, toRegion) {
+function netRekey(fromRegion, toRegion) {
   if (!netReady) return;
   var lp = worldToRegionLocal(toRegion, player.x, player.y);
   netRegion = toRegion;
+  otherOccupants = [];
   fetch(DAEMON + "/presence/rekey", {
     method: "POST",
     body: netBody({
@@ -1014,13 +1034,32 @@ function netRekeyOutdoor(fromRegion, toRegion) {
   }).then(function (r) { if (r.status === 403) netHandleAuthFailure(); }).catch(function () {});
 }
 
-function netMoveOutdoor() {
+function netMove() {
   if (!netReady || !netRegion) return;
   var lp = worldToRegionLocal(netRegion, player.x, player.y);
   fetch(DAEMON + "/presence/move", {
     method: "POST",
     body: netBody({ region: regionKeyFor(netRegion), x: lp.x, y: lp.y, facing: player.dir })
   }).then(function (r) { if (r.status === 403) netHandleAuthFailure(); }).catch(function () {});
+}
+
+// Single-region poll for a shared interior instance -- there's exactly
+// one instance:demo and one instance:lab (V2, not per-player houses), so
+// unlike outdoor there's no camera-neighbor set to union across.
+function netPollCurrentRegion() {
+  if (!netReady || !netRegion || netPollBusy) return;
+  netPollBusy = true;
+  fetch(DAEMON + "/presence/" + regionKeyFor(netRegion))
+    .then(function (r) { return r.json(); })
+    .then(function (list) {
+      var region = netRegion;
+      otherOccupants = list.filter(function (o) { return o.id !== netId; }).map(function (o) {
+        return { region: region, id: o.id, display_name: o.display_name, x: o.x, y: o.y, facing: o.facing };
+      });
+      netOccupantsDirty = true;
+    })
+    .catch(function () {})
+    .finally(function () { netPollBusy = false; });
 }
 
 function netPollRegions(regions) {
@@ -1167,13 +1206,13 @@ function enterInterior(key, space, entry) {
   player.y = entry.y * TILE + 8;
   mode = key;
   forceRedraw = true;
-  // Interiors aren't networked in V1 (see the presence networking comment
-  // above otherRealOccupantsInRegion) -- leave outdoor presence rather
-  // than leaving a frozen ghost standing at the door. exitToOutdoor()
-  // rejoins automatically: frame()'s network tick sees netRegion === null
-  // on the first outdoor frame back and joins fresh from wherever the
-  // player actually re-emerges.
-  netLeave();
+  // V2: no explicit network call needed here (or in exitToOutdoor) --
+  // frame()'s network tick runs every frame regardless of mode and
+  // already detects "current region !== netRegion" generically, so the
+  // very next tick rekeys from wherever the player just was (outdoor
+  // region or interior instance) into wherever they just arrived. Same
+  // mechanism that already handled outdoor-to-outdoor crossings; this
+  // just stopped special-casing interiors out of it.
 }
 
 function exitToOutdoor(spawnTile) {
@@ -1253,7 +1292,11 @@ function drawSpace(camX, camY) {
     ctx.fillText("passerby", pbsx, pbDestY - 4);
   }
 
-  if (mode === "outdoor" && netReady) {
+  // V2: renders for either outdoor or a shared interior -- otherOccupants
+  // is populated by whichever poll last ran (netPollRegions outdoor,
+  // netPollCurrentRegion indoors) and regionLocalToWorld already handles
+  // both an outdoor REGIONS entry and an interior instance-key string.
+  if (netReady && netRegion) {
     for (var oi = 0; oi < otherOccupants.length; oi++) {
       var o = otherOccupants[oi];
       var owp = regionLocalToWorld(o.region, o.x, o.y);
@@ -1345,18 +1388,43 @@ function frame(t) {
     if (netReady) {
       var curRegion = regionAt(ptx, pty);
       if (curRegion && curRegion !== netRegion) {
-        if (netRegion === null) netJoinOutdoor(curRegion);
-        else netRekeyOutdoor(netRegion, curRegion);
+        if (netRegion === null) netJoin(curRegion);
+        else netRekey(netRegion, curRegion);
       } else if (curRegion && t - lastNetSendAt > NET_INTERVAL_MS) {
-        netMoveOutdoor();
+        netMove();
         netPollRegions(regionsIntersectingCamera(camX, camY));
         lastNetSendAt = t;
       }
     }
-  } else if (mode === "lab") {
-    var ltx = Math.floor(player.x / TILE), lty = Math.floor(player.y / TILE);
-    if (ltx === LAB_DOOR.x && lty === LAB_DOOR.y) {
-      exitToOutdoor({ x: LAB_DOOR_TILE.x, y: LAB_DOOR_TILE.y + 1 });
+  } else {
+    // V2 (GROK_V2_ANSWER.md): "indoors is a single-player cutscene" was
+    // the actual hole real presence left behind -- V1 called netLeave()
+    // on every interior entry, so two guests standing in the same demo
+    // house never saw each other. Both interiors are now one **shared**
+    // instance each (instance:demo / instance:lab), not per-player
+    // houses (that needs real accounts, post-glue) -- a fixed key is
+    // correct here, not a shortcut standing in for something bigger.
+    // Same join-on-null/rekey-on-mismatch pattern as outdoor, just
+    // against a single fixed region instead of whichever grid cell the
+    // player's tile is in; same throttled move+poll, but a plain
+    // single-region poll (netPollCurrentRegion), not the camera-neighbor
+    // union outdoor uses -- there's only ever one region to be in here.
+    var instanceKey = INTERIOR_INSTANCE_KEY[mode];
+    if (netReady && instanceKey) {
+      if (instanceKey !== netRegion) {
+        if (netRegion === null) netJoin(instanceKey);
+        else netRekey(netRegion, instanceKey);
+      } else if (t - lastNetSendAt > NET_INTERVAL_MS) {
+        netMove();
+        netPollCurrentRegion();
+        lastNetSendAt = t;
+      }
+    }
+    if (mode === "lab") {
+      var ltx = Math.floor(player.x / TILE), lty = Math.floor(player.y / TILE);
+      if (ltx === LAB_DOOR.x && lty === LAB_DOOR.y) {
+        exitToOutdoor({ x: LAB_DOOR_TILE.x, y: LAB_DOOR_TILE.y + 1 });
+      }
     }
   }
 
@@ -1392,12 +1460,13 @@ function frame(t) {
     changed = changed ||
       (passerby.visible && (pbMoved || pbFacingChanged || passerby.x !== prevPbX || passerby.y !== prevPbY)) ||
       (passerby.visible !== prevPbVisible);
-    // A fresh /presence/<region> poll can update otherOccupants between
-    // frames with the local player and passerby both otherwise idle --
-    // without this, a remote player's new position wouldn't redraw until
-    // something local also happened to change.
-    changed = changed || netOccupantsDirty;
   }
+  // V2: a fresh poll (outdoor or a shared interior) can update
+  // otherOccupants between frames with everything local otherwise idle --
+  // without this, a remote player's new position wouldn't redraw until
+  // something local also happened to change. Not folded into the
+  // outdoor-only block above since interiors need it too now.
+  changed = changed || netOccupantsDirty;
 
   if (!changed) return;
 

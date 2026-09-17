@@ -16,6 +16,27 @@ Not bug classes. Not “what is live on the droplet.”
 
 ---
 
+## Game — in planning (no code)
+
+- **2026-09-16 — parked, atlas not locked.** Working title The Commons (not
+  confirmed). Art lean GBA / FireRed cousin (not confirmed). Nothing built.
+  Do not scaffold, sprite, or write game code until Brandon says BUILD.
+  Do not start the game in the civic repo. Sibling process + SQLite when it starts.
+- **V1 proposed, not locked:** walkable public ground, your house, lab (few real
+  reactions as a lookup table), Hall door → live `liquidgov.us/proposals`,
+  mine boarded. Guest play until cookie glue exists.
+- **Atlas not locked.** Brandon wants one greater map of about 12 minor maps
+  or instances. Do not lock until he chooses in chat:
+  - **A:** 12 outdoor regions + interiors extra (per-player houses, lab, hall, mine).
+    Proposed 3×4 names: Commons, Hall Lawn, Homestead Row, Lab Yard, Quarry Ridge,
+    Workshop Lane, North Woods, Orchard, Lookout, Shore, Creek, Garden.
+  - **B:** 12 total including interiors.
+  - Orthogonal to A/B: 12 as FireRed warp maps vs 12 named regions on one
+    continuous outdoor canvas with warp interiors (Stardew/AC). Visiting prefers
+    continuous.
+  - Homestead Row cannot be a finite street of every player. Housing is instanced;
+    the overworld tile is a gate or an online-friends street. Decide with the atlas.
+
 ## Split: civic site vs game
 
 - **2026-09-16 — decided.** Persistent FireRed/Sims/AC-style world is **not**

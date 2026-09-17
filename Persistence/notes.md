@@ -27,6 +27,9 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Game — atlas locked, no code until BUILD
 
+- **2026-09-16 — WebGPU is not this game.** `Persistence/TheCommons/webgpu.md`:
+  240×160 blit does not want a compute shader. Canvas 2D stays. Sprites /
+  glue / sibling still wait on Brandon.
 - **2026-09-16 — WASM is not V1.** `Persistence/TheCommons/wasm.md`: no
   compile step in commons/. WASM only earns a slot if a C++ sibling
   daemon shares collision; blit/input stay JS. Sprites/glue/sibling still

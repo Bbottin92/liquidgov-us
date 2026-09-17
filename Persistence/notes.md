@@ -18,6 +18,42 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-17 — commons: sibling deploy staged, nothing applied.**
+  "Let's move forward" → confirmed the direction was sibling deploy →
+  confirmed the mode was "stage first, apply after review" before
+  touching anything, given this is the first round in the whole project
+  to go anywhere near the actual droplet. Staged, not run:
+  `commons-daemon/deploy/commons-daemon.service` (systemd unit --
+  `User=liquidgov`, loopback-only via `IPAddressAllow`/`Deny`,
+  `MemoryMax=64M`, `Restart=on-failure`, no `After=`/`Requires=`
+  coupling to civic's own unit either direction), `nginx-commons.conf`
+  (the two `location` blocks per `nginx.md`'s shape), and
+  `deploy/sync-to-droplet.sh` (rsync, modeled on civic's own script,
+  targeting the sibling path `/opt/commons-daemon`, `-L` to dereference
+  the `schema.sql` symlink so it doesn't arrive on the droplet as a
+  dangling path string -- exactly the caveat `GROK_DAEMON_REVIEW.md`
+  already flagged). Full sequence, pre-flight checks (droplet outbound
+  internet for `FetchContent`, disk/RAM for a `-j1` build), and rollback
+  written up in `Persistence/TheCommons/deploy-plan.md`.
+  **Real bug found while deriving the nginx config, not copied blind**:
+  `nginx.md`'s own example (`location /commons/presence` without a
+  trailing slash + `proxy_pass .../` with one) sends
+  `/commons/presence/join` upstream as `//join`, not `/presence/join` --
+  traced through nginx's documented rewrite rule, not guessed. Every
+  presence call through that shape would 404 against this daemon's
+  exact-match routes, never caught because no nginx config for this
+  project has ever actually been installed anywhere. Fixed by matching
+  trailing slashes on both sides (`location /commons/presence/` +
+  `proxy_pass .../presence/`), nginx's own documented safe pattern.
+  Flagged explicitly in both the config file's header and
+  `deploy-plan.md` rather than silently deviating from the accepted
+  spec. Explicitly NOT done this round (listed in `deploy-plan.md`):
+  wiring `commons/index.html` itself to call the same-origin path
+  (still loopback/`?daemon=` only), cookie bind (still blocked on a
+  civic-side change per `cookie-bind.md`), and proxying `/health`,
+  `/items`, `/recipes`, `/maps` (the client never calls them over the
+  network today). No SSH, no droplet contact, no `nginx -t` run against
+  anything real. Civic files untouched.
 - **2026-09-17 — commons: cookie bind, design-only (`cookie-bind.md`), no
   code.** "Should-fix cookie bind next" was flagged before doing anything
   else this round: unlike every prior should-fix, this one is

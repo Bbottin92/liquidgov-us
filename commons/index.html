@@ -857,7 +857,18 @@ function updatePasserby(dt) {
 // joined/rekeyed into on the daemon, the presence.md "per-region tick"
 // membership -- polling breadth is a separate, wider concern layered on
 // top of it.
-var DAEMON = "http://127.0.0.1:8765";
+// Should-fix (GROK_PRESENCE_REVIEW.md): "NET host is loopback :8765.
+// Grok preview and liquidgov.us will not see WSL." True either way this
+// constant is spelled -- neither a remote preview sandbox nor a real
+// visitor's browser can reach a developer's own WSL loopback, no matter
+// what URL the client asks for. The actual fix is "the nginx round"
+// (relative path, same-origin proxy), explicitly out of scope here (no
+// nginx, no deploy). What's cheap and worth doing now: stop forcing a
+// source edit to point this at a different reachable daemon (a LAN IP,
+// a tunnel, another dev box) -- an optional ?daemon= query param
+// overrides the default without touching code. Doesn't fix reachability
+// by itself; just removes the friction until the real proxy exists.
+var DAEMON = new URLSearchParams(location.search).get("daemon") || "http://127.0.0.1:8765";
 var NET_INTERVAL_MS = 500; // presence.md: per-region ~2Hz
 var netId = null, netSecret = null, netReady = false;
 var netRegion = null;        // the REGIONS entry the player's OWN row is joined into, or null

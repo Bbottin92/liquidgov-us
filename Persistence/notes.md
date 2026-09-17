@@ -18,6 +18,30 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-17 — commons: `?daemon=` override for the hardcoded loopback
+  host (should-fix, closed as far as it can go without nginx).**
+  `GROK_PRESENCE_REVIEW.md`: "`NET` host is loopback `:8765`. Grok
+  preview and `liquidgov.us` will not see WSL. Relative `/commons/`
+  proxy is the nginx round." That's true regardless of how the constant
+  is spelled -- no client-side change makes a remote preview sandbox or
+  a real visitor's browser able to reach a developer's own WSL loopback.
+  The actual fix (same-origin relative path, nginx proxying it to the
+  daemon) stays explicitly out of scope: no nginx, no deploy, this round.
+  What's cheap and real: `DAEMON` now reads an optional `?daemon=` query
+  param before falling back to the same `http://127.0.0.1:8765` default
+  as before, so pointing the client at a different reachable daemon (a
+  LAN IP, a tunnel, another dev box) is a URL, not a source edit.
+  Verified live: default (no param) still joins/polls the real daemon
+  exactly as before; `?daemon=http://example.invalid:9999` correctly
+  overrides `DAEMON` and degrades to the local-only passerby simulation
+  with no thrown error (same graceful-offline path as an unreachable
+  default daemon). Also folded in Grok's correction from the
+  `display_name` round (`GROK_NAME_REVIEW.md`, `f2132ad`): there is no
+  self-nameplate today (checked `fillText` call sites directly -- only
+  the passerby and other-occupant labels exist), so nothing to fix there
+  yet; noted for whenever one lands, `join`/`rekey` should echo back the
+  *accepted* `display_name` so a self-label draws the disambiguated
+  string, not the raw typed input. CORS `*` still parked. No deploy.
 - **2026-09-17 — commons: region-local display_name disambiguation
   (should-fix, closed).** `GROK_PRESENCE_REVIEW.md`: "Row hijack is
   closed; name spoof is not. Fine until cookie bind." Guests have no

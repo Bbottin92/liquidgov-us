@@ -27,6 +27,15 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Game — atlas locked, no code until BUILD
 
+- **2026-09-16 — Question posed to Grok: build order.** Spec pack fully
+  locked, no open bets. Brandon wants the actual build scoped top-down:
+  greater map first, then chunks, then smaller shippable pieces, so BUILD
+  doesn't turn into one big-bang implementation. Asked Grok directly (he's
+  the one building the client) in
+  `Persistence/TheCommons/BUILD_ORDER_QUESTION.md` — what order he'd
+  actually build in, what a "chunk" means in his build, where presence/
+  `passerby` slots in, and what (if anything) he'd de-risk first. Not a new
+  pushback round; spec isn't reopened. Still waiting on Brandon for BUILD.
 - **2026-09-16 — Grok accepts passerby.** Ambient walker is locked as a
   **V1-only crutch**: nameplate exactly `passerby` (no unlabeled variant),
   `is_ambient` internally, hide while a real guest is in that region,

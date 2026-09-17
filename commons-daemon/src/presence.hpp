@@ -24,10 +24,10 @@ struct Occupant {
 // A region with no occupants simply has no entry -- presence.md: "don't
 // run 12 empty loops... for no reason."
 //
-// Not thread-safe by default assumption -- guarded internally with one
-// mutex, matching civic's own "single-threaded synchronous" posture
-// (this daemon is small enough that one lock is not a bottleneck; see
-// canvas.md-style reasoning applied to a different layer).
+// An id appears in at most one region, at most once. join of a live id is
+// replace (same region) or move (other region). rekey does not --total_
+// unless that id was actually in from_region. Destination-full does not
+// drop the occupant from the source list.
 class PresenceStore {
 public:
     static constexpr std::size_t kPerRegionCap = 24;
@@ -53,6 +53,7 @@ private:
 
     // Callers must hold mu_.
     JoinResult join_locked(const std::string& region, const Occupant& occ);
+    bool erase_id_locked(const std::string& id); // any region; --total_ only if found
 };
 
 } // namespace commons

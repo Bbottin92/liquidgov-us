@@ -2,9 +2,14 @@
 
 `notes.md` is the idea/decision pad. Not bug classes, not deploy recipes, not “what is live.”
 
-**GitHub has `notes.md` + this README only.** `context.md` and `state.md` live in
-an old Grok sandbox and were never pushed. Do not invent them. Do not have
-Claude create fakes. “Have Claude git pull” updates notes/README only.
+**GitHub has `notes.md` + this README only** as the pad. `context.md` and `state.md`
+live in an old Grok sandbox and were never pushed. Do not invent them. Do not have
+Claude create fakes. “Have Claude git pull” updates notes/README (and now
+`Persistence/TheCommons/` spec files).
+
+**The Commons spec** (sibling game, not the civic binary): `Persistence/TheCommons/`.
+Paste `CLAUDE_THE_COMMONS.md` for that job. Civic continue file stays
+`CLAUDE_CODE_CONTINUE.md`.
 
 **Claude — standing rule (every session, non-negotiable):**
 1. `git pull` if your WSL clone might be behind.

@@ -16,26 +16,50 @@ Not bug classes. Not “what is live on the droplet.”
 
 ---
 
-## Game — in planning (no code)
+## Shared pad
 
-- **2026-09-16 — parked, atlas not locked.** Working title The Commons (not
-  confirmed). Art lean GBA / FireRed cousin (not confirmed). Nothing built.
-  Do not scaffold, sprite, or write game code until Brandon says BUILD.
-  Do not start the game in the civic repo. Sibling process + SQLite when it starts.
-- **V1 proposed, not locked:** walkable public ground, your house, lab (few real
-  reactions as a lookup table), Hall door → live `liquidgov.us/proposals`,
-  mine boarded. Guest play until cookie glue exists.
-- **Atlas not locked.** Brandon wants one greater map of about 12 minor maps
-  or instances. Do not lock until he chooses in chat:
-  - **A:** 12 outdoor regions + interiors extra (per-player houses, lab, hall, mine).
-    Proposed 3×4 names: Commons, Hall Lawn, Homestead Row, Lab Yard, Quarry Ridge,
-    Workshop Lane, North Woods, Orchard, Lookout, Shore, Creek, Garden.
-  - **B:** 12 total including interiors.
-  - Orthogonal to A/B: 12 as FireRed warp maps vs 12 named regions on one
-    continuous outdoor canvas with warp interiors (Stardew/AC). Visiting prefers
-    continuous.
-  - Homestead Row cannot be a finite street of every player. Housing is instanced;
-    the overworld tile is a gate or an online-friends street. Decide with the atlas.
+- **2026-09-16 — decided.** GitHub shares `Persistence/notes.md` (+ README) only.
+  `context.md` and `state.md` exist in the *old* Grok sandbox and were never
+  pushed. Do not invent fakes. Do not have Claude create them. A fresh Grok
+  hard-gate that requires those two files will fail until we drop that read or
+  Claude commits the *real* files from that sandbox. “Have Claude git pull”
+  updates notes/README only.
+
+## Game — atlas locked, no code until BUILD
+
+- **2026-09-16 — locked.** A + continuous outdoor + warp interiors + homestead
+  gate. Title **The Commons**. Plaza region **the Square** (not “Commons”).
+  Art: GBA / FireRed tiles. No code until Brandon says BUILD.
+  - Outdoor 3×4, north up:
+    North Woods | Lookout | Orchard
+    Workshop Lane | **the Square** | Hall Lawn
+    Lab Yard | Homestead Row | Garden
+    Quarry Ridge | Creek | Shore
+  - Interiors extra: per-player house, lab, hall (thin), mine (boarded / not present).
+  - Homestead Row = gate (online / friends doors). Houses are instances, not 12 lots.
+  - V1: all 12 lightly dressed; mine boarded; no workshop, crafting, farming,
+    swimming, or XP. Lab output is placeable / wall-able, not “salt in a bag.”
+  - **V1 runs in the Grok preview app.** Droplet sibling + SQLite later.
+    `liquidgov_http` is never the game.
+  - Presence: per-region at ~2 Hz even on one canvas. Droplet is 512 MB / 1 vCPU;
+    do not flood.
+  - Guests walk the 12; house binds only after LiquidGov cookie; no second
+    password. Preview may use a throwaway name until glue exists.
+  - Profile canvas from the site = one **wall slot**, not the floor.
+  - Friends = civic **query**, short RAM TTL, never a second graph.
+    Visit: open / friends / locked.
+  - Photo → civic blob + feed only. Game does not grow posts, comments, or follows.
+  - Touch: on-screen d-pad; A/D = left/right on screen.
+- **2026-09-16 — parked, atlas not locked.** (superseded by lock above)
+  Working title The Commons (not confirmed). Art lean GBA / FireRed cousin
+  (not confirmed). Nothing built. Do not scaffold, sprite, or write game code
+  until Brandon says BUILD. Do not start the game in the civic repo.
+- **V1 proposed, not locked:** (superseded) walkable public ground, your house,
+  lab, Hall door → live `liquidgov.us/proposals`, mine boarded. Guest play
+  until cookie glue exists.
+- **Atlas not locked.** (superseded) Brandon wants one greater map of about 12
+  minor maps or instances. Options A/B and warp vs continuous were the choice;
+  lock is A + continuous.
 
 ## Split: civic site vs game
 

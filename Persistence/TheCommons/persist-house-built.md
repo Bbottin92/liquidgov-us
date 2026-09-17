@@ -192,3 +192,53 @@ resumed at exactly the tile and facing where the walk-out happened, not
 (tab-close path) still snapshots correctly too, and that repeated house
 entry after all of this remains a single consistent instance -- no
 orphan, no stranded wall-slot, matching the transaction fix's intent.
+
+## Deployed 2026-09-17
+
+Brandon: "deploy" -- daemon first (`house.cpp` is new), client second,
+exactly as scoped. Drift-checked `main.cpp` against the droplet first:
+matched this and the prior "your house" round's changes combined
+(neither had been deployed separately), nothing unexpected;
+`house.hpp`/`.cpp` correctly didn't exist there yet. Reconfigured
+(new source file), rebuilt, restarted `commons-daemon`, confirmed
+healthy (guest mint, outdoor poll) *before* syncing the client, per
+the sequencing lesson from the cookie-resolver round.
+
+Verified against production with a real throwaway account, through
+the real client, not curl -- the actual gap this round's must-fix
+closed:
+
+- Entered the house for real, placed `iron_gall_ink_page`, walked to a
+  distinctive tile, waited for the client's own move-sync tick to
+  actually report that position to the server (confirmed via a direct
+  `GET` before proceeding), then triggered the door's real fallback
+  exit (`tryInteract()` with nothing in range) and let the client's
+  *own* automatic network tick fire the rekey -- no manual daemon call
+  from me at any point in this sequence.
+- Confirmed after walking out: the house's presence emptied (correct,
+  RAM), the placed item was untouched.
+- Re-entered through the real door again: the client repositioned
+  itself to the exact walk-out tile and facing, read back from the
+  daemon's `resume_x`/`resume_y`/`resume_facing` over a real
+  cross-origin cookie round trip -- confirmed via both direct state
+  inspection and the on-screen nameplate/position.
+- Did not force a second production daemon restart just to re-prove
+  survival across one -- the identical binary already proved that
+  conclusively in the local kill-and-restart test; restarting the
+  daemon again here would only have interrupted the real live presence
+  already on the box (a real `u:Bbottin` occupant was in the Square
+  during this deploy) for no new information.
+- Both services' logs clean post-restart. Site health (`/`, `/commons/`)
+  unaffected.
+
+Cleaned up the throwaway account (`persistverify9`) via its own
+`/settings/delete`. Its game-side rows (`players`/`map_instances`/
+`placed`, in the daemon's own SQLite, entirely separate from civic's
+account store) are not touched by that deletion and remain as small,
+harmless orphaned rows referencing a username that no longer has a
+live civic account -- civic-frozen means account deletion has no code
+path into the game's own database, by design, so this is an accepted,
+inert byproduct of testing with a real account, not a bug.
+
+Live. A bound player's house now survives a restart, for real, through
+the actual walk-out-the-door path most sessions will ever use.

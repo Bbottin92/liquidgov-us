@@ -1333,6 +1333,24 @@ Not bug classes. Not “what is live on the droplet.”
   intact; `leave`'s own snapshot path re-confirmed unaffected. See
   `persist-house-built.md`'s own "Must-fix" section. Holding on
   deploy.
+- **2026-09-17 — persist house deployed, live.** Brandon said "deploy"
+  (daemon first -- new `house.cpp` -- then client, no civic, no
+  nginx). Drift-checked first, clean. Verified with a real throwaway
+  account through the real client, not curl: entered its house, placed
+  an item, walked to a distinctive tile, waited for the real move-sync
+  tick, then triggered the door's actual fallback exit and let the
+  client's own automatic tick fire the rekey -- no manual daemon call.
+  House emptied correctly, item untouched. Re-entering through the
+  real door resumed at the exact walk-out tile and facing, over a real
+  cross-origin cookie round trip. Did not force a second production
+  restart just to re-prove survival -- the identical binary already
+  proved that locally; a real live occupant (`u:Bbottin`) was on the
+  box during this deploy and a gratuitous second restart would only
+  have interrupted them for no new information. Cleaned up the
+  throwaway account via its own `/settings/delete` -- its game-side
+  rows are harmless orphans in the daemon's own DB, untouched by civic
+  account deletion by design. See `persist-house-built.md`'s own
+  "Deployed" section.
 
 ## Split: civic site vs game
 

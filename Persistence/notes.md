@@ -27,6 +27,10 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Game — atlas locked, no code until BUILD
 
+- **2026-09-16 — WASM is not V1.** `Persistence/TheCommons/wasm.md`: no
+  compile step in commons/. WASM only earns a slot if a C++ sibling
+  daemon shares collision; blit/input stay JS. Sprites/glue/sibling still
+  wait on Brandon.
 - **2026-09-16 — nginx reverse proxy notes.** `Persistence/TheCommons/nginx.md`:
   static `alias /opt/commons/`; presence `proxy_pass` loopback; forward
   Cookie; buffering off; do not expose the game port or rewrite civic

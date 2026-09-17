@@ -15,22 +15,12 @@ Do **not** deploy this commit.
 - Restart: disk stays, RAM dies
 - Friends / `/canvas-frame` / nginx left unwired
 
-## Must-fix (presence accounting — real, local)
+## Must-fix (closed)
 
-1. **`join` does not reject a duplicate `id`.** Second join of the same
-   id in the same region pushes a second `Occupant` and `++total_`.
-   One tab can consume the 96 cap. `join_locked`: if `id` is already in
-   *any* region, treat it as a rekey/replace, or return a 409. Never two
-   rows for one id.
-
-2. **`rekey` decrements `total_` whenever `from_region` exists**, even
-   if `remove_if` removed nobody. Then `join_locked` may fail RegionFull
-   and the counter is now lying. Only `--total_` if an occupant was
-   actually erased (same as `leave`).
-
-3. **Body size.** Headers cap at 1 MiB. `Content-Length` does not.
-   `need` can be 2 GB and `body.append` will try. Cap body at 64 KiB;
-   413 and close. 512 MB box.
+1. Duplicate `join` / `total_` — 92e379d
+2. `rekey` decrement on a miss — 92e379d
+3. Uncapped `Content-Length` — d2b5bf4 413; 9f7d609 truncates leftover
+   bytes after the header split to exactly `need`
 
 ## Should-fix (deploy gate, still not nginx)
 
@@ -44,10 +34,8 @@ Do **not** deploy this commit.
 - 9.5 MB `sqlite3.c` in git is legal (amalgamation, public domain) but
   painful. Prefer CMake FetchContent + SHA256 pin; keep the vendor
   story, drop the blob if you can.
-- 413 checks **declared** `need`, not leftover bytes already in `raw`.
-  Header guard is 1 MiB, so a pipelined first packet can still hand
-  `dispatch` ~1 MiB. Truncate `body` to `need` (or 413 if leftover
-  `> kMaxBody`). Not a 5 GB hole.
+- The 9f7d609 notes bullet landed under **Shared pad**, not Game. Move
+  it if you touch notes anyway. Not a code fail.
 
 ## Fail if “fixed” by
 
@@ -57,17 +45,12 @@ Do **not** deploy this commit.
 - A framework HTTP stack / npm
 - Putting `commons.sqlite` under the static alias
 
-Paste `CLAUDE_DAEMON_PATCH.md`. Deploy stays a later, explicit BUILD.
+Deploy stays a later, explicit BUILD.
 
 ---
 
-## Follow-up (d2b5bf4) — accepted
+## Follow-up (d2b5bf4 + 9f7d609) — accepted
 
-Must-fixes closed. `presence.cpp` kept 92e379d (Claude pulled, did not
-clobber). `http.cpp` 413s `need < 0 || need > 65536` **before** the
-append loop. Civic untouched. Notes mis-says “id-index redesign” —
-92e379d is replace/erase_id, the index is still a should-fix in
-`presence-accounting.md`. Harmless.
-
-Deploy still waits on Brandon. Idle reap / server-issued ids still a
-deploy gate, not this week unless asked.
+413 before the append loop. `body.resize(need)` after the read so a
+pipelined first packet cannot inflate a legal Content-Length. Presence
+untouched. Civic untouched.

@@ -27,6 +27,10 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Game — atlas locked, no code until BUILD
 
+- **2026-09-16 — nginx reverse proxy notes.** `Persistence/TheCommons/nginx.md`:
+  static `alias /opt/commons/`; presence `proxy_pass` loopback; forward
+  Cookie; buffering off; do not expose the game port or rewrite civic
+  locations. Not a BUILD. Sibling still not this week.
 - **2026-09-16 — two parked P3 nits closed.** Brandon said "P4" meaning
   "whatever's next," not literally invoking `sibling.md`'s deploy work --
   that doc itself says the sibling is "a new BUILD, not a P4," and "not

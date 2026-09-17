@@ -52,7 +52,8 @@ to include `.liquidgov.us` (read the real `Set-Cookie` in
 `http_server.cpp` first — do not invent a name here). CORS +
 `SameSite` get real. More moving civic parts.
 
-Until that read happens, assume **path `/commons/`**. Hall stays an
+Until that read happens, assume **path `/commons/`**. Blocks and
+gotchas: `nginx.md`. Hall stays an
 absolute `https://liquidgov.us/proposals` link either way.
 
 ## What the daemon actually does

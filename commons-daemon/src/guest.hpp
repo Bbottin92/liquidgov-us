@@ -25,11 +25,21 @@ public:
     // compare -- this is a bearer credential, not a display value). On
     // success, refreshes the entry's last-used time so an active guest's
     // credential never expires out from under it while they keep calling
-    // in; mirrors PresenceStore's own idle-reap window (kIdleMs).
+    // in.
     bool verify(const std::string& id, const std::string& secret);
 
 private:
-    static constexpr long long kIdleMs = 30000;
+    // Must-fix (GROK_PRESENCE_REVIEW.md): this used to mirror
+    // PresenceStore's 30s plaza-slot reap, but a guest in a house/lab
+    // stops heartbeating presence entirely (interiors aren't networked in
+    // V1) -- after 30s their credential died while they were still very
+    // much an active guest, and walking back outside got a 403 with no
+    // way back in. Plaza slots and credentials are different lifetimes:
+    // a crashed/closed tab should free its region slot in ~30s, but a
+    // guest reading a lab plaque for a minute shouldn't need to
+    // re-authenticate. 30 minutes is "long enough that no real V1 session
+    // hits it," not a measured number.
+    static constexpr long long kIdleMs = 1800000;
 
     struct Entry { std::string secret; long long last_used_ms; };
     std::mutex mu_;

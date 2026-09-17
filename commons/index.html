@@ -888,6 +888,31 @@ function netMint() {
     });
 }
 
+// Must-fix (GROK_PRESENCE_REVIEW.md / CLAUDE_PRESENCE_PATCH.md): the
+// daemon's guest credential window is now generous (guest.hpp, 30min),
+// but a credential can still go bad -- most likely the daemon itself
+// restarted mid-session, wiping every in-RAM GuestRegistry entry. Rather
+// than getting stuck silently 403ing forever, mint a fresh credential and
+// rejoin from wherever the player currently is. Guarded by
+// netReauthInFlight so one bad response doesn't fire several remints at
+// once (join/rekey/move are mutually exclusive per tick, but a slow
+// in-flight request racing a fresh one is still possible).
+var netReauthInFlight = false;
+function netHandleAuthFailure() {
+  if (netReauthInFlight) return;
+  netReauthInFlight = true;
+  netReady = false;
+  netRegion = null;
+  otherOccupants = [];
+  netMint().then(function () {
+    netReauthInFlight = false;
+    if (netReady && mode === "outdoor") {
+      var r = regionAt(Math.floor(player.x / TILE), Math.floor(player.y / TILE));
+      if (r) netJoinOutdoor(r);
+    }
+  });
+}
+
 function netJoinOutdoor(region) {
   if (!netReady) return;
   var lp = worldToRegionLocal(region, player.x, player.y);
@@ -895,7 +920,7 @@ function netJoinOutdoor(region) {
   fetch(DAEMON + "/presence/join", {
     method: "POST",
     body: netBody({ region: regionKeyFor(region), x: lp.x, y: lp.y, facing: player.dir, display_name: playerName })
-  }).catch(function () {});
+  }).then(function (r) { if (r.status === 403) netHandleAuthFailure(); }).catch(function () {});
 }
 
 function netRekeyOutdoor(fromRegion, toRegion) {
@@ -908,7 +933,7 @@ function netRekeyOutdoor(fromRegion, toRegion) {
       from_region: regionKeyFor(fromRegion), to_region: regionKeyFor(toRegion),
       x: lp.x, y: lp.y, facing: player.dir, display_name: playerName
     })
-  }).catch(function () {});
+  }).then(function (r) { if (r.status === 403) netHandleAuthFailure(); }).catch(function () {});
 }
 
 function netMoveOutdoor() {
@@ -917,7 +942,7 @@ function netMoveOutdoor() {
   fetch(DAEMON + "/presence/move", {
     method: "POST",
     body: netBody({ region: regionKeyFor(netRegion), x: lp.x, y: lp.y, facing: player.dir })
-  }).catch(function () {});
+  }).then(function (r) { if (r.status === 403) netHandleAuthFailure(); }).catch(function () {});
 }
 
 function netPoll() {
@@ -933,23 +958,22 @@ function netPoll() {
     .finally(function () { netPollInFlight = false; });
 }
 
-// Tab close, reload, or navigating away -- sendBeacon fires reliably even
-// as the page is unloading, which a normal fetch() promise is not
-// guaranteed to complete. Best-effort: if the daemon never sees this, the
-// idle reap in presence.cpp cleans it up within 30s anyway.
+// Tab close, reload, or navigating away, plus entering an interior.
+// sendBeacon looked like the standard choice for the unload case, but its
+// JSON Blob body makes this a cross-origin *preflighted* request, and
+// testing against this daemon live showed the actual POST failing
+// (net::ERR_FAILED) after a successful OPTIONS -- while sendBeacon()
+// still returned true, since that return only means "queued," not
+// "delivered." A silent, undetectable failure on the one call meant to
+// guarantee cleanup is worse than not trying sendBeacon at all. Plain
+// fetch with keepalive is already proven working against this daemon
+// (every join/move/rekey call uses it) and survives page unload the same
+// way beacon is meant to -- though nothing guarantees delivery on an
+// abrupt close either way, which is exactly what PresenceStore's own
+// idle reap (30s) exists to backstop.
 function netLeave() {
   if (!netReady || !netRegion) return;
   var body = netBody({ region: regionKeyFor(netRegion) });
-  // sendBeacon looked like the standard choice here, but its JSON Blob
-  // body makes this a cross-origin *preflighted* request, and testing
-  // against this daemon live showed the actual POST failing
-  // (net::ERR_FAILED) after a successful OPTIONS -- while sendBeacon()
-  // still returns true, since that return only means "queued," not
-  // "delivered." A silent, undetectable failure on the one call meant to
-  // guarantee cleanup is worse than not trying sendBeacon at all. Plain
-  // fetch with keepalive is already proven working against this daemon
-  // (every join/move/rekey call uses it) and survives page unload the
-  // same way beacon is meant to.
   fetch(DAEMON + "/presence/leave", { method: "POST", body: body, keepalive: true }).catch(function () {});
   netRegion = null;
   otherOccupants = [];

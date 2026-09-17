@@ -18,6 +18,37 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-17 — commons: guest credentials survive an interior stay.**
+  Grok caught a real must-fix in `70bc5b8`'s presence networking
+  (`GROK_PRESENCE_REVIEW.md`/`CLAUDE_PRESENCE_PATCH.md`): `GuestRegistry`
+  reaped credentials on the same 30s clock as `PresenceStore`'s plaza-slot
+  reap, but a guest in a house/lab stops heartbeating presence entirely
+  (`netLeave()` on entry, nothing calls `verify()` again until they walk
+  back out). Any interior stay over 30s meant the credential died while
+  the guest was still very much active, and exiting got a silent 403 with
+  no way back in. Fixed both ways the patch asked for:
+  1. **Daemon**: `GuestRegistry::kIdleMs` raised from 30s to 30 minutes
+     (`guest.hpp`) -- `PresenceStore`'s own 30s plaza-slot reap is
+     untouched, so a crashed/closed tab still frees its region slot fast;
+     only the credential's own lifetime changed.
+  2. **Client**: `join`/`move`/`rekey` now check for a 403 response and
+     call a new `netHandleAuthFailure()` -- mints a fresh credential and
+     rejoins from the player's current outdoor position, guarded by
+     `netReauthInFlight` so one bad response can't fire overlapping
+     remints. This also covers a daemon restart mid-session, which the
+     30-minute window alone can't (RAM state is gone either way).
+  Verified live: entered the demo house, waited 32s (past the *old* 30s
+  window), walked out -- same guest id, clean `200` on rejoin (not a
+  remint), daemon confirms the occupant reappeared. Separately killed and
+  restarted the daemon while a tab sat outdoors (wipes `GuestRegistry`
+  even with the 30-minute window) -- the next throttled move/poll hit a
+  403, `netId` changed (real remint), rejoin succeeded, no thrown error,
+  two-tab presence still worked afterward. Full regression set (catalogs,
+  413 cap, missing-field 400, wrong-secret 403) still holds. Should-fix
+  items explicitly left for later per the review: camera-neighbor
+  polling, `display_name` spoofing, CORS `*` (fine until `lg_session` is
+  ever forwarded), hardcoded loopback host. Civic untouched, no SSH/
+  systemd/nginx, no deploy.
 - **2026-09-16 — commons real presence networking + server-issued guest ids.**
   Brandon asked for a client-side round; found first that `commons/index.html`
   had zero daemon wiring at all (no `fetch` calls anywhere -- presence was a

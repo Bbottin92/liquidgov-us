@@ -2,6 +2,10 @@
 
 `notes.md` is the idea/decision pad. Not bug classes, not deploy recipes, not “what is live.”
 
+**GitHub has `notes.md` + this README only.** `context.md` and `state.md` live in
+an old Grok sandbox and were never pushed. Do not invent them. Do not have
+Claude create fakes. “Have Claude git pull” updates notes/README only.
+
 **Claude — standing rule (every session, non-negotiable):**
 1. `git pull` if your WSL clone might be behind.
 2. Read `Persistence/notes.md` before any product/architecture work, and before

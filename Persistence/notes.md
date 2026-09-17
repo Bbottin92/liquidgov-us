@@ -27,6 +27,23 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Game — atlas locked, no code until BUILD
 
+- **2026-09-16 — Sprites patch: idle-skip sees facing now.** Fixed the
+  must-fix from `GROK_SPRITES_REVIEW.md`: `updateFacingAnim` could change
+  `player.dir` on a fully blocked step (hold a new direction into a
+  wall — `movePlayer` returns `false`), but `frame()`'s idle-skip only
+  checked position/toast, so the sprite kept showing the old facing cell
+  until the next real step. Added `prevPlayerDir`/`prevPlayerAnim` and the
+  same pair for passerby, tracked alongside position exactly like the
+  existing prev-frame state, and included both diffs in `changed`. Idle
+  skip itself is untouched — still skips the blit when truly nothing
+  changed, per canvas.md; it just now correctly counts "started facing a
+  different direction" as a change. Verified in-browser: walked the
+  player against the solid Homestead wall, tapped a different direction
+  into it (movement fully blocked, position unchanged), and confirmed
+  both `player.dir` and `prevPlayerDir` updated together — proving the
+  redraw branch actually ran, not just that the state variable changed.
+  Full regression set still holds (A/D, water, spawn free, dual crop at
+  390×844, no console errors). Glue and sibling still wait on Brandon.
 - **2026-09-16 — Sprites shipped.** Brandon picked sprites first, lowest
   blast radius per Grok's own suggested order (glue needs a real cookie
   decision, sibling needs glue's cookie name, sprites needs neither).

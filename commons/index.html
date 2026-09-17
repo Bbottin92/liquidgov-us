@@ -990,7 +990,9 @@ var lastT = 0;
 var lastTickAt = 0; // performance.now() of the last frame() call, any source
 var forceRedraw = true;
 var prevPlayerX = player.x, prevPlayerY = player.y;
+var prevPlayerDir = player.dir, prevPlayerAnim = player.animFrame;
 var prevPbVisible = false, prevPbX = passerby.x, prevPbY = passerby.y;
+var prevPbDir = passerby.dir, prevPbAnim = passerby.animFrame;
 var prevToastActive = false;
 
 // One draw path for outdoor and both interiors -- they already share the
@@ -1087,11 +1089,20 @@ function frame(t) {
   // just sits there forever since nothing else necessarily changed on
   // that exact frame. Found by testing the actual expiry, not by reading
   // the code.
-  var changed = forceRedraw || cropChangedThisFrame || playerMoved ||
+  //
+  // Must-fix from sprites review: dir/animFrame can change with the walk
+  // blocked (bump a wall, tap a different direction -- updateFacingAnim
+  // still turns the sprite, but playerMoved is false), so "did x,y move"
+  // alone isn't a complete dirty check anymore now that there's a facing
+  // cell to redraw. Track prevPlayerDir/Anim (and passerby's) the same
+  // way position is tracked.
+  var playerFacingChanged = player.dir !== prevPlayerDir || player.animFrame !== prevPlayerAnim;
+  var changed = forceRedraw || cropChangedThisFrame || playerMoved || playerFacingChanged ||
     toastActive || (toastActive !== prevToastActive);
   if (mode === "outdoor") {
+    var pbFacingChanged = passerby.dir !== prevPbDir || passerby.animFrame !== prevPbAnim;
     changed = changed ||
-      (passerby.visible && (pbMoved || passerby.x !== prevPbX || passerby.y !== prevPbY)) ||
+      (passerby.visible && (pbMoved || pbFacingChanged || passerby.x !== prevPbX || passerby.y !== prevPbY)) ||
       (passerby.visible !== prevPbVisible);
   }
 
@@ -1107,7 +1118,9 @@ function frame(t) {
   forceRedraw = false;
   cropChangedThisFrame = false;
   prevPlayerX = player.x; prevPlayerY = player.y;
+  prevPlayerDir = player.dir; prevPlayerAnim = player.animFrame;
   prevPbVisible = passerby.visible; prevPbX = passerby.x; prevPbY = passerby.y;
+  prevPbDir = passerby.dir; prevPbAnim = passerby.animFrame;
   prevToastActive = toastActive;
 }
 

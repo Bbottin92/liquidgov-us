@@ -6,18 +6,17 @@ between them.
 
 ## Session cookie
 
-**TBD, not invented here.** Whatever cookie `/login` already sets on
-LiquidGov is the candidate — do not name or shape a new cookie speculatively
-in this document. When glue work actually starts: read the real
-`Set-Cookie` behavior out of `http_server.cpp` first, then document the
-actual name/attributes here.
+Name and flags are **`lg_session`**, from this repo (preview.py,
+`deploy/ux-on-droplet.patch`, `CLAUDE_CODE_CONTINUE.md`) — see
+`cookie.md`. HttpOnly, Path=/, SameSite=Lax, host-only (no Domain=),
+Secure on HTTPS. Value is a **session token**, not a username.
 
-**Open architecture question, not a V1 blocker but real:** cookies don't
-cross origins. For the game process to read a `liquidgov.us`-set cookie, it
-needs to run same-origin — e.g. reverse-proxied at `liquidgov.us/commons/`
-or a subdomain sharing the cookie's `Domain=` attribute. This has to be
-decided before glue lands; it is not decided here and should not be assumed
-either way.
+Still confirm `http_server.cpp` on WSL/droplet matches before a glue
+BUILD. Do not invent a second cookie.
+
+Parse on the **daemon** from the `Cookie` header. The canvas must not
+`document.cookie` (HttpOnly). Path `/commons/` receives it; a subdomain
+would not, without a civic `Domain=` change.
 
 - **V1 fakes this entirely.** No cookie check. Guests type a throwaway
   display name and that's the whole identity for the session (see
@@ -80,7 +79,7 @@ already works with zero glue and ships in V1 as-is.
 
 | Contract | V1 preview | Eventually needs |
 |---|---|---|
-| Session cookie | Not checked at all; throwaway name | Real cookie read + same-origin decision |
+| Session cookie | Not checked at all; throwaway name | Daemon parses `lg_session` (`cookie.md`); same-origin `/commons/` |
 | Friends query | Not called; doors render boarded | Cookie-scoped friends list (no client username param) |
 | Hall door | Live today, zero glue needed | Nothing further |
 | Photo → blob+feed | Feature does not exist in V1 | New civic upload endpoint (future work) |

@@ -27,6 +27,10 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Game — atlas locked, no code until BUILD
 
+- **2026-09-16 — inventory is RAM.** `Persistence/TheCommons/inventory.md`:
+  P2 `inventory = {}` vanishing on refresh is the spec, not a bug. Do not
+  sessionStorage/localStorage/SQLite in this preview. Write-only object
+  may toast a count later; placing items is glue. P2 still closed.
 - **2026-09-16 — P2 closed.** e67d88e accepted: Lab Yard walk-in door,
   real 16×16 demo house (empty wall-slot on the wall), 20×16 lab with
   three lookups (chalk, no lime), session RAM inventory, `activeSpace`

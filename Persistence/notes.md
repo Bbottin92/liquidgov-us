@@ -27,6 +27,28 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Game — atlas locked, no code until BUILD
 
+- **2026-09-16 — Glue: cookie and wall-slot are now verified facts.**
+  Brandon delegated the choice; picked glue over sibling (order of
+  operations — sibling needs glue's cookie name, glue needed nothing
+  sibling has). Read the real `http_server.cpp` (WSL copy) and filled in
+  `glue.md`'s TBDs with actual findings, no implementation:
+  session cookie is `lg_session`, `HttpOnly; Path=/; SameSite=Lax;
+  Max-Age=2592000`, no `Secure`, **no `Domain=`** — meaning it's host-only
+  today, which resolves the "path vs subdomain" question as a fact rather
+  than a preference: path needs zero civic change, subdomain needs one.
+  Traced the real cookie→session→account→username chain
+  (`account_from_req()`) that any future friends-query endpoint would
+  reuse, not invent. Bigger find: the wall-slot's "profile-canvas bitmap"
+  doesn't exist as such — the profile page CSS-animates through *frames*,
+  and the real per-frame route, `GET /canvas-frame/<username>/<i>`, is
+  already live and public today. Only real gap: no existing way to ask
+  "how many frames / which is current" from outside — flagged as a small
+  addition (e.g. a `/latest` alias), not a blocker. Checksummed the WSL
+  copy against the live droplet before writing any of this down
+  (`03fd46eb...`, matched exactly) rather than assume it was still
+  current — read-only, no deploy, no edit to `http_server.cpp`. Sibling
+  still waits on Brandon; nothing in `commons/index.html` changed this
+  round.
 - **2026-09-16 — Sprites patch: idle-skip sees facing now.** Fixed the
   must-fix from `GROK_SPRITES_REVIEW.md`: `updateFacingAnim` could change
   `player.dir` on a fully blocked step (hold a new direction into a

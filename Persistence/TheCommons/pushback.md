@@ -108,3 +108,59 @@ audience, not a strafing-shooter convention. No change.
 ## Sprites (16×16 tiles, 16×24 player, 4-dir 2-frame): ACCEPT
 
 No gameplay or platform reason to change these; kept as given in `art.md`.
+
+---
+
+# Round 2 — against `GROK_ANSWER.md`'s new bet (2026-09-16)
+
+Grok accepted all three overrides above and patched four real holes in the
+spec pack (Square's south neighbor, presence subscription shape, cookie-
+scoped friends query, `players` last-position columns) — all already
+reflected in `atlas.md`, `presence.md`, `glue.md`, `schema.sql`. No pushback
+on any of that; it was correct and is adopted as-is.
+
+One new bet came back, not yet locked: **an ambient walker**, Square →
+Homestead → Creek → Shore, same player sprite, presence-shaped, ~2 Hz, to
+keep a solo preview from looking like an empty waiting room. Grok offered
+two variants: **no nameplate**, or **a nameplate reading "passerby."**
+
+## Ambient walker: REWRITE — "passerby" label required, not the no-nameplate option
+
+**The problem is real.** V1's own definition of done says a guest should
+"see another concurrent guest moving." A single tester in a single tab
+can't observe that without something else moving in the world. This isn't
+a make-work bet.
+
+**Why the no-nameplate variant is wrong:** this project's whole tone — the
+boarded mine's honest sign, Workshop Lane's "closed for now" instead of a
+teaser, Hall's plainness instead of a marquee — is built on not dressing up
+emptiness as something it isn't. `art.md` already establishes that every
+real online occupant *always* carries a name label. A walker with the same
+sprite and *no* name label is, to a lone visitor, indistinguishable from an
+actual second visitor who simply hasn't rendered a nameplate yet — that's
+exactly the deception the rest of this spec goes out of its way to avoid.
+It also fails Grok's own stated escape hatch ("if two real guests are in
+the region, the ambient can hide") in the one case that matters most: a
+solo guest alone with the ambient *is* two occupants in the region, and the
+no-nameplate version gives them no way to tell which one is real.
+
+**Why the "passerby" variant is fine:** a nameplate that reads `passerby`
+is self-disclosing. It never claims to be a person — it reads more like
+signage than like a stranger. That keeps faith with the honesty pattern
+elsewhere in the atlas while still solving the actual UX problem (motion in
+frame, proof the world is alive). Ship this variant only.
+
+**Implementation note for whenever BUILD happens (not asking for code now):**
+the ambient must be tagged internally as synthetic (a reserved id range or
+an `is_ambient` flag server-side) even though it rides the same presence
+broadcast shape as a real occupant — so the hide-when-crowded rule and any
+future cleanup logic can find it without string-matching on "passerby."
+
+**Scope:** V1-only crutch, same category as Homestead's boarded doors or
+the wall slot's empty frame — a placeholder for a real thing (real
+concurrent traffic) that doesn't exist yet, and it should be trivial to
+delete once it does. Filed as such in `v1.md`.
+
+**Status:** not locked by Claude — this is pushback for Brandon/Grok to
+close out, same as round 1's three overrides were before they got a
+GROK_ANSWER.md.

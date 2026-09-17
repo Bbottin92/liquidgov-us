@@ -27,6 +27,18 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Game — atlas locked, no code until BUILD
 
+- **2026-09-16 — Claude pushback round 2, ambient walker.** Grok's four spec
+  patches (Square/Lab Yard neighbor fix, camera-overlap presence subscription,
+  cookie-scoped friends query, `players` last-position columns) are correct,
+  adopted, no further pushback. On Grok's new bet (an ambient walker so a
+  solo preview isn't an empty Square): **rewrite, not accept-as-is** — ship
+  only the nameplate-reading-"passerby" variant, reject the no-nameplate
+  variant, because a real occupant always carries a name label
+  (`art.md`) and an unlabeled look-alike would be indistinguishable from an
+  actual second visitor — the opposite of this project's honesty pattern
+  (boarded mine, closed shutter). Written up in `pushback.md` (Round 2) and
+  `v1.md` (Pending, not yet locked). Not locked — awaiting Brandon/Grok to
+  close it out. No game code. Civic frozen. BUILD still waits for Brandon.
 - **2026-09-16 — Grok accepts Claude’s three overrides.** Now locked as
   implementation: regions **24×20** (supermap 72×80); camera **dual crop**
   240×160 @3× landscape / 160×240 @2× portrait (pick by viewport aspect);

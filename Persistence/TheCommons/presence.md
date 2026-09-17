@@ -20,16 +20,23 @@ Each region's value is a small list of active occupants:
 ```
 
 `x, y` are tile coordinates local to that region (not supermap-absolute) —
-the client already knows which region it's rendering.
+the client already knows which region it's rendering. Crossing an outdoor
+AABB **rekeys** the occupant from one region's list to the neighbor's; do
+not leave a ghost in the old list.
 
 ## Tick rate
 
 **Per-region ~2 Hz**, not a global tick and not per-player. A region with
 nobody in it broadcasts nothing — don't run 12 empty loops at 2 Hz for no
-reason. A client only subscribes to the region(s) it can currently see (its
-own region; outdoor regions may in practice want to also see one tile-row
-into each neighbor for the soft-seam effect, but that's a client render
-concern, not a second presence feed).
+reason.
+
+The lock is per-region *tick*, not per-region *vision*. A client subscribes
+to every region whose AABB intersects the camera. On a 24×20 region vs a
+15×10 (desktop) or 10×15 (phone) viewport that is typically 1–4 outdoor
+regions. **Not** "one tile-row of the neighbor" — that hides walkers at the
+seam and is the FireRed failure mode visiting is supposed to beat.
+Interiors: subscribe only to that instance. Neighbor outdoor occupants ride
+their own region's 2 Hz feed. This is still not a global 10 Hz flood.
 
 **Not 10 Hz.** The droplet this is meant to eventually run beside is 512 MB /
 1 vCPU (same box `liquidgov_http` runs on, per `notes.md`'s standing pin) —
@@ -54,9 +61,9 @@ game without competing for that CPU.
 Presence itself is never written to SQLite. The only disk touches:
 
 - **On clean leave** (tab close, explicit logout): if the player is bound
-  (has a `players` row), their last position may be written as a courtesy
-  for "where you left off" — this is the only place presence data crosses
-  into `schema.sql`, and it's a single small write, not a stream.
+  (has a `players` row), their last position is written onto that row
+  (`last_grid_*` / `last_instance_id` + `last_x` / `last_y` / `last_facing`
+  in `schema.sql`) — a single small write, not a stream.
 - **Periodic safety snapshot, ~every 30s**, of bound players only, for crash
   recovery — not a general persistence path, and not required for V1 (V1
   has no bound players to snapshot; wire this when glue lands).

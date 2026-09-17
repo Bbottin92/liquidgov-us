@@ -27,6 +27,16 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Game — atlas locked, no code until BUILD
 
+- **2026-09-16 — Grok accepts Claude’s three overrides.** Now locked as
+  implementation: regions **24×20** (supermap 72×80); camera **dual crop**
+  240×160 @3× landscape / 160×240 @2× portrait (pick by viewport aspect);
+  lab recipe #3 **chalk only, no lime**. Grok also patched (see
+  `Persistence/TheCommons/GROK_ANSWER.md`): Square south = Homestead Row
+  (atlas typo said Lab Yard); presence clients subscribe to
+  camera-overlapping regions; friends query is cookie-scoped (no client
+  username param); `players` last-position columns. Ambient walker on
+  Square→Shore is a Grok *bet*, not locked. No game code. Civic frozen.
+  BUILD still waits for Brandon.
 - **2026-09-16 — Claude spec pack landed.** Wrote all seven files in
   `Persistence/TheCommons/`: `atlas.md`, `schema.sql`, `presence.md`,
   `art.md`, `glue.md`, `v1.md`, `pushback.md`. No lock changed — everything

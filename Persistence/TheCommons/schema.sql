@@ -93,7 +93,17 @@ CREATE TABLE players (
     display_name       TEXT NOT NULL,          -- throwaway name pre-bind, lg_username-derived after
     is_guest           INTEGER NOT NULL DEFAULT 1,
     house_instance_id  INTEGER REFERENCES map_instances(instance_id), -- NULL until bound
-    created_at         INTEGER NOT NULL        -- unix seconds
+    created_at         INTEGER NOT NULL,       -- unix seconds
+    -- Leave / ~30s snapshot for bound players (see presence.md). Outdoor:
+    -- last_grid_col/row + last_x/y local to that region. Interior:
+    -- last_instance_id + last_x/y. Exactly one of (grid pair) or instance
+    -- is set. All nullable until the first snapshot. Not used in V1.
+    last_grid_col      INTEGER,
+    last_grid_row      INTEGER,
+    last_instance_id   INTEGER REFERENCES map_instances(instance_id),
+    last_x             INTEGER,
+    last_y             INTEGER,
+    last_facing        INTEGER
 );
 
 CREATE TABLE inventory (
@@ -138,5 +148,5 @@ CREATE UNIQUE INDEX placed_wall_slot_unique
 
 -- Presence (position, who's in the plaza) is explicitly NOT a table here.
 -- It is RAM-only per presence.md, with a periodic snapshot -- if that
--- snapshot is ever persisted for crash recovery, it lands in a plain
--- key-value side file, not these normalized tables.
+-- snapshot is ever persisted for crash recovery, bound last_* columns
+-- above are the place; not a normalized presence table.

@@ -25,11 +25,15 @@ either way.
 
 ## Friends query
 
-A **read-only** query, never a copied graph:
+A **read-only** query, never a copied graph, **cookie-scoped**:
 
-- Contract: `GET /internal/friends?username=<lg_username>` (path/params are
-  a placeholder shape, not a committed route name) → JSON array of mutually
-  accepted friend usernames.
+- Contract (placeholder path, not a committed route): the game process
+  calls a civic friends endpoint **authenticated by the existing session
+  cookie**. The server takes `lg_username` from the session. **Never
+  `?username=` (or any client-supplied name).** A public username query is
+  a roster scrape.
+- Response: JSON array of mutually accepted friend usernames for *that*
+  session.
 - Game-side caching: short RAM TTL (seconds, not persisted), re-fetched
   per-session or on a timer — never written into `schema.sql`. There is no
   friends table in this project's schema and there must never be one.
@@ -65,7 +69,10 @@ already works with zero glue and ships in V1 as-is.
   `lg_username`'s profile-canvas bitmap, read-only, by some stable
   reference (URL or endpoint — **unverified whether one is already exposed
   externally today**; check `http_server.cpp`'s profile-canvas route when
-  glue work starts rather than assuming either way).
+  glue work starts rather than assuming either way). Fetch is
+  cookie-scoped for the viewer's own canvas; a friend's canvas is whatever
+  their public `/u/<username>` portrait already is — do not invent a
+  second image pipeline.
 - **V1 fakes this entirely.** The wall slot renders as an empty frame
   placeholder image. No fetch, no username, nothing dynamic.
 
@@ -74,7 +81,7 @@ already works with zero glue and ships in V1 as-is.
 | Contract | V1 preview | Eventually needs |
 |---|---|---|
 | Session cookie | Not checked at all; throwaway name | Real cookie read + same-origin decision |
-| Friends query | Not called; doors render boarded | `GET /internal/friends?username=` (or similar) |
+| Friends query | Not called; doors render boarded | Cookie-scoped friends list (no client username param) |
 | Hall door | Live today, zero glue needed | Nothing further |
 | Photo → blob+feed | Feature does not exist in V1 | New civic upload endpoint (future work) |
 | Wall-slot bitmap | Empty frame placeholder | Read-only fetch of the existing profile canvas |

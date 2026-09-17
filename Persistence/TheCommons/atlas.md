@@ -51,7 +51,8 @@ because the loop is visiting, not exploring for content.
 ### Lookout (1,0)
 - **Job:** vista / photo-op beat. Encourages standing still and looking.
 - **Set piece (1):** a raised plateau (walkable, +1 visual layer) with a
-  railing and a bench, facing south toward Shore's sightline.
+  railing and a bench, facing south over the Square. Shore is SE and off
+  this camera; do not promise a sightline the viewport cannot show.
 - **Doors/warps:** none. Continuous edges: west → North Woods, east → Orchard,
   south → the Square.
 - **Collision:** railing solid along the bluff drop edge; plateau and
@@ -79,7 +80,8 @@ because the loop is visiting, not exploring for content.
 
 ### the Square (1,1)
 - **Job:** the hub. Four-way junction to Lookout (N), Hall Lawn (E), Workshop
-  Lane (W), Lab Yard (S). Highest expected concurrent presence.
+  Lane (W), Homestead Row (S). Lab Yard is SW (south of Workshop Lane / west
+  of Homestead), not south of spawn. Highest expected concurrent presence.
 - **Set piece (1):** a low fountain or civic notice-post, centered, something
   to stand near.
 - **Doors/warps:** none. Continuous edges on all four sides.

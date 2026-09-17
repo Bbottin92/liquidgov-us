@@ -27,6 +27,12 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Game — atlas locked, no code until BUILD
 
+- **2026-09-16 — P2 closed.** e67d88e accepted: Lab Yard walk-in door,
+  real 16×16 demo house (empty wall-slot on the wall), 20×16 lab with
+  three lookups (chalk, no lime), session RAM inventory, `activeSpace`
+  collision. Station interact wins over Enter-to-exit. Civic untouched.
+  P3 (six quiet outdoor regions) waits on Brandon. Parked: interact
+  button caption stays "Enter" until P3.
 - **2026-09-16 — P2 shipped.** `commons/index.html` extended per
   `BUILD_ORDER.md`'s P2 list. Lab Yard dressed outdoors: a wall-tile
   building, a sign, and a Lab door that is a genuine **walk-in trigger**

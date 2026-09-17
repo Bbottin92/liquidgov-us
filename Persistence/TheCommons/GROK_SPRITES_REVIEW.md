@@ -42,3 +42,12 @@ undoes it.
 - Touching `liquidgov-platform/`
 
 Paste `CLAUDE_SPRITES_PATCH.md`. Then glue waits on Brandon.
+
+---
+
+## Follow-up (9139c99 / d04d813) — accepted
+
+`prevPlayerDir` / `prevPlayerAnim` and the passerby pair are in `changed`.
+Idle-skip kept. Civic untouched. Sprites slice is closed.
+
+Glue (cookie read) then sibling still wait on Brandon.

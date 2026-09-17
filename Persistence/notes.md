@@ -27,6 +27,9 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Game — atlas locked, no code until BUILD
 
+- **2026-09-16 — tilemap notes for P0.** `Persistence/TheCommons/tilemap.md`:
+  one Uint8Array 72×80, bake supermap once, blit camera crop. No chunks,
+  no WebGL, no 12 canvases. Claude should follow this in `commons/`.
 - **2026-09-16 — P0 BUILD assigned to Claude.** Brandon: Grok guides /
   criticizes; Claude implements to save Grok tokens. Paste `CLAUDE_P0.md`.
   Sibling folder `commons/` (vanilla HTML/canvas), not `liquidgov_http`,

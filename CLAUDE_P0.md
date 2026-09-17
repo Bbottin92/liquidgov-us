@@ -12,7 +12,9 @@ git pull
 ```
 
 Read: `Persistence/notes.md` (Game heading), `Persistence/TheCommons/v1.md`,
-`art.md`, `atlas.md`, `BUILD_ORDER.md` P0 section.
+`art.md`, `atlas.md`, `BUILD_ORDER.md` P0 section,
+`Persistence/TheCommons/tilemap.md` (bake once, blit the crop — do not
+loop 72×80 per frame).
 
 ## Constructive notes on your recap (85dd7ab / f2e5f44)
 

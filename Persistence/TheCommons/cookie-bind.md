@@ -1,7 +1,15 @@
 # Cookie bind — presence side of the contract
 
-Not a BUILD. Design/document only, by explicit request — no code this
-round. Complements `cookie.md` (the raw parse algorithm) and `glue.md` /
+**2026-09-17: built.** Both blockers named below are closed --
+`cookie-resolver-built.md` has the concrete change and what's still
+open (mid-session promotion/rebind was NOT decided or built; see that
+file's own "still NOT here" section). This file stays as the design
+record; read it for the *why*, `cookie-resolver-built.md` for the
+*what actually shipped*.
+
+Originally: not a BUILD. Design/document only, by explicit request — no
+code that round. Complements `cookie.md` (the raw parse algorithm) and
+`glue.md` /
 `GROK_GLUE_REVIEW.md` (the civic-side facts and the already-parked
 "daemon forwards `Cookie` to civic localhost" plan). This file fills the
 one gap those don't cover: what binding actually does to `PresenceStore`

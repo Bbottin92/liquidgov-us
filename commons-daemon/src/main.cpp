@@ -22,6 +22,7 @@
 #include <string>
 #include <vector>
 
+#include "civic.hpp"
 #include "db.hpp"
 #include "guest.hpp"
 #include "http.hpp"
@@ -139,6 +140,20 @@ bool item_exists(sqlite3* db, const std::string& slug) {
     return found;
 }
 
+// Cookie-bind.md: "the two auth paths never mix." A resolved cookie always
+// wins and derives the id itself ("u:" + lg_username) -- the client's own
+// id/secret fields are not even consulted in that case, bound or not. Only
+// when nothing resolves does this fall back to the existing GuestRegistry
+// check, exactly as every route here did before cookie bind existed.
+// nullopt means the request is unauthorized outright (bad guest credential,
+// no cookie).
+std::optional<std::string> effective_id(const std::string& headers_raw, const std::string& claimed_id,
+                                         const std::string& secret, commons::GuestRegistry& guests) {
+    if (auto username = commons::civic::resolve_username(headers_raw)) return "u:" + *username;
+    if (guests.verify(claimed_id, secret)) return claimed_id;
+    return std::nullopt;
+}
+
 std::string occupants_json(const std::vector<commons::Occupant>& occ) {
     std::ostringstream out;
     out << "[";
@@ -235,14 +250,19 @@ int main(int argc, char** argv) {
             r.body = "{\"ok\":false,\"reason\":\"missing_field\"}";
             return r;
         }
-        if (!guests.verify(*id, *secret)) {
+        auto eff_id = effective_id(req.headers_raw, *id, *secret, guests);
+        if (!eff_id) {
             r.status = 403; r.status_text = "Forbidden";
             r.body = "{\"ok\":false,\"reason\":\"bad_credential\"}";
             return r;
         }
         commons::Occupant occ;
-        occ.id = *id;
-        occ.display_name = field_str(req.body, "display_name").value_or(*id);
+        occ.id = *eff_id;
+        // A bound occupant's display_name is the real username, not
+        // whatever the client happened to submit (cookie-bind.md).
+        occ.display_name = (eff_id->rfind("u:", 0) == 0)
+            ? eff_id->substr(2)
+            : field_str(req.body, "display_name").value_or(*eff_id);
         occ.x = *x; occ.y = *y;
         occ.facing = static_cast<int>(field_num(req.body, "facing").value_or(0));
         occ.last_update_ms = now_ms();
@@ -272,13 +292,14 @@ int main(int argc, char** argv) {
             r.body = "{\"ok\":false,\"reason\":\"missing_field\"}";
             return r;
         }
-        if (!guests.verify(*id, *secret)) {
+        auto eff_id = effective_id(req.headers_raw, *id, *secret, guests);
+        if (!eff_id) {
             r.status = 403; r.status_text = "Forbidden";
             r.body = "{\"ok\":false,\"reason\":\"bad_credential\"}";
             return r;
         }
         int facing = static_cast<int>(field_num(req.body, "facing").value_or(0));
-        bool ok = presence.move(*region, *id, *x, *y, facing);
+        bool ok = presence.move(*region, *eff_id, *x, *y, facing);
         r.body = std::string("{\"ok\":") + (ok ? "true" : "false") + "}";
         return r;
     });
@@ -297,14 +318,17 @@ int main(int argc, char** argv) {
             r.body = "{\"ok\":false,\"reason\":\"missing_field\"}";
             return r;
         }
-        if (!guests.verify(*id, *secret)) {
+        auto eff_id = effective_id(req.headers_raw, *id, *secret, guests);
+        if (!eff_id) {
             r.status = 403; r.status_text = "Forbidden";
             r.body = "{\"ok\":false,\"reason\":\"bad_credential\"}";
             return r;
         }
         commons::Occupant occ;
-        occ.id = *id;
-        occ.display_name = field_str(req.body, "display_name").value_or(*id);
+        occ.id = *eff_id;
+        occ.display_name = (eff_id->rfind("u:", 0) == 0)
+            ? eff_id->substr(2)
+            : field_str(req.body, "display_name").value_or(*eff_id);
         occ.x = *x; occ.y = *y;
         occ.facing = static_cast<int>(field_num(req.body, "facing").value_or(0));
         occ.last_update_ms = now_ms();
@@ -329,12 +353,13 @@ int main(int argc, char** argv) {
             r.body = "{\"ok\":false,\"reason\":\"missing_field\"}";
             return r;
         }
-        if (!guests.verify(*id, *secret)) {
+        auto eff_id = effective_id(req.headers_raw, *id, *secret, guests);
+        if (!eff_id) {
             r.status = 403; r.status_text = "Forbidden";
             r.body = "{\"ok\":false,\"reason\":\"bad_credential\"}";
             return r;
         }
-        presence.leave(*region, *id);
+        presence.leave(*region, *eff_id);
         r.body = "{\"ok\":true}";
         return r;
     });
@@ -366,7 +391,7 @@ int main(int argc, char** argv) {
             r.body = "{\"ok\":false,\"reason\":\"missing_field\"}";
             return r;
         }
-        if (!guests.verify(*id, *secret)) {
+        if (!effective_id(req.headers_raw, *id, *secret, guests)) {
             r.status = 403; r.status_text = "Forbidden";
             r.body = "{\"ok\":false,\"reason\":\"bad_credential\"}";
             return r;

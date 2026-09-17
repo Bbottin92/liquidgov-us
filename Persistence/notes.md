@@ -1127,6 +1127,28 @@ Not bug classes. Not “what is live on the droplet.”
 - **Atlas not locked.** (superseded) Brandon wants one greater map of about 12
   minor maps or instances. Options A/B and warp vs continuous were the choice;
   lock is A + continuous.
+- **2026-09-17 — cookie resolver built, local-tested, not deployed.** Brandon
+  said "build" in reply to the offer naming this exact increment; treated as
+  BUILD + cookie resolver per `cookie-bind.md`'s standing gate. First-ever
+  edit to `http_server.cpp`: one new same-box-only route,
+  `GET /internal/session-user`, ~17 lines, reuses `account_from_req()`
+  as-is, refuses (404) anything that arrives via nginx (X-Forwarded-For
+  present) or from a non-loopback peer. Daemon side: new `civic.cpp`
+  resolver (skips the network call unless the raw Cookie header actually
+  contains `lg_session=`, 1s timeout, every failure path falls back to
+  guest) plus one `effective_id()` helper wired into all five routes that
+  used to check only a guest secret (`join`/`move`/`rekey`/`leave`/
+  `placed` POST). A resolved cookie now derives `"u:"+username` server-side
+  and the client's own id/secret/display_name are not consulted for
+  identity at all. Full local test (scratch civic store + scratch daemon
+  DB): a real civic session cookie forwarded with intentionally garbage
+  client-submitted id/secret bound correctly as `u:boundtest` on join,
+  moved, and left; guest register/join/move regression unaffected. See
+  `Persistence/TheCommons/cookie-resolver-built.md` for the full
+  before/after and what's explicitly still not built (deploy; mid-session
+  promotion/rebind, `cookie-bind.md` left that decision open; the
+  restart-snapshot hook for bound players). No nginx, no systemd, no
+  droplet touched this round.
 
 ## Split: civic site vs game
 

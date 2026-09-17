@@ -6856,6 +6856,23 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
     if(method=="GET"&&path=="/favicon.ico")
         return http_redir("/favicon.svg");
 
+    // Same-box only: the commons-daemon sibling forwards a visitor's raw
+    // Cookie header here to resolve it into an account, exactly the way
+    // account_from_req() already does for civic's own pages (cookie-bind.md,
+    // Persistence/TheCommons). Never reachable from the public internet --
+    // nginx's only path in sets X-Forwarded-For (nginx-liquidgov.us.conf), so
+    // its presence means this request came through the proxy, not directly
+    // from another loopback process, and is refused the same way /logs
+    // refuses a non-operator: a 404 indistinguishable from no route at all.
+    if(method=="GET"&&path=="/internal/session-user") {
+        if (!header_value(req, "X-Forwarded-For").empty() ||
+            (peer_ip != "127.0.0.1" && peer_ip != "::1"))
+            return http_raw("404 Not Found", "text/plain", "not found\n");
+        return http_raw("200 OK", "application/json",
+            acc ? ("{\"username\":\"" + json_escape(user) + "\"}") : std::string("{}"),
+            "Cache-Control: no-store\r\n");
+    }
+
     if(method=="GET"&&path=="/logs") {
         const char* op = std::getenv("LIQUIDGOV_OPERATOR");
         if (!op || !op[0] || user != op)

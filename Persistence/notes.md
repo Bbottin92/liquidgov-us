@@ -25,8 +25,32 @@ Not bug classes. Not “what is live on the droplet.”
   Claude commits the *real* files from that sandbox. “Have Claude git pull”
   updates notes/README only.
 
-## Game — atlas locked, no code until BUILD
-
+- **2026-09-16 — Sibling: daemon written and tested locally, not deployed.**
+  Brandon confirmed the scope explicitly before any droplet contact:
+  write the daemon locally first, zero SSH/systemd/nginx this round.
+  New `commons-daemon/` (C++, own CMake build, separate from
+  `liquidgov-platform/`): a real SQLite ledger (vendored `sqlite3`
+  amalgamation — WSL has the runtime `.so` but no `-dev` headers and no
+  sudo to install them; downloaded the official amalgamation from
+  sqlite.org with Brandon's explicit permission first, per the file-
+  download rule) running `schema.sql`/`seed.sql` (the locked V1 catalog:
+  3 lab recipes chalk-only, 12 outdoor regions, house/lab interior
+  templates), RAM-only presence (`presence.md`'s shape — keyed by region,
+  join/move/rekey/leave, 24/region and 96 global caps), and a minimal
+  single-threaded synchronous HTTP server deliberately shaped like
+  civic's own rather than a framework. Friends/cookie-forwarding and
+  wall-slot fetch are documented (`glue.md`, `cookie.md`,
+  `canvas-frame.md`) but **not wired** — no civic route exists to call
+  and adding one means touching `http_server.cpp`, out of scope. Tile
+  collision/movement stays client-side JS (`wasm.md`) — not duplicated
+  here. Verified end-to-end, not just "it compiles": full presence
+  lifecycle (join/move/rekey confirmed to leave no ghost/leave), per-
+  region and global cap enforcement, a missing-field 400, and — the
+  actual point of an integration test, not just a happy path — a real
+  process restart: SQLite catalogs survived, RAM presence did not,
+  proving the RAM/disk boundary `presence.md` describes rather than
+  asserting it. `liquidgov-platform/`/`http_server.cpp`/civic untouched,
+  no SSH, no systemd unit, no nginx change, nothing on the droplet.
 - **2026-09-16 — Correction: `lg_session` does get `Secure`, conditionally.**
   My own first pass on the cookie (same session, bullet below) grepped
   only the literal `Set-Cookie:` string in `set_cookie()` and reported

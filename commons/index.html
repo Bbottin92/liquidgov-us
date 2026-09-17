@@ -996,6 +996,15 @@ function regionsIntersectingCamera(camX, camY) {
 // just with no (x0,y0) origin to add.
 function regionKeyFor(region) { return typeof region === "string" ? region : (region.col + "," + region.row); }
 
+// GROK_HOUSE_REVIEW.md / CLAUDE_HOUSE_KEY.md: a house key is
+// "instance:house:" + a real lg_username, which civic already restricts
+// to a URL-safe charset (valid_username(): alnum/dot/underscore/hyphen)
+// -- nothing here would ever actually need escaping today. Still,
+// anything landing in a URL *path* (not a JSON body field, which needs
+// no encoding at all) should be encoded on principle rather than relying
+// on that charset never changing underneath this code.
+function regionPathSegment(region) { return encodeURIComponent(regionKeyFor(region)); }
+
 function worldToRegionLocal(region, worldPx, worldPy) {
   if (typeof region === "string") return { x: worldPx / TILE, y: worldPy / TILE };
   var aabb = regionAABB(region);
@@ -1058,9 +1067,10 @@ function netHandleAuthFailure() {
 // Falls back to playerName until the first join response lands.
 var acceptedDisplayName = null;
 // V4 (GROK_V4_ANSWER.md): "bound: true" on join/rekey, so the client
-// doesn't have to guess bound state from the nameplate string. Once
-// true it stays true -- a resolved civic cookie doesn't un-resolve
-// mid-session, so there's no downgrade path to handle.
+// doesn't have to guess bound state from the nameplate string. Set from
+// every response (GROK_HOUSE_REVIEW.md should-fix), not latched true --
+// a stale isBound from an earlier session state should not survive a
+// fresh guest reauth.
 var isBound = false;
 
 function netHandleJoinResponse(r) {
@@ -1070,11 +1080,14 @@ function netHandleJoinResponse(r) {
       acceptedDisplayName = j.display_name;
       forceRedraw = true; // the name can change (or first appear) with nothing else moving that frame
     }
-    if (j && j.bound && !isBound) {
-      isBound = true;
-      // The daemon enforces a bound occupant's display_name as the real
-      // lg_username (main.cpp) -- safe to build the instance key from it.
-      INTERIOR_INSTANCE_KEY.house = "instance:house:" + j.display_name;
+    if (j) {
+      isBound = !!j.bound;
+      // GROK_HOUSE_REVIEW.md must-fix: display_name is the *disambiguated*
+      // Square nameplate ("brandon (2)" if a guest already typed
+      // "brandon") -- never build the house key from it. "username" is
+      // the raw, unsuffixed lg_username the daemon only ever sends when
+      // actually bound; that's the one safe to key a house off of.
+      if (j.bound && j.username) INTERIOR_INSTANCE_KEY.house = "instance:house:" + j.username;
     }
   }).catch(function () {});
 }
@@ -1121,7 +1134,7 @@ function netMove() {
 function netPollCurrentRegion() {
   if (!netReady || !netRegion || netPollBusy) return;
   netPollBusy = true;
-  fetch(DAEMON + "/presence/" + regionKeyFor(netRegion))
+  fetch(DAEMON + "/presence/" + regionPathSegment(netRegion))
     .then(function (r) { return r.json(); })
     .then(function (list) {
       var region = netRegion;
@@ -1145,7 +1158,7 @@ function netPlace(item) {
   if (!netReady || !netRegion || typeof netRegion !== "string") return;
   placedItem = item; // optimistic, same shape as netJoin/netRekey's own region assignment
   forceRedraw = true;
-  fetch(DAEMON + "/placed/" + regionKeyFor(netRegion), {
+  fetch(DAEMON + "/placed/" + regionPathSegment(netRegion), {
     method: "POST",
     body: netBody({ item: item })
   }).then(function (r) { if (r.status === 403) netHandleAuthFailure(); }).catch(function () {});
@@ -1154,7 +1167,7 @@ function netPlace(item) {
 function netPollPlaced() {
   if (!netReady || !netRegion || typeof netRegion !== "string" || netPlacedPollBusy) return;
   netPlacedPollBusy = true;
-  fetch(DAEMON + "/placed/" + regionKeyFor(netRegion))
+  fetch(DAEMON + "/placed/" + regionPathSegment(netRegion))
     .then(function (r) { return r.json(); })
     .then(function (j) {
       var item = (j && j.item) ? j.item : null;
@@ -1168,7 +1181,7 @@ function netPollRegions(regions) {
   if (!netReady || !regions.length || netPollBusy) return;
   netPollBusy = true;
   Promise.all(regions.map(function (region) {
-    return fetch(DAEMON + "/presence/" + regionKeyFor(region))
+    return fetch(DAEMON + "/presence/" + regionPathSegment(region))
       .then(function (r) { return r.json(); })
       .then(function (list) {
         return list

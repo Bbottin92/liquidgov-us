@@ -1223,6 +1223,32 @@ Not bug classes. Not “what is live on the droplet.”
   `players`/`map_instances` rows exist anywhere yet) -- deferred, not
   built this round. See `Persistence/TheCommons/your-house-built.md`.
   Holding on deploy.
+- **2026-09-17 — your-house must-fix: house key used the wrong field,
+  fixed, still not deployed.** Grok review (`GROK_HOUSE_REVIEW.md`)
+  caught that the house key was built from `display_name`, which is
+  the *disambiguated Square nameplate* -- a guest who types "brandon"
+  before the real `brandon` binds turns the bound player's own
+  display_name into "brandon (2)", a space-and-parens string that
+  would key a wrong, different house room. Fixed daemon-only for the
+  field, plus one client-side hardening pass: `main.cpp`'s join/rekey
+  now also echo a raw `"username"` field (only when bound, never
+  touched by disambiguation); the client builds
+  `INTERIOR_INSTANCE_KEY.house` from that, never `display_name`, and
+  `isBound` is now set from every response instead of latching true
+  once. Also added `encodeURIComponent` on the four client fetches that
+  put a region/instance key in a URL path -- which surfaced a real
+  latent bug while implementing it: `commons-daemon`'s `http.cpp` never
+  url-decoded `req.path` at all, so encoding client-side without a
+  matching daemon-side decode would have broken every outdoor poll
+  (`1,1` -> `1%2C1`, no longer matching `PresenceStore`'s literal
+  keys). Fixed with a one-line decode in `http.cpp`, symmetric with the
+  new client encoding. Verified locally reproducing the exact
+  collision scenario (guest claims "boundname" first, real account
+  `boundname` binds after) -- `username` stays clean, the house key is
+  correct, the wrong suffixed key is confirmed empty; separately
+  verified through the real client that outdoor polling still resolves
+  real occupant data through the new encode/decode round trip. See
+  `your-house-built.md`'s own "Must-fix" section. Holding on deploy.
 
 ## Split: civic site vs game
 

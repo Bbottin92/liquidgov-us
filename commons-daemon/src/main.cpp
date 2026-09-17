@@ -312,15 +312,20 @@ int main(int argc, char** argv) {
         // GROK_NAME_REVIEW.md: echo the *accepted* name (post-disambiguation)
         // so a self-nameplate draws what other clients actually see, not
         // the raw typed input. GROK_V4_ANSWER.md: also echo whether this
-        // occupant is bound, so the client knows without having to guess
-        // from the nameplate string (a guest could type a name that looks
-        // like a username).
+        // occupant is bound. GROK_HOUSE_REVIEW.md must-fix: display_name is
+        // the *disambiguated* label for this region -- a guest already
+        // occupying it as "brandon" makes a bound player's display_name
+        // "brandon (2)", which is not a valid house key. "username" is the
+        // raw, unsuffixed lg_username, safe to build instance:house:<...>
+        // from; the client must never use display_name for that.
+        const bool is_bound = eff_id->rfind("u:", 0) == 0;
         r.body = std::string("{\"ok\":") + (result == commons::PresenceStore::JoinResult::Ok ? "true" : "false")
             + ",\"reason\":\"" + (result == commons::PresenceStore::JoinResult::Ok ? "" :
                 result == commons::PresenceStore::JoinResult::RegionFull ? "region_full" : "global_full") + "\""
             + (result == commons::PresenceStore::JoinResult::Ok
                 ? ",\"display_name\":" + commons::json::str(accepted_name) +
-                  ",\"bound\":" + (eff_id->rfind("u:", 0) == 0 ? "true" : "false")
+                  ",\"bound\":" + (is_bound ? "true" : "false") +
+                  (is_bound ? ",\"username\":" + commons::json::str(eff_id->substr(2)) : "")
                 : "")
             + "}";
         return r;
@@ -381,12 +386,14 @@ int main(int argc, char** argv) {
         occ.last_update_ms = now_ms();
         std::string accepted_name;
         auto result = presence.rekey(*from_region, *to_region, occ, &accepted_name);
+        const bool is_bound = eff_id->rfind("u:", 0) == 0;
         r.body = std::string("{\"ok\":") + (result == commons::PresenceStore::JoinResult::Ok ? "true" : "false")
             + ",\"reason\":\"" + (result == commons::PresenceStore::JoinResult::Ok ? "" :
                 result == commons::PresenceStore::JoinResult::RegionFull ? "region_full" : "global_full") + "\""
             + (result == commons::PresenceStore::JoinResult::Ok
                 ? ",\"display_name\":" + commons::json::str(accepted_name) +
-                  ",\"bound\":" + (eff_id->rfind("u:", 0) == 0 ? "true" : "false")
+                  ",\"bound\":" + (is_bound ? "true" : "false") +
+                  (is_bound ? ",\"username\":" + commons::json::str(eff_id->substr(2)) : "")
                 : "")
             + "}";
         return r;

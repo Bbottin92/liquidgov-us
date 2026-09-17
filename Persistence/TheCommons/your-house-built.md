@@ -4,6 +4,11 @@ Brandon: "build" (in reply to the offer naming this exact increment,
 `GROK_V4_ANSWER.md`'s "your house"). Safe thread, exactly as scoped: no
 `http_server.cpp`, daemon + `commons/index.html` only.
 
+**2026-09-17 update: must-fix found and fixed before deploy.** See
+"Must-fix: house key built from the wrong field" below -- the house key
+described in the rest of this doc as `j.display_name` was wrong; it's
+`j.username` now, a new, separate field.
+
 ## The hole this closes
 
 `GROK_V4_ANSWER.md`: "you still live in the shared demo house" -- the
@@ -104,3 +109,63 @@ which local static serving can't carry the way production's same-origin
 Real cross-origin cookie -> real house entry is still only provable in
 production, same as cookie bind itself -- next after Brandon says
 **deploy**.
+
+## Must-fix: house key built from the wrong field (found by Grok review, fixed)
+
+`GROK_HOUSE_REVIEW.md`: the house key used `j.display_name`, but that's
+the *disambiguated Square nameplate*, not the raw username --
+`disambiguate_name_locked` appends " (2)" etc. when another occupant in
+that region already has the same display name. A guest who types
+"brandon" into the Square before the real `brandon` ever binds turns
+the bound player's own display_name into "brandon (2)" -- a space and
+parens in what was about to become a URL path segment, and a
+*different, wrong* house room than the one every other client would
+expect that door to lead to.
+
+Fixed:
+
+- **Daemon (`main.cpp`):** join/rekey now also echo a raw `"username"`
+  field (only present when `bound`), taken from `eff_id->substr(2)` --
+  the same unsuffixed string `bind_or_promote`/`effective_id_in_region`
+  already derive from the cookie, never touched by disambiguation.
+  `display_name` is untouched -- still the nameplate, still
+  disambiguated, still what every other client actually sees drawn
+  over that occupant.
+- **Client (`commons/index.html`):** `INTERIOR_INSTANCE_KEY.house` now
+  builds from `j.username`, never `j.display_name`. `isBound` is now
+  set from every join/rekey response (`= !!j.bound`) instead of only
+  ever latching `true` once, per Grok's should-fix -- a stale `true`
+  surviving into a fresh guest reauth was a real (if minor) risk.
+- **Defense in depth, both sides:** region/instance keys used as a URL
+  *path* segment (not a JSON body field, which needs no encoding) are
+  now `encodeURIComponent`-ed client-side
+  (`regionPathSegment()`, four call sites: the two presence polls, the
+  placed-item GET and POST). This surfaced a real, previously-latent
+  bug while implementing it, not just theoretical hardening: the
+  daemon's `http.cpp` never url-decoded `req.path` at all -- outdoor
+  keys like "1,1" were only ever safe because a literal comma happens
+  to survive unencoded in every browser/curl call this project has
+  ever made. Encoding client-side without decoding server-side would
+  have broken every existing outdoor poll (`1,1` -> `1%2C1`, no longer
+  matching `PresenceStore`'s literal keys) the moment it shipped. Fixed
+  by decoding `req.path` once, in `http.cpp`, exactly where the query
+  string was already decoded -- one line, symmetric with the client's
+  new encoding, and it's what should have been there from the start
+  regardless of this round's own bug.
+
+**Verified locally**, reproducing the exact scenario `CLAUDE_HOUSE_KEY.md`
+asked for: a guest joins the Square as display_name "boundname" first;
+a real civic account named `boundname` then joins bound -- its
+`display_name` comes back `"boundname (2)"` exactly as expected, but
+`username` stays the raw `"boundname"`. Rekeying into
+`"instance:house:" + username` lands in `instance:house:boundname`
+with no suffix; `GET /presence/instance:house:boundname` shows the
+occupant, and the wrong, suffixed key
+(`instance:house:boundname%20(2)`) is confirmed empty -- no ghost room
+ever created there. Separately verified through the real client
+(pointed at a scratch daemon): outdoor polling still resolves real
+occupant data through the new encode/decode round trip (a second guest
+placed via curl showed up correctly in `otherOccupants`), and
+`netHandleJoinResponse` builds the house key from `username` while
+`isBound` correctly flips back to `false` on a subsequent guest-shaped
+response.

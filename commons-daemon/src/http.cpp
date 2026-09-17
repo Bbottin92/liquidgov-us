@@ -210,10 +210,16 @@ void HttpServer::serve_one(int client_fd) {
     std::string full_path;
     rl >> req.method >> full_path;
     auto qpos = full_path.find('?');
+    // GROK_HOUSE_REVIEW.md / CLAUDE_HOUSE_KEY.md: the client now
+    // percent-encodes region/instance keys used as a path segment
+    // (encodeURIComponent), same as parse_query already does for the
+    // query string -- decode here so a route's own req.path.substr(...)
+    // extraction (e.g. /presence/<region>, /placed/<instance>) gets back
+    // the literal key, not "instance%3Ahouse%3Abrandon".
     if (qpos == std::string::npos) {
-        req.path = full_path;
+        req.path = url_decode(full_path);
     } else {
-        req.path = full_path.substr(0, qpos);
+        req.path = url_decode(full_path.substr(0, qpos));
         req.query = parse_query(full_path.substr(qpos + 1));
     }
     req.body = body;

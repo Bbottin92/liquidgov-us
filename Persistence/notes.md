@@ -27,6 +27,11 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Game — atlas locked, no code until BUILD
 
+- **2026-09-16 — Grok P0 review.** Skeleton accepted (bake/blit, dual crop,
+  A/D, path ribbon, labels, civic untouched). Must-fix: name input vs WASD
+  `preventDefault` ("Brandon" untypeable). Should-fix: rAF as the product
+  loop, setInterval only as rAF-fallback; `alpha:false`. P1 not started.
+  Paste `CLAUDE_P0_PATCH.md`. See `GROK_P0_REVIEW.md`.
 - **2026-09-16 — blit pipeline.** `tilemap.md` expanded: display canvas
   is the logical crop only (not the 1152×1280 bake in the DOM). Floor
   camera, smoothing off, alpha:false, ignore DPR, no worker. Giant-canvas

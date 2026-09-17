@@ -1170,6 +1170,19 @@ Not bug classes. Not “what is live on the droplet.”
   still 403s) still pass. See `cookie-resolver-built.md`'s own
   "Must-fix" section. Still holding on deploy for Brandon's own
   **deploy** word.
+- **2026-09-17 — cookie resolver deployed, live.** Brandon said
+  "deploy." Rebuilt and restarted both civic (`/opt/liquidgov`) and the
+  daemon (`/opt/commons-daemon`, reconfigured for the new `civic.cpp`
+  source) on the droplet; no nginx change. Drift-checked both source
+  trees against the droplet first (sha256 + diff) -- clean, only this
+  project's own commits were live there. Verified in production: public
+  `curl https://liquidgov.us/internal/session-user` -> `404` plain text
+  (blocked exactly like `/logs`'s own non-operator refusal); a real
+  throwaway account, logged in via a real browser, walked into the
+  Square with a decoy name typed into the guest-name modal and both the
+  occupant feed and the on-screen self-nameplate showed the real
+  account name instead. Both services' logs clean post-restart. See
+  `cookie-resolver-built.md`'s own "Deployed" section.
 
 ## Split: civic site vs game
 

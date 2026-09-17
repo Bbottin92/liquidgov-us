@@ -149,6 +149,31 @@ scenarios `CLAUDE_COOKIE_GHOST.md` asked for):
 Still not built: in-place `rebind()` (the row is still replaced, not
 literally relabeled -- `cookie-bind.md` never decided between the two
 and this fix doesn't either, it just stops the replace from leaking a
-duplicate). Still no restart/crash snapshot for bound players. No
-deploy, no nginx, no systemd -- civic's only change remains the one
-route from the first round, untouched again this round.
+duplicate). Still no restart/crash snapshot for bound players.
+
+## Deployed 2026-09-17
+
+Brandon: "deploy." Civic binary rebuilt (`/opt/liquidgov`, rsync +
+`cmake --build -j1` + `systemctl restart liquidgov`) and daemon rebuilt
+(`/opt/commons-daemon`, same pattern, reconfigured first since
+`civic.cpp` is a new source file) -- no nginx edit, Cookie was already
+forwarded same-origin from the sibling-deploy round. Drift-checked both
+source trees against the droplet before syncing (sha256 + diff): zero
+unexpected changes, only this project's own commits.
+
+Verified against production:
+
+- `curl https://liquidgov.us/internal/session-user` -> `404`, plain
+  `not found` body -- the public path is blocked exactly like `/logs`'s
+  own refusal, not the JSON a same-box caller gets.
+- Signed up a real throwaway account (`claudeverify17`) in an actual
+  browser, typed a decoy guest name ("ShouldBeIgnored") into the
+  Square's own name-entry modal, walked in. `GET /commons/presence/1,1`
+  and the on-screen self-nameplate both show `u:claudeverify17` /
+  `claudeverify17` -- the real account name, the decoy silently
+  discarded, exactly as designed.
+- Both `systemctl status` clean, `journalctl` for both services shows
+  no errors, only the expected `GET /internal/session-user 200` lines
+  from the daemon's own loopback calls while that test session walked.
+
+Live. `liquidgov.us/commons/` cookie-binds a real account now.

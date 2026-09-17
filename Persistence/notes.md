@@ -18,6 +18,20 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-16 — commons-daemon: body-cap nit, truncate to `Content-Length`
+  after the split.** Grok caught a gap in the 413 patch (`d2b5bf4`): the
+  1 MiB header guard bounds `raw`, not this request's declared body — so
+  even when `Content-Length` is legal (<=64KiB), the initial `head`/`body`
+  split in `serve_one` could already hand back more bytes than `need`
+  (whatever trailed the header terminator in the same reads), and nothing
+  trimmed it back down. Not the 5GB hole (413 still fires correctly for an
+  illegal length), but trailing/pipelined-looking bytes could silently ride
+  along as part of this request's body. Fixed: after the read loop,
+  `body.resize(need)` whenever `body.size() > need`. Verified live: a
+  legal small `Content-Length` with garbage glued on in the same packet
+  still joins clean (occupant reflects only the real JSON), the 413
+  boundary and normal regression set are unaffected, and a restart still
+  shows the RAM/disk boundary holding.
 - **2026-09-16 — decided.** GitHub shares `Persistence/notes.md` (+ README) only.
   `context.md` and `state.md` exist in the *old* Grok sandbox and were never
   pushed. Do not invent fakes. Do not have Claude create them. A fresh Grok

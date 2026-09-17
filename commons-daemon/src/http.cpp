@@ -132,6 +132,14 @@ void HttpServer::serve_one(int client_fd) {
         if (n <= 0) break;
         body.append(buf, static_cast<std::size_t>(n));
     }
+    // The header split above can already hand back more than `need` bytes
+    // even when `need` itself is legal (<=64KiB) -- the 1MB header guard
+    // bounds the initial read, not this request's declared body length.
+    // Trim to exactly what Content-Length promised so trailing/pipelined
+    // bytes never get treated as part of this request's body.
+    if (static_cast<long>(body.size()) > need) {
+        body.resize(static_cast<std::size_t>(need));
+    }
 
     HttpRequest req;
     req.headers_raw = head;

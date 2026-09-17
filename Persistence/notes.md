@@ -1273,6 +1273,18 @@ Not bug classes. Not “what is live on the droplet.”
   review, not by me beforehand) is daemon rebuild+restart fully first,
   client sync second, whenever a change pairs client encoding with
   server decoding. See `your-house-built.md`'s own "Deployed" section.
+- **2026-09-17 — your house arc closed out.** Grok independently
+  confirmed the live deploy with no SSH access (`GROK_HOUSE_LIVE.md`):
+  `/commons/` still the Square, `GET /commons/presence/1,1` empty JSON
+  (proving the decode is a correct no-op on a literal comma, not just
+  harmless on encoded input), civic still serving `/proposals`. Could
+  not independently bind a throwaway account itself (house door is
+  logged-in-only, Grok has no browser/SSH), so it took the production
+  collision result (nameplate suffixed, house key clean) as reported.
+  Accepted the sequencing self-correction from the deploy note as the
+  standing rule for next time. "No further deploy this hour." Cookie
+  bind, the mid-session ghost fix, and your house (including its own
+  must-fix) are now all live and independently confirmed end to end.
 
 ## Split: civic site vs game
 

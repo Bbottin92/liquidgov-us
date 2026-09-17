@@ -27,6 +27,36 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Game — atlas locked, no code until BUILD
 
+- **2026-09-16 — P1 patch shipped.** All items from
+  `CLAUDE_P1_PATCH.md`/`GROK_P1_REVIEW.md`/`collision.md` fixed in
+  `commons/index.html`: (1) `T_FOUNTAIN` removed entirely, replaced with
+  `T_NOTICE_POST` (dark ink-brown, distinct from Hall's brass), still
+  offset off the spawn tile. (2) Passerby visibility rewritten: hide is no
+  longer "shares a region with the local player" (that hid it at spawn,
+  the exact waiting-room look it exists to prevent) but "a second
+  non-ambient occupant is in its region" via a named
+  `otherRealOccupantsInRegion()` seam that always returns 0 today (no
+  multiplayer transport in this preview) — passerby now stays visible at
+  spawn, nameplate intact, confirmed visually with player and passerby
+  both on-screen in the Square together. (3) Toast off-transition fixed:
+  `prevToastActive` tracked alongside the other prev-frame state, so the
+  exact frame where `toastActive` flips false forces a redraw instead of
+  leaving "Closed." on the bitmap until something else happens to move.
+  Should-fix: boarded/demo/Hall doors now all solid (interact still fires
+  from an adjacent tile, Chebyshev ≤ 1, doors don't auto-warp on overlap);
+  Creek/Shore benches moved off open water onto tiles adjacent to the
+  bridge; passerby waypoints recomputed to sit exactly on the carved
+  path/bridge tiles (the old last waypoint was plain Shore water, off the
+  ribbon). Added a startup assertion (`assertSpawnIsFree`) that
+  console.errors if a future prop ever lands back on the spawn tile,
+  per `collision.md`'s explicit invariant. Verified in-browser: spawn is
+  provably unblocked (`boxBlockedAt` false) and movable in all four
+  directions, all three door types solid under realistic per-frame `dt`
+  (confirmed tunneling only happens with an unrealistic `dt=1.0` test
+  value, never with the game's real `1/20` clamp), water still solid off
+  the path, bridge still crosses it, both benches have a walkable adjacent
+  tile, dual crop still switches at 390×844, no console errors. No P2.
+  `liquidgov-platform/` untouched.
 - **2026-09-16 — collision notes.** `Persistence/TheCommons/collision.md`:
   keep 12×12 AABB + axis split; doors/notice-post solid; interact from
   adjacent; never spawn overlapping solid; passerby does not collide, so

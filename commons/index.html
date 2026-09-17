@@ -174,10 +174,11 @@ function regionAt(tx, ty) {
 // ---- Tile ids -----------------------------------------------------------
 var T_GRASS_A = 0, T_GRASS_B = 1, T_PATH = 2, T_WATER = 3, T_DIRT = 4,
     T_WALL = 5, T_DOOR_DEMO = 6, T_DOOR_BOARDED = 7, T_HEDGE = 8,
-    T_HALL_DOOR = 9, T_FOUNTAIN = 10, T_BENCH = 11, T_BRIDGE = 12;
+    T_HALL_DOOR = 9, T_NOTICE_POST = 10, T_BENCH = 11, T_BRIDGE = 12;
 
 // Palette, from art.md -- outdoor stays grass/dirt/water, never parchment.
-// Brass stays "sparingly" for the Hall door only, per art.md.
+// Brass stays "sparingly" for the Hall door only, per art.md -- the
+// notice-post gets its own dark ink-brown, not a fountain, not brass.
 var COLOR = {};
 COLOR[T_GRASS_A]      = "#4a7c59";
 COLOR[T_GRASS_B]      = "#3d6b4f";
@@ -189,17 +190,23 @@ COLOR[T_DOOR_DEMO]    = "#8a6a46";
 COLOR[T_DOOR_BOARDED] = "#5d564c";
 COLOR[T_HEDGE]        = "#2f4a37";
 COLOR[T_HALL_DOOR]    = "#c4a574";
-COLOR[T_FOUNTAIN]     = "#8a8378";
+COLOR[T_NOTICE_POST]  = "#4a3a28";
 COLOR[T_BENCH]        = "#6b4a32";
 COLOR[T_BRIDGE]       = "#7a5a3a";
 var INK = "#1a1814";
 
+// collision.md: doors are solid -- "stand next to them, press Enter," not
+// walk-through. A boarded door reads as a wall with a prompt, same as any
+// other closed door; Hall's confirm() is the interaction, not stepping in.
 var SOLID_TILE = {};
 SOLID_TILE[T_WATER] = 1;
 SOLID_TILE[T_WALL] = 1;
 SOLID_TILE[T_HEDGE] = 1;
-SOLID_TILE[T_FOUNTAIN] = 1;
+SOLID_TILE[T_NOTICE_POST] = 1;
 SOLID_TILE[T_BENCH] = 1;
+SOLID_TILE[T_DOOR_DEMO] = 1;
+SOLID_TILE[T_DOOR_BOARDED] = 1;
+SOLID_TILE[T_HALL_DOOR] = 1;
 
 // ---- Build the tile + collision arrays (once) ---------------------------
 var tiles = new Uint8Array(WORLD_W * WORLD_H);
@@ -273,15 +280,15 @@ function dressRegions() {
   var creek = regionAABB(findRegion("Creek"));
   var shore = regionAABB(findRegion("Shore"));
 
-  // the Square: a fountain/notice-post, near center, plus two benches.
-  // Offset 3 tiles south of the exact center -- the player also spawns at
-  // that exact center tile, and a solid fountain sitting on the spawn tile
-  // would trap a fresh arrival (found while testing: movement was silently
-  // blocked in every direction because the player's own bounding box
-  // already overlapped the "solid" tile it spawned on).
+  // the Square: a civic notice-post (not a fountain), near center, plus
+  // two benches. Offset 3 tiles south of the exact center -- the player
+  // also spawns at that exact center tile, and a solid prop sitting on
+  // the spawn tile traps a fresh arrival (collision.md: every corner of
+  // the player's own box was already inside the "solid" tile it spawned
+  // on, so every candidate move was blocked -- found while testing P1).
   var sqCx = Math.floor((square.x0 + square.x1 + 1) / 2);
   var sqCy = Math.floor((square.y0 + square.y1 + 1) / 2) + 3;
-  tiles[idx(sqCx, sqCy)] = T_FOUNTAIN;
+  tiles[idx(sqCx, sqCy)] = T_NOTICE_POST;
   tiles[idx(square.x0 + 2, sqCy)] = T_BENCH;
   tiles[idx(square.x1 - 2, sqCy)] = T_BENCH;
 
@@ -316,12 +323,16 @@ function dressRegions() {
     });
   }
 
-  // Creek: a bench near the bank (the bridge itself is the recolored path).
-  tiles[idx(creek.x0 + 3, creek.y0 + 3)] = T_BENCH;
+  // Creek: a bench directly beside the bridge -- collision.md flagged the
+  // previous spot as stranded out in flooded water, disconnected from the
+  // one walkable line through the region. One tile east of the vertical
+  // bridge column, still inside Creek.
+  tiles[idx(35 + 1, creek.y0 + 5)] = T_BENCH;
 
-  // Shore: a driftwood log near the dock (reuse the bench tile/color --
-  // same "small sittable prop" language as atlas.md, no new art needed).
-  tiles[idx(shore.x1 - 3, shore.y1 - 3)] = T_BENCH;
+  // Shore: a driftwood log right where the bridge's jog lands in Shore
+  // (reuse the bench tile/color -- same "small sittable prop" language as
+  // atlas.md, no new art needed), not off alone in open water.
+  tiles[idx(60, 71)] = T_BENCH;
 }
 
 // ---- Bake the world once to an offscreen canvas (tilemap.md: bake once,
@@ -393,6 +404,16 @@ var player = {
 };
 var playerName = "";
 
+// collision.md's spawn rule: a solid prop must never land on the spawn
+// tile (the actual fountain bug from the last round). Asserted here,
+// after dressRegions() has already run, so a future prop placement that
+// breaks it fails loudly instead of silently trapping a fresh arrival.
+(function assertSpawnIsFree() {
+  if (boxBlockedAt(player.x, player.y, player.half)) {
+    console.error("Commons: spawn tile is blocked -- move the prop, not the player.");
+  }
+})();
+
 function tileBlockedAtPixel(px, py) {
   var tx = Math.floor(px / TILE), ty = Math.floor(py / TILE);
   if (tx < 0 || ty < 0 || tx >= WORLD_W || ty >= WORLD_H) return true;
@@ -431,17 +452,20 @@ function movePlayer(dx, dy, dt) {
 // internally, hides while a real guest shares its region, Square ->
 // Homestead -> Creek -> Shore, presence-shaped/RAM/~2Hz-scale motion,
 // no dialogue, not a friend door, not an NPC). ---------------------------
+// collision.md: the passerby does not collide, so every waypoint must sit
+// on an actual path/bridge tile or it walks on water. The last waypoint
+// used to be a plain Shore coordinate off the ribbon entirely -- fixed by
+// keeping every point on the exact tiles bakeTileIds() carved: the
+// vertical spine at x=35, then the horizontal jog at y=69 out to x=65.
 var passerbyWaypoints = (function () {
   var sq = regionAABB(findRegion("the Square"));
   var hs = regionAABB(findRegion("Homestead Row"));
-  var ck = regionAABB(findRegion("Creek"));
-  var sh = regionAABB(findRegion("Shore"));
   function px(tx, ty) { return { x: tx * TILE + 8, y: ty * TILE + 8 }; }
   return [
-    px(35, sq.y0 + 2),                  // the Square, near the top of the spine
-    px(35, Math.floor((hs.y0 + hs.y1) / 2)), // Homestead Row
-    px(35, ck.y1 - 1),                  // Creek, at the jog
-    px(sh.x1 - 4, sh.y1 - 1)            // Shore, patrol's far end
+    px(35, sq.y0 + 2),                       // the Square, near the top of the spine
+    px(35, Math.floor((hs.y0 + hs.y1) / 2)), // Homestead Row, still on the vertical spine
+    px(35, 69),                              // Creek, exactly the jog's start row
+    px(65, 69)                               // Shore, exactly the jog's end -- still bridge
   ];
 })();
 var passerby = {
@@ -470,13 +494,29 @@ function updatePasserby(dt) {
     moved = true;
   }
 
-  var playerTile = { x: Math.floor(player.x / TILE), y: Math.floor(player.y / TILE) };
+  // Locked rule is "hide only if a second *real* occupant is already
+  // there" -- not "hide whenever the local player is." The local player
+  // is who this crutch exists for, not a redundant second body: hiding it
+  // the moment they're in the same region as their own passerby left the
+  // Square empty from the very first frame, which is the exact
+  // waiting-room look this was built to avoid (found in review, not by
+  // testing -- the spawn case never showed anything *else* to compare
+  // against). otherRealOccupantsInRegion() is 0 today because this
+  // preview has no multiplayer transport at all; it stays a named seam so
+  // wiring in real presence later is additive, not a rewrite.
   var pbTile = { x: Math.floor(passerby.x / TILE), y: Math.floor(passerby.y / TILE) };
-  var playerRegion = regionAt(playerTile.x, playerTile.y);
   var pbRegion = regionAt(pbTile.x, pbTile.y);
-  passerby.visible = !(playerRegion && pbRegion && playerRegion === pbRegion);
+  passerby.visible = otherRealOccupantsInRegion(pbRegion) === 0 ? true : false;
 
   return moved;
+}
+
+function otherRealOccupantsInRegion(region) {
+  // No real multiplayer transport in this preview (BUILD_ORDER.md / v1.md)
+  // -- the only "real occupant" that could ever exist is the local player,
+  // and they are not "other" relative to their own passerby. Always 0
+  // until presence.md's real feed lands.
+  return 0;
 }
 
 // ---- Input: keyboard --------------------------------------------------
@@ -579,6 +619,7 @@ var lastTickAt = 0; // performance.now() of the last frame() call, any source
 var forceRedraw = true;
 var prevPlayerX = player.x, prevPlayerY = player.y;
 var prevPbVisible = false, prevPbX = passerby.x, prevPbY = passerby.y;
+var prevToastActive = false;
 
 function drawOutdoor(camX, camY) {
   ctx.drawImage(baked, camX, camY, crop.vw, crop.vh, 0, 0, crop.vw, crop.vh);
@@ -647,9 +688,15 @@ function frame(t) {
 
   // canvas.md #2: skip the blit entirely if the scene truly hasn't changed
   // -- rAF still runs (vsync), we just don't touch the GPU for nothing.
+  // toastActive alone isn't enough: it covers every frame *while* the
+  // toast is showing, but the frame where it flips back to false (the
+  // off-transition) also needs to redraw, or the last "Closed." bitmap
+  // just sits there forever since nothing else necessarily changed on
+  // that exact frame. Found by testing the actual expiry, not by reading
+  // the code.
   var changed = forceRedraw || cropChangedThisFrame || playerMoved ||
     (passerby.visible && (pbMoved || passerby.x !== prevPbX || passerby.y !== prevPbY)) ||
-    (passerby.visible !== prevPbVisible) || toastActive;
+    (passerby.visible !== prevPbVisible) || toastActive || (toastActive !== prevToastActive);
 
   if (!changed) return;
 
@@ -664,6 +711,7 @@ function frame(t) {
   cropChangedThisFrame = false;
   prevPlayerX = player.x; prevPlayerY = player.y;
   prevPbVisible = passerby.visible; prevPbX = passerby.x; prevPbY = passerby.y;
+  prevToastActive = toastActive;
 }
 
 // requestAnimationFrame is the loop -- real browsers (including phones)

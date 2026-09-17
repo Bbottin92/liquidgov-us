@@ -25,6 +25,29 @@ Not bug classes. Not “what is live on the droplet.”
   Claude commits the *real* files from that sandbox. “Have Claude git pull”
   updates notes/README only.
 
+- **2026-09-16 — commons-daemon: body-cap must-fix patched (`http.cpp`), presence
+  bugs already fixed upstream.** Grok's review (`GROK_DAEMON_REVIEW.md`,
+  `CLAUDE_DAEMON_PATCH.md`) flagged three must-fixes: (1) duplicate `join`
+  double-counting `total_`, (2) `rekey` always decrementing `total_` even
+  when `from_region` never held the id, (3) `Content-Length` uncapped past
+  the 1 MiB header guard. Before patching, `git pull` surfaced that (1) and
+  (2) were already fixed upstream by a newer id-index redesign of
+  `presence.cpp`/`presence.hpp` (`92e379d`, `63792ea`: an id-lookup replaces
+  the old scan-and-decrement pattern, `rekey`'s `from_region` is now
+  advisory only since `join_locked` de-dupes globally regardless) — pulled
+  that in rather than reapplying an older, now-superseded fix and clobbering
+  it. Only (3) still needed work: `serve_one` now rejects `need < 0` or
+  `need > 65536` with a 413 and closes the connection before the body-read
+  loop, so a client-declared multi-GB `Content-Length` can never reach
+  `body.append` on the 512 MB box. Verified live: duplicate join (same
+  region and cross-region) collapses to one occupant; rekey from a region
+  the id was never in leaves `global_count()` correct; a 5 GB, a negative,
+  and a 65537-byte declared length each get a 413 and the daemon stays up
+  and keeps serving normal requests; a full process restart still shows
+  SQLite catalogs surviving and RAM presence clearing. No should-fix items
+  touched (idle reap, server-issued ids, FetchContent, schema dedup, cookie,
+  deploy) — those stay parked. Civic untouched, no SSH/systemd/nginx, no
+  deploy.
 - **2026-09-16 — Sibling: daemon written and tested locally, not deployed.**
   Brandon confirmed the scope explicitly before any droplet contact:
   write the daemon locally first, zero SSH/systemd/nginx this round.

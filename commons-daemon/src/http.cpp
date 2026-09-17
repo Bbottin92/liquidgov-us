@@ -109,6 +109,24 @@ void HttpServer::serve_one(int client_fd) {
     std::string head = raw.substr(0, header_end);
     std::string body = raw.substr(header_end + 4);
     long need = content_length_of(head);
+    // Must-fix: the 1MB header guard above bounds head, but Content-Length
+    // itself is client-declared and unbounded -- a negative or huge value
+    // must not reach the append loop below (512MB box; don't try to hold a
+    // multi-GB claimed body in RAM).
+    constexpr long kMaxBody = 65536;
+    if (need < 0 || need > kMaxBody) {
+        static const std::string kMsg = "{\"error\":\"payload too large\"}";
+        std::ostringstream out;
+        out << "HTTP/1.1 413 Payload Too Large\r\n"
+            << "Content-Type: application/json\r\n"
+            << "Content-Length: " << kMsg.size() << "\r\n"
+            << "Connection: close\r\n\r\n"
+            << kMsg;
+        std::string out_str = out.str();
+        send(client_fd, out_str.data(), out_str.size(), 0);
+        close(client_fd);
+        return;
+    }
     while (static_cast<long>(body.size()) < need) {
         ssize_t n = recv(client_fd, buf, sizeof(buf), 0);
         if (n <= 0) break;

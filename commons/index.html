@@ -439,12 +439,18 @@ function dressRegions() {
   // the south edge facing the Square (the sightline the P1 patch fixed --
   // Shore is off-camera from here, don't reintroduce that promise), one
   // bench, one tree just off the plateau.
+  // Railing at y=16, not y=10 (parked after P3 review): the landscape crop
+  // is only 10 tiles tall, so a camera centered on a player standing at
+  // the railing shows roughly +-5 rows -- from y=10 that tops out at y=15,
+  // never reaching the Square (which starts at y=20). From y=16 it reaches
+  // to y=21, actually showing a sliver of it, matching the "facing south
+  // over the Square" framing instead of just asserting it in a comment.
   for (var lkx = 30; lkx <= 41; lkx++) {
-    for (var lky = 4; lky <= 9; lky++) tiles[idx(lkx, lky)] = T_PLATEAU;
-    tiles[idx(lkx, 10)] = T_RAILING;
+    for (var lky = 10; lky <= 15; lky++) tiles[idx(lkx, lky)] = T_PLATEAU;
+    tiles[idx(lkx, 16)] = T_RAILING;
   }
-  tiles[idx(35, 8)] = T_BENCH;
-  tiles[idx(28, 8)] = T_TREE;
+  tiles[idx(35, 14)] = T_BENCH;
+  tiles[idx(28, 13)] = T_TREE;
 
   // Orchard: 4-6 decorative fruit trees in loose rows, wide walk lanes
   // between them -- no farming, no harvest interaction, just trees.
@@ -991,6 +997,10 @@ function frame(t) {
 
   nearestInteractable = findNearestInteractable();
   interactBtn.classList.toggle("show", !!nearestInteractable || mode !== "outdoor");
+  // Parked since P2: the button always said "Enter" even at a Try/Read/
+  // Look station -- harmless (nearest interactable still won on tap), but
+  // the caption was lying about which key it stood in for.
+  interactBtn.textContent = nearestInteractable ? nearestInteractable.prompt : "Enter";
 
   var toastActive = performance.now() < toast.until;
 

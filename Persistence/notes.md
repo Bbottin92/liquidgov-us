@@ -27,6 +27,24 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Game — atlas locked, no code until BUILD
 
+- **2026-09-16 — two parked P3 nits closed.** Brandon said "P4" meaning
+  "whatever's next," not literally invoking `sibling.md`'s deploy work --
+  that doc itself says the sibling is "a new BUILD, not a P4," and "not
+  this week," so held off on it rather than guess into a production
+  change. Instead closed the two items already parked after P3 review, in
+  `commons/index.html`: (1) the interact button now shows
+  `nearestInteractable.prompt` (Try/Read/Look/Hall/Enter) instead of
+  always saying "Enter" — falls back to "Enter" when nothing's in range
+  (the interior-exit case). (2) Lookout's railing moved from y=10 to
+  y=16 (plateau y=10-15): the landscape crop is only 10 tiles tall, so a
+  camera centered on a player *at* the railing was topping out at y=15 and
+  never actually reaching the Square (y=20) — confirmed by computing the
+  visible tile range directly (was 9-19, now 11.5-21.5) and by screenshot,
+  the Square's notice-post is now visibly in frame from the railing.
+  Verified in-browser: both fixes work as intended, full regression set
+  still holds (A/D, water, spawn free, no console errors). Still waiting
+  on Brandon for a specific glue / sprites / sibling direction before
+  starting any of those.
 - **2026-09-16 — sibling mechanics.** `Persistence/TheCommons/sibling.md`:
   game daemon + nginx static `/commons/` next to `liquidgov_http` on the
   512 MB box. Presence RAM, SQLite WAL not rsync'd, friends via localhost

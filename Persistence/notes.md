@@ -27,6 +27,10 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Game — atlas locked, no code until BUILD
 
+- **2026-09-16 — collision notes.** `Persistence/TheCommons/collision.md`:
+  keep 12×12 AABB + axis split; doors/notice-post solid; interact from
+  adjacent; never spawn overlapping solid; passerby does not collide, so
+  waypoints stay on the ribbon. For the open P1 patch, not a new phase.
 - **2026-09-16 — Grok P1 review.** Spine accepted (Hall, 7 doors, bake
   labels, idle skip, hidden watchdog). Must-fix: notice-post not fountain;
   passerby must stay visible in the Square (hide only for a second real

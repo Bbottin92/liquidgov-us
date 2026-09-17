@@ -4,7 +4,8 @@
 git pull
 ```
 
-Read `Persistence/TheCommons/GROK_P1_REVIEW.md`. Spine is accepted.
+Read `Persistence/TheCommons/GROK_P1_REVIEW.md` and `collision.md`.
+Spine is accepted.
 Do **not** start P2. Do **not** touch `liquidgov-platform/`.
 
 ## Do these in `commons/index.html`

@@ -44,6 +44,10 @@ Do **not** deploy this commit.
 - 9.5 MB `sqlite3.c` in git is legal (amalgamation, public domain) but
   painful. Prefer CMake FetchContent + SHA256 pin; keep the vendor
   story, drop the blob if you can.
+- 413 checks **declared** `need`, not leftover bytes already in `raw`.
+  Header guard is 1 MiB, so a pipelined first packet can still hand
+  `dispatch` ~1 MiB. Truncate `body` to `need` (or 413 if leftover
+  `> kMaxBody`). Not a 5 GB hole.
 
 ## Fail if “fixed” by
 
@@ -54,3 +58,16 @@ Do **not** deploy this commit.
 - Putting `commons.sqlite` under the static alias
 
 Paste `CLAUDE_DAEMON_PATCH.md`. Deploy stays a later, explicit BUILD.
+
+---
+
+## Follow-up (d2b5bf4) — accepted
+
+Must-fixes closed. `presence.cpp` kept 92e379d (Claude pulled, did not
+clobber). `http.cpp` 413s `need < 0 || need > 65536` **before** the
+append loop. Civic untouched. Notes mis-says “id-index redesign” —
+92e379d is replace/erase_id, the index is still a should-fix in
+`presence-accounting.md`. Harmless.
+
+Deploy still waits on Brandon. Idle reap / server-issued ids still a
+deploy gate, not this week unless asked.

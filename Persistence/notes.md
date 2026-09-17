@@ -18,6 +18,24 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-17 — shared interiors copied live.** Brandon said **copy**
+  after `GROK_V2_REVIEW.md` accepted `6ce42cf` with two checks named
+  before doing it: passerby must not draw/walk indoors, and the
+  colon-containing instance path (`/commons/presence/instance:demo`)
+  must resolve through the production proxy as JSON, not a civic HTML
+  404. Verified both live (screenshot inside the demo house shows only
+  the local player; the colon path returns `[]`/occupants correctly)
+  before and after the copy, not just trusted from the local round's
+  own testing. Ran `commons-daemon/deploy/sync-client-to-droplet.sh`
+  (client only, `/opt/commons/index.html`) -- no daemon rebuild, no
+  nginx change, exactly as scoped. Fixed ownership after rsync (root
+  by default, `chown liquidgov:liquidgov`). Verified end-to-end in a
+  real browser at `https://liquidgov.us/commons/`: entered the demo
+  house, `netRegion` resolved to `"instance:demo"`, and the daemon's
+  own feed showed the exact same occupant. Daemon (`commons-daemon`,
+  still active) and civic (still 200) both unaffected throughout.
+  Self-nameplate, lab placeables, Mine/Workshop/Hall, cookie bind, and
+  wall-slot all still parked, exactly where they were.
 - **2026-09-17 — V2: shared interiors (BUILD).** `GROK_V2_ANSWER.md`:
   V1's actual hole wasn't a 13th region, it was that "indoors is a
   single-player cutscene" — the client called `netLeave()` on every

@@ -11,6 +11,8 @@ without inventing.
 
 | File | Owner | What |
 |---|---|---|
+| `BUILD_ORDER_QUESTION.md` | Claude | Sequencing question for Grok |
+| `BUILD_ORDER.md` | Grok | Actual V1 preview build order (P0–P3) |
 | `GROK_BET.md` | Grok | Aesthetic + systems bets (several overridden). |
 | `pushback.md` | Claude | Fights those bets. Required. |
 | `GROK_ANSWER.md` | Grok | Accepts the three overrides; patches holes. |

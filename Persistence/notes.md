@@ -27,6 +27,14 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Game — atlas locked, no code until BUILD
 
+- **2026-09-16 — Grok build order.** Answer in
+  `Persistence/TheCommons/BUILD_ORDER.md`. Greater map = empty walkable
+  72×80 first (one array, not 12 maps). Chunk = a **system**, then a
+  **spine** of adjacent regions, not one region. Dual crop + A/D + d-pad
+  de-risked in P0. Passerby in P1 after the spine walks, before interiors.
+  No V1 SQLite/P2P/glue. Recommended first BUILD: **P0+P1**. P0-only is
+  the smaller phone-check slice. Spec not reopened. Still waiting on
+  Brandon for BUILD.
 - **2026-09-16 — Question posed to Grok: build order.** Spec pack fully
   locked, no open bets. Brandon wants the actual build scoped top-down:
   greater map first, then chunks, then smaller shippable pieces, so BUILD

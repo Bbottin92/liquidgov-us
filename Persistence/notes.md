@@ -27,6 +27,9 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Game — atlas locked, no code until BUILD
 
+- **2026-09-16 — WebGPU mapAsync crib.** `webgpu-mapping.md`: staging
+  copy, 8-byte align, buffer cannot be STORAGE and mapped. Why GPU
+  collision loses to `solid[i]`. Still no shaders in commons/.
 - **2026-09-16 — WGSL crib only.** `Persistence/TheCommons/wgsl.md` is
   syntax, not a renderer. `webgpu.md` still stands: no shaders in
   commons/. Next visible work still sprites / glue / sibling.

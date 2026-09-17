@@ -42,3 +42,5 @@ walk cycle) and **glue**, not shaders.
 - A fullscreen quad that samples the bake (that’s `drawImage`)
 - Compute-based collision or presence
 - Dropping Canvas 2D “so we can do lighting later”
+
+Mapping / readback crib: `webgpu-mapping.md`.

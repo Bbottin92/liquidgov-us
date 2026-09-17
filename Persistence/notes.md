@@ -27,6 +27,9 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Game — atlas locked, no code until BUILD
 
+- **2026-09-16 — WebGPU textures crib.** `webgpu-textures.md`: textures
+  cannot mapAsync; readback is copyTextureToBuffer. Pixel art uses
+  nearest / textureLoad. Commons keeps Canvas 2D drawImage.
 - **2026-09-16 — WebGPU mapAsync crib.** `webgpu-mapping.md`: staging
   copy, 8-byte align, buffer cannot be STORAGE and mapped. Why GPU
   collision loses to `solid[i]`. Still no shaders in commons/.

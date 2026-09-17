@@ -44,3 +44,4 @@ walk cycle) and **glue**, not shaders.
 - Dropping Canvas 2D “so we can do lighting later”
 
 Mapping / readback crib: `webgpu-mapping.md`.
+Textures / UV crib: `webgpu-textures.md` (not mappable).

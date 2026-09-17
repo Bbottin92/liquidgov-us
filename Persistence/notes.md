@@ -27,6 +27,10 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Game — atlas locked, no code until BUILD
 
+- **2026-09-16 — IndexedDB is a blob cache.** `Persistence/TheCommons/indexeddb.md`:
+  later, tileset/house-snapshot/photo-staging. Not V1 inventory, not
+  trades, not friends, not the 5.6 MB bake. Do not open IDB in commons/
+  during P0–P3. P2 still closed. P3 waits.
 - **2026-09-16 — P3 shipped.** `commons/index.html`: all 12 regions now
   dressed, matching `v1.md`'s full outdoor definition of done. North Woods
   (tree line on the world's north edge, scattered solitary trees, one

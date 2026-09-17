@@ -53,6 +53,18 @@ Not bug classes. Not “what is live on the droplet.”
   bridge, boarded-door toast, Hall confirm/open, spawn free, dual crop at
   390×844, no console errors). Still no glue, no sibling, no droplet
   contact. `liquidgov-platform/` untouched.
+- **2026-09-16 — WebGPU textures crib.** `webgpu-textures.md`: textures
+  cannot mapAsync; readback is copyTextureToBuffer. Pixel art uses
+  nearest / textureLoad. Commons keeps Canvas 2D drawImage.
+- **2026-09-16 — WebGPU mapAsync crib.** `webgpu-mapping.md`: staging
+  copy, 8-byte align, buffer cannot be STORAGE and mapped. Why GPU
+  collision loses to `solid[i]`. Still no shaders in commons/.
+- **2026-09-16 — WGSL crib only.** `Persistence/TheCommons/wgsl.md` is
+  syntax, not a renderer. `webgpu.md` still stands: no shaders in
+  commons/. Next visible work still sprites / glue / sibling.
+- **2026-09-16 — WebGPU is not this game.** `Persistence/TheCommons/webgpu.md`:
+  240×160 blit does not want a compute shader. Canvas 2D stays. Sprites /
+  glue / sibling still wait on Brandon.
 - **2026-09-16 — WASM is not V1.** `Persistence/TheCommons/wasm.md`: no
   compile step in commons/. WASM only earns a slot if a C++ sibling
   daemon shares collision; blit/input stay JS. Sprites/glue/sibling still

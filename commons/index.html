@@ -1,0 +1,408 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>The Commons — P0</title>
+<style>
+  :root{
+    --ink:#1a1814;
+    --paper:#f7f1e4;
+  }
+  html,body{
+    margin:0; padding:0; width:100%; height:100%; overflow:hidden;
+    background:#0c0b09; color:var(--ink);
+    font-family:"Segoe UI",system-ui,-apple-system,sans-serif;
+  }
+  #stage{
+    position:fixed; inset:0;
+    display:flex; align-items:center; justify-content:center;
+  }
+  #game{
+    image-rendering:pixelated;
+    image-rendering:crisp-edges;
+    background:#000;
+  }
+  #nameOverlay{
+    position:fixed; inset:0; z-index:20;
+    background:rgba(12,11,9,.92);
+    display:flex; align-items:center; justify-content:center;
+  }
+  #nameCard{
+    background:var(--paper); color:var(--ink);
+    border:1px solid rgba(26,24,20,.25);
+    border-radius:8px; padding:1.2rem 1.4rem;
+    width:min(20rem,88vw); text-align:center;
+  }
+  #nameCard h1{
+    font-size:1.05rem; margin:0 0 .6rem; font-weight:700;
+  }
+  #nameCard p{
+    font-size:.8rem; margin:0 0 .8rem; color:#6b6458;
+  }
+  #nameInput{
+    width:100%; box-sizing:border-box; font-size:1rem;
+    padding:.5rem .6rem; border:1px solid rgba(26,24,20,.3);
+    border-radius:6px; margin-bottom:.7rem; background:#fff;
+  }
+  #nameGo{
+    width:100%; font-size:.95rem; padding:.55rem 0;
+    border:1px solid var(--ink); border-radius:6px;
+    background:var(--ink); color:var(--paper); cursor:pointer;
+  }
+  #dpad{
+    position:fixed; left:0; right:0;
+    bottom:calc(.8rem + env(safe-area-inset-bottom,0px));
+    z-index:10;
+    display:grid;
+    grid-template-columns:44px 44px 44px;
+    grid-template-rows:44px 44px 44px;
+    gap:4px;
+    width:136px; margin:0 auto;
+    user-select:none; -webkit-user-select:none;
+    touch-action:none;
+  }
+  #dpad button{
+    grid-column:var(--c); grid-row:var(--r);
+    border:1px solid rgba(26,24,20,.55);
+    background:rgba(247,241,228,.28);
+    color:var(--paper);
+    border-radius:8px;
+    font-size:1.1rem;
+    display:flex; align-items:center; justify-content:center;
+    padding:0;
+  }
+  #dpad button:active{ background:rgba(247,241,228,.55); }
+  #dUp{ --c:2; --r:1; }
+  #dLeft{ --c:1; --r:2; }
+  #dRight{ --c:3; --r:2; }
+  #dDown{ --c:2; --r:3; }
+</style>
+</head>
+<body>
+<div id="stage"><canvas id="game"></canvas></div>
+
+<div id="dpad">
+  <button id="dUp" type="button" aria-label="Up">&#9650;</button>
+  <button id="dLeft" type="button" aria-label="Left">&#9664;</button>
+  <button id="dRight" type="button" aria-label="Right">&#9654;</button>
+  <button id="dDown" type="button" aria-label="Down">&#9660;</button>
+</div>
+
+<div id="nameOverlay">
+  <div id="nameCard">
+    <h1>Welcome to the Square</h1>
+    <p>Pick a name for this visit. Nothing is saved.</p>
+    <input id="nameInput" type="text" maxlength="20" placeholder="A throwaway name" autocomplete="off">
+    <button id="nameGo" type="button">Walk in</button>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+/* ---------------------------------------------------------------------
+ * The Commons -- P0: greater map only.
+ * Bare walkable 72x80 supermap, dual camera crop, d-pad, no set pieces.
+ * See CLAUDE_P0.md and Persistence/TheCommons/{atlas,art,tilemap}.md.
+ * ------------------------------------------------------------------- */
+
+// ---- World constants (locked in atlas.md) -----------------------------
+var TILE = 16;
+var REGION_W = 24, REGION_H = 20;   // tiles per region
+var GRID_COLS = 3, GRID_ROWS = 4;   // supermap layout
+var WORLD_W = GRID_COLS * REGION_W; // 72
+var WORLD_H = GRID_ROWS * REGION_H; // 80
+var WORLD_PW = WORLD_W * TILE;      // 1152
+var WORLD_PH = WORLD_H * TILE;      // 1280
+
+// Region table: name, grid col/row -- matches atlas.md exactly.
+var REGIONS = [
+  { name: "North Woods",    col: 0, row: 0 },
+  { name: "Lookout",        col: 1, row: 0 },
+  { name: "Orchard",        col: 2, row: 0 },
+  { name: "Workshop Lane",  col: 0, row: 1 },
+  { name: "the Square",     col: 1, row: 1 },
+  { name: "Hall Lawn",      col: 2, row: 1 },
+  { name: "Lab Yard",       col: 0, row: 2 },
+  { name: "Homestead Row",  col: 1, row: 2 },
+  { name: "Garden",         col: 2, row: 2 },
+  { name: "Quarry Ridge",   col: 0, row: 3 },
+  { name: "Creek",          col: 1, row: 3 },
+  { name: "Shore",          col: 2, row: 3 }
+];
+
+function regionAABB(r) {
+  var x0 = r.col * REGION_W, y0 = r.row * REGION_H;
+  return { x0: x0, y0: y0, x1: x0 + REGION_W - 1, y1: y0 + REGION_H - 1 };
+}
+
+// ---- Tile ids -----------------------------------------------------------
+var T_GRASS_A = 0, T_GRASS_B = 1, T_PATH = 2, T_WATER = 3, T_DIRT = 4;
+
+// Palette, from art.md -- outdoor stays grass/dirt/water, never parchment.
+var COLOR = {};
+COLOR[T_GRASS_A] = "#4a7c59";
+COLOR[T_GRASS_B] = "#3d6b4f";
+COLOR[T_PATH]    = "#c4b49a";
+COLOR[T_WATER]   = "#3d5a73";
+COLOR[T_DIRT]    = "#8a8378";
+var INK = "#1a1814";
+
+// ---- Build the tile + collision arrays (once) ---------------------------
+var tiles = new Uint8Array(WORLD_W * WORLD_H);
+var solid = new Uint8Array(WORLD_W * WORLD_H);
+
+function idx(x, y) { return y * WORLD_W + x; }
+
+function findRegion(name) {
+  for (var i = 0; i < REGIONS.length; i++) if (REGIONS[i].name === name) return REGIONS[i];
+  return null;
+}
+
+(function bakeTileIds() {
+  var creek = regionAABB(findRegion("Creek"));
+  var shore = regionAABB(findRegion("Shore"));
+  var quarry = regionAABB(findRegion("Quarry Ridge"));
+
+  for (var y = 0; y < WORLD_H; y++) {
+    for (var x = 0; x < WORLD_W; x++) {
+      var t;
+      if (x >= creek.x0 && x <= creek.x1 && y >= creek.y0 && y <= creek.y1) {
+        t = T_WATER;
+      } else if (x >= shore.x0 && x <= shore.x1 && y >= shore.y0 && y <= shore.y1) {
+        t = T_WATER;
+      } else if (x >= quarry.x0 && x <= quarry.x1 && y >= quarry.y0 && y <= quarry.y1) {
+        t = T_DIRT;
+      } else {
+        t = ((x + y) % 2 === 0) ? T_GRASS_A : T_GRASS_B;
+      }
+      tiles[idx(x, y)] = t;
+    }
+  }
+
+  // Path ribbon, terrain only: the Square -> Homestead Row -> Creek -> Shore.
+  // Vertical spine at x=34..35 threads all three (they share grid col 1),
+  // then a jog at y=69..70 carries it east into Shore. No doors, no props --
+  // this just makes P1's seams not a surprise (see tilemap.md).
+  var px0 = 34, px1 = 35;
+  for (var vy = 20; vy <= WORLD_H - 1; vy++) {
+    tiles[idx(px0, vy)] = T_PATH;
+    tiles[idx(px1, vy)] = T_PATH;
+  }
+  var jy0 = 69, jy1 = 70;
+  for (var jx = px0; jx <= 65; jx++) {
+    tiles[idx(jx, jy0)] = T_PATH;
+    tiles[idx(jx, jy1)] = T_PATH;
+  }
+
+  // Collision: water blocks (no swimming) unless the path paved over it.
+  // World edge is enforced separately by clamping the player, not a wall
+  // tile -- see movement code.
+  for (var i = 0; i < tiles.length; i++) {
+    solid[i] = (tiles[i] === T_WATER) ? 1 : 0;
+  }
+})();
+
+// ---- Bake the world once to an offscreen canvas (tilemap.md: bake once,
+// blit the crop -- never loop 72x80 per frame). ---------------------------
+var baked = document.createElement("canvas");
+baked.width = WORLD_PW; baked.height = WORLD_PH;
+(function paintBake() {
+  var bctx = baked.getContext("2d");
+  for (var y = 0; y < WORLD_H; y++) {
+    for (var x = 0; x < WORLD_W; x++) {
+      bctx.fillStyle = COLOR[tiles[idx(x, y)]];
+      bctx.fillRect(x * TILE, y * TILE, TILE, TILE);
+    }
+  }
+})();
+
+// ---- Camera / dual crop (art.md) ----------------------------------------
+// Landscape (width >= height): 240x160 logical @ 3x.
+// Portrait  (width <  height): 160x240 logical @ 2x.
+var crop = { vw: 240, vh: 160, scale: 3 };
+
+function computeCrop() {
+  var landscape = window.innerWidth >= window.innerHeight;
+  return landscape
+    ? { vw: 240, vh: 160, scale: 3 }
+    : { vw: 160, vh: 240, scale: 2 };
+}
+
+var canvas = document.getElementById("game");
+var ctx = canvas.getContext("2d");
+
+function applyCrop() {
+  crop = computeCrop();
+  canvas.width = crop.vw;
+  canvas.height = crop.vh;
+  canvas.style.width = (crop.vw * crop.scale) + "px";
+  canvas.style.height = (crop.vh * crop.scale) + "px";
+  ctx.imageSmoothingEnabled = false;
+}
+applyCrop();
+window.addEventListener("resize", applyCrop);
+window.addEventListener("orientationchange", applyCrop);
+
+// ---- Player ---------------------------------------------------------------
+var spawn = regionAABB(findRegion("the Square"));
+var player = {
+  x: ((spawn.x0 + spawn.x1 + 1) / 2) * TILE,
+  y: ((spawn.y0 + spawn.y1 + 1) / 2) * TILE,
+  half: 6,
+  speed: 76 // px/sec
+};
+var playerName = "";
+
+function tileBlockedAtPixel(px, py) {
+  var tx = Math.floor(px / TILE), ty = Math.floor(py / TILE);
+  if (tx < 0 || ty < 0 || tx >= WORLD_W || ty >= WORLD_H) return true;
+  return solid[idx(tx, ty)] === 1;
+}
+
+function playerBlockedAt(cx, cy) {
+  var h = player.half;
+  return tileBlockedAtPixel(cx - h, cy - h) ||
+         tileBlockedAtPixel(cx + h, cy - h) ||
+         tileBlockedAtPixel(cx - h, cy + h) ||
+         tileBlockedAtPixel(cx + h, cy + h);
+}
+
+function movePlayer(dx, dy, dt) {
+  if (dx === 0 && dy === 0) return;
+  // Normalize diagonal speed.
+  var len = Math.sqrt(dx * dx + dy * dy) || 1;
+  var vx = (dx / len) * player.speed * dt;
+  var vy = (dy / len) * player.speed * dt;
+
+  var nx = player.x + vx;
+  if (!playerBlockedAt(nx, player.y)) player.x = nx;
+  var ny = player.y + vy;
+  if (!playerBlockedAt(player.x, ny)) player.y = ny;
+
+  // World edge: clamp, don't wall-tile it.
+  var h = player.half;
+  if (player.x < h) player.x = h;
+  if (player.y < h) player.y = h;
+  if (player.x > WORLD_PW - h) player.x = WORLD_PW - h;
+  if (player.y > WORLD_PH - h) player.y = WORLD_PH - h;
+}
+
+// ---- Input: keyboard --------------------------------------------------
+// A/D = left/right on screen. Hard requirement, do not invert.
+var keys = Object.create(null);
+var KEY_TO_DIR = {
+  ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right",
+  w: "up", s: "down", a: "left", d: "right",
+  W: "up", S: "down", A: "left", D: "right"
+};
+window.addEventListener("keydown", function (e) {
+  var dir = KEY_TO_DIR[e.key];
+  if (dir) { keys[dir] = true; e.preventDefault(); }
+});
+window.addEventListener("keyup", function (e) {
+  var dir = KEY_TO_DIR[e.key];
+  if (dir) { keys[dir] = false; e.preventDefault(); }
+});
+
+// ---- Input: on-screen d-pad (touch + mouse via pointer events) --------
+var padState = { up: false, down: false, left: false, right: false };
+function wirePad(id, dir) {
+  var el = document.getElementById(id);
+  var set = function (v) { return function (e) { padState[dir] = v; e.preventDefault(); }; };
+  el.addEventListener("pointerdown", set(true));
+  el.addEventListener("pointerup", set(false));
+  el.addEventListener("pointercancel", set(false));
+  el.addEventListener("pointerleave", set(false));
+}
+wirePad("dUp", "up");
+wirePad("dDown", "down");
+wirePad("dLeft", "left");
+wirePad("dRight", "right");
+
+function currentDX() {
+  var l = keys.left || padState.left, r = keys.right || padState.right;
+  return (r ? 1 : 0) - (l ? 1 : 0);
+}
+function currentDY() {
+  var u = keys.up || padState.up, d = keys.down || padState.down;
+  return (d ? 1 : 0) - (u ? 1 : 0);
+}
+
+// ---- Labels (small ink names, not HUD -- drawn in world space) --------
+function drawLabels(camX, camY) {
+  ctx.fillStyle = INK;
+  ctx.font = "8px monospace";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  for (var i = 0; i < REGIONS.length; i++) {
+    var a = regionAABB(REGIONS[i]);
+    var cx = ((a.x0 + a.x1 + 1) / 2) * TILE - camX;
+    var cy = ((a.y0 + a.y1 + 1) / 2) * TILE - camY;
+    if (cx < -20 || cy < -10 || cx > crop.vw + 20 || cy > crop.vh + 10) continue;
+    ctx.fillText(REGIONS[i].name, cx, cy);
+  }
+}
+
+// ---- Main loop ----------------------------------------------------------
+var running = false;
+var lastT = 0;
+
+function frame(t) {
+  if (!running) return;
+  var dt = Math.min((t - lastT) / 1000, 1 / 20) || 0;
+  lastT = t;
+
+  movePlayer(currentDX(), currentDY(), dt);
+
+  // Camera, pixel-aligned (no subpixel, no tile-snap), clamped to world.
+  var camX = Math.round(player.x - crop.vw / 2);
+  var camY = Math.round(player.y - crop.vh / 2);
+  camX = Math.max(0, Math.min(camX, WORLD_PW - crop.vw));
+  camY = Math.max(0, Math.min(camY, WORLD_PH - crop.vh));
+
+  ctx.drawImage(baked, camX, camY, crop.vw, crop.vh, 0, 0, crop.vw, crop.vh);
+
+  // Player, over-blit, in viewport space.
+  var sx = player.x - camX, sy = player.y - camY;
+  ctx.fillStyle = INK;
+  ctx.fillRect(sx - player.half, sy - player.half, player.half * 2, player.half * 2);
+
+  drawLabels(camX, camY);
+}
+
+// setInterval, not requestAnimationFrame: rAF ties the tick to the
+// compositor's paint schedule, which some embedded/headless views never
+// run on their own (confirmed while testing this build -- a bare rAF
+// counter stayed at 0 in that view even fully visible and focused).
+// setInterval has no such dependency and is exactly as correct here --
+// movement is already delta-time based, not frame-count based.
+var TICK_MS = 1000 / 60;
+var tickHandle = null;
+
+function start() {
+  if (running) return;
+  running = true;
+  lastT = performance.now();
+  tickHandle = setInterval(function () { frame(performance.now()); }, TICK_MS);
+}
+
+// ---- Name prompt ----------------------------------------------------------
+var overlay = document.getElementById("nameOverlay");
+var input = document.getElementById("nameInput");
+var go = document.getElementById("nameGo");
+
+function enter() {
+  playerName = (input.value || "Guest").trim().slice(0, 20) || "Guest";
+  overlay.style.display = "none";
+  start();
+}
+go.addEventListener("click", enter);
+input.addEventListener("keydown", function (e) {
+  if (e.key === "Enter") enter();
+});
+input.focus();
+</script>
+</body>
+</html>

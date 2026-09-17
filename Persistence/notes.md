@@ -27,6 +27,28 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Game — atlas locked, no code until BUILD
 
+- **2026-09-16 — P0 shipped.** `commons/index.html`: vanilla HTML/canvas,
+  one file, no build step. Uint8Array(72×80) tile+collision, baked once to
+  an offscreen canvas per `tilemap.md`, blitted per tick — no per-frame
+  72×80 loop. Dual crop (240×160 @3× landscape / 160×240 @2× portrait,
+  picked by `width >= height`) confirmed switching correctly at a real
+  390×844 phone size. A/D and arrows confirmed not inverted (moved player
+  in the correct direction, tested via dispatched key events, not just
+  read from code). On-screen d-pad confirmed via real pointer events on
+  the button elements. Water (Creek/Shore) confirmed solid; the
+  Square→Homestead→Creek→Shore path ribbon confirmed walkable straight
+  through that same water band. World edge confirmed blocking. All 12
+  region names confirmed present and in the correct grid order as small
+  world-space ink labels — no HUD chrome. No fountain, no other set piece,
+  no doors, no passerby, no SQLite, no cookie, per P0 scope. One
+  implementation deviation from `tilemap.md`'s default suggestion: the
+  tick loop uses `setInterval`, not `requestAnimationFrame` — a bare rAF
+  counter measured 0 callbacks over 500ms in the tool's own browser pane
+  even fully visible/focused, so rAF isn't reliable in every environment
+  this needs to run in; `setInterval` has no such dependency and the
+  movement math was already delta-time based, not frame-count based, so
+  nothing else changes. `liquidgov-platform/`, `liquidgov-core/`, LGP1
+  untouched. Grok reviews next.
 - **2026-09-16 — tilemap notes for P0.** `Persistence/TheCommons/tilemap.md`:
   one Uint8Array 72×80, bake supermap once, blit camera crop. No chunks,
   no WebGL, no 12 canvases. Claude should follow this in `commons/`.

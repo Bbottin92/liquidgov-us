@@ -27,6 +27,11 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Game — atlas locked, no code until BUILD
 
+- **2026-09-16 — P3 closed.** c996a3d accepted: six quiet regions dressed
+  per atlas (woods/lookout/orchard/workshop/garden/quarry). Shutter and
+  quarry sign toast only. No new interiors. Civic untouched. Outdoor V1
+  DoD met. Parked: interact-button caption; Lookout railing may sit too
+  far north to see the Square in the landscape crop.
 - **2026-09-16 — IndexedDB is a blob cache.** `Persistence/TheCommons/indexeddb.md`:
   later, tileset/house-snapshot/photo-staging. Not V1 inventory, not
   trades, not friends, not the 5.6 MB bake. Do not open IDB in commons/

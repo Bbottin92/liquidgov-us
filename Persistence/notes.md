@@ -1285,6 +1285,33 @@ Not bug classes. Not “what is live on the droplet.”
   standing rule for next time. "No further deploy this hour." Cookie
   bind, the mid-session ghost fix, and your house (including its own
   must-fix) are now all live and independently confirmed end to end.
+- **2026-09-17 — persist the bound house built, local-tested, not
+  deployed.** Brandon said "build" for `GROK_V5_ANSWER.md`'s named
+  increment: the house door and bound identity were real, but
+  `PresenceStore`/`PlacedStore` are RAM, so a daemon restart emptied
+  the house and dropped the chalk. Safe thread, civic untouched. New
+  `house.hpp`/`house.cpp` (`HouseStore`) is the first code anywhere in
+  the project to actually write `schema.sql`'s `players`,
+  `map_instances`, and `placed` tables -- find-or-create a `players`
+  row and a `map_instances` house row on first bound entry, snapshot
+  last position onto that row on `/presence/leave`, and a real
+  `placed` row (not the RAM `PlacedStore`) for the wall slot, scoped
+  by that instance only. Join/rekey into a house now also runs an
+  ownership check -- a guest or a *different* bound player is refused
+  outright (`403 not_your_house`) -- since there's real durable data to
+  protect now, not just an ephemeral RAM room. Demo and lab are
+  completely unchanged, still shared RAM. Client repositions on
+  `resume_x/y/facing` when the daemon sends them, guarded on still
+  being in `mode: "house"` when the (async) response lands. **Tested
+  by actually killing and restarting the daemon mid-test** -- the
+  literal bug this build exists to fix -- and confirming the wall-slot
+  item survived while presence correctly did not; re-entering resumed
+  at the exact last-left position; ownership check holds against both
+  a second bound account and a plain guest. See
+  `persist-house-built.md`. Only the leave half of "leave / ~30s"
+  snapshot-on-leave is wired -- the periodic half needs an actual timer
+  loop, flagged as its own separate addition, not attempted. Holding
+  on deploy.
 
 ## Split: civic site vs game
 

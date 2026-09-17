@@ -1,0 +1,136 @@
+# Persist the bound house — built, local-tested, not deployed
+
+Brandon: "build" for `GROK_V5_ANSWER.md`'s named increment. Safe thread,
+exactly as scoped: no `http_server.cpp`, daemon + `commons/index.html`
+only. Demo and lab stay exactly as they were -- shared, RAM, wiped on
+restart. Only `instance:house:<username>` is durable now.
+
+## The hole this closes
+
+`GROK_V5_ANSWER.md`: "You have a door. The room is still a hotel." The
+house door and the bound identity behind it were both real, but
+`PresenceStore`/`PlacedStore` are RAM -- a daemon restart (or the 30s
+idle reap) emptied the house and dropped the chalk. Durability is what
+actually makes it *yours*, not just yours-shaped.
+
+## What's actually new
+
+**Civic:** nothing. Untouched.
+
+**Daemon, new `house.hpp`/`house.cpp` (`HouseStore`):** the first code
+in this whole project to actually write `schema.sql`'s `players`,
+`map_instances`, and `placed` tables -- all three existed, unused,
+since the schema was written.
+
+- `house_instance_for(username)`: find-or-create the `players` row
+  (`lg_username` unique) and the `map_instances` row for their house
+  (`map_id` from the existing `'house'` template row seed.sql already
+  seeds, `owner_player_id` = their `player_id`) -- idempotent, called
+  on every join/rekey into a bound player's own house.
+- `existing_house_instance_for(username)`: the read-only twin, for
+  `/placed/` GET -- never creates a house just because a public GET
+  looked. Returns nothing until the owner has actually entered once.
+- `last_house_position(username)` / `snapshot_leave(...)`: the
+  `players.last_x/last_y/last_facing/last_instance_id` columns
+  `presence.md` already specified, wired for the first time. Only ever
+  reads/writes when the snapshot's own `last_instance_id` really is
+  that player's house -- a snapshot taken from outdoors, or no
+  snapshot at all, correctly falls through to the ordinary fixed entry
+  tile.
+- `get_wall_slot(instance_id)` / `set_wall_slot(instance_id, item)`:
+  `schema.sql`'s real `placed` table, scoped by the numeric
+  `instance_id` -- clear-then-insert wrapped in `BEGIN`/`COMMIT`
+  (schema.sql's own stated rule for any multi-row mutation).
+
+**Daemon, `main.cpp`:**
+- `house_username_from_region(region)`: the same "is this a house key"
+  check used everywhere a route needs to branch demo/lab (RAM,
+  unchanged) vs. a personal house (SQLite, new).
+- `/presence/join` and `/rekey`: when the target region is
+  `instance:house:<username>`, first an ownership check -- a guest, or
+  a *different* bound player, is refused outright (`403
+  not_your_house`) before anything is created or touched. This is new:
+  the RAM-only house never needed it (nothing durable to protect), but
+  `players`/`map_instances`/`placed` rows are real data now, worth
+  actually guarding on the mutation routes (GET stays public and
+  unscoped, matching `/placed/`'s own long-standing "an item slug is
+  not sensitive" stance -- unchanged, not part of this round).
+  On a real owner, `house_instance_for()` ensures the durable rows
+  exist, and `last_house_position()` is checked -- if a snapshot
+  exists, it silently replaces whatever entry position the client
+  optimistically sent, and the response echoes it back as
+  `resume_x`/`resume_y`/`resume_facing`.
+- `/presence/leave`: if leaving from a bound player's own house,
+  captures that occupant's current position (looked up from
+  `PresenceStore` before the row is removed -- `leave`'s own request
+  body never carried x/y) and snapshots it via `HouseStore`.
+- `/placed/` GET/POST: branches to `HouseStore` for a house key,
+  `PlacedStore` (unchanged) for everything else. POST additionally
+  gets the same ownership check as join/rekey -- placing into a house
+  now mutates durable, private data, not a shared low-stakes slot.
+
+**Client (`commons/index.html`):** `netHandleJoinResponse` applies
+`resume_x`/`resume_y`/`resume_facing` when present, repositioning the
+player instead of leaving them at the fixed `DEMO_ENTRY` tile the door
+interaction always requests optimistically. Guarded on `mode ===
+"house"` at the moment the (async) response actually lands, so a fast
+door-in-door-out before the response arrives can't reposition a player
+who has already walked away to somewhere else entirely.
+
+## What's still NOT here (deliberately)
+
+- **The ~30s periodic snapshot.** `presence.md` names both "on leave"
+  and "~every 30s" for bound players; only the leave half is wired.
+  The periodic half needs an actual timer/poll loop in a daemon that's
+  otherwise purely request-driven -- a real, separate addition, not
+  implied by "snapshot-on-leave rides that same BUILD."
+- **In-place `rebind()`, the `lg_session` cache.** Both re-confirmed
+  "no" in `GROK_V5_ANSWER.md`, unchanged from every prior round.
+- **Guest persistence of any kind.** Explicitly ruled out
+  ("Guests: still RAM, still vanish. Do not invent guest
+  persistence.") -- guests never get a `players` row from this code;
+  `find_or_create_player` is only ever called with a real, cookie
+  resolved username.
+- **Read-side access control on houses.** `GET /presence/<region>` and
+  `GET /placed/<region>` stay exactly as public and unscoped as they
+  were for demo/lab -- this round only adds ownership checks to the
+  *mutation* routes (join/rekey/leave/place), matching the existing
+  asymmetry the project has kept since `/placed/`'s own original
+  "light integrity bar" design. Worth its own explicit round if it
+  ever needs to change, not assumed here.
+
+## Tested (local, scratch data only)
+
+The one test that actually matters for this round: signed up a real
+bound account, entered its house (no resume fields -- correctly no
+snapshot exists yet), placed `chalk_block` in the wall slot, walked to
+a distinctive tile, called `/presence/leave` from inside the house,
+**then actually killed and restarted the daemon process** -- the exact
+failure this build exists to fix. After restart:
+
+- `GET /presence/instance:house:<user>` -- empty, as expected (RAM
+  presence correctly does not survive a restart; nothing about that
+  changed).
+- `GET /placed/instance:house:<user>` -- **still `chalk_block`.** This
+  is the actual bug, fixed: it used to come back empty.
+- Re-entering the house -- `resume_x`/`resume_y`/`resume_facing` match
+  exactly the tile and facing where `/leave` was called, not the fixed
+  entry tile.
+
+Also verified:
+
+- A second real bound account, and separately a plain guest with no
+  cookie, both get `403 not_your_house` trying to join or place into
+  the first account's house -- the ownership check holds both ways.
+- Demo house regression: still requires a real guest credential to
+  place (unchanged `bad_credential` without one), a real guest still
+  can place, RAM as always.
+- Client logic (local static server, scratch daemon, `?daemon=`
+  override): a simulated join response with `resume_x/y/facing`
+  correctly repositions the player; the same response arriving after
+  `mode` has already changed away from `"house"` is correctly ignored,
+  leaving the player wherever they'd actually gone.
+
+No deploy step run. Real cross-origin cookie -> real house persistence
+across a real production restart is still only provable in production
+-- next after Brandon says **deploy**.

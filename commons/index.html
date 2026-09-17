@@ -1088,6 +1088,18 @@ function netHandleJoinResponse(r) {
       // the raw, unsuffixed lg_username the daemon only ever sends when
       // actually bound; that's the one safe to key a house off of.
       if (j.bound && j.username) INTERIOR_INSTANCE_KEY.house = "instance:house:" + j.username;
+      // V5 (GROK_V5_ANSWER.md): "walking back in later resumes there, not
+      // the fixed entry tile every time." The daemon only ever sends
+      // resume_* when this join/rekey actually landed in the caller's own
+      // house with an existing snapshot -- guarded on mode === "house" too
+      // so a resume for a request the player has since walked away from
+      // (a fast door-in-door-out) can't reposition them somewhere else.
+      if (j.resume_x !== undefined && j.resume_y !== undefined && mode === "house") {
+        var world = regionLocalToWorld(netRegion, j.resume_x, j.resume_y);
+        player.x = world.x + 8; player.y = world.y + 8;
+        if (j.resume_facing !== undefined) player.dir = j.resume_facing;
+        forceRedraw = true;
+      }
     }
   }).catch(function () {});
 }

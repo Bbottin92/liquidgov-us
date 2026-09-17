@@ -25,6 +25,7 @@
 #include "civic.hpp"
 #include "db.hpp"
 #include "guest.hpp"
+#include "house.hpp"
 #include "http.hpp"
 #include "json.hpp"
 #include "placed.hpp"
@@ -195,6 +196,18 @@ std::optional<std::string> effective_id_in_region(const std::string& headers_raw
     return std::nullopt;
 }
 
+// GROK_V5_ANSWER.md: "persist the bound house ... for instance:house:
+// <username> only." nullopt for outdoor keys, "instance:demo",
+// "instance:lab", or anything malformed -- those all stay exactly as
+// they were, RAM only.
+std::optional<std::string> house_username_from_region(const std::string& region) {
+    static const std::string prefix = "instance:house:";
+    if (region.rfind(prefix, 0) != 0) return std::nullopt;
+    std::string rest = region.substr(prefix.size());
+    if (rest.empty()) return std::nullopt;
+    return rest;
+}
+
 std::string occupants_json(const std::vector<commons::Occupant>& occ) {
     std::ostringstream out;
     out << "[";
@@ -229,6 +242,7 @@ int main(int argc, char** argv) {
     commons::PresenceStore presence;
     commons::GuestRegistry guests;
     commons::PlacedStore placed;
+    commons::HouseStore house(db.handle());
     commons::HttpServer server(bind_addr, port);
 
     server.route("GET", "/health", [](const commons::HttpRequest&) {
@@ -297,15 +311,40 @@ int main(int argc, char** argv) {
             r.body = "{\"ok\":false,\"reason\":\"bad_credential\"}";
             return r;
         }
+        const bool is_bound = eff_id->rfind("u:", 0) == 0;
+
+        // GROK_V5_ANSWER.md: a house instance is private to its own bound
+        // owner. This is a mutation route (it creates presence, and on
+        // first-ever entry a durable players/map_instances row), so a
+        // guest or a different bound player is refused outright here --
+        // unlike the read-only GET, which stays public and unscoped,
+        // matching /placed/'s own existing "low stakes" stance.
+        double resume_x = *x, resume_y = *y;
+        int resume_facing = static_cast<int>(field_num(req.body, "facing").value_or(0));
+        bool has_resume = false;
+        if (auto house_user = house_username_from_region(*region)) {
+            if (!is_bound || *house_user != eff_id->substr(2)) {
+                r.status = 403; r.status_text = "Forbidden";
+                r.body = "{\"ok\":false,\"reason\":\"not_your_house\"}";
+                return r;
+            }
+            house.house_instance_for(*house_user);
+            // presence.md: "walking back in later resumes there, not the
+            // fixed entry tile every time" -- only the position, never the
+            // client-submitted facing/display_name, which stay as-is.
+            if (auto pos = house.last_house_position(*house_user)) {
+                resume_x = pos->x; resume_y = pos->y; resume_facing = pos->facing;
+                has_resume = true;
+            }
+        }
+
         commons::Occupant occ;
         occ.id = *eff_id;
         // A bound occupant's display_name is the real username, not
         // whatever the client happened to submit (cookie-bind.md).
-        occ.display_name = (eff_id->rfind("u:", 0) == 0)
-            ? eff_id->substr(2)
-            : field_str(req.body, "display_name").value_or(*eff_id);
-        occ.x = *x; occ.y = *y;
-        occ.facing = static_cast<int>(field_num(req.body, "facing").value_or(0));
+        occ.display_name = is_bound ? eff_id->substr(2) : field_str(req.body, "display_name").value_or(*eff_id);
+        occ.x = resume_x; occ.y = resume_y;
+        occ.facing = resume_facing;
         occ.last_update_ms = now_ms();
         std::string accepted_name;
         auto result = presence.join(*region, occ, &accepted_name);
@@ -318,14 +357,19 @@ int main(int argc, char** argv) {
         // "brandon (2)", which is not a valid house key. "username" is the
         // raw, unsuffixed lg_username, safe to build instance:house:<...>
         // from; the client must never use display_name for that.
-        const bool is_bound = eff_id->rfind("u:", 0) == 0;
+        // GROK_V5_ANSWER.md: "resume_*" tells the client where to actually
+        // draw itself, since the client's own entry-tile guess (sent as
+        // this request's x/y) is not what got stored once a snapshot wins.
         r.body = std::string("{\"ok\":") + (result == commons::PresenceStore::JoinResult::Ok ? "true" : "false")
             + ",\"reason\":\"" + (result == commons::PresenceStore::JoinResult::Ok ? "" :
                 result == commons::PresenceStore::JoinResult::RegionFull ? "region_full" : "global_full") + "\""
             + (result == commons::PresenceStore::JoinResult::Ok
                 ? ",\"display_name\":" + commons::json::str(accepted_name) +
                   ",\"bound\":" + (is_bound ? "true" : "false") +
-                  (is_bound ? ",\"username\":" + commons::json::str(eff_id->substr(2)) : "")
+                  (is_bound ? ",\"username\":" + commons::json::str(eff_id->substr(2)) : "") +
+                  (has_resume ? ",\"resume_x\":" + std::to_string(static_cast<int>(resume_x)) +
+                                 ",\"resume_y\":" + std::to_string(static_cast<int>(resume_y)) +
+                                 ",\"resume_facing\":" + std::to_string(resume_facing) : "")
                 : "")
             + "}";
         return r;
@@ -376,24 +420,43 @@ int main(int argc, char** argv) {
             r.body = "{\"ok\":false,\"reason\":\"bad_credential\"}";
             return r;
         }
+        const bool is_bound = eff_id->rfind("u:", 0) == 0;
+
+        // Same house-ownership + resume-position handling as join, above.
+        double resume_x = *x, resume_y = *y;
+        int resume_facing = static_cast<int>(field_num(req.body, "facing").value_or(0));
+        bool has_resume = false;
+        if (auto house_user = house_username_from_region(*to_region)) {
+            if (!is_bound || *house_user != eff_id->substr(2)) {
+                r.status = 403; r.status_text = "Forbidden";
+                r.body = "{\"ok\":false,\"reason\":\"not_your_house\"}";
+                return r;
+            }
+            house.house_instance_for(*house_user);
+            if (auto pos = house.last_house_position(*house_user)) {
+                resume_x = pos->x; resume_y = pos->y; resume_facing = pos->facing;
+                has_resume = true;
+            }
+        }
+
         commons::Occupant occ;
         occ.id = *eff_id;
-        occ.display_name = (eff_id->rfind("u:", 0) == 0)
-            ? eff_id->substr(2)
-            : field_str(req.body, "display_name").value_or(*eff_id);
-        occ.x = *x; occ.y = *y;
-        occ.facing = static_cast<int>(field_num(req.body, "facing").value_or(0));
+        occ.display_name = is_bound ? eff_id->substr(2) : field_str(req.body, "display_name").value_or(*eff_id);
+        occ.x = resume_x; occ.y = resume_y;
+        occ.facing = resume_facing;
         occ.last_update_ms = now_ms();
         std::string accepted_name;
         auto result = presence.rekey(*from_region, *to_region, occ, &accepted_name);
-        const bool is_bound = eff_id->rfind("u:", 0) == 0;
         r.body = std::string("{\"ok\":") + (result == commons::PresenceStore::JoinResult::Ok ? "true" : "false")
             + ",\"reason\":\"" + (result == commons::PresenceStore::JoinResult::Ok ? "" :
                 result == commons::PresenceStore::JoinResult::RegionFull ? "region_full" : "global_full") + "\""
             + (result == commons::PresenceStore::JoinResult::Ok
                 ? ",\"display_name\":" + commons::json::str(accepted_name) +
                   ",\"bound\":" + (is_bound ? "true" : "false") +
-                  (is_bound ? ",\"username\":" + commons::json::str(eff_id->substr(2)) : "")
+                  (is_bound ? ",\"username\":" + commons::json::str(eff_id->substr(2)) : "") +
+                  (has_resume ? ",\"resume_x\":" + std::to_string(static_cast<int>(resume_x)) +
+                                 ",\"resume_y\":" + std::to_string(static_cast<int>(resume_y)) +
+                                 ",\"resume_facing\":" + std::to_string(resume_facing) : "")
                 : "")
             + "}";
         return r;
@@ -416,6 +479,20 @@ int main(int argc, char** argv) {
             r.body = "{\"ok\":false,\"reason\":\"bad_credential\"}";
             return r;
         }
+        // GROK_V5_ANSWER.md: "snapshot-on-leave ... last position onto that
+        // players row." Only when actually leaving from a bound player's
+        // own house -- captured before presence.leave() removes the row
+        // this occupant's current position lives in.
+        if (auto house_user = house_username_from_region(*region)) {
+            if (eff_id->rfind("u:", 0) == 0 && *house_user == eff_id->substr(2)) {
+                for (const auto& o : presence.occupants(*region)) {
+                    if (o.id == *eff_id) {
+                        house.snapshot_leave(*house_user, static_cast<int>(o.x), static_cast<int>(o.y), o.facing);
+                        break;
+                    }
+                }
+            }
+        }
         presence.leave(*region, *eff_id);
         r.body = "{\"ok\":true}";
         return r;
@@ -432,6 +509,17 @@ int main(int argc, char** argv) {
     server.route("GET", "/placed/", [&](const commons::HttpRequest& req) {
         std::string instance = req.path.substr(std::string("/placed/").size());
         commons::HttpResponse r;
+        // GROK_V5_ANSWER.md: a house's placed item is durable (schema.sql's
+        // `placed` table), not the RAM PlacedStore demo/lab use. Read-only
+        // and unscoped, same public stance as every other GET here --
+        // existing_house_instance_for() never creates a house just because
+        // someone looked.
+        if (auto house_user = house_username_from_region(instance)) {
+            auto instance_id = house.existing_house_instance_for(*house_user);
+            std::string item = instance_id ? house.get_wall_slot(*instance_id) : std::string();
+            r.body = "{\"item\":" + commons::json::str(item) + "}";
+            return r;
+        }
         r.body = "{\"item\":" + commons::json::str(placed.get(instance)) + "}";
         return r;
     }, /*prefix=*/true);
@@ -448,7 +536,8 @@ int main(int argc, char** argv) {
             r.body = "{\"ok\":false,\"reason\":\"missing_field\"}";
             return r;
         }
-        if (!effective_id(req.headers_raw, *id, *secret, guests)) {
+        auto eff_id = effective_id(req.headers_raw, *id, *secret, guests);
+        if (!eff_id) {
             r.status = 403; r.status_text = "Forbidden";
             r.body = "{\"ok\":false,\"reason\":\"bad_credential\"}";
             return r;
@@ -459,6 +548,21 @@ int main(int argc, char** argv) {
         if (!item->empty() && !item_exists(db.handle(), *item)) {
             r.status = 400; r.status_text = "Bad Request";
             r.body = "{\"ok\":false,\"reason\":\"unknown_item\"}";
+            return r;
+        }
+        // GROK_V5_ANSWER.md: placing into a house mutates someone's
+        // durable, private room -- this needs the same ownership check
+        // join/rekey already enforce, not the shared demo/lab slot's
+        // "any valid credential, no instance check" stance.
+        if (auto house_user = house_username_from_region(instance)) {
+            if (eff_id->rfind("u:", 0) != 0 || eff_id->substr(2) != *house_user) {
+                r.status = 403; r.status_text = "Forbidden";
+                r.body = "{\"ok\":false,\"reason\":\"not_your_house\"}";
+                return r;
+            }
+            int instance_id = house.house_instance_for(*house_user);
+            house.set_wall_slot(instance_id, *item);
+            r.body = "{\"ok\":true}";
             return r;
         }
         placed.set(instance, *item);

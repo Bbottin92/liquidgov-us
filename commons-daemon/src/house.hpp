@@ -1,0 +1,63 @@
+#pragma once
+#include <optional>
+#include <string>
+
+#include "sqlite3.h"
+
+// Durable storage for a bound player's own house (GROK_V5_ANSWER.md: the
+// door was real, the room was still RAM -- restart the daemon and the
+// chalk is gone). Demo and lab stay exactly as they were, RAM-only,
+// shared -- this store is only ever consulted for an
+// "instance:house:<username>" region/instance key, never for those.
+//
+// No mutex: this daemon is single-threaded and synchronous (http.hpp),
+// and SQLite serializes its own access regardless -- the RAM stores'
+// mutexes guard a std::map a request thread could otherwise race with
+// itself; there is no equivalent race here to guard against.
+namespace commons {
+
+class HouseStore {
+public:
+    explicit HouseStore(sqlite3* db) : db_(db) {}
+
+    // Finds or creates the players row and the map_instances row for this
+    // bound username's house, in one step -- idempotent, safe to call on
+    // every join/rekey into that player's own house. Returns the durable
+    // map_instances.instance_id (never the RAM-side "instance:house:..."
+    // string, which stays what PresenceStore/the client actually key on).
+    int house_instance_for(const std::string& username);
+
+    // Read-only counterpart for routes that must not create a house just
+    // because someone looked (GET /placed/instance:house:<anyone>, public,
+    // no bound identity required) -- nullopt if this username has never
+    // actually entered their own house yet.
+    std::optional<int> existing_house_instance_for(const std::string& username);
+
+    struct Position { int x = 0, y = 0, facing = 0; };
+
+    // The last snapshotted position, only if that snapshot's own
+    // last_instance_id is actually this house -- a snapshot taken while
+    // leaving from outdoors (or never taken at all) correctly yields
+    // nullopt, so the caller falls back to the normal fixed entry tile.
+    std::optional<Position> last_house_position(const std::string& username);
+
+    // Presence.md's "leave / ~30s snapshot" -- the leave half only (the
+    // ~30s periodic half is a separate, larger addition -- see
+    // your-house-built.md's own deferral of this same gap). No-op if the
+    // username has no players row (can't happen via the normal join path,
+    // which always creates one first, but this stays defensive rather
+    // than assumed).
+    void snapshot_leave(const std::string& username, int x, int y, int facing);
+
+    // Persistent, per-house wall slot -- schema.sql's placed table,
+    // scoped by instance_id, never the RAM PlacedStore demo/lab use.
+    // "" clears it, same convention as PlacedStore::set.
+    std::string get_wall_slot(int instance_id);
+    void set_wall_slot(int instance_id, const std::string& item_slug);
+
+private:
+    sqlite3* db_;
+    int find_or_create_player(const std::string& username);
+};
+
+} // namespace commons

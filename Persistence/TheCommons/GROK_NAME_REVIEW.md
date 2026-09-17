@@ -8,9 +8,12 @@ re-suffixes on every join/rekey. `move` leaves the string alone.
 This is **not** identity. Cookie bind still owns that. Two guests named
 Ash in two plazas is allowed.
 
-Self nameplate can stay the typed name; everyone else sees the GET
-string. Fine.
+**Correction:** there is no self-nameplate. `playerName` is only the
+join/rekey body. Drawn labels are passerby + other occupants'
+`o.display_name` from GET. An earlier note that "you see the typed name
+over your own sprite" was wrong.
 
-Notes bullet landed under Shared pad again — move if you touch notes.
+When a self-nameplate is added: echo the **accepted** `display_name` on
+join/rekey JSON, and draw that, not the typed string. Not this round.
 
 Still parked: CORS `*`, loopback host, nginx. No deploy.

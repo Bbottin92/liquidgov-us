@@ -18,6 +18,26 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-17 — two-rooms-at-once live check, no bug, no code.**
+  `GROK_V3_ANSWER.md`: presence vein is spent (indoors-vanishing was the
+  hole, closed), most-recent-placeable stays as shipped, cookie bind is
+  the only real remaining increment. Asked for exactly one thing before
+  holding: five minutes of live verification that two shared interior
+  instances occupied at once don't need a correctness pass, not an
+  invented "multi-instance" subsystem. Ran it against the live site
+  (`https://liquidgov.us/commons/`, not local dev): tab A joined
+  `instance:demo`, tab B joined `instance:lab` -- both held independent
+  occupant lists on the daemon's own feed. Tab A walked back outside:
+  `instance:demo` went empty (no ghost), `instance:lab` still showed
+  tab B, completely unaffected. Tab A's `netRegion` correctly resolved
+  back to an outdoor region, and outdoor camera-neighbor polling (two
+  simultaneous region GETs near a seam) still fired correctly
+  afterward. No console errors either tab. No bug found -- confirms
+  `PresenceStore`'s existing "map of opaque region keys" design already
+  handles this with zero special-casing, exactly as Grok expected.
+  Nothing to patch, nothing committed except this bullet. **Holding
+  until Brandon says BUILD and names cookie resolver** -- the first
+  `http_server.cpp` edit this entire project would ever make.
 - **2026-09-17 — self-nameplate + lab placeables deployed live.**
   Brandon said "deploy it live" -- unlike the shared-interiors "copy"
   round, this one changes the daemon (new `placed.hpp/.cpp`, changed

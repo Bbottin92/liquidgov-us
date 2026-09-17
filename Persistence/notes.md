@@ -53,13 +53,20 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Messages home-screen app
 
-- **2026-09-16 — queued for Claude (not confirmed live).** iOS “Add to Home Screen”
-  captures the **current URL**. `/apps` → `/app/mail` (install copy) → icon opens
-  the install page, not `/mail`.
-  - Intended: Get Messages → live `/mail` first; hint to add *that* page;
-    page-specific `apple-mobile-web-app-title` / icon / `start_url=/mail`.
-  - Already-saved wrong icons cannot be patched; user deletes and re-adds from `/mail`.
-  - Confirm against live before assuming this shipped.
+- **2026-09-16 — confirmed live.** Checked droplet: `src/http_server.cpp` md5
+  matches the WSL working copy exactly, `liquidgov_http` binary built the same
+  day, service active. Curled production: `/mail` renders via
+  `page_wrap("Messages", ...)` with `mail_install_hint()` in its own body (not
+  site-wide), `manifest-mail.webmanifest` serves `start_url:"/mail"` live, and
+  `/app/mail` already carries the Messages-specific `apple-mobile-web-app-title`
+  / icon / manifest. Nothing left to implement — this item is closed.
+  - Original ask, for context: iOS “Add to Home Screen” captures the
+    **current URL**, so `/apps` → `/app/mail` (install copy) → icon would open
+    the install page, not `/mail`. Fix was to nudge the install hint from
+    inside live `/mail` itself with page-specific manifest/icon/title, which
+    is what's now confirmed running.
+  - Already-saved wrong icons from before the fix cannot be patched; those
+    users delete and re-add from `/mail`.
 
 ## Standing product pins (copy, don’t reopen)
 

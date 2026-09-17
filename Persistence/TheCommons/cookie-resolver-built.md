@@ -1,5 +1,12 @@
 # Cookie resolver — built, local-tested, not yet deployed
 
+**2026-09-17 update: must-fix ghost bug found and fixed before deploy.**
+See "Must-fix: mid-session login ghost" below -- the original `effective_id()`
+described in this doc was cookie-wins-unconditionally on every route, which
+is what caused it. It's now split into three functions; `effective_id()`
+survives only for `/placed/` POST, which never touches `PresenceStore` and
+so was never at risk.
+
 Brandon: "build" (in reply to the offer naming this exact increment --
 "the first http_server.cpp edit this project has ever made" -- so this
 doc treats that as BUILD + cookie resolver, `cookie-bind.md`'s standing
@@ -86,3 +93,62 @@ the client's claim -- decides identity:
 No deploy step run. Civic and the daemon were both scratch-store,
 scratch-DB local processes, torn down after the test; nothing touched
 `liquidgov_accounts.lgp`, `commons.sqlite`, or any real data.
+
+## Must-fix: mid-session login ghost (found by Grok review, fixed)
+
+`GROK_COOKIE_RESOLVER_REVIEW.md` / `CLAUDE_COOKIE_GHOST.md`: the
+original `effective_id()` was cookie-wins-unconditionally on every
+route, including `move`/`leave`/`rekey`. That breaks exactly the case
+this doc's own "still NOT here" section described as safe -- a guest
+who joins, then logs in without leaving:
+
+1. Occupant row exists as `g_...`. Cookie now resolves.
+2. Next `move`: old code looked up `u:<name>` in the region, found
+   nothing (the row is still `g_...`), and returned `ok:false` --
+   the client's own walk would desync.
+3. Next `rekey`: old code inserted `u:<name>` into the new region but
+   never erased `g_...` from the old one -- a ghost sprite, visible to
+   everyone else in that room, that only ever cleared via the 30s idle
+   reap.
+
+Fixed, daemon only, no civic change:
+
+- **`presence.hpp`/`.cpp`:** two new public methods. `forget(id)` --
+  a global erase by id, for retiring a guest row that's a *different*
+  id than the one about to be inserted (join_locked's own internal
+  erase only ever erases the id it's currently inserting, never
+  a different one). `contains(region, id)` -- whether an id currently
+  has a row in a given region, used to tell if a bound id has actually
+  been promoted into *this* room yet.
+- **`main.cpp`:** `effective_id()` split into three. `bind_or_promote()`
+  (join/rekey -- the only two places identity is established): cookie
+  still wins, but if the client's original guest secret still verifies,
+  its row is `forget()`-ten first, so the bound row replaces it instead
+  of leaving it behind. `effective_id_in_region()` (move/leave): a
+  resolved cookie only takes over once `contains(region, "u:<name>")`
+  is true -- otherwise falls back to the still-live, still-verified
+  guest row, so an ordinary move never 403s just because promotion
+  hasn't happened yet. Plain `effective_id()` survives unchanged for
+  `/placed/` POST, which never creates or looks up a `PresenceStore`
+  row and so was never exposed to this bug.
+
+**Verified locally** (scratch stores, fresh accounts, same four
+scenarios `CLAUDE_COOKIE_GHOST.md` asked for):
+
+- Guest joins region A, logs in on civic mid-session, moves again in
+  the *same* region with the real guest id/secret still attached ->
+  `ok:true`, row stays `g_...`, position updates. Not rejected.
+- Same session then rekeys to region B -> region A ends up completely
+  empty (no ghost), region B has exactly one row, `u:<name>`. A further
+  move in region B with garbage id/secret succeeds directly under
+  `u:<name>` (promotion has happened, `contains()` is now true).
+- Regression: joining already-bound from the very first call (no prior
+  guest row at all) still works exactly as before.
+- Regression: a guest with no cookie and a bad secret still 403s.
+
+Still not built: in-place `rebind()` (the row is still replaced, not
+literally relabeled -- `cookie-bind.md` never decided between the two
+and this fix doesn't either, it just stops the replace from leaking a
+duplicate). Still no restart/crash snapshot for bound players. No
+deploy, no nginx, no systemd -- civic's only change remains the one
+route from the first round, untouched again this round.

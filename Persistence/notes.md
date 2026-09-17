@@ -1149,6 +1149,27 @@ Not bug classes. Not “what is live on the droplet.”
   promotion/rebind, `cookie-bind.md` left that decision open; the
   restart-snapshot hook for bound players). No nginx, no systemd, no
   droplet touched this round.
+- **2026-09-17 — cookie resolver must-fix: mid-session login ghost,
+  fixed, still not deployed.** Grok review (`GROK_COOKIE_RESOLVER_REVIEW.md`)
+  caught that the prior round's `effective_id()` was cookie-wins on
+  every route, which meant a guest who logs in without leaving got a
+  `move` rejected (bound id not in the region yet) and, worse, a
+  `rekey` that inserted the bound row into the new region without ever
+  erasing the old `g_...` row -- a ghost sprite until the 30s idle
+  reap. Fixed daemon-only: `PresenceStore` gained `forget(id)` (global
+  erase by id) and `contains(region, id)`; `main.cpp`'s `effective_id()`
+  split into `bind_or_promote()` for join/rekey (retires the old guest
+  row when a verified one exists, before inserting the bound row) and
+  `effective_id_in_region()` for move/leave (only switches to the bound
+  id once it's actually landed in that region, otherwise keeps using
+  the still-live guest row so an ordinary walk never 403s). Verified
+  locally: guest walks, logs in mid-session, keeps moving under the
+  guest id in the same room, then rekeys and the old room ends up
+  empty with no ghost while the new room shows exactly one bound row;
+  both prior regressions (already-bound-from-start, no-cookie-bad-secret
+  still 403s) still pass. See `cookie-resolver-built.md`'s own
+  "Must-fix" section. Still holding on deploy for Brandon's own
+  **deploy** word.
 
 ## Split: civic site vs game
 

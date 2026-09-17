@@ -147,9 +147,50 @@ bool item_exists(sqlite3* db, const std::string& slug) {
 // check, exactly as every route here did before cookie bind existed.
 // nullopt means the request is unauthorized outright (bad guest credential,
 // no cookie).
+//
+// Used by /placed/ POST only: that route never touches PresenceStore, so
+// there is no existing guest row a cookie-wins check could orphan --
+// join/rekey/move/leave use the two functions below instead, which guard
+// against exactly that (GROK_COOKIE_RESOLVER_REVIEW.md must-fix).
 std::optional<std::string> effective_id(const std::string& headers_raw, const std::string& claimed_id,
                                          const std::string& secret, commons::GuestRegistry& guests) {
     if (auto username = commons::civic::resolve_username(headers_raw)) return "u:" + *username;
+    if (guests.verify(claimed_id, secret)) return claimed_id;
+    return std::nullopt;
+}
+
+// join/rekey only -- the two places identity is actually established.
+// A resolved cookie still wins, but a mid-session login (guest walks in,
+// then logs in without ever leaving) must not leave the old g_... row
+// behind as a ghost: if the client can still prove it owned that guest
+// row (its secret verifies), retire it here, at the moment the bound row
+// replaces it. Cookie-bind.md: "promote at room change" -- this is that
+// room change.
+std::optional<std::string> bind_or_promote(const std::string& headers_raw, const std::string& claimed_id,
+                                            const std::string& secret, commons::GuestRegistry& guests,
+                                            commons::PresenceStore& presence) {
+    if (auto username = commons::civic::resolve_username(headers_raw)) {
+        if (guests.verify(claimed_id, secret)) presence.forget(claimed_id);
+        return "u:" + *username;
+    }
+    if (guests.verify(claimed_id, secret)) return claimed_id;
+    return std::nullopt;
+}
+
+// move/leave only. A resolved cookie only takes over once the bound id has
+// actually landed in *this* region via a join/rekey -- promotion happens
+// there, not here. Until then a guest who just logged in but hasn't
+// changed rooms yet keeps moving under their existing, still-live guest
+// row (verified the normal way) instead of every move 403ing because
+// u:<name> isn't in this region yet (GROK_COOKIE_RESOLVER_REVIEW.md
+// must-fix: "do not ok:false a live walker").
+std::optional<std::string> effective_id_in_region(const std::string& headers_raw, const std::string& region,
+                                                   const std::string& claimed_id, const std::string& secret,
+                                                   commons::GuestRegistry& guests, commons::PresenceStore& presence) {
+    if (auto username = commons::civic::resolve_username(headers_raw)) {
+        std::string bound_id = "u:" + *username;
+        if (presence.contains(region, bound_id)) return bound_id;
+    }
     if (guests.verify(claimed_id, secret)) return claimed_id;
     return std::nullopt;
 }
@@ -250,7 +291,7 @@ int main(int argc, char** argv) {
             r.body = "{\"ok\":false,\"reason\":\"missing_field\"}";
             return r;
         }
-        auto eff_id = effective_id(req.headers_raw, *id, *secret, guests);
+        auto eff_id = bind_or_promote(req.headers_raw, *id, *secret, guests, presence);
         if (!eff_id) {
             r.status = 403; r.status_text = "Forbidden";
             r.body = "{\"ok\":false,\"reason\":\"bad_credential\"}";
@@ -292,7 +333,7 @@ int main(int argc, char** argv) {
             r.body = "{\"ok\":false,\"reason\":\"missing_field\"}";
             return r;
         }
-        auto eff_id = effective_id(req.headers_raw, *id, *secret, guests);
+        auto eff_id = effective_id_in_region(req.headers_raw, *region, *id, *secret, guests, presence);
         if (!eff_id) {
             r.status = 403; r.status_text = "Forbidden";
             r.body = "{\"ok\":false,\"reason\":\"bad_credential\"}";
@@ -318,7 +359,7 @@ int main(int argc, char** argv) {
             r.body = "{\"ok\":false,\"reason\":\"missing_field\"}";
             return r;
         }
-        auto eff_id = effective_id(req.headers_raw, *id, *secret, guests);
+        auto eff_id = bind_or_promote(req.headers_raw, *id, *secret, guests, presence);
         if (!eff_id) {
             r.status = 403; r.status_text = "Forbidden";
             r.body = "{\"ok\":false,\"reason\":\"bad_credential\"}";
@@ -353,7 +394,7 @@ int main(int argc, char** argv) {
             r.body = "{\"ok\":false,\"reason\":\"missing_field\"}";
             return r;
         }
-        auto eff_id = effective_id(req.headers_raw, *id, *secret, guests);
+        auto eff_id = effective_id_in_region(req.headers_raw, *region, *id, *secret, guests, presence);
         if (!eff_id) {
             r.status = 403; r.status_text = "Forbidden";
             r.body = "{\"ok\":false,\"reason\":\"bad_credential\"}";

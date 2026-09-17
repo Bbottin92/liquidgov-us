@@ -55,6 +55,22 @@ public:
     std::vector<Occupant> occupants(const std::string& region);
     std::size_t global_count();
 
+    // Global erase, public: the guest -> bound handoff (cookie-bind.md)
+    // needs to retire a *different* id than the one it's about to insert
+    // (the old g_... row, once a cookie resolves to u:<name>), which
+    // join_locked's own erase_id_locked never does on its own -- it only
+    // ever erases the id it's currently inserting.
+    void forget(const std::string& id);
+
+    // True if this exact id currently has a row in `region`. Used to tell
+    // whether a cookie-resolved bound id has actually been promoted into
+    // *this* region yet -- promotion only happens at join/rekey
+    // (cookie-bind.md: "promote at room change"), so a guest who logs in
+    // mid-walk should keep moving under their existing guest row until
+    // their next room change, not have every move rejected because
+    // u:<name> isn't here yet.
+    bool contains(const std::string& region, const std::string& id);
+
 private:
     std::mutex mu_;
     std::map<std::string, std::vector<Occupant>> regions_; // guarded by mu_

@@ -155,4 +155,20 @@ std::size_t PresenceStore::global_count() {
     return total_;
 }
 
+void PresenceStore::forget(const std::string& id) {
+    std::lock_guard<std::mutex> lock(mu_);
+    erase_id_locked(id);
+}
+
+bool PresenceStore::contains(const std::string& region, const std::string& id) {
+    std::lock_guard<std::mutex> lock(mu_);
+    reap_locked(now_ms());
+    auto it = regions_.find(region);
+    if (it == regions_.end()) return false;
+    for (const auto& o : it->second) {
+        if (o.id == id) return true;
+    }
+    return false;
+}
+
 } // namespace commons

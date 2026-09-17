@@ -609,6 +609,71 @@ labSpace.interactables = [
 // this preview, and nothing else reads this yet).
 var inventory = {};
 
+// ---- Player/passerby sprite atlas (art.md: 16x24, 4-dir, 2-frame walk,
+// one look, no character creator; canvas.md: one atlas, one drawImage per
+// actor -- no per-frame fillRect, no save/restore per sprite, no <img>
+// per direction). Baked once, same bake-then-blit shape as everything
+// else in this file. Player and passerby share this exact atlas (locked:
+// "online others: same sprite, name in ink above head").
+var SPRITE_W = 16, SPRITE_H = 24;
+var DIR_DOWN = 0, DIR_UP = 1, DIR_LEFT = 2, DIR_RIGHT = 3;
+var spriteAtlas = document.createElement("canvas");
+spriteAtlas.width = SPRITE_W * 8; spriteAtlas.height = SPRITE_H; // 4 dirs x 2 frames
+(function paintSpriteAtlas() {
+  // alpha:true here on purpose -- canvas.md's alpha:false rule is for the
+  // bake/display contexts, which are opaque full-frame layers. This one is
+  // a sprite composited over the world; without alpha it would blit as an
+  // opaque black 16x24 box around the figure instead of just the figure.
+  var sc = spriteAtlas.getContext("2d", { alpha: true });
+  sc.imageSmoothingEnabled = false;
+  var BODY = "#3a5a7a", SKIN = "#c9a97a";
+  function drawFigure(ox, dir, frame) {
+    sc.fillStyle = SKIN;
+    sc.fillRect(ox + 5, 2, 6, 6); // head
+    sc.fillStyle = BODY;
+    sc.fillRect(ox + 4, 8, 8, 10); // body
+    sc.fillStyle = INK;
+    // Legs alternate which one is forward -- the whole walk animation.
+    if (frame === 0) {
+      sc.fillRect(ox + 5, 18, 2, 5);
+      sc.fillRect(ox + 9, 18, 2, 6);
+    } else {
+      sc.fillRect(ox + 5, 18, 2, 6);
+      sc.fillRect(ox + 9, 18, 2, 5);
+    }
+    // Facing mark: both eyes down, one eye left/right, none up (back of
+    // the head) -- cheap enough to read as a direction without needing
+    // a real side-profile silhouette.
+    if (dir === DIR_DOWN) { sc.fillRect(ox + 6, 4, 1, 1); sc.fillRect(ox + 9, 4, 1, 1); }
+    else if (dir === DIR_LEFT) { sc.fillRect(ox + 6, 4, 1, 1); }
+    else if (dir === DIR_RIGHT) { sc.fillRect(ox + 9, 4, 1, 1); }
+  }
+  for (var d = 0; d < 4; d++) {
+    for (var f = 0; f < 2; f++) drawFigure((d * 2 + f) * SPRITE_W, d, f);
+  }
+})();
+
+// Anchors the sprite so its feet (bottom edge) sit at the entity's
+// collision point, not its vertical center -- otherwise a 24px-tall
+// sprite on a 12px box would float or sink relative to doors/props sized
+// to the box.
+function spriteDestX(worldX) { return worldX - SPRITE_W / 2; }
+function spriteDestY(worldY, half) { return worldY - (SPRITE_H - half); }
+function spriteSrcX(dir, frame) { return (dir * 2 + frame) * SPRITE_W; }
+
+function updateFacingAnim(actor, dx, dy, dt, moved) {
+  // Facing follows input, not the post-collision result -- bumping a wall
+  // should still turn the sprite to face it. Only the walk-cycle (leg
+  // frame) depends on whether the step actually landed.
+  if (dy > 0) actor.dir = DIR_DOWN;
+  else if (dy < 0) actor.dir = DIR_UP;
+  else if (dx > 0) actor.dir = DIR_RIGHT;
+  else if (dx < 0) actor.dir = DIR_LEFT;
+  if (!moved) { actor.animFrame = 0; actor.animTimer = 0; return; }
+  actor.animTimer += dt;
+  if (actor.animTimer > 0.15) { actor.animTimer = 0; actor.animFrame = 1 - actor.animFrame; }
+}
+
 // ---- Camera / dual crop (art.md) ----------------------------------------
 // Landscape (width >= height): 240x160 logical @ 3x.
 // Portrait  (width <  height): 160x240 logical @ 2x.
@@ -644,7 +709,8 @@ var player = {
   x: ((spawn.x0 + spawn.x1 + 1) / 2) * TILE,
   y: ((spawn.y0 + spawn.y1 + 1) / 2) * TILE,
   half: 6,
-  speed: 76 // px/sec
+  speed: 76, // px/sec
+  dir: DIR_DOWN, animFrame: 0, animTimer: 0
 };
 var playerName = "";
 
@@ -677,7 +743,7 @@ function boxBlockedAt(cx, cy, half) {
 }
 
 function movePlayer(dx, dy, dt) {
-  if (dx === 0 && dy === 0) return false;
+  if (dx === 0 && dy === 0) { updateFacingAnim(player, 0, 0, dt, false); return false; }
   var len = Math.sqrt(dx * dx + dy * dy) || 1;
   var vx = (dx / len) * player.speed * dt;
   var vy = (dy / len) * player.speed * dt;
@@ -694,6 +760,11 @@ function movePlayer(dx, dy, dt) {
   if (player.y < h) player.y = h;
   if (player.x > activeSpace.pw - h) player.x = activeSpace.pw - h;
   if (player.y > activeSpace.ph - h) player.y = activeSpace.ph - h;
+
+  // Facing/animation from the *input* direction, not the post-collision
+  // delta -- so bumping a wall still turns the sprite to face it instead
+  // of freezing on whatever direction last succeeded.
+  updateFacingAnim(player, dx, dy, dt, moved);
   return moved;
 }
 
@@ -723,7 +794,8 @@ var passerby = {
   half: 6,
   speed: 50,
   wp: 0,
-  dir: 1,
+  wpDir: 1, // patrol ping-pong direction along passerbyWaypoints -- not sprite facing
+  dir: DIR_DOWN, animFrame: 0, animTimer: 0, // sprite facing/walk-cycle (same atlas as player)
   isAmbient: true, // internal marker -- never string-match the nameplate
   visible: true
 };
@@ -734,14 +806,15 @@ function updatePasserby(dt) {
   var dist = Math.sqrt(dx * dx + dy * dy);
   var moved = false;
   if (dist < 2) {
-    passerby.wp += passerby.dir;
-    if (passerby.wp >= passerbyWaypoints.length - 1) { passerby.wp = passerbyWaypoints.length - 1; passerby.dir = -1; }
-    if (passerby.wp <= 0) { passerby.wp = 0; passerby.dir = 1; }
+    passerby.wp += passerby.wpDir;
+    if (passerby.wp >= passerbyWaypoints.length - 1) { passerby.wp = passerbyWaypoints.length - 1; passerby.wpDir = -1; }
+    if (passerby.wp <= 0) { passerby.wp = 0; passerby.wpDir = 1; }
   } else {
     passerby.x += (dx / dist) * passerby.speed * dt;
     passerby.y += (dy / dist) * passerby.speed * dt;
     moved = true;
   }
+  updateFacingAnim(passerby, dx, dy, dt, moved);
 
   // Locked rule is "hide only if a second *real* occupant is already
   // there" -- not "hide whenever the local player is." The local player
@@ -928,17 +1001,19 @@ function drawSpace(camX, camY) {
 
   if (mode === "outdoor" && passerby.visible) {
     var pbsx = passerby.x - camX, pbsy = passerby.y - camY;
+    var pbDestY = spriteDestY(pbsy, passerby.half);
+    ctx.drawImage(spriteAtlas, spriteSrcX(passerby.dir, passerby.animFrame), 0, SPRITE_W, SPRITE_H,
+      spriteDestX(pbsx), pbDestY, SPRITE_W, SPRITE_H);
     ctx.fillStyle = INK;
-    ctx.fillRect(pbsx - passerby.half, pbsy - passerby.half, passerby.half * 2, passerby.half * 2);
     ctx.font = "8px monospace";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText("passerby", pbsx, pbsy - passerby.half - 6);
+    ctx.fillText("passerby", pbsx, pbDestY - 4);
   }
 
   var sx = player.x - camX, sy = player.y - camY;
-  ctx.fillStyle = INK;
-  ctx.fillRect(sx - player.half, sy - player.half, player.half * 2, player.half * 2);
+  ctx.drawImage(spriteAtlas, spriteSrcX(player.dir, player.animFrame), 0, SPRITE_W, SPRITE_H,
+    spriteDestX(sx), spriteDestY(sy, player.half), SPRITE_W, SPRITE_H);
 
   if (nearestInteractable) {
     var ix = (nearestInteractable.x * TILE + 8) - camX;

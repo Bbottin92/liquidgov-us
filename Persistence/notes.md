@@ -27,6 +27,32 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Game — atlas locked, no code until BUILD
 
+- **2026-09-16 — Sprites shipped.** Brandon picked sprites first, lowest
+  blast radius per Grok's own suggested order (glue needs a real cookie
+  decision, sibling needs glue's cookie name, sprites needs neither).
+  `commons/index.html`: player and passerby are no longer black squares.
+  One procedurally-baked 16×24 sprite atlas (4 dirs × 2 walk frames, art.md)
+  built once at init — same bake-then-blit shape as the tile bake, one
+  `drawImage` per actor per frame (canvas.md: no per-frame `fillRect`, no
+  save/restore, no `<img>` per direction). Player and passerby share the
+  exact same atlas (locked: "online others: same sprite"). Facing follows
+  input direction (updates even on a blocked step, so bumping a wall still
+  turns you to face it); the walk-cycle leg-swap only advances on an
+  actual successful move, resetting to a standing pose when idle or
+  blocked. Renamed `passerby.dir` (its patrol ping-pong ±1) to `wpDir` to
+  free up `.dir` for sprite facing — same field name, unrelated meaning,
+  would have silently clobbered each other otherwise. Sprite atlas context
+  is deliberately `{alpha:true}`, the one exception to canvas.md's
+  `alpha:false` rule: that rule is for the opaque full-frame bake/display
+  layers, and a sprite composited over the world needs real transparency
+  or it blits as an opaque box. Verified in-browser: atlas cells visually
+  distinct per direction (eyes down, none up, single dot left/right), walk
+  frame toggles while moving and resets when stopped/blocked, facing
+  updates correctly for all 4 directions, nameplate repositioned above the
+  taller sprite's head, full regression set still holds (A/D, water/
+  bridge, boarded-door toast, Hall confirm/open, spawn free, dual crop at
+  390×844, no console errors). Still no glue, no sibling, no droplet
+  contact. `liquidgov-platform/` untouched.
 - **2026-09-16 — WASM is not V1.** `Persistence/TheCommons/wasm.md`: no
   compile step in commons/. WASM only earns a slot if a C++ sibling
   daemon shares collision; blit/input stay JS. Sprites/glue/sibling still

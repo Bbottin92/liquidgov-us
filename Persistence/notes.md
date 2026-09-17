@@ -27,6 +27,39 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Game — atlas locked, no code until BUILD
 
+- **2026-09-16 — P1 shipped.** `commons/index.html` extended per
+  `BUILD_ORDER.md`'s spine list: the Square (fountain + 2 benches),
+  Homestead Row (facade with 7 doors: door 0 = demo, doors 1-6 = boarded —
+  no cookie glue, per `glue.md`), Creek/Shore (bench + recolored
+  path-over-water as a "bridge" tile, cosmetic only), Hall Lawn (door +
+  2 hedges, opens `liquidgov.us/proposals` in a new tab after a
+  `confirm()`). North Woods/Lookout/Orchard/Workshop Lane/Lab Yard/Garden/
+  Quarry Ridge untouched — P2/P3, not this round. Passerby implemented per
+  the round-2 lock: nameplate exactly `passerby`, `isAmbient` flag
+  internal, patrols Square→Homestead→Creek→Shore and back, hides whenever
+  its current region (computed from AABB, never stored per-tile) matches
+  the player's. One prompt at doors (`Enter`/tap a new on-screen button):
+  Hall confirms+opens, the demo door stubs to a black placeholder interior
+  ("[Enter] to step back outside"), a boarded door shows a transient
+  "Closed." toast. `canvas.md`'s three P1 asks done: region labels are now
+  baked into the offscreen canvas once (no more per-frame `fillText`),
+  frame() skips the actual blit when nothing changed (player/passerby
+  didn't move, crop unchanged, no toast) though rAF keeps ticking, and the
+  P0-parked nit is fixed — the watchdog no-ops entirely while
+  `document.hidden`, tearing down an already-running fallback too.
+  Real bug caught by testing, not review: the fountain's placement formula
+  put it on the exact same tile as the player's spawn point, so a fresh
+  arrival's own bounding box already overlapped a "solid" tile and every
+  direction of movement was silently rejected. Fixed by offsetting the
+  fountain 3 tiles south of center. Verified in-browser: A/D still not
+  inverted, water still solid off the path, the path/bridge still crosses
+  it, dual crop still switches at 390×844, `document.hidden` watchdog
+  guard confirmed both for "don't start while hidden" and "tear down an
+  active fallback when hidden", demo door enter/exit round-trips, boarded
+  door toasts without changing mode, Hall's `confirm()`/`window.open()`
+  call verified with both accept and decline (stubbed, so production
+  liquidgov.us was never actually opened during the test). No console
+  errors. `liquidgov-platform/` untouched.
 - **2026-09-16 — canvas 2D notes.** `Persistence/TheCommons/canvas.md`:
   P0 blit is the big win. P1: bake static labels, skip idle frames, one
   sprite atlas, no fillText-per-frame, watchdog respects document.hidden.

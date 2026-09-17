@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
-<title>The Commons — P0</title>
+<title>The Commons — P1</title>
 <style>
   :root{
     --ink:#1a1814;
@@ -77,6 +77,22 @@
   #dLeft{ --c:1; --r:2; }
   #dRight{ --c:3; --r:2; }
   #dDown{ --c:2; --r:3; }
+  #interactBtn{
+    position:fixed;
+    right:calc(.9rem + env(safe-area-inset-right,0px));
+    bottom:calc(1.6rem + env(safe-area-inset-bottom,0px));
+    z-index:11;
+    width:64px; height:64px; border-radius:50%;
+    border:1px solid rgba(26,24,20,.55);
+    background:rgba(196,165,116,.55);
+    color:var(--ink);
+    font-size:.85rem; font-weight:700;
+    display:none; align-items:center; justify-content:center;
+    user-select:none; -webkit-user-select:none;
+    touch-action:none;
+  }
+  #interactBtn.show{ display:flex; }
+  #interactBtn:active{ background:rgba(196,165,116,.85); }
 </style>
 </head>
 <body>
@@ -88,6 +104,7 @@
   <button id="dRight" type="button" tabindex="-1" aria-label="Right">&#9654;</button>
   <button id="dDown" type="button" tabindex="-1" aria-label="Down">&#9660;</button>
 </div>
+<button id="interactBtn" type="button" tabindex="-1" aria-label="Interact">Enter</button>
 
 <div id="nameOverlay">
   <div id="nameCard">
@@ -102,9 +119,11 @@
 "use strict";
 
 /* ---------------------------------------------------------------------
- * The Commons -- P0: greater map only.
- * Bare walkable 72x80 supermap, dual camera crop, d-pad, no set pieces.
- * See CLAUDE_P0.md and Persistence/TheCommons/{atlas,art,tilemap}.md.
+ * The Commons -- P1: the spine.
+ * P0's bare supermap, now with the Square/Homestead Row/Creek/Shore/
+ * Hall Lawn dressed, the Hall door live, Homestead's demo + 6 boarded
+ * doors, and the passerby. Everything else stays exactly as P0 left it.
+ * See BUILD_ORDER.md (P1), atlas.md, canvas.md, glue.md, GROK_ANSWER.md.
  * ------------------------------------------------------------------- */
 
 // ---- World constants (locked in atlas.md) -----------------------------
@@ -137,17 +156,50 @@ function regionAABB(r) {
   return { x0: x0, y0: y0, x1: x0 + REGION_W - 1, y1: y0 + REGION_H - 1 };
 }
 
+function findRegion(name) {
+  for (var i = 0; i < REGIONS.length; i++) if (REGIONS[i].name === name) return REGIONS[i];
+  return null;
+}
+
+// Region a tile belongs to, from grid math only (tilemap.md: never stored
+// per tile). Used for the passerby's hide-if-a-real-guest-is-here rule.
+function regionAt(tx, ty) {
+  var col = Math.floor(tx / REGION_W), row = Math.floor(ty / REGION_H);
+  for (var i = 0; i < REGIONS.length; i++) {
+    if (REGIONS[i].col === col && REGIONS[i].row === row) return REGIONS[i];
+  }
+  return null;
+}
+
 // ---- Tile ids -----------------------------------------------------------
-var T_GRASS_A = 0, T_GRASS_B = 1, T_PATH = 2, T_WATER = 3, T_DIRT = 4;
+var T_GRASS_A = 0, T_GRASS_B = 1, T_PATH = 2, T_WATER = 3, T_DIRT = 4,
+    T_WALL = 5, T_DOOR_DEMO = 6, T_DOOR_BOARDED = 7, T_HEDGE = 8,
+    T_HALL_DOOR = 9, T_FOUNTAIN = 10, T_BENCH = 11, T_BRIDGE = 12;
 
 // Palette, from art.md -- outdoor stays grass/dirt/water, never parchment.
+// Brass stays "sparingly" for the Hall door only, per art.md.
 var COLOR = {};
-COLOR[T_GRASS_A] = "#4a7c59";
-COLOR[T_GRASS_B] = "#3d6b4f";
-COLOR[T_PATH]    = "#c4b49a";
-COLOR[T_WATER]   = "#3d5a73";
-COLOR[T_DIRT]    = "#8a8378";
+COLOR[T_GRASS_A]      = "#4a7c59";
+COLOR[T_GRASS_B]      = "#3d6b4f";
+COLOR[T_PATH]         = "#c4b49a";
+COLOR[T_WATER]        = "#3d5a73";
+COLOR[T_DIRT]         = "#8a8378";
+COLOR[T_WALL]         = "#6b4a32";
+COLOR[T_DOOR_DEMO]    = "#8a6a46";
+COLOR[T_DOOR_BOARDED] = "#5d564c";
+COLOR[T_HEDGE]        = "#2f4a37";
+COLOR[T_HALL_DOOR]    = "#c4a574";
+COLOR[T_FOUNTAIN]     = "#8a8378";
+COLOR[T_BENCH]        = "#6b4a32";
+COLOR[T_BRIDGE]       = "#7a5a3a";
 var INK = "#1a1814";
+
+var SOLID_TILE = {};
+SOLID_TILE[T_WATER] = 1;
+SOLID_TILE[T_WALL] = 1;
+SOLID_TILE[T_HEDGE] = 1;
+SOLID_TILE[T_FOUNTAIN] = 1;
+SOLID_TILE[T_BENCH] = 1;
 
 // ---- Build the tile + collision arrays (once) ---------------------------
 var tiles = new Uint8Array(WORLD_W * WORLD_H);
@@ -155,10 +207,8 @@ var solid = new Uint8Array(WORLD_W * WORLD_H);
 
 function idx(x, y) { return y * WORLD_W + x; }
 
-function findRegion(name) {
-  for (var i = 0; i < REGIONS.length; i++) if (REGIONS[i].name === name) return REGIONS[i];
-  return null;
-}
+// Interactables: filled in by dressRegions() below with real tile coords.
+var interactables = [];
 
 (function bakeTileIds() {
   var creek = regionAABB(findRegion("Creek"));
@@ -183,8 +233,7 @@ function findRegion(name) {
 
   // Path ribbon, terrain only: the Square -> Homestead Row -> Creek -> Shore.
   // Vertical spine at x=34..35 threads all three (they share grid col 1),
-  // then a jog at y=69..70 carries it east into Shore. No doors, no props --
-  // this just makes P1's seams not a surprise (see tilemap.md).
+  // then a jog at y=69..70 carries it east into Shore.
   var px0 = 34, px1 = 35;
   for (var vy = 20; vy <= WORLD_H - 1; vy++) {
     tiles[idx(px0, vy)] = T_PATH;
@@ -196,13 +245,84 @@ function findRegion(name) {
     tiles[idx(jx, jy1)] = T_PATH;
   }
 
-  // Collision: water blocks (no swimming) unless the path paved over it.
-  // World edge is enforced separately by clamping the player, not a wall
-  // tile -- see movement code.
+  // Recolor the path where it crosses water (Creek/Shore) into a bridge --
+  // still just a walkable tile id, same collision rule as path. Purely
+  // cosmetic so P0's "path paves the water" behavior isn't a surprise.
   for (var i = 0; i < tiles.length; i++) {
-    solid[i] = (tiles[i] === T_WATER) ? 1 : 0;
+    var x2 = i % WORLD_W, y2 = (i - x2) / WORLD_W;
+    var inCreek = x2 >= creek.x0 && x2 <= creek.x1 && y2 >= creek.y0 && y2 <= creek.y1;
+    var inShore = x2 >= shore.x0 && x2 <= shore.x1 && y2 >= shore.y0 && y2 <= shore.y1;
+    if ((inCreek || inShore) && tiles[i] === T_PATH) tiles[i] = T_BRIDGE;
+  }
+
+  dressRegions();
+
+  // Collision, computed last from the final tile ids.
+  for (var i2 = 0; i2 < tiles.length; i2++) {
+    solid[i2] = SOLID_TILE[tiles[i2]] ? 1 : 0;
   }
 })();
+
+// P1: dress the spine regions (set piece + collision land together).
+// Everything else (North Woods, Lookout, Orchard, Workshop Lane, Lab Yard,
+// Garden, Quarry Ridge) is untouched -- P2/P3, not this round.
+function dressRegions() {
+  var square = regionAABB(findRegion("the Square"));
+  var hall = regionAABB(findRegion("Hall Lawn"));
+  var homestead = regionAABB(findRegion("Homestead Row"));
+  var creek = regionAABB(findRegion("Creek"));
+  var shore = regionAABB(findRegion("Shore"));
+
+  // the Square: a fountain/notice-post, near center, plus two benches.
+  // Offset 3 tiles south of the exact center -- the player also spawns at
+  // that exact center tile, and a solid fountain sitting on the spawn tile
+  // would trap a fresh arrival (found while testing: movement was silently
+  // blocked in every direction because the player's own bounding box
+  // already overlapped the "solid" tile it spawned on).
+  var sqCx = Math.floor((square.x0 + square.x1 + 1) / 2);
+  var sqCy = Math.floor((square.y0 + square.y1 + 1) / 2) + 3;
+  tiles[idx(sqCx, sqCy)] = T_FOUNTAIN;
+  tiles[idx(square.x0 + 2, sqCy)] = T_BENCH;
+  tiles[idx(square.x1 - 2, sqCy)] = T_BENCH;
+
+  // Hall Lawn: the door, framed by two hedges. Interact opens /proposals.
+  var hallCx = Math.floor((hall.x0 + hall.x1 + 1) / 2);
+  var hallCy = Math.floor((hall.y0 + hall.y1 + 1) / 2);
+  tiles[idx(hallCx, hallCy)] = T_HALL_DOOR;
+  tiles[idx(hallCx - 2, hallCy)] = T_HEDGE;
+  tiles[idx(hallCx + 2, hallCy)] = T_HEDGE;
+  interactables.push({
+    type: "hall", x: hallCx, y: hallCy,
+    prompt: "Hall"
+  });
+
+  // Homestead Row: a facade at y=47 with 7 door gaps -- door 0 is the
+  // always-live demo house, 1-6 are dynamic online/friend doors. No
+  // cookie glue yet (glue.md), so all 6 render boarded in this preview.
+  var wallY = homestead.y0 + 7; // y=47
+  var doorXs = [26, 29, 32, 37, 40, 43, 46];
+  for (var wx = homestead.x0 + 1; wx <= homestead.x1 - 1; wx++) {
+    if (tiles[idx(wx, wallY)] === T_PATH || tiles[idx(wx, wallY)] === T_BRIDGE) continue; // let the spine through
+    if (doorXs.indexOf(wx) !== -1) continue; // carved below
+    tiles[idx(wx, wallY)] = T_WALL;
+  }
+  for (var d = 0; d < doorXs.length; d++) {
+    var isDemo = d === 0;
+    tiles[idx(doorXs[d], wallY)] = isDemo ? T_DOOR_DEMO : T_DOOR_BOARDED;
+    interactables.push({
+      type: isDemo ? "demoDoor" : "boardedDoor",
+      x: doorXs[d], y: wallY,
+      prompt: isDemo ? "Enter" : "Closed"
+    });
+  }
+
+  // Creek: a bench near the bank (the bridge itself is the recolored path).
+  tiles[idx(creek.x0 + 3, creek.y0 + 3)] = T_BENCH;
+
+  // Shore: a driftwood log near the dock (reuse the bench tile/color --
+  // same "small sittable prop" language as atlas.md, no new art needed).
+  tiles[idx(shore.x1 - 3, shore.y1 - 3)] = T_BENCH;
+}
 
 // ---- Bake the world once to an offscreen canvas (tilemap.md: bake once,
 // blit the crop -- never loop 72x80 per frame). ---------------------------
@@ -218,6 +338,19 @@ bctx.imageSmoothingEnabled = false;
       bctx.fillStyle = COLOR[tiles[idx(x, y)]];
       bctx.fillRect(x * TILE, y * TILE, TILE, TILE);
     }
+  }
+  // Region names are static world-space strings -- stamp them onto the
+  // bake once (canvas.md #1) instead of fillText-ing all 12 every frame.
+  // They scroll for free with the blit from here on.
+  bctx.fillStyle = INK;
+  bctx.font = "8px monospace";
+  bctx.textAlign = "center";
+  bctx.textBaseline = "middle";
+  for (var i = 0; i < REGIONS.length; i++) {
+    var a = regionAABB(REGIONS[i]);
+    var cx = ((a.x0 + a.x1 + 1) / 2) * TILE;
+    var cy = ((a.y0 + a.y1 + 1) / 2) * TILE;
+    bctx.fillText(REGIONS[i].name, cx, cy);
   }
 })();
 
@@ -235,6 +368,7 @@ function computeCrop() {
 
 var canvas = document.getElementById("game");
 var ctx = canvas.getContext("2d", { alpha: false });
+var cropChangedThisFrame = true; // force one draw after any crop swap
 
 function applyCrop() {
   crop = computeCrop();
@@ -243,6 +377,7 @@ function applyCrop() {
   canvas.style.width = (crop.vw * crop.scale) + "px";
   canvas.style.height = (crop.vh * crop.scale) + "px";
   ctx.imageSmoothingEnabled = false;
+  cropChangedThisFrame = true;
 }
 applyCrop();
 window.addEventListener("resize", applyCrop);
@@ -264,25 +399,24 @@ function tileBlockedAtPixel(px, py) {
   return solid[idx(tx, ty)] === 1;
 }
 
-function playerBlockedAt(cx, cy) {
-  var h = player.half;
-  return tileBlockedAtPixel(cx - h, cy - h) ||
-         tileBlockedAtPixel(cx + h, cy - h) ||
-         tileBlockedAtPixel(cx - h, cy + h) ||
-         tileBlockedAtPixel(cx + h, cy + h);
+function boxBlockedAt(cx, cy, half) {
+  return tileBlockedAtPixel(cx - half, cy - half) ||
+         tileBlockedAtPixel(cx + half, cy - half) ||
+         tileBlockedAtPixel(cx - half, cy + half) ||
+         tileBlockedAtPixel(cx + half, cy + half);
 }
 
 function movePlayer(dx, dy, dt) {
-  if (dx === 0 && dy === 0) return;
-  // Normalize diagonal speed.
+  if (dx === 0 && dy === 0) return false;
   var len = Math.sqrt(dx * dx + dy * dy) || 1;
   var vx = (dx / len) * player.speed * dt;
   var vy = (dy / len) * player.speed * dt;
 
+  var moved = false;
   var nx = player.x + vx;
-  if (!playerBlockedAt(nx, player.y)) player.x = nx;
+  if (!boxBlockedAt(nx, player.y, player.half)) { player.x = nx; moved = true; }
   var ny = player.y + vy;
-  if (!playerBlockedAt(player.x, ny)) player.y = ny;
+  if (!boxBlockedAt(player.x, ny, player.half)) { player.y = ny; moved = true; }
 
   // World edge: clamp, don't wall-tile it.
   var h = player.half;
@@ -290,6 +424,59 @@ function movePlayer(dx, dy, dt) {
   if (player.y < h) player.y = h;
   if (player.x > WORLD_PW - h) player.x = WORLD_PW - h;
   if (player.y > WORLD_PH - h) player.y = WORLD_PH - h;
+  return moved;
+}
+
+// ---- The passerby (locked: nameplate exactly "passerby", is_ambient
+// internally, hides while a real guest shares its region, Square ->
+// Homestead -> Creek -> Shore, presence-shaped/RAM/~2Hz-scale motion,
+// no dialogue, not a friend door, not an NPC). ---------------------------
+var passerbyWaypoints = (function () {
+  var sq = regionAABB(findRegion("the Square"));
+  var hs = regionAABB(findRegion("Homestead Row"));
+  var ck = regionAABB(findRegion("Creek"));
+  var sh = regionAABB(findRegion("Shore"));
+  function px(tx, ty) { return { x: tx * TILE + 8, y: ty * TILE + 8 }; }
+  return [
+    px(35, sq.y0 + 2),                  // the Square, near the top of the spine
+    px(35, Math.floor((hs.y0 + hs.y1) / 2)), // Homestead Row
+    px(35, ck.y1 - 1),                  // Creek, at the jog
+    px(sh.x1 - 4, sh.y1 - 1)            // Shore, patrol's far end
+  ];
+})();
+var passerby = {
+  x: passerbyWaypoints[0].x,
+  y: passerbyWaypoints[0].y,
+  half: 6,
+  speed: 50,
+  wp: 0,
+  dir: 1,
+  isAmbient: true, // internal marker -- never string-match the nameplate
+  visible: true
+};
+
+function updatePasserby(dt) {
+  var target = passerbyWaypoints[passerby.wp];
+  var dx = target.x - passerby.x, dy = target.y - passerby.y;
+  var dist = Math.sqrt(dx * dx + dy * dy);
+  var moved = false;
+  if (dist < 2) {
+    passerby.wp += passerby.dir;
+    if (passerby.wp >= passerbyWaypoints.length - 1) { passerby.wp = passerbyWaypoints.length - 1; passerby.dir = -1; }
+    if (passerby.wp <= 0) { passerby.wp = 0; passerby.dir = 1; }
+  } else {
+    passerby.x += (dx / dist) * passerby.speed * dt;
+    passerby.y += (dy / dist) * passerby.speed * dt;
+    moved = true;
+  }
+
+  var playerTile = { x: Math.floor(player.x / TILE), y: Math.floor(player.y / TILE) };
+  var pbTile = { x: Math.floor(passerby.x / TILE), y: Math.floor(passerby.y / TILE) };
+  var playerRegion = regionAt(playerTile.x, playerTile.y);
+  var pbRegion = regionAt(pbTile.x, pbTile.y);
+  passerby.visible = !(playerRegion && pbRegion && playerRegion === pbRegion);
+
+  return moved;
 }
 
 // ---- Input: keyboard --------------------------------------------------
@@ -310,6 +497,7 @@ function typingInField(e) {
 }
 window.addEventListener("keydown", function (e) {
   if (typingInField(e)) return;
+  if (e.key === "Enter" || e.key === " ") { tryInteract(); e.preventDefault(); return; }
   var dir = KEY_TO_DIR[e.key];
   if (dir) { keys[dir] = true; e.preventDefault(); }
 });
@@ -334,6 +522,9 @@ wirePad("dDown", "down");
 wirePad("dLeft", "left");
 wirePad("dRight", "right");
 
+var interactBtn = document.getElementById("interactBtn");
+interactBtn.addEventListener("pointerdown", function (e) { e.preventDefault(); tryInteract(); });
+
 function currentDX() {
   var l = keys.left || padState.left, r = keys.right || padState.right;
   return (r ? 1 : 0) - (l ? 1 : 0);
@@ -343,18 +534,41 @@ function currentDY() {
   return (d ? 1 : 0) - (u ? 1 : 0);
 }
 
-// ---- Labels (small ink names, not HUD -- drawn in world space) --------
-function drawLabels(camX, camY) {
-  ctx.fillStyle = INK;
-  ctx.font = "8px monospace";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  for (var i = 0; i < REGIONS.length; i++) {
-    var a = regionAABB(REGIONS[i]);
-    var cx = ((a.x0 + a.x1 + 1) / 2) * TILE - camX;
-    var cy = ((a.y0 + a.y1 + 1) / 2) * TILE - camY;
-    if (cx < -20 || cy < -10 || cx > crop.vw + 20 || cy > crop.vh + 10) continue;
-    ctx.fillText(REGIONS[i].name, cx, cy);
+// ---- Interact system ----------------------------------------------------
+// One prompt at doors/set pieces, no RPG menu (locked, art.md). Range is
+// "on or next to the tile" -- Chebyshev distance <= 1.
+var mode = "outdoor"; // "outdoor" | "interior"
+var nearestInteractable = null;
+var toast = { msg: "", until: 0 };
+
+function showToast(msg, ms) {
+  toast.msg = msg;
+  toast.until = performance.now() + (ms || 1500);
+}
+
+function findNearestInteractable() {
+  var ptx = Math.floor(player.x / TILE), pty = Math.floor(player.y / TILE);
+  var best = null, bestDist = Infinity;
+  for (var i = 0; i < interactables.length; i++) {
+    var it = interactables[i];
+    var d = Math.max(Math.abs(ptx - it.x), Math.abs(pty - it.y));
+    if (d <= 1 && d < bestDist) { best = it; bestDist = d; }
+  }
+  return best;
+}
+
+function tryInteract() {
+  if (mode === "interior") { mode = "outdoor"; forceRedraw = true; return; }
+  var it = nearestInteractable;
+  if (!it) return;
+  if (it.type === "hall") {
+    var ok = window.confirm("Open liquidgov.us/proposals in a new tab?");
+    if (ok) window.open("https://liquidgov.us/proposals", "_blank", "noopener");
+  } else if (it.type === "demoDoor") {
+    mode = "interior";
+    forceRedraw = true;
+  } else if (it.type === "boardedDoor") {
+    showToast("Closed.");
   }
 }
 
@@ -362,6 +576,56 @@ function drawLabels(camX, camY) {
 var running = false;
 var lastT = 0;
 var lastTickAt = 0; // performance.now() of the last frame() call, any source
+var forceRedraw = true;
+var prevPlayerX = player.x, prevPlayerY = player.y;
+var prevPbVisible = false, prevPbX = passerby.x, prevPbY = passerby.y;
+
+function drawOutdoor(camX, camY) {
+  ctx.drawImage(baked, camX, camY, crop.vw, crop.vh, 0, 0, crop.vw, crop.vh);
+
+  if (passerby.visible) {
+    var pbsx = passerby.x - camX, pbsy = passerby.y - camY;
+    ctx.fillStyle = INK;
+    ctx.fillRect(pbsx - passerby.half, pbsy - passerby.half, passerby.half * 2, passerby.half * 2);
+    ctx.font = "8px monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("passerby", pbsx, pbsy - passerby.half - 6);
+  }
+
+  var sx = player.x - camX, sy = player.y - camY;
+  ctx.fillStyle = INK;
+  ctx.fillRect(sx - player.half, sy - player.half, player.half * 2, player.half * 2);
+
+  if (nearestInteractable && mode === "outdoor") {
+    var ix = (nearestInteractable.x * TILE + 8) - camX;
+    var iy = (nearestInteractable.y * TILE + 8) - camY - 14;
+    ctx.fillStyle = INK;
+    ctx.font = "8px monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("[" + nearestInteractable.prompt + "]", ix, iy);
+  }
+
+  if (performance.now() < toast.until) {
+    ctx.fillStyle = INK;
+    ctx.font = "8px monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(toast.msg, crop.vw / 2, crop.vh - 14);
+  }
+}
+
+function drawInterior() {
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, crop.vw, crop.vh);
+  ctx.fillStyle = "#f2ead8";
+  ctx.font = "8px monospace";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("The house is quiet.", crop.vw / 2, crop.vh / 2 - 6);
+  ctx.fillText("[Enter] to step back outside", crop.vw / 2, crop.vh / 2 + 6);
+}
 
 function frame(t) {
   if (!running) return;
@@ -369,33 +633,47 @@ function frame(t) {
   lastT = t;
   lastTickAt = t;
 
-  movePlayer(currentDX(), currentDY(), dt);
+  if (mode === "interior") {
+    if (forceRedraw) { drawInterior(); forceRedraw = false; }
+    return;
+  }
 
-  // Camera, pixel-aligned (no subpixel, no tile-snap), clamped to world.
+  var playerMoved = movePlayer(currentDX(), currentDY(), dt);
+  var pbMoved = updatePasserby(dt);
+  nearestInteractable = findNearestInteractable();
+  interactBtn.classList.toggle("show", !!nearestInteractable || mode === "interior");
+
+  var toastActive = performance.now() < toast.until;
+
+  // canvas.md #2: skip the blit entirely if the scene truly hasn't changed
+  // -- rAF still runs (vsync), we just don't touch the GPU for nothing.
+  var changed = forceRedraw || cropChangedThisFrame || playerMoved ||
+    (passerby.visible && (pbMoved || passerby.x !== prevPbX || passerby.y !== prevPbY)) ||
+    (passerby.visible !== prevPbVisible) || toastActive;
+
+  if (!changed) return;
+
   var camX = Math.round(player.x - crop.vw / 2);
   var camY = Math.round(player.y - crop.vh / 2);
   camX = Math.max(0, Math.min(camX, WORLD_PW - crop.vw));
   camY = Math.max(0, Math.min(camY, WORLD_PH - crop.vh));
 
-  ctx.drawImage(baked, camX, camY, crop.vw, crop.vh, 0, 0, crop.vw, crop.vh);
+  drawOutdoor(camX, camY);
 
-  // Player, over-blit, in viewport space.
-  var sx = player.x - camX, sy = player.y - camY;
-  ctx.fillStyle = INK;
-  ctx.fillRect(sx - player.half, sy - player.half, player.half * 2, player.half * 2);
-
-  drawLabels(camX, camY);
+  forceRedraw = false;
+  cropChangedThisFrame = false;
+  prevPlayerX = player.x; prevPlayerY = player.y;
+  prevPbVisible = passerby.visible; prevPbX = passerby.x; prevPbY = passerby.y;
 }
 
 // requestAnimationFrame is the loop -- real browsers (including phones)
 // fire it reliably and it pauses correctly in a background tab, which a
 // timer-only loop wouldn't. setInterval only exists as a watchdog fallback
-// for the rare view that never calls rAF at all (one such view showed up
-// while testing this build: a bare rAF counter stayed at 0 for 500ms fully
-// visible and focused -- a tool quirk, not something to design the real
-// loop around). The watchdog checks every ~300ms whether a frame has
-// actually landed recently; it only starts the fallback interval if rAF
-// has gone completely silent, and tears it back down if rAF resumes.
+// for the rare view that never calls rAF at all. The watchdog checks every
+// ~300ms whether a frame has actually landed recently; it only starts the
+// fallback interval if rAF has gone completely silent, tears it back down
+// if rAF resumes, and never engages at all while the tab is hidden (a
+// backgrounded tab correctly doing nothing is not "rAF went silent").
 var WATCHDOG_MS = 300;
 var usingFallback = false;
 var fallbackHandle = null;
@@ -408,6 +686,14 @@ function rafLoop(t) {
 
 function watchdogTick() {
   if (!running) return;
+  if (document.hidden) {
+    if (usingFallback) {
+      usingFallback = false;
+      clearInterval(fallbackHandle);
+      fallbackHandle = null;
+    }
+    return;
+  }
   var stale = performance.now() - lastTickAt > WATCHDOG_MS;
   if (stale && !usingFallback) {
     usingFallback = true;

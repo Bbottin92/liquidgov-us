@@ -1,6 +1,6 @@
 #pragma once
 #include <string>
-#include "../third_party/sqlite3/sqlite3.h"
+#include "sqlite3.h"
 
 namespace commons {
 

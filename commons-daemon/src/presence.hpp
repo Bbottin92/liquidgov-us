@@ -32,6 +32,10 @@ class PresenceStore {
 public:
     static constexpr std::size_t kPerRegionCap = 24;
     static constexpr std::size_t kGlobalCap = 96;
+    // presence.md's crash-recovery pin, applied here as the idle-reap
+    // threshold: a tab that stops calling /presence/move (crash, close
+    // without a clean leave) should not hold a cap slot forever.
+    static constexpr long long kIdleMs = 30000;
 
     enum class JoinResult { Ok, RegionFull, GlobalFull };
 
@@ -54,6 +58,10 @@ private:
     // Callers must hold mu_.
     JoinResult join_locked(const std::string& region, const Occupant& occ);
     bool erase_id_locked(const std::string& id); // any region; --total_ only if found
+    // Drops any occupant whose last_update_ms is more than kIdleMs behind
+    // `now`. Called at the top of every public method, under mu_, so no
+    // caller ever sees or mutates a stale entry.
+    void reap_locked(long long now);
 };
 
 } // namespace commons

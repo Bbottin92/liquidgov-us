@@ -18,6 +18,43 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-16 — commons-daemon: should-fix round (reap, move timestamp,
+  schema dedup, sqlite via FetchContent).** Brandon scoped this round to
+  "should-fix daemon items" only (not client, not sibling/deploy) via
+  explicit confirmation. Four of `GROK_DAEMON_REVIEW.md`'s five should-fix
+  items landed:
+  1. `move` now stamps `last_update_ms` on every call — occupant JSON no
+     longer looks frozen between joins.
+  2. Idle reap: `PresenceStore::reap_locked` runs under `mu_` at the top
+     of every public method (join/move/rekey/leave/occupants/global_count)
+     and drops any occupant whose `last_update_ms` is more than 30s
+     (`kIdleMs`) stale. A crashed/closed tab no longer holds a cap slot
+     until process restart. Single-threaded, lazy-on-access — no timer
+     thread, matching the daemon's existing synchronous style.
+  3. `schema.sql` dedup: `commons-daemon/schema.sql` is now a symlink to
+     `Persistence/TheCommons/schema.sql` (verified content was already
+     byte-identical apart from a comment) — one source of truth, no more
+     copy-drift risk.
+  4. Vendored `sqlite3.c`/`.h` (9.5MB) dropped from git; CMake now
+     `FetchContent`s the same 3.53.4 amalgamation from sqlite.org, pinned
+     by SHA256 (downloaded once with Brandon's explicit permission to
+     compute the hash, content verified byte-identical to the prior
+     vendored copy before switching). Real tradeoff accepted: the build
+     now needs network access at configure time; it was previously fully
+     offline. `db.hpp`'s include path updated to match (`"sqlite3.h"` via
+     the target's public include dir, not a relative `third_party/` path).
+  **Deliberately not done:** server-issued guest ids (should-fix #3,
+  impersonation resistance). This can't be meaningfully half-done
+  daemon-side — the server minting an id nobody's client asks for or
+  stores achieves nothing, and `commons/index.html` still generates its
+  own guest id today. Stays parked for an explicit client-side round
+  before nginx is ever in front of this daemon. Verified live: full
+  regression set, `move` timestamp advances on move, an untouched
+  occupant is gone after >30s while one refreshed via `move` survives,
+  clean build from a bare `rm -rf build` (proving FetchContent actually
+  works, not just "worked once"), and the restart boundary (SQLite
+  catalogs survive, RAM presence + reap state do not). Civic untouched,
+  no SSH/systemd/nginx, no deploy.
 - **2026-09-16 — commons-daemon: body-cap nit, truncate to `Content-Length`
   after the split.** Grok caught a gap in the 413 patch (`d2b5bf4`): the
   1 MiB header guard bounds `raw`, not this request's declared body — so

@@ -27,6 +27,12 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Game — atlas locked, no code until BUILD
 
+- **2026-09-16 — Grok P1 review.** Spine accepted (Hall, 7 doors, bake
+  labels, idle skip, hidden watchdog). Must-fix: notice-post not fountain;
+  passerby must stay visible in the Square (hide only for a second real
+  occupant); toast off-transition must redraw. Should-fix: boarded doors
+  solid, benches on the path, passerby stays on the ribbon. Paste
+  `CLAUDE_P1_PATCH.md`. P2 not started. Civic frozen.
 - **2026-09-16 — P1 shipped.** `commons/index.html` extended per
   `BUILD_ORDER.md`'s spine list: the Square (fountain + 2 benches),
   Homestead Row (facade with 7 doors: door 0 = demo, doors 1-6 = boarded —

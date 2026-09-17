@@ -1312,6 +1312,27 @@ Not bug classes. Not “what is live on the droplet.”
   snapshot-on-leave is wired -- the periodic half needs an actual timer
   loop, flagged as its own separate addition, not attempted. Holding
   on deploy.
+- **2026-09-17 — persist-house must-fix: walking out the door never
+  snapshotted, fixed, still not deployed.** Grok review
+  (`GROK_PERSIST_REVIEW.md`) caught that the prior round's test proved
+  the mechanism (a direct `/presence/leave` call) but not the real
+  path: `exitToOutdoor()` never calls `netLeave()`, walking out the
+  house door is an ordinary rekey, so snapshot-on-leave alone would
+  only ever fire on an actual tab close, never on normal walk-out-and-
+  come-back-later play. Fixed daemon-only: `/presence/rekey` now also
+  snapshots when `from_region` is the caller's own house, captured
+  before the rekey erases that occupant row -- same mechanism `leave`
+  already used, now on the path that actually matters. Also wrapped
+  `house_instance_for`'s two-row create (`map_instances` INSERT +
+  `players` UPDATE) in `BEGIN`/`COMMIT` per `schema.sql`'s own stated
+  rule, closing a crash-window that could have orphaned a house
+  instance and stranded its wall-slot item on a second, unreachable
+  copy. Verified locally reproducing the real pattern: entered, placed
+  an item, walked out via rekey (no leave call at all), killed and
+  restarted the daemon -- resumed at the exact walk-out tile, item
+  intact; `leave`'s own snapshot path re-confirmed unaffected. See
+  `persist-house-built.md`'s own "Must-fix" section. Holding on
+  deploy.
 
 ## Split: civic site vs game
 

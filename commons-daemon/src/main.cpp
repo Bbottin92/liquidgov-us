@@ -439,6 +439,26 @@ int main(int argc, char** argv) {
             }
         }
 
+        // GROK_PERSIST_REVIEW.md must-fix: walking out the door is a
+        // rekey, not a leave -- exitToOutdoor() never calls netLeave(),
+        // only the next frame's rekey-on-region-mismatch fires (V2's own
+        // "no explicit network call needed" design). Snapshot-on-leave
+        // alone would only ever fire on tab close, never on ordinary
+        // walk-out, so a real session (enter, place, walk out, restart
+        // later) would still resume at the fixed entry tile. Captured the
+        // same way leave does: before the row this position lives in is
+        // erased by the rekey below.
+        if (auto leaving_house_user = house_username_from_region(*from_region)) {
+            if (is_bound && *leaving_house_user == eff_id->substr(2)) {
+                for (const auto& o : presence.occupants(*from_region)) {
+                    if (o.id == *eff_id) {
+                        house.snapshot_leave(*leaving_house_user, static_cast<int>(o.x), static_cast<int>(o.y), o.facing);
+                        break;
+                    }
+                }
+            }
+        }
+
         commons::Occupant occ;
         occ.id = *eff_id;
         occ.display_name = is_bound ? eff_id->substr(2) : field_str(req.body, "display_name").value_or(*eff_id);

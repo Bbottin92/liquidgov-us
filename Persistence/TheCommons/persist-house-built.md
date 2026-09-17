@@ -1,5 +1,11 @@
 # Persist the bound house — built, local-tested, not deployed
 
+**2026-09-17 update: must-fix found and fixed before deploy.** See
+"Must-fix: walking out the door never snapshotted" below -- the
+original test in this doc called `/presence/leave` directly, which is
+not what the real client does when you walk out the door (that's a
+rekey). Fixed; re-verified using the actual rekey path.
+
 Brandon: "build" for `GROK_V5_ANSWER.md`'s named increment. Safe thread,
 exactly as scoped: no `http_server.cpp`, daemon + `commons/index.html`
 only. Demo and lab stay exactly as they were -- shared, RAM, wiped on
@@ -134,3 +140,55 @@ Also verified:
 No deploy step run. Real cross-origin cookie -> real house persistence
 across a real production restart is still only provable in production
 -- next after Brandon says **deploy**.
+
+## Must-fix: walking out the door never snapshotted (found by Grok review, fixed)
+
+`GROK_PERSIST_REVIEW.md`: the client never calls `/presence/leave` when
+a player walks out the house door -- `exitToOutdoor()` doesn't call
+`netLeave()` at all; the next frame's normal region-mismatch check
+fires a **rekey** instead (V2's own "no explicit network call needed"
+design, unchanged since). Snapshot-on-leave, as first built, only ever
+ran on `/presence/leave` -- meaning it only fired on an actual tab
+close, never on ordinary walk-out-the-door play. This doc's own
+original test called `/presence/leave` directly to prove the mechanism
+worked, which is real but not what a real session does: enter, place
+something, walk back outside, close the tab (or the box restarts)
+later, hours after leaving the house -- the snapshot would still be
+whatever it was from some earlier tab-close, or nothing at all. Chalk
+would survive; the resume position would not.
+
+Fixed:
+
+- **`/presence/rekey`:** if `from_region` is the caller's own house
+  (same ownership check as everywhere else -- bound, and the username
+  matches), the occupant's current position is read from
+  `PresenceStore` and snapshotted via `HouseStore` *before* the rekey
+  call erases that row -- the exact same pattern `/presence/leave`
+  already used, just triggered by the actual common path instead of
+  the rare one. Leave keeps its own snapshot too, for true
+  disconnects.
+- **`house_instance_for`:** the `map_instances` INSERT and the
+  `players` UPDATE are now wrapped in `BEGIN`/`COMMIT`, matching
+  `schema.sql`'s own stated rule ("any multi-row mutation ... must be
+  BEGIN/COMMIT") that `set_wall_slot` already followed and this
+  function didn't. A crash between the two statements previously could
+  leave an orphaned `map_instances` row with no `players` row pointing
+  at it -- the next entry would then create a *second* house instead
+  of reusing the first, stranding the wall-slot item on the orphan
+  while every future write landed on the new one. Rolls back (and
+  returns a sentinel `-1`) if either statement fails; this genuinely
+  should not happen in practice since the schema always seeds the
+  `'house'` map row before the daemon accepts any request, but the
+  transaction is what schema.sql actually asks for regardless of how
+  likely the failure is.
+
+**Verified locally**, reproducing the real play pattern exactly (not
+the direct-leave-call shortcut from the first test): entered the
+house, placed `chalk_block`, walked to a distinctive tile, then
+**rekeyed out the door to an outdoor region -- no `/presence/leave`
+call made at all** -- then killed and restarted the daemon. Re-entering
+resumed at exactly the tile and facing where the walk-out happened, not
+`DEMO_ENTRY`; the chalk was still there. Separately re-confirmed `leave`
+(tab-close path) still snapshots correctly too, and that repeated house
+entry after all of this remains a single consistent instance -- no
+orphan, no stranded wall-slot, matching the transaction fix's intent.

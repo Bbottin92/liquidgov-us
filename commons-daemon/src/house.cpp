@@ -33,9 +33,19 @@ int HouseStore::house_instance_for(const std::string& username) {
     if (has_instance) return instance_id;
 
     sqlite3_prepare_v2(db_, "SELECT map_id FROM maps WHERE slug = 'house';", -1, &st, nullptr);
-    sqlite3_step(st);
-    int map_id = sqlite3_column_int(st, 0);
+    bool got_map = sqlite3_step(st) == SQLITE_ROW;
+    int map_id = got_map ? sqlite3_column_int(st, 0) : 0;
     sqlite3_finalize(st);
+
+    // GROK_PERSIST_REVIEW.md must-fix: schema.sql already requires any
+    // multi-row mutation to be BEGIN/COMMIT (set_wall_slot already does
+    // this) -- this INSERT+UPDATE pair was the one place that skipped it.
+    // A crash between the two would otherwise leave an orphan
+    // map_instances row and no players.house_instance_id pointing at it,
+    // so the next entry creates a *second* house instead of reusing the
+    // first (wall slot stranded on the orphan, everything new on the
+    // second).
+    sqlite3_exec(db_, "BEGIN;", nullptr, nullptr, nullptr);
 
     sqlite3_prepare_v2(db_,
         "INSERT INTO map_instances (map_id, owner_player_id, created_at) "
@@ -43,15 +53,25 @@ int HouseStore::house_instance_for(const std::string& username) {
         -1, &st, nullptr);
     sqlite3_bind_int(st, 1, map_id);
     sqlite3_bind_int(st, 2, player_id);
-    sqlite3_step(st);
+    bool inserted = sqlite3_step(st) == SQLITE_DONE;
     sqlite3_finalize(st);
     instance_id = static_cast<int>(sqlite3_last_insert_rowid(db_));
 
-    sqlite3_prepare_v2(db_, "UPDATE players SET house_instance_id = ?1 WHERE player_id = ?2;", -1, &st, nullptr);
-    sqlite3_bind_int(st, 1, instance_id);
-    sqlite3_bind_int(st, 2, player_id);
-    sqlite3_step(st);
-    sqlite3_finalize(st);
+    bool updated = false;
+    if (got_map && inserted) {
+        sqlite3_prepare_v2(db_, "UPDATE players SET house_instance_id = ?1 WHERE player_id = ?2;", -1, &st, nullptr);
+        sqlite3_bind_int(st, 1, instance_id);
+        sqlite3_bind_int(st, 2, player_id);
+        updated = sqlite3_step(st) == SQLITE_DONE;
+        sqlite3_finalize(st);
+    }
+
+    if (got_map && inserted && updated) {
+        sqlite3_exec(db_, "COMMIT;", nullptr, nullptr, nullptr);
+    } else {
+        sqlite3_exec(db_, "ROLLBACK;", nullptr, nullptr, nullptr);
+        instance_id = -1; // schema always seeds 'house' before the daemon accepts requests -- this should not happen
+    }
 
     return instance_id;
 }

@@ -18,6 +18,43 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-17 — commons: deploy preflight, two real holes closed, still
+  no SSH.** `GROK_DEPLOY_REVIEW.md`/`CLAUDE_DEPLOY_PREFLIGHT.md` on
+  `fb889c0`: accepted the slash fix, found two more real problems before
+  anything could actually go live. Both fixed as files only:
+  1. **`deploy-plan.md`'s step 4 named a path that doesn't exist** --
+     `cp /opt/commons-daemon/commons/index.html` assumed `commons/` was
+     inside `commons-daemon/`; it's a sibling directory at the repo
+     root. Added `commons-daemon/deploy/sync-client-to-droplet.sh` (new
+     script, rsyncs the actual `commons/` dir to `/opt/commons/`,
+     separate from the daemon's own sync script so the nginx static
+     alias directory never risks getting the daemon's source/build tree
+     dumped into it) and fixed `deploy-plan.md`'s sequence to call it.
+  2. **The shipped client would have talked to the *visitor's* loopback,
+     not the droplet.** `DAEMON` was unconditionally
+     `http://127.0.0.1:8765` (or a loopback-only `?daemon=` override) --
+     curl on the droplet could prove nginx worked, but no real browser
+     ever could have. Fixed: off loopback, `DAEMON` is now
+     `location.origin + "/commons"`; every existing call site already
+     builds URLs as `DAEMON + "/presence/..."`, so this composes
+     correctly with the nginx proxy with zero other client changes
+     (`https://liquidgov.us/commons` + `/presence/join` is exactly what
+     `location /commons/presence/` matches). Loopback behavior
+     (`?daemon=` allowlist, local dev default) is untouched. Verified
+     live: default loopback join still works exactly as before; the
+     production string composition checked directly
+     (`https://liquidgov.us/commons/presence/join`,
+     `.../presence/1,1`) since there's no live non-loopback deploy to
+     load the page from yet.
+  Also did the two optional cleanups `CLAUDE_DEPLOY_PREFLIGHT.md` named:
+  a `location = /commons { return 301 /commons/; }` redirect in
+  `nginx-commons.conf` (bare no-slash URL used to fall through to
+  civic's own `location /` and 404 there — confusing to debug blind),
+  and patched `nginx.md` itself so its own presence-location example
+  no longer advertises the double-slash 404 shape or the `8091`
+  placeholder port (this daemon's actual coded default is `8765`) to
+  whoever pastes from it next. Still no SSH, no droplet contact, no
+  `nginx -t` against anything real — waiting on Brandon's "go."
 - **2026-09-17 — commons: sibling deploy staged, nothing applied.**
   "Let's move forward" → confirmed the direction was sibling deploy →
   confirmed the mode was "stage first, apply after review" before

@@ -891,9 +891,22 @@ function isTrustedDaemonHost(hostname) {
   return a === 127 || a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
 }
 
+// Must-fix (GROK_DEPLOY_REVIEW.md / CLAUDE_DEPLOY_PREFLIGHT.md): a
+// visitor loading this page from a real deploy is not on loopback, and
+// the old unconditional "http://127.0.0.1:8765" default would have sent
+// their browser to *their own* machine's loopback, not the droplet --
+// curl on the droplet could prove nginx works, but no browser ever
+// could have, until this branch existed. Off loopback, DAEMON becomes
+// same-origin (`location.origin + "/commons"`); every existing call
+// site already builds its own URL as `DAEMON + "/presence/..."`, so
+// this composes correctly with nginx-commons.conf's
+// `location /commons/presence/` with zero other changes needed -- e.g.
+// `https://liquidgov.us/commons` + `/presence/join` is exactly the path
+// that location matches. On loopback, behavior is unchanged: the
+// validated `?daemon=` override (4e9bfbd) or the local dev default.
 var DAEMON = (function () {
   var fallback = "http://127.0.0.1:8765";
-  if (!isLoopbackPage()) return fallback; // a public origin ignores ?daemon= entirely, not just untrusted values of it
+  if (!isLoopbackPage()) return location.origin + "/commons";
   var raw = new URLSearchParams(location.search).get("daemon");
   if (!raw) return fallback;
   try {

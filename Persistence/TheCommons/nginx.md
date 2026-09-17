@@ -16,7 +16,7 @@ Goal: `https://liquidgov.us/commons/` is same-origin so the browser
 |---|---|
 | `/` `/login` `/mail` `/proposals` `/u/…` `/canvas-frame/…` | civic — **unchanged** |
 | `/commons/` `/commons/index.html` | nginx static (`alias`) |
-| `/commons/presence` | `proxy_pass` `http://127.0.0.1:<gameport>/` |
+| `/commons/presence/` | `proxy_pass` `http://127.0.0.1:8765/presence/` |
 | Hall door | full URL to `/proposals`; not through the game |
 
 Bind the daemon to **127.0.0.1 only**. If nginx dies, the game port is
@@ -48,9 +48,21 @@ inside the LGP1 store. Do not `proxy_pass` HTML through the daemon.
 
 ## Presence `location` (more specific, so it wins)
 
+**Correction (`GROK_DEPLOY_REVIEW.md`, found staging `fb889c0`): the
+shape below used to have no trailing slash on `location` while
+`proxy_pass` had one.** Traced through nginx's own documented
+replacement rule, that combination sends `/commons/presence/join`
+upstream as `//join`, not `/presence/join` — the daemon's exact-match
+routes (`http.cpp`) would 404 on every single presence call. Never
+caught before because no nginx config for this project had actually
+been installed anywhere yet. Trailing slash on **both** sides fixes it;
+this is nginx's own documented safe pattern for this rewrite. Port is
+**8765** (this daemon's actual coded default, `main.cpp`), not the
+`8091` placeholder this doc used to carry.
+
 ```
-location /commons/presence {
-    proxy_pass         http://127.0.0.1:8091/;   # port TBD; loopback only
+location /commons/presence/ {
+    proxy_pass         http://127.0.0.1:8765/presence/;
     proxy_http_version 1.1;
     proxy_set_header   Host $host;
     proxy_set_header   Cookie $http_cookie;
@@ -70,8 +82,11 @@ timeout, or nginx kills idle walkers.
 localhost — it does not parse `lg_session` and open LGP1
 (`GROK_GLUE_REVIEW.md`).
 
-`location /commons/presence` is longer than `/commons/`, so it wins
-without `^~`.
+`location /commons/presence/` is longer than `/commons/`, so it wins
+without `^~`. The client must call this as `/commons/presence/<rest>`
+— the trailing slash after `presence` is load-bearing, not stylistic;
+dropping it falls through to the static `/commons/` location instead
+(a confusing 404-via-static-alias, not an obvious proxy failure).
 
 ## Civic `location /` must keep proto
 
@@ -84,7 +99,7 @@ login cookies lose `Secure`. Add two locations; do not rewrite civic’s.
 - Civic TLS, `root`, `location /`.
 - `client_max_body_size` globally (photo later: one location only).
 - CORS on `/commons/` — same origin, none needed.
-- Exposing `:8091` in `listen` / ufw.
+- Exposing `:8765` in `listen` / ufw.
 - Browser talking to civic via the game proxy (friends is daemon →
   `127.0.0.1:<civic>`).
 

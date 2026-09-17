@@ -93,8 +93,8 @@ obvious proxy failure).
 ## Sequence (SSH steps -- not run yet)
 
 ```bash
-# 1. From the local repo, sync source (dereferences the schema.sql
-#    symlink automatically -- see the script's own header comment):
+# 1. From the local repo, sync the DAEMON's source (dereferences the
+#    schema.sql symlink automatically -- see the script's own header):
 commons-daemon/deploy/sync-to-droplet.sh
 
 # 2. On the droplet, as a user that can sudo:
@@ -105,10 +105,15 @@ chown -R liquidgov:liquidgov /opt/commons-daemon /opt/commons /var/lib/commons
 cmake -S /opt/commons-daemon -B /opt/commons-daemon/build
 cmake --build /opt/commons-daemon/build -j1
 
-# 4. Static files -- copy just the client, not the whole repo, into the
-#    nginx alias target (nginx.md: alias serves EVERYTHING under it):
-cp /opt/commons-daemon/commons/index.html /opt/commons/index.html
-chown liquidgov:liquidgov /opt/commons/index.html
+# 4. Static files -- sync the CLIENT separately (GROK_DEPLOY_REVIEW.md
+#    must-fix #1: `commons/index.html` is a sibling of `commons-daemon/`
+#    in this repo, not inside it -- the earlier
+#    `cp /opt/commons-daemon/commons/index.html ...` step here named a
+#    path that does not exist). nginx's alias serves EVERYTHING under
+#    /opt/commons/, so this must stay client-only, never the daemon tree:
+commons-daemon/deploy/sync-client-to-droplet.sh
+ssh -i "${LIQUIDGOV_DEPLOY_KEY:-$HOME/.ssh/liquidgov_deploy_key}" root@143.198.159.58 \
+  chown -R liquidgov:liquidgov /opt/commons
 
 # 5. systemd:
 cp /opt/commons-daemon/deploy/commons-daemon.service /etc/systemd/system/

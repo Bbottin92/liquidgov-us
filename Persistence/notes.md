@@ -27,6 +27,9 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Game — atlas locked, no code until BUILD
 
+- **2026-09-16 — WGSL crib only.** `Persistence/TheCommons/wgsl.md` is
+  syntax, not a renderer. `webgpu.md` still stands: no shaders in
+  commons/. Next visible work still sprites / glue / sibling.
 - **2026-09-16 — WebGPU is not this game.** `Persistence/TheCommons/webgpu.md`:
   240×160 blit does not want a compute shader. Canvas 2D stays. Sprites /
   glue / sibling still wait on Brandon.

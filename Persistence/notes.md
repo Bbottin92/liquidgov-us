@@ -1400,6 +1400,23 @@ Not bug classes. Not “what is live on the droplet.”
   between shell calls, so my first friend keepalive silently lapsed --
   caught because the door stayed dark, not assumed. Visiting is next and
   needs an open/friends/locked decision first.
+- **2026-09-18 — visiting (friends policy) built, local-tested, not
+  deployed.** Brandon picked **friends**: a fixed rule for every house
+  (per-owner settings would need stored data and UI -- a later round).
+  A bound player may be in another's house iff that owner is a mutual,
+  non-blocked friend (civic's answer through the existing 15s cache) and,
+  to enter, the owner is in the game. A visit is read-only: no rows
+  created for the visitor, no snapshot, no resume, `/placed/` POST still
+  owner-only. `move` re-checks friendship, so an unfriend or block ends
+  a visit within one TTL, answered `200 not_welcome` (a 403 would read as
+  a dead credential). Client: the lit lot door ("Visit") enters
+  `mode: "visit"`; the wall says whose it is and reads **Look**. Caught
+  a real bug before it shipped: the client treated every 403 as a dead
+  credential, so a *declined* visit would have reminted and retried
+  forever -- now it reads the reason. Daemon + client only; no civic, no
+  nginx. Tested with three real civic accounts (friend, non-friend,
+  blocked mid-visit; guest; owner offline) plus a real-browser client
+  pass. See `visiting-built.md`. Holding on deploy.
 
 ## Split: civic site vs game
 

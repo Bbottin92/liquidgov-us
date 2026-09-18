@@ -211,6 +211,25 @@ std::optional<std::string> house_username_from_region(const std::string& region)
     return rest;
 }
 
+// Visiting, "friends" policy (Brandon: "BUILD visiting friends"): a bound
+// player may be in another player's house iff that owner is one of their
+// mutual, non-blocked friends -- civic's answer, via the same 15s cache
+// the lot doors use, never a client-supplied claim. Entering additionally
+// requires the owner to be in the game right now (the same "friend is
+// online" condition that lights the door in the first place); staying does
+// not, so a visitor isn't thrown out just because the owner logged off.
+// Read-only: a visit never creates a players/map_instances row and never
+// snapshots -- only the owner's own entry does either.
+bool visit_allowed(const std::string& headers_raw, const std::string& owner,
+                   commons::FriendsCache& friends, commons::PresenceStore& presence,
+                   bool require_owner_online) {
+    auto mine = friends.get(headers_raw);
+    if (std::find(mine.begin(), mine.end(), owner) == mine.end()) return false;
+    if (!require_owner_online) return true;
+    auto online = presence.bound_usernames();
+    return std::find(online.begin(), online.end(), owner) != online.end();
+}
+
 std::string occupants_json(const std::vector<commons::Occupant>& occ) {
     std::ostringstream out;
     out << "[";
@@ -355,28 +374,35 @@ int main(int argc, char** argv) {
         }
         const bool is_bound = eff_id->rfind("u:", 0) == 0;
 
-        // GROK_V5_ANSWER.md: a house instance is private to its own bound
-        // owner. This is a mutation route (it creates presence, and on
-        // first-ever entry a durable players/map_instances row), so a
-        // guest or a different bound player is refused outright here --
-        // unlike the read-only GET, which stays public and unscoped,
-        // matching /placed/'s own existing "low stakes" stance.
+        // GROK_V5_ANSWER.md: a house instance belongs to its bound owner.
+        // This is a mutation route (it creates presence, and on the
+        // owner's first-ever entry a durable players/map_instances row), so
+        // anyone who is neither the owner nor an allowed visitor (below) is
+        // refused outright -- unlike the read-only GET, which stays public
+        // and unscoped, matching /placed/'s own existing "low stakes" stance.
         double resume_x = *x, resume_y = *y;
         int resume_facing = static_cast<int>(field_num(req.body, "facing").value_or(0));
         bool has_resume = false;
         if (auto house_user = house_username_from_region(*region)) {
-            if (!is_bound || *house_user != eff_id->substr(2)) {
+            const bool is_owner = is_bound && *house_user == eff_id->substr(2);
+            // Visiting (friends policy): anyone else who is bound, a mutual
+            // friend of the owner, with the owner in the game. Guests never
+            // qualify -- they have no friends. Refused with the same 403 as
+            // before; the client tells a refused visit apart by its reason.
+            if (!is_owner && !(is_bound && visit_allowed(req.headers_raw, *house_user, friends_cache, presence, true))) {
                 r.status = 403; r.status_text = "Forbidden";
                 r.body = "{\"ok\":false,\"reason\":\"not_your_house\"}";
                 return r;
             }
-            house.house_instance_for(*house_user);
-            // presence.md: "walking back in later resumes there, not the
-            // fixed entry tile every time" -- only the position, never the
-            // client-submitted facing/display_name, which stay as-is.
-            if (auto pos = house.last_house_position(*house_user)) {
-                resume_x = pos->x; resume_y = pos->y; resume_facing = pos->facing;
-                has_resume = true;
+            if (is_owner) {
+                house.house_instance_for(*house_user);
+                // presence.md: "walking back in later resumes there, not the
+                // fixed entry tile every time" -- only the position, never the
+                // client-submitted facing/display_name, which stay as-is.
+                if (auto pos = house.last_house_position(*house_user)) {
+                    resume_x = pos->x; resume_y = pos->y; resume_facing = pos->facing;
+                    has_resume = true;
+                }
             }
         }
 
@@ -436,6 +462,21 @@ int main(int argc, char** argv) {
             r.body = "{\"ok\":false,\"reason\":\"bad_credential\"}";
             return r;
         }
+        // Visiting stays revocable: a visitor in someone else's house is
+        // re-checked against the (15s-cached) friends answer on every move,
+        // so an unfriend or a block ends the visit within one TTL instead of
+        // whenever the visitor happens to leave. Owner-online is deliberately
+        // not re-required here -- only friendship. Answered 200 with a
+        // reason, not 403: the client reads 403 as "my credential died" and
+        // would reauth instead of walking the visitor out.
+        if (auto house_user = house_username_from_region(*region)) {
+            const bool is_owner = eff_id->rfind("u:", 0) == 0 && *house_user == eff_id->substr(2);
+            if (!is_owner && !visit_allowed(req.headers_raw, *house_user, friends_cache, presence, false)) {
+                presence.leave(*region, *eff_id);
+                r.body = "{\"ok\":false,\"reason\":\"not_welcome\"}";
+                return r;
+            }
+        }
         int facing = static_cast<int>(field_num(req.body, "facing").value_or(0));
         bool ok = presence.move(*region, *eff_id, *x, *y, facing);
         r.body = std::string("{\"ok\":") + (ok ? "true" : "false") + "}";
@@ -469,15 +510,18 @@ int main(int argc, char** argv) {
         int resume_facing = static_cast<int>(field_num(req.body, "facing").value_or(0));
         bool has_resume = false;
         if (auto house_user = house_username_from_region(*to_region)) {
-            if (!is_bound || *house_user != eff_id->substr(2)) {
+            const bool is_owner = is_bound && *house_user == eff_id->substr(2);
+            if (!is_owner && !(is_bound && visit_allowed(req.headers_raw, *house_user, friends_cache, presence, true))) {
                 r.status = 403; r.status_text = "Forbidden";
                 r.body = "{\"ok\":false,\"reason\":\"not_your_house\"}";
                 return r;
             }
-            house.house_instance_for(*house_user);
-            if (auto pos = house.last_house_position(*house_user)) {
-                resume_x = pos->x; resume_y = pos->y; resume_facing = pos->facing;
-                has_resume = true;
+            if (is_owner) {
+                house.house_instance_for(*house_user);
+                if (auto pos = house.last_house_position(*house_user)) {
+                    resume_x = pos->x; resume_y = pos->y; resume_facing = pos->facing;
+                    has_resume = true;
+                }
             }
         }
 

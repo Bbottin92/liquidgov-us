@@ -14,10 +14,13 @@ long long now_ms() {
 } // namespace
 
 std::vector<std::string> FriendsCache::get(const std::string& headers_raw) {
-    if (!civic::has_session_cookie(headers_raw)) return {};
+    // Key on the Cookie value only -- never the whole request head, whose
+    // unrelated headers would make the same session miss the cache.
+    auto cookie = civic::session_cookie(headers_raw);
+    if (!cookie) return {};
 
     const long long now = now_ms();
-    auto it = cache_.find(headers_raw);
+    auto it = cache_.find(*cookie);
     if (it != cache_.end() && now - it->second.fetched_ms < kTtlMs) return it->second.friends;
 
     // Drop expired entries before growing -- and, if the map is still at
@@ -35,7 +38,7 @@ std::vector<std::string> FriendsCache::get(const std::string& headers_raw) {
     Entry fresh;
     fresh.friends = civic::resolve_friends(headers_raw);
     fresh.fetched_ms = now;
-    cache_[headers_raw] = fresh;
+    cache_[*cookie] = fresh;
     return fresh.friends;
 }
 

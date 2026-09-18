@@ -82,6 +82,10 @@ bool has_session_cookie(const std::string& headers_raw) {
     return session_cookie_header(headers_raw).has_value();
 }
 
+std::optional<std::string> session_cookie(const std::string& headers_raw) {
+    return session_cookie_header(headers_raw);
+}
+
 std::optional<std::string> resolve_username(const std::string& headers_raw) {
     auto body = fetch_body("/internal/session-user", headers_raw);
     if (!body) return std::nullopt;

@@ -89,6 +89,16 @@ declared *after* the code that builds the world runs, so the whole
 client died at load with `undefined.push`. Moved above the tile ids.
 Static reading would not have found it.
 
+## Should-fix from GROK_FRIENDS_REVIEW.md, closed before deploy
+
+`FriendsCache` was keyed by the whole request head while its comment
+said cookie. Now keyed on the `Cookie:` value only
+(`civic::session_cookie`). Verified: four polls with the same cookie but
+different unrelated headers made one civic call; a different cookie made
+a second; a guest made none; a poll past the 15s TTL made a fresh one.
+Folded in now because it was one small commit, and a later patch would
+have cost another daemon restart with live occupants on the box.
+
 No deploy step run. Deploying this **does** touch civic (binary rebuild
 + `liquidgov` restart), unlike the last three rounds: daemon and civic
 both rebuilt, civic must be up before the daemon's first lots poll

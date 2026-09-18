@@ -26,6 +26,11 @@ std::optional<std::string> resolve_username(const std::string& headers_raw);
 // for anonymous guests without a socket round trip.
 bool has_session_cookie(const std::string& headers_raw);
 
+// The `Cookie:` header value itself (only when it carries lg_session), for
+// callers that need a stable per-session key -- the whole request head
+// changes with unrelated headers and is the wrong thing to key on.
+std::optional<std::string> session_cookie(const std::string& headers_raw);
+
 // Friends query (glue.md, GROK_V6_ANSWER.md): the mutual, non-blocked
 // friends of *that cookie's* account, via civic's same-box
 // /internal/friends. Empty on every failure path -- no cookie, civic

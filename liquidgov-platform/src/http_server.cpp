@@ -7532,6 +7532,33 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             "Cache-Control: private, max-age=300\r\nContent-Disposition: inline; filename=\"portrait.png\"\r\n");
     }
 
+    // /canvas-frame/<username>/latest -- the newest saved snapshot, for the
+    // commons wall slot (glue.md "Wall-slot bitmap"). A separate path token,
+    // registered ahead of the index route below on purpose: that handler
+    // std::stoi()s the last segment, so "latest" must never reach it (it
+    // would 404 today, and any looser parse would read as frame 0 -- the
+    // first stroke, often near-blank). Same checks as the index route
+    // (unknown user, the viewer's own block check -- anonymous skips it --
+    // no frames, missing blob); every one is a plain 404, which the game
+    // reads as "empty wall slot", not a broken image. Read-only.
+    if(method=="GET"&&path.rfind("/canvas-frame/",0)==0&&path.size()>21&&
+       path.compare(path.size()-7,7,"/latest")==0) {
+        const std::string who = path.substr(14, path.size()-14-7);
+        std::string body404 = "not found";
+        if (!valid_username(who)) return http_raw("404 Not Found", "text/plain; charset=utf-8", body404);
+        auto found = g_store.find_by_username(who);
+        if (!found) return http_raw("404 Not Found", "text/plain; charset=utf-8", body404);
+        if (acc && g_store.is_blocked(user, found->username))
+            return http_raw("404 Not Found", "text/plain; charset=utf-8", body404);
+        auto frames = g_store.canvas_frames(found->id);
+        if (frames.empty()) return http_raw("404 Not Found", "text/plain; charset=utf-8", body404);
+        auto bytes = g_blobs.get(frames.back());
+        if (!bytes) return http_raw("404 Not Found", "text/plain; charset=utf-8", body404);
+        std::string png(bytes->begin(), bytes->end());
+        return http_raw("200 OK", "image/png", png,
+            "Cache-Control: private, max-age=300\r\nContent-Disposition: inline; filename=\"frame.png\"\r\n");
+    }
+
     // /canvas-frame/<username>/<index> -- one saved drawing snapshot.
     // Requested by the profile page's own background-image CSS
     // (server-generated, not user CSS -- see profile_canvas_css), and

@@ -1088,6 +1088,33 @@ var isBound = false;
 // Whose house I'm standing in while mode === "visit" (friends policy).
 var visitingOwner = null;
 
+// The wall-slot portrait: civic's `/canvas-frame/<owner>/latest` (same
+// origin as this page on liquidgov.us; the browser sends the viewer's own
+// cookie, which is what lets civic apply its block check). Any failure --
+// 404 for no drawing, a block, an unknown user, or no civic at all on a local
+// dev page -- simply means no portrait: the slot stays as it always was.
+// Never probed by index, never fetched by the daemon (nginx.md).
+var wallPortrait = { owner: null, img: null, ok: false };
+
+function wallOwnerFor(region) {
+  var prefix = "instance:house:";
+  if (typeof region !== "string" || region.indexOf(prefix) !== 0) return null;
+  return region.slice(prefix.length) || null;
+}
+
+function loadWallPortrait(owner) {
+  if (wallPortrait.owner === owner) return;   // called every frame; only acts on a change
+  var img = null;
+  wallPortrait = { owner: owner, img: null, ok: false };
+  if (owner) {
+    img = new Image();
+    wallPortrait.img = img;
+    img.onload = function () { if (wallPortrait.img === img) { wallPortrait.ok = true; forceRedraw = true; } };
+    img.src = "/canvas-frame/" + encodeURIComponent(owner) + "/latest";
+  }
+  forceRedraw = true;
+}
+
 // Bound inventory. The daemon answers from my own session cookie (no name
 // is ever sent), most recent pickup first. Failure is silent: the local
 // pickup still works, it just won't be remembered.
@@ -1540,17 +1567,50 @@ function drawSpace(camX, camY) {
   // V2 stretch: the placed lab item, drawn over the baked wall-slot tile
   // itself -- a flat color square + label, not a sprite (this game has
   // no item-sprite assets, see art.md's locked figure-only atlas).
+  // The house owner's real profile canvas, hung in the wall slot
+  // (glue.md "Wall-slot bitmap"): the latest saved frame from civic, only in a
+  // house (yours, or a friend's you're visiting) -- the shared demo house and
+  // the lab have no owner, so they keep the empty slot.
+  var wallOwner = (mode === "house" || mode === "visit") ? wallOwnerFor(INTERIOR_INSTANCE_KEY[mode]) : null;
+  loadWallPortrait(wallOwner);
+  var portraitOn = !!(wallOwner && wallPortrait.ok);
+  if (portraitOn) {
+    var pfx = 6 * TILE - camX, pfy = 0 * TILE - camY;         // 3 tiles wide, 2 tall, centered on the slot
+    ctx.fillStyle = "#d8cdb0";
+    ctx.fillRect(pfx, pfy, 3 * TILE, 2 * TILE);
+    var iw = wallPortrait.img.naturalWidth, ih = wallPortrait.img.naturalHeight;
+    var pad = 3, boxW = 3 * TILE - pad * 2, boxH = 2 * TILE - pad * 2;
+    var sc = Math.min(boxW / iw, boxH / ih);
+    var dw = iw * sc, dh = ih * sc;
+    ctx.drawImage(wallPortrait.img, pfx + (3 * TILE - dw) / 2, pfy + (2 * TILE - dh) / 2, dw, dh);
+  }
+
+  // V2 stretch: the placed lab item. With no portrait it is drawn over the
+  // baked wall-slot tile itself as before -- a flat color square + label, not
+  // a sprite (this game has no item-sprite assets, see art.md's locked
+  // figure-only atlas). With a portrait hung there it shrinks to a badge on
+  // the frame's corner, so a placed item and the real portrait can share the
+  // one slot instead of one hiding the other.
   if ((mode === "demoHouse" || mode === "house" || mode === "visit") && placedItem) {
     var info = PLACED_ITEM_INFO[placedItem];
     if (info) {
       var wx = 7 * TILE - camX, wy = 0 * TILE - camY;
       ctx.fillStyle = info.color;
-      ctx.fillRect(wx + 2, wy + 2, TILE - 4, TILE - 4);
-      ctx.fillStyle = INK;
-      ctx.font = "7px monospace";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(info.label, wx + TILE / 2, wy + TILE + 6);
+      if (portraitOn) {
+        ctx.fillRect(6 * TILE - camX + 3 * TILE - 11, wy + 2 * TILE - 11, 9, 9);
+        ctx.fillStyle = INK;
+        ctx.font = "7px monospace";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(info.label, 6 * TILE - camX + 1.5 * TILE, wy + 2 * TILE + 6);
+      } else {
+        ctx.fillRect(wx + 2, wy + 2, TILE - 4, TILE - 4);
+        ctx.fillStyle = INK;
+        ctx.font = "7px monospace";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(info.label, wx + TILE / 2, wy + TILE + 6);
+      }
     }
   }
 

@@ -1473,6 +1473,20 @@ Not bug classes. Not “what is live on the droplet.”
   as a guest afterward, a lookup sent nothing. Account deleted; its game
   rows are orphans by design. The backup is left on the box. Remaining
   named options: **mine**, **`/latest`**.
+- **2026-09-18 — /latest built, local-tested, not deployed.** Brandon
+  said "BUILD /latest". Third civic edit: one branch,
+  `GET /canvas-frame/<username>/latest`, registered ahead of the existing
+  index route (left byte-identical -- it `stoi`s the last segment, so
+  `latest` must never reach it; frame 0 is the banned first stroke). Same
+  checks as the index route, every failure a plain 404 the game reads as
+  an empty slot. Client: in a house (yours, or a friend's you are
+  visiting) the owner's real profile drawing hangs in the wall slot,
+  fetched same-origin so the viewer's cookie drives civic's block check;
+  the shared demo house and lab keep the empty slot; a placed item
+  shrinks to a corner badge so the two share the slot. Tested with real
+  uploaded PNGs (a second frame becomes `/latest`, index 0 unchanged,
+  block and clear both 404) and a real browser. Deploy order: civic, then
+  client; no daemon, no nginx. See `latest-built.md`. Holding on deploy.
 
 ## Split: civic site vs game
 

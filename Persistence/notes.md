@@ -1441,6 +1441,24 @@ Not bug classes. Not “what is live on the droplet.”
   **bound inventory**; `open`/`locked` policies are later. Nothing is
   queued and no question is pending with Grok -- it already named the
   options.
+- **2026-09-18 — bound inventory built, local-tested, not deployed.**
+  Brandon said "BUILD bound inventory". A bound player's lab lookups now
+  persist in `schema.sql`'s never-written `inventory` table and are
+  restored on load, so the wall places what you last looked up even
+  after a refresh or a daemon restart. The table had no recency, and
+  "most recent" is the only thing the client uses inventory for, so it
+  gains `updated_at` (ms) -- **the first change to an existing table**:
+  `migrate()` only runs `schema.sql` on a brand-new DB, so a new
+  idempotent `ensure_inventory_recency()` adds the column at startup.
+  Tested against an old-shape DB, twice (idempotent). Routes
+  `POST /presence/pickup` and `GET /presence/inventory` live under
+  `/presence/` so nginx needs no change; identity is the cookie only,
+  no guest fallback (guests stay RAM). Pickups aren't consumed and no
+  menu exists. Tested with real civic accounts and a real restart, plus
+  a real-browser client pass (guest sends nothing; bound restores once;
+  an in-flight pick isn't overwritten). Daemon + client only. Deploy
+  note: back up the production `commons.sqlite` first. See
+  `bound-inventory-built.md`. Holding on deploy.
 
 ## Split: civic site vs game
 

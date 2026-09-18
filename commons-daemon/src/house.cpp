@@ -125,6 +125,46 @@ void HouseStore::snapshot_leave(const std::string& username, int x, int y, int f
     sqlite3_finalize(st);
 }
 
+bool HouseStore::add_pickup(const std::string& username, const std::string& item_slug, long long now_ms) {
+    int player_id = find_or_create_player(username);
+    sqlite3_stmt* st = nullptr;
+    // MIN(.., 99): a lookup station can be pressed forever; the count is a
+    // souvenir, not a balance worth letting a stuck key grow without bound.
+    sqlite3_prepare_v2(db_,
+        "INSERT INTO inventory (player_id, item_id, quantity, updated_at) "
+        "SELECT ?1, item_id, 1, ?3 FROM items WHERE slug = ?2 "
+        "ON CONFLICT(player_id, item_id) DO UPDATE SET "
+        "quantity = MIN(quantity + 1, 99), updated_at = excluded.updated_at;",
+        -1, &st, nullptr);
+    sqlite3_bind_int(st, 1, player_id);
+    sqlite3_bind_text(st, 2, item_slug.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(st, 3, now_ms);
+    sqlite3_step(st);
+    sqlite3_finalize(st);
+    return sqlite3_changes(db_) > 0;
+}
+
+std::vector<HouseStore::InventoryEntry> HouseStore::inventory_of(const std::string& username) {
+    std::vector<InventoryEntry> out;
+    sqlite3_stmt* st = nullptr;
+    sqlite3_prepare_v2(db_,
+        "SELECT i.slug, inv.quantity FROM inventory inv "
+        "JOIN players p ON p.player_id = inv.player_id "
+        "JOIN items i ON i.item_id = inv.item_id "
+        "WHERE p.lg_username = ?1 AND inv.quantity > 0 "
+        "ORDER BY inv.updated_at DESC, inv.item_id DESC;",
+        -1, &st, nullptr);
+    sqlite3_bind_text(st, 1, username.c_str(), -1, SQLITE_TRANSIENT);
+    while (sqlite3_step(st) == SQLITE_ROW) {
+        InventoryEntry e;
+        e.slug = reinterpret_cast<const char*>(sqlite3_column_text(st, 0));
+        e.quantity = sqlite3_column_int(st, 1);
+        out.push_back(e);
+    }
+    sqlite3_finalize(st);
+    return out;
+}
+
 std::string HouseStore::get_wall_slot(int instance_id) {
     sqlite3_stmt* st = nullptr;
     sqlite3_prepare_v2(db_,

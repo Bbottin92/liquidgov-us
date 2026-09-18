@@ -110,6 +110,14 @@ CREATE TABLE inventory (
     player_id    INTEGER NOT NULL REFERENCES players(player_id),
     item_id      INTEGER NOT NULL REFERENCES items(item_id),
     quantity     INTEGER NOT NULL DEFAULT 0,
+    -- Unix *milliseconds* of the last pickup of this item, so "the item I
+    -- most recently picked up" (what a wall slot places) survives a
+    -- restart -- ms, not seconds, so two pickups in one second still order.
+    -- Added after the table first shipped: an existing DB gets it from
+    -- Database::ensure_inventory_recency() at startup, since migrate() only
+    -- runs this file when the DB is brand new. DEFAULT 0 = "before recency
+    -- was tracked".
+    updated_at   INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (player_id, item_id)
 );
 

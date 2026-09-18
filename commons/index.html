@@ -651,11 +651,13 @@ labSpace.interactables = [
   { type: "labStation", recipe: "chalk", x: 14, y: 7, prompt: "Look" }
 ];
 
-// Session-only pickups (v1.md: RAM, vanishes on refresh -- no SQLite in
-// this preview). V2: lastPickedItem is what the wall-slot places --
-// simplest possible "which item" choice given there's no inventory menu
-// to pick from; the most recent lookup is what a player would expect to
-// be holding.
+// Pickups. A guest's are session-only (v1.md: RAM, vanish on refresh --
+// "Do not invent guest persistence"). A bound player's are also saved by the
+// daemon (GROK_V6_ANSWER.md, bound inventory) and restored on load, so
+// `inventory` and `lastPickedItem` survive a refresh or a daemon restart.
+// V2: lastPickedItem is what the wall-slot places -- simplest possible
+// "which item" choice given there's no inventory menu to pick from; the most
+// recent lookup is what a player would expect to be holding.
 var inventory = {};
 var lastPickedItem = null;
 
@@ -1086,6 +1088,30 @@ var isBound = false;
 // Whose house I'm standing in while mode === "visit" (friends policy).
 var visitingOwner = null;
 
+// Bound inventory. The daemon answers from my own session cookie (no name
+// is ever sent), most recent pickup first. Failure is silent: the local
+// pickup still works, it just won't be remembered.
+var inventoryLoaded = false;
+
+function netLoadInventory() {
+  fetch(DAEMON + "/presence/inventory")
+    .then(function (r) { return r.json(); })
+    .then(function (j) {
+      var items = (j && j.items) || [];
+      for (var i = 0; i < items.length; i++) inventory[items[i].item] = items[i].qty;
+      // Only fill the "what does the wall place" default if nothing was
+      // picked up yet this session -- a lookup made before this answer
+      // landed is the more recent one.
+      if (items.length && !lastPickedItem) lastPickedItem = items[0].item;
+    })
+    .catch(function () { inventoryLoaded = false; });
+}
+
+function netPickup(item) {
+  if (!isBound || !netReady) return;
+  fetch(DAEMON + "/presence/pickup", { method: "POST", body: netBody({ item: item }) }).catch(function () {});
+}
+
 // A refused or ended visit walks the visitor back outside. The next frame's
 // ordinary region-mismatch tick rekeys them out of the optimistic visit key
 // -- the same mechanism every other door already relies on.
@@ -1113,6 +1139,9 @@ function netHandleJoinResponse(r) {
     }
     if (j) {
       isBound = !!j.bound;
+      // Bound: pull my saved pickups once per bind. Guests never do.
+      if (j.bound && !inventoryLoaded) { inventoryLoaded = true; netLoadInventory(); }
+      if (!j.bound) inventoryLoaded = false;
       // GROK_HOUSE_REVIEW.md must-fix: display_name is the *disambiguated*
       // Square nameplate ("brandon (2)" if a guest already typed
       // "brandon") -- never build the house key from it. "username" is
@@ -1463,6 +1492,7 @@ function tryInteract() {
       var r = LAB_RECIPES[it.recipe];
       inventory[r.item] = (inventory[r.item] || 0) + 1;
       lastPickedItem = r.item;
+      netPickup(r.item);
       showToast(r.name + ".");
     } else if (it.type === "shutter") {
       showToast("Closed for now.");

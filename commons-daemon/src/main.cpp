@@ -259,6 +259,7 @@ int main(int argc, char** argv) {
 
     commons::Database db(db_path);
     db.migrate("schema.sql", "seed.sql");
+    db.ensure_inventory_recency();
     std::cerr << "commons-daemon: DB ready at " << db_path << "\n";
 
     commons::PresenceStore presence;
@@ -303,6 +304,53 @@ int main(int argc, char** argv) {
         auto cred = guests.mint();
         r.body = "{\"id\":" + commons::json::str(cred.id) +
                  ",\"secret\":" + commons::json::str(cred.secret) + "}";
+        return r;
+    });
+
+    // Bound inventory (GROK_V6_ANSWER.md: "bound lab pickups still vanish").
+    // Identity is the forwarded session cookie and nothing else: no id, no
+    // secret, no username parameter, and no guest fallback -- a guest's
+    // pickups stay RAM-only in the client, by design ("Do not invent guest
+    // persistence"). Both live under /presence/ so the existing nginx
+    // location (which already forwards Cookie) covers them: no nginx change.
+    // GET must be registered before the /presence/<region> prefix route
+    // (first-match dispatch would read "inventory" as a region).
+    server.route("GET", "/presence/inventory", [&](const commons::HttpRequest& req) {
+        commons::HttpResponse r;
+        std::string body = "{\"items\":[";
+        if (auto username = commons::civic::resolve_username(req.headers_raw)) {
+            bool first = true;
+            for (const auto& e : house.inventory_of(*username)) {
+                if (!first) body += ",";
+                first = false;
+                body += "{\"item\":" + commons::json::str(e.slug) + ",\"qty\":" + std::to_string(e.quantity) + "}";
+            }
+        }
+        r.body = body + "]}";
+        return r;
+    });
+
+    server.route("POST", "/presence/pickup", [&](const commons::HttpRequest& req) {
+        using namespace commons::reqjson;
+        commons::HttpResponse r;
+        auto item = field_str(req.body, "item");
+        if (!item) {
+            r.status = 400; r.status_text = "Bad Request";
+            r.body = "{\"ok\":false,\"reason\":\"missing_field\"}";
+            return r;
+        }
+        auto username = commons::civic::resolve_username(req.headers_raw);
+        if (!username) {
+            r.status = 403; r.status_text = "Forbidden";
+            r.body = "{\"ok\":false,\"reason\":\"not_bound\"}";
+            return r;
+        }
+        if (!house.add_pickup(*username, *item, now_ms())) {
+            r.status = 400; r.status_text = "Bad Request";
+            r.body = "{\"ok\":false,\"reason\":\"unknown_item\"}";
+            return r;
+        }
+        r.body = "{\"ok\":true}";
         return r;
     });
 

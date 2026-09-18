@@ -72,4 +72,15 @@ void Database::migrate(const std::string& schema_path, const std::string& seed_p
     }
 }
 
+void Database::ensure_inventory_recency() {
+    sqlite3_stmt* st = nullptr;
+    bool has_column = false;
+    if (sqlite3_prepare_v2(db_, "SELECT 1 FROM pragma_table_info('inventory') WHERE name = 'updated_at';",
+                           -1, &st, nullptr) == SQLITE_OK) {
+        has_column = sqlite3_step(st) == SQLITE_ROW;
+    }
+    sqlite3_finalize(st);
+    if (!has_column) exec("ALTER TABLE inventory ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0;");
+}
+
 } // namespace commons

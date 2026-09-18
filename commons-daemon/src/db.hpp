@@ -21,6 +21,12 @@ public:
     sqlite3* handle() const { return db_; }
 
     void migrate(const std::string& schema_path, const std::string& seed_path);
+
+    // migrate() only ever runs schema.sql on a brand-new DB, so a column
+    // added to an existing table later needs its own idempotent step:
+    // inventory.updated_at (bound inventory). No-op when the column is
+    // already there (fresh DBs get it from schema.sql itself).
+    void ensure_inventory_recency();
     void exec_file(const std::string& path);
     void exec(const std::string& sql);
 

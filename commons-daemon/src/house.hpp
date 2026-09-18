@@ -1,6 +1,7 @@
 #pragma once
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "sqlite3.h"
 
@@ -48,6 +49,20 @@ public:
     // which always creates one first, but this stays defensive rather
     // than assumed).
     void snapshot_leave(const std::string& username, int x, int y, int facing);
+
+    // Bound inventory (GROK_V6_ANSWER.md: lab pickups "vanish on refresh"
+    // for a bound player). schema.sql's `inventory` table, first time it is
+    // ever written. Guests stay RAM-only -- nothing here is reachable
+    // without a resolved civic username. A pickup counts up (capped),
+    // it is never consumed: the lab is still real-name flavor, not a
+    // crafting economy (pushback.md).
+    //
+    // False if `item_slug` isn't a real catalog item.
+    bool add_pickup(const std::string& username, const std::string& item_slug, long long now_ms);
+
+    struct InventoryEntry { std::string slug; int quantity = 0; };
+    // Most recently picked-up first -- element 0 is what the wall places.
+    std::vector<InventoryEntry> inventory_of(const std::string& username);
 
     // Persistent, per-house wall slot -- schema.sql's placed table,
     // scoped by instance_id, never the RAM PlacedStore demo/lab use.

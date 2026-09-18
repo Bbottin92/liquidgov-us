@@ -1417,6 +1417,19 @@ Not bug classes. Not “what is live on the droplet.”
   nginx. Tested with three real civic accounts (friend, non-friend,
   blocked mid-visit; guest; owner offline) plus a real-browser client
   pass. See `visiting-built.md`. Holding on deploy.
+- **2026-09-18 — visiting deployed, live.** Brandon said "deploy"
+  (daemon, then client; no civic, no nginx). Drift-checked first --
+  only lines this round rewrote. Verified in production with three
+  throwaway accounts: friend refused while the owner is offline;
+  stranger, guest, and stranger-placing all 403; in a real browser the
+  friend's lot door read "Visit", walking in landed in the owner's house
+  at the normal tile with her wall item visible, and the wall refused
+  the visitor. A read-only query of the production DB showed only the
+  owner has a `players` row -- the visit stored nothing. Then the owner
+  blocked the friend and, within one cache window, the real client was
+  walked out with a message, the door went dark, the house emptied, and
+  re-entry returned 403. All three accounts deleted via
+  `/settings/delete`. See `visiting-built.md`'s "Deployed" section.
 
 ## Split: civic site vs game
 

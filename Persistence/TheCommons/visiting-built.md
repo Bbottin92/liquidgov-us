@@ -71,5 +71,36 @@ evicted with a toast and no reauth.
 - `open` and `locked` policies, the mine, `/latest` -- unchanged.
 - The ~30s snapshot, `rebind()`, session cache -- still parked.
 
-No deploy step run. This round changes daemon + client only (civic and
-nginx untouched): daemon first, then client.
+## Deployed 2026-09-18
+
+Brandon: "deploy" -- daemon first, then client; civic and nginx never
+touched (`liquidgov.service` not restarted). Drift-checked first: every
+line removed from the droplet's `main.cpp` and `index.html` was one this
+round deliberately rewrote; no other daemon file differed. No CMake
+change, so no reconfigure. Daemon rebuilt, restarted, confirmed healthy
+(guest mint, `/presence/lots`, outdoor poll through nginx) *before* the
+client was synced.
+
+Verified in production with three throwaway accounts (owner, her mutual
+friend, an unrelated stranger):
+- Refusals: the friend is refused while the owner isn't in the game; once
+  she is, the stranger's direct join into her house is 403, a guest's is
+  403, and the stranger's placement is 403.
+- Real browser as the friend: lot 2 read "vtowner / Visit"; walking in
+  put the client in the owner's house instance, entered at the normal
+  tile (no resume), showed the owner's wall item, and the wall said
+  "That's vtowner's wall." without changing it.
+- A read-only query of the production DB showed **only the owner has a
+  `players` row** -- the visit stored nothing for the friend.
+- Real eviction: the owner blocked the friend; ~18s later (inside one
+  15s cache window plus a move) the friend's client walked out with
+  "You're no longer welcome there.", the door went dark, the house
+  emptied, and a fresh join attempt returned 403.
+- Both services active, logs clean, `/` and `/commons/` 200, public
+  `/internal/friends` still 404.
+
+All three accounts deleted through `/settings/delete` and confirmed dead.
+Their game-side rows are orphans by design.
+
+Live. Friends can visit each other. `open` and `locked`, the mine,
+`/latest`, and the parked snapshot/rebind/cache gaps are unchanged.

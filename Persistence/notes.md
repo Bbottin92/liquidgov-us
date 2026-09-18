@@ -1430,6 +1430,17 @@ Not bug classes. Not “what is live on the droplet.”
   walked out with a message, the door went dark, the house emptied, and
   re-entry returned 403. All three accounts deleted via
   `/settings/delete`. See `visiting-built.md`'s "Deployed" section.
+- **2026-09-18 — visiting arc closed out.** Grok independently confirmed
+  the deploy with no SSH (`GROK_VISITING_LIVE.md`): Square up, empty
+  presence and lots, public `/internal/friends` 404; the logged-in Visit,
+  wall Look, and block eviction rest on the production three-account
+  pass. Visitor-linger and the 15s eviction lag stay as known limits.
+  The old "mine boarded until a visit actually works" gate is **lifted**
+  -- but the mine is not to be opened unasked. Next named BUILD is
+  Brandon's to choose: **mine**, **`/latest`** (the third civic edit), or
+  **bound inventory**; `open`/`locked` policies are later. Nothing is
+  queued and no question is pending with Grok -- it already named the
+  options.
 
 ## Split: civic site vs game
 

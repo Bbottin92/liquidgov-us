@@ -76,8 +76,43 @@ bound pickup POSTs the right item; a pickup made before the load lands is
 not overwritten; and the restored item is what the wall really placed
 (read back from the daemon).
 
-No deploy step run. Daemon + client only; **daemon first** -- the
-migration runs when the new daemon starts against the production DB, and
-the client needs the routes to exist. Take a copy of the production
-`commons.sqlite` before the restart: this is the first change that alters
-an existing table there.
+## Deployed 2026-09-18
+
+Brandon: "deploy" -- backup, then daemon, then client; no civic, no
+nginx (`liquidgov.service` never restarted).
+
+1. **Backup first.** SQLite's own online backup (not a file copy, so it is
+   consistent with the daemon running in WAL mode) to
+   `/var/lib/commons/backups/commons.sqlite.pre-inventory-20260918T204938Z`:
+   `integrity_check` ok, old-shape `inventory` (no `updated_at`), baseline
+   counts recorded -- items 3, recipes 3, maps 14, map_instances 4,
+   players 2, placed 2, inventory 0. Left in place.
+2. **Drift check:** the daemon side was purely additive; the only line the
+   client diff removed was the comment this round rewrote.
+3. **Daemon** rebuilt (no CMake change) and restarted. Read-only check of
+   the *live* DB afterward: `updated_at` present, `integrity_check` ok,
+   and every pre-existing row count identical to the baseline -- the
+   migration ran on real production data. New routes answered through
+   nginx: guest inventory `[]`, guest pickup 403, `/presence/1,1` still
+   occupants.
+4. **Client** synced last; served page carries the new code.
+
+Verified in production with a throwaway account in a real browser:
+- Bound, in the real lab: looked up chalk then copper. Two
+  `POST /commons/presence/pickup` -> 200, and `GET
+  /presence/inventory` returned copper first, chalk second.
+- **Reloaded the page** (client state confirmed empty), walked in
+  without touching the lab: the client restored both items and set the
+  wall default to copper. Entered its house and placed -- the wall took
+  `copper_acetate_bottle`, read back from production.
+- Deleted the account, then as a guest in the same browser: a lab lookup
+  counted locally and sent **no** pickup and no inventory request.
+- Both services active, integrity ok, `/` and `/commons/` 200, public
+  `/internal/friends` still 404.
+
+The deleted account's two `inventory` rows (and its `players`/house/wall
+rows) remain as orphans by design; nothing deletes game data when a civic
+account goes away.
+
+Live. The backup stays on the box; it can be removed once you're
+comfortable.

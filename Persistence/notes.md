@@ -1459,6 +1459,20 @@ Not bug classes. Not “what is live on the droplet.”
   an in-flight pick isn't overwritten). Daemon + client only. Deploy
   note: back up the production `commons.sqlite` first. See
   `bound-inventory-built.md`. Holding on deploy.
+- **2026-09-18 — bound inventory deployed, live.** Brandon said
+  "deploy" (backup, daemon, client; no civic, no nginx). Took a
+  consistent online backup of the production `commons.sqlite` first
+  (`/var/lib/commons/backups/commons.sqlite.pre-inventory-20260918T204938Z`,
+  integrity ok, baseline counts recorded), drift-checked, then deployed
+  the daemon and confirmed on the *live* DB that `updated_at` was added,
+  integrity ok, and every pre-existing row count matched the baseline --
+  the first migration on real production data. Then the client. In a real
+  browser: a bound throwaway account looked up two lab stations, the
+  daemon stored them (most recent first), a page reload restored both
+  with no lab visit, and the wall placed the restored item in its house;
+  as a guest afterward, a lookup sent nothing. Account deleted; its game
+  rows are orphans by design. The backup is left on the box. Remaining
+  named options: **mine**, **`/latest`**.
 
 ## Split: civic site vs game
 

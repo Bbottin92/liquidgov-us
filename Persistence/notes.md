@@ -1385,6 +1385,21 @@ Not bug classes. Not “what is live on the droplet.”
   is built) that reading the diff would not have. Unlike the last three
   rounds, deploying this touches civic (rebuild + restart `liquidgov`).
   See `friends-query-built.md`. Holding on deploy.
+- **2026-09-18 — friends query deployed, live.** Brandon said "deploy"
+  (civic, then daemon, then client; no nginx). Drift-checked first --
+  civic was 25 added lines, zero removed. Civic rebuilt and restarted
+  first: public `/internal/friends` 404s, same-box no-cookie is `{}`,
+  `/` stayed 200. Then the daemon (new `friends.cpp`), then the client.
+  Verified in production with three throwaway accounts (one accepted
+  friend, one never-accepted): `/commons/presence/lots` correct for each
+  and for a guest; in a real browser a lit lot 2 showed the friend's
+  name, the not-a-friend account stayed absent, tapping it said visiting
+  isn't open, the tile stayed solid, and a direct join into another
+  account's house still returned 403. All three accounts deleted through
+  `/settings/delete`. Process note: `/tmp` cookie jars did not survive
+  between shell calls, so my first friend keepalive silently lapsed --
+  caught because the door stayed dark, not assumed. Visiting is next and
+  needs an open/friends/locked decision first.
 
 ## Split: civic site vs game
 

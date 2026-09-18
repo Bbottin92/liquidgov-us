@@ -99,7 +99,45 @@ a second; a guest made none; a poll past the 15s TTL made a fresh one.
 Folded in now because it was one small commit, and a later patch would
 have cost another daemon restart with live occupants on the box.
 
-No deploy step run. Deploying this **does** touch civic (binary rebuild
+## Deployed 2026-09-18
+
+Brandon: "deploy" -- **civic, then daemon, then client**, no nginx, per
+`GROK_FRIENDS_REVIEW.md`. Drift-checked first: civic's diff against the
+droplet was 25 added lines and zero removed (only the new route); the
+daemon diffs removed only lines this round intentionally rewrote.
+
+1. **Civic:** synced, rebuilt, `liquidgov` restarted. Public
+   `https://liquidgov.us/internal/friends` -> **404** (plain
+   `not found`); same-box, no cookie, no XFF -> `{}`; `/` stayed 200.
+2. **Daemon:** synced, reconfigured (new `friends.cpp`), rebuilt,
+   restarted; `/health` ok, and `/commons/presence/lots` answered
+   through the existing nginx location with no config change.
+3. **Client:** synced last; served page carries the lot code.
+
+Verified in production with three throwaway accounts (one requested
+the others; two accepted, three never did):
+- `/commons/presence/lots`: empty while friends were offline;
+  `["fltesttwo"]` for one once two was in the game; `["fltestone"]` for
+  two; `[]` for three (no accepted friendship) and for a guest.
+- Real browser, logged in as one, at the Homestead facade: lot 2 lit
+  with `fltesttwo`, the other five boarded, the online-but-not-a-friend
+  account absent. Standing at the lit door: "fltesttwo's house.
+  Visiting isn't open yet.", mode stayed outdoor, tile still solid.
+- A direct join into another account's house from one's own session:
+  403 `not_your_house` -- interiors are still closed.
+- Civic and daemon both active, logs clean, `/` and `/commons/` 200.
+
+Test hygiene: `/tmp` did not survive between shell calls, so the first
+keepalive lost its cookie jars and the friend silently expired --
+caught because the door stayed dark, fixed by making the keepalive log
+in for itself inside one process. All three accounts deleted through
+`/settings/delete` and confirmed dead; their game-side rows (if any)
+are orphans by design.
+
+Live. Visiting is the next increment and needs an open/friends/locked
+decision first.
+
+(Original note, kept:) Deploying this **does** touch civic (binary rebuild
 + `liquidgov` restart), unlike the last three rounds: daemon and civic
 both rebuilt, civic must be up before the daemon's first lots poll
 resolves anything, no nginx change.

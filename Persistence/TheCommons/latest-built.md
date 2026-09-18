@@ -77,6 +77,53 @@ visit covers it.
 - `mine`, `open`/`locked`, and the parked snapshot/rebind/cache items are
   unchanged.
 
-No deploy step run. Deploying this touches civic: **civic first**
-(rebuild + restart `liquidgov`, then check `/latest` answers), then the
-client. No daemon change and no nginx change.
+## Deployed 2026-09-18
+
+Brandon: "deploy" -- **civic first, then the client**; no daemon, no
+nginx (`commons-daemon` never restarted). Drift-checked first: civic was
+27 added lines and **zero removed**, so the existing index route is
+untouched; the client's removed lines were the draw block this round
+restructured. Civic rebuilt and restarted, `/latest` answered (unknown
+user 404, bare `/canvas-frame/latest` 404, index route still 404 out of
+range) and `/`, `/commons/` stayed up *before* the client was synced.
+
+Verified in production with three throwaway accounts -- a host with a
+**red** drawing, a visitor with a **blue** one, and a bare friend with no
+drawing, both mutual friends of the visitor -- uploaded through the
+site's real `/me/canvas/frame`, in a real browser as the visitor:
+- Anonymous `/latest`: host red, visitor blue, bare 404.
+- **The check that matters:** in the visitor's *own* house the wall showed
+  his blue drawing; walking into the *host's* house it showed the host's
+  **red** (the client's fetched image sampled `220,30,30` from
+  `/canvas-frame/pthost/latest`) -- not his own.
+- The bare friend's house showed the original empty slot, and nothing from
+  the previous house carried over.
+- The viewer blocking the owner: the viewer's request 404s, an anonymous
+  request still 200, the bare friend still 404.
+- Civic and daemon active, `/` and `/commons/` 200, public
+  `/internal/friends` and `/internal/session-user` still 404. All three
+  accounts deleted through `/settings/delete`; their drawings went with
+  them (`/latest` 404 for all three).
+
+**Behavior worth knowing, not a bug in this round:** the block check is
+one-directional. It hides an owner's frames from a viewer who blocked
+the *owner* -- exactly what the existing index route does, which this
+copies as specified -- not the reverse, and an anonymous request skips it,
+so the drawing is public either way. When the *host* blocked the visitor,
+the visitor still got 200. `canvas-frame.md`'s "either side blocked"
+overstates what the code does. If an owner should be able to hide a drawing
+from someone they blocked, that is a separate civic change.
+
+**Found while verifying, unrelated to /latest and NOT fixed here:** for a
+bound player the client's "is this occupant me" filter compares against
+`netId`, which is the *guest* credential, while the daemon's row for a
+bound player is `u:<name>`. So a bound player's own row is treated as
+another occupant and drawn as a second copy of themselves (in the
+screenshots, a second nameplate). In steady state it sits under the player;
+while walking it lags by up to one poll interval. It predates this round --
+it has been live since cookie bind. The fix is small (also filter the
+player's own `u:` id, which `j.username` already provides). It was
+deliberately not bundled into this deploy.
+
+Live. `/latest` is a real path, the wall shows the host's drawing, and
+`mine` stays shut.

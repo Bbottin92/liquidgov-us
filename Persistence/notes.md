@@ -1487,6 +1487,24 @@ Not bug classes. Not “what is live on the droplet.”
   uploaded PNGs (a second frame becomes `/latest`, index 0 unchanged,
   block and clear both 404) and a real browser. Deploy order: civic, then
   client; no daemon, no nginx. See `latest-built.md`. Holding on deploy.
+- **2026-09-18 — /latest deployed, live.** Brandon said "deploy" (civic,
+  then client; no daemon, no nginx). Drift-checked first -- civic was 27
+  added lines, zero removed. Verified in production with three throwaway
+  accounts and real uploaded drawings (host red, visitor blue, one bare):
+  in a real browser the visitor's own house showed his blue, the host's
+  house showed the host's **red** (sampled from the fetched image), and
+  the bare friend's house showed the empty slot with nothing carried over.
+  A viewer who blocked the owner gets 404; anonymous still 200. **Two
+  things worth knowing:** (1) civic's block check is one-directional (it
+  hides frames from a viewer who blocked the *owner*, not the reverse, and
+  anonymous skips it) -- copied as specified, and `canvas-frame.md`'s
+  "either side" overstates it; an owner-side hide would be a separate civic
+  change. (2) **Pre-existing client bug found, not fixed:** a bound
+  player's own daemon row (`u:<name>`) isn't filtered out by the client's
+  guest-credential `netId`, so they are drawn as a second copy of
+  themselves, lagging by up to a poll interval while walking. Live since
+  cookie bind. Small fix, deliberately not bundled into this deploy. All
+  accounts deleted. Remaining named option: **mine**.
 
 ## Split: civic site vs game
 

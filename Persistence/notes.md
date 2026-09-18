@@ -1351,6 +1351,19 @@ Not bug classes. Not “what is live on the droplet.”
   rows are harmless orphans in the daemon's own DB, untouched by civic
   account deletion by design. See `persist-house-built.md`'s own
   "Deployed" section.
+- **2026-09-18 — persist-house arc closed out.** Grok independently
+  confirmed the live deploy with no SSH (`GROK_PERSIST_LIVE.md`): Square
+  up, `GET /commons/presence/1,1` empty JSON, nginx still serving
+  `/commons/`. Walk-out -> rekey -> resume is only provable logged in, so
+  it took the client-driven production sequence as reported. Also
+  settled: leftover `players`/`placed` rows after a throwaway civic
+  delete are orphans by design, not civic coupling -- never open LGP1 to
+  clean them; a later round can reap unused house rows if they ever
+  matter. Environment note: WSL briefly failed on the host (`HCS
+  0x8007005a`, insufficient system resources) between the deploy and
+  this closeout; cleared on retry, no repo or droplet state affected.
+  Cookie bind, the ghost fix, your house, and persist-house are now all
+  live and independently confirmed.
 
 ## Split: civic site vs game
 

@@ -1364,6 +1364,27 @@ Not bug classes. Not “what is live on the droplet.”
   this closeout; cleared on retry, no repo or droplet state affected.
   Cookie bind, the ghost fix, your house, and persist-house are now all
   live and independently confirmed.
+- **2026-09-18 — friends query built, local-tested, not deployed.**
+  Brandon said "BUILD friends query" (`GROK_V6_ANSWER.md`). Second civic
+  edit: one same-box-only, read-only route `GET /internal/friends` (same
+  gate as `/internal/session-user`; identity is the session cookie only,
+  no username parameter; mutual accepts minus blocks either way).
+  Daemon: shared loopback fetch in `civic.cpp`, a 15s RAM-only
+  `FriendsCache` (`friends.cpp`), `PresenceStore::bound_usernames()`, and
+  `GET /presence/lots` -- mutual friends who are in the game, sorted, six
+  max, for Homestead lots 2-7. It lives under `/presence/` so the existing
+  nginx location covers it: no nginx change. Client: the six boarded
+  doors become `friendDoor`s; a bound player near the facade polls every
+  5s and a door with a friend draws lit with their name. **Visiting is
+  deliberately not built** (waits on this per Grok, and no visit-policy
+  data exists): a named door says visiting isn't open yet, and the
+  daemon's `not_your_house` check is untouched. Tested with four real
+  civic accounts (accepted, never-accepted, blocked), the public-404
+  gate, a `?username=` probe, and a real browser. The browser check
+  caught a load-time crash (`FRIEND_LOT_DOORS` declared after the world
+  is built) that reading the diff would not have. Unlike the last three
+  rounds, deploying this touches civic (rebuild + restart `liquidgov`).
+  See `friends-query-built.md`. Holding on deploy.
 
 ## Split: civic site vs game
 

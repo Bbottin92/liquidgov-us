@@ -62,6 +62,13 @@ public:
     // ever erases the id it's currently inserting.
     void forget(const std::string& id);
 
+    // Every bound username currently present in any region (occupant ids
+    // "u:<name>", prefix stripped), for the friends-lot doors: atlas.md
+    // resolves a dynamic Homestead door only for a friend who is online
+    // *and* bound. Presence itself still knows nothing about who is
+    // friends with whom -- the caller intersects this with the civic query.
+    std::vector<std::string> bound_usernames();
+
     // True if this exact id currently has a row in `region`. Used to tell
     // whether a cookie-resolved bound id has actually been promoted into
     // *this* region yet -- promotion only happens at join/rekey

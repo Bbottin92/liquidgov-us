@@ -9,12 +9,14 @@
 // client needs to predict against the same rules). Does NOT open LGP1,
 // ever, from any code path here.
 //
-// Friends/cookie forwarding (glue.md, cookie.md, GROK_GLUE_REVIEW.md) is
-// intentionally NOT implemented yet: there is no civic route to call
-// (adding one would mean touching http_server.cpp, out of scope), and
-// there is no droplet to receive a forwarded cookie against. The shape
-// is documented in glue.md; wiring it is later, explicit work.
+// Cookie forwarding (glue.md, cookie.md, cookie-bind.md) is implemented:
+// civic.cpp forwards a visitor's own Cookie to civic's same-box
+// /internal/session-user and /internal/friends routes -- the daemon never
+// parses a session id or opens LGP1 itself. The friends answer is only ever
+// held in a short RAM TTL cache (friends.cpp), never persisted.
 
+#include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cstdlib>
 #include <iostream>
@@ -24,6 +26,7 @@
 
 #include "civic.hpp"
 #include "db.hpp"
+#include "friends.hpp"
 #include "guest.hpp"
 #include "house.hpp"
 #include "http.hpp"
@@ -243,6 +246,7 @@ int main(int argc, char** argv) {
     commons::GuestRegistry guests;
     commons::PlacedStore placed;
     commons::HouseStore house(db.handle());
+    commons::FriendsCache friends_cache;
     commons::HttpServer server(bind_addr, port);
 
     server.route("GET", "/health", [](const commons::HttpRequest&) {
@@ -280,6 +284,44 @@ int main(int argc, char** argv) {
         auto cred = guests.mint();
         r.body = "{\"id\":" + commons::json::str(cred.id) +
                  ",\"secret\":" + commons::json::str(cred.secret) + "}";
+        return r;
+    });
+
+    // Friends query (GROK_V6_ANSWER.md: "mutual accept, RAM TTL, Homestead
+    // lots 2-7"). Which of *your* mutual friends are in the game right now,
+    // in a stable order, for the six dynamic Homestead doors. Identity is
+    // only ever the forwarded session cookie -- there is no username
+    // parameter to ask about anyone else (glue.md: that would be a roster
+    // scrape). Guests, and any request civic doesn't resolve, get an empty
+    // list. Deliberately under /presence/ so the existing nginx location
+    // (which already forwards Cookie) covers it with no config change.
+    // Must be registered before the /presence/<region> prefix route below:
+    // dispatch is first-match, and "lots" would otherwise read as a region.
+    server.route("GET", "/presence/lots", [&](const commons::HttpRequest& req) {
+        commons::HttpResponse r;
+        auto friends = friends_cache.get(req.headers_raw);
+        auto online = presence.bound_usernames();
+        std::vector<std::string> lots;
+        for (const auto& f : friends) {
+            if (std::find(online.begin(), online.end(), f) != online.end() &&
+                std::find(lots.begin(), lots.end(), f) == lots.end())
+                lots.push_back(f);
+        }
+        // Stable, case-insensitive order so a door doesn't swap who it
+        // shows between polls; six doors, lots 2-7.
+        std::sort(lots.begin(), lots.end(), [](const std::string& a, const std::string& b) {
+            std::string la = a, lb = b;
+            for (auto& c : la) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            for (auto& c : lb) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            return la != lb ? la < lb : a < b;
+        });
+        if (lots.size() > 6) lots.resize(6);
+        r.body = "{\"lots\":[";
+        for (std::size_t i = 0; i < lots.size(); ++i) {
+            if (i) r.body += ",";
+            r.body += commons::json::str(lots[i]);
+        }
+        r.body += "]}";
         return r;
     });
 

@@ -44,6 +44,7 @@ add_executable(commons_daemon
     src/http.cpp
     src/civic.cpp
     src/house.cpp
+    src/friends.cpp
 )
 target_link_libraries(commons_daemon PRIVATE sqlite3_vendored)
 

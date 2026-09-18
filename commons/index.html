@@ -175,6 +175,12 @@ function regionAt(tx, ty) {
   return null;
 }
 
+// The six Homestead lot doors (lots 2-7), in slot order -- filled in by
+// dressRegions(), read by the lot poll and drawSpace(). Declared up here,
+// not beside dressRegions(): the world is built during script load, before
+// a `var` further down would have been assigned.
+var FRIEND_LOT_DOORS = [];
+
 // ---- Tile ids -----------------------------------------------------------
 var T_GRASS_A = 0, T_GRASS_B = 1, T_PATH = 2, T_WATER = 3, T_DIRT = 4,
     T_WALL = 5, T_DOOR_DEMO = 6, T_DOOR_BOARDED = 7, T_HEDGE = 8,
@@ -375,8 +381,8 @@ function dressRegions() {
   });
 
   // Homestead Row: a facade at y=47 with 7 door gaps -- door 0 is the
-  // always-live demo house, 1-6 are dynamic online/friend doors. No
-  // cookie glue yet (glue.md), so all 6 render boarded in this preview.
+  // always-live demo house, 1-6 are dynamic online/friend doors (boarded
+  // until the friends query reports a mutual friend in the game).
   var wallY = homestead.y0 + 7; // y=47
   var doorXs = [26, 29, 32, 37, 40, 43, 46];
   for (var wx = homestead.x0 + 1; wx <= homestead.x1 - 1; wx++) {
@@ -387,11 +393,14 @@ function dressRegions() {
   for (var d = 0; d < doorXs.length; d++) {
     var isDemo = d === 0;
     tiles[idx(doorXs[d], wallY)] = isDemo ? T_DOOR_DEMO : T_DOOR_BOARDED;
-    interactables.push({
-      type: isDemo ? "demoDoor" : "boardedDoor",
-      x: doorXs[d], y: wallY,
-      prompt: isDemo ? "Enter" : "Closed"
-    });
+    // V6 (GROK_V6_ANSWER.md, friends query): lots 2-7 are dynamic. Same
+    // solid boarded tile, same "Closed" until the daemon reports a mutual
+    // friend who is in the game right now; netPollLots() then fills in
+    // `friend` and rewrites `prompt`. Visiting is a later increment, so
+    // even a named door does not open yet.
+    var lotDoor = isDemo ? null : { type: "friendDoor", slot: d - 1, friend: null, x: doorXs[d], y: wallY, prompt: "Closed" };
+    if (lotDoor) FRIEND_LOT_DOORS.push(lotDoor);
+    interactables.push(isDemo ? { type: "demoDoor", x: doorXs[d], y: wallY, prompt: "Enter" } : lotDoor);
   }
   // V4 (GROK_V4_ANSWER.md): an 8th door, one tile west of the demo door,
   // for the bound self only -- "not the six friend lots," so doorXs
@@ -1189,6 +1198,39 @@ function netPollPlaced() {
     .finally(function () { netPlacedPollBusy = false; });
 }
 
+// V6 friends query (GROK_V6_ANSWER.md): which of my mutual friends are in
+// the game right now, for Homestead lots 2-7. The daemon answers from my
+// own session cookie (never a name I send), so this only means anything
+// for a bound player -- a guest has no friends to ask about and never
+// polls. Only polled while the Homestead facade is actually on screen, and
+// throttled well under the daemon's own short TTL cache.
+var LOT_POLL_MS = 5000;
+var lastLotPollAt = -Infinity;
+var netLotsBusy = false;
+
+function netPollLots(regions, t) {
+  if (!netReady || !isBound || netLotsBusy) return;
+  var near = regions.some(function (r) { return r.name === "Homestead Row"; });
+  if (!near || t - lastLotPollAt < LOT_POLL_MS) return;
+  lastLotPollAt = t;
+  netLotsBusy = true;
+  fetch(DAEMON + "/presence/lots")
+    .then(function (r) { return r.json(); })
+    .then(function (j) {
+      var lots = (j && j.lots) || [];
+      for (var i = 0; i < FRIEND_LOT_DOORS.length; i++) {
+        var door = FRIEND_LOT_DOORS[i], friend = lots[i] || null;
+        if (door.friend !== friend) {
+          door.friend = friend;
+          door.prompt = friend ? friend : "Closed";
+          forceRedraw = true;
+        }
+      }
+    })
+    .catch(function () {})
+    .finally(function () { netLotsBusy = false; });
+}
+
 function netPollRegions(regions) {
   if (!netReady || !regions.length || netPollBusy) return;
   netPollBusy = true;
@@ -1369,8 +1411,13 @@ function tryInteract() {
       if (ok) window.open("https://liquidgov.us/proposals", "_blank", "noopener");
     } else if (it.type === "demoDoor") {
       enterInterior("demoHouse", demoHouseSpace, DEMO_ENTRY);
-    } else if (it.type === "boardedDoor") {
-      showToast("Closed.");
+    } else if (it.type === "friendDoor") {
+      // Visiting is explicitly a later increment (GROK_V6_ANSWER.md:
+      // "Visiting ... wait[s] on this") -- the query only says whose lot
+      // this is. Honest about it rather than a door that silently
+      // refuses, same as the guest toast on the house door.
+      if (it.friend) showToast(it.friend + "'s house. Visiting isn't open yet.", 2200);
+      else showToast("Closed.");
     } else if (it.type === "houseDoor") {
       // Same interior template as the demo house (V4: mechanically just
       // another shared-shape instance, like lab/demo already are) --
@@ -1435,6 +1482,26 @@ function drawSpace(camX, camY) {
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(info.label, wx + TILE / 2, wy + TILE + 6);
+    }
+  }
+
+  // V6: a lot door whose friend is in the game right now reads as lit, with
+  // their name over it. Drawn over the baked (still boarded) tile like the
+  // placed item above -- the bake stays static, only the overlay changes.
+  if (mode === "outdoor") {
+    for (var fd = 0; fd < FRIEND_LOT_DOORS.length; fd++) {
+      var lot = FRIEND_LOT_DOORS[fd];
+      if (!lot.friend) continue;
+      var lsx = lot.x * TILE - camX, lsy = lot.y * TILE - camY;
+      if (lsx < -TILE || lsx > crop.vw || lsy < -TILE || lsy > crop.vh) continue;
+      ctx.fillStyle = "#d8b46a";
+      ctx.fillRect(lsx + 2, lsy + 2, TILE - 4, TILE - 4);
+      var lname = lot.friend.length > 9 ? lot.friend.slice(0, 8) + "…" : lot.friend;
+      ctx.fillStyle = INK;
+      ctx.font = "7px monospace";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(lname, lsx + TILE / 2, lsy - 5);
     }
   }
 
@@ -1562,8 +1629,10 @@ function frame(t) {
         if (netRegion === null) netJoin(curRegion);
         else netRekey(netRegion, curRegion);
       } else if (curRegion && t - lastNetSendAt > NET_INTERVAL_MS) {
+        var camRegions = regionsIntersectingCamera(camX, camY);
         netMove();
-        netPollRegions(regionsIntersectingCamera(camX, camY));
+        netPollRegions(camRegions);
+        netPollLots(camRegions, t);
         lastNetSendAt = t;
       }
     }

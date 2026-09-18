@@ -6873,6 +6873,32 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             "Cache-Control: no-store\r\n");
     }
 
+    // Same-box only, same gate as /internal/session-user above (refused as
+    // a plain 404 if X-Forwarded-For is present or the raw peer isn't
+    // loopback). The commons-daemon forwards a visitor's own Cookie here to
+    // learn who that session's mutual friends are (glue.md "Friends query").
+    // The name comes from the session -- never from a query parameter, so
+    // there is no way to ask about anyone but yourself. Read-only: mutual
+    // accepts only (friends_of), minus anyone blocked in either direction.
+    if(method=="GET"&&path=="/internal/friends") {
+        if (!header_value(req, "X-Forwarded-For").empty() ||
+            (peer_ip != "127.0.0.1" && peer_ip != "::1"))
+            return http_raw("404 Not Found", "text/plain", "not found\n");
+        std::string body = "{}";
+        if (acc) {
+            body = "{\"username\":\"" + json_escape(user) + "\",\"friends\":[";
+            bool first = true;
+            for (const auto& f : g_store.friends_of(user)) {
+                if (g_store.is_blocked(user, f) || g_store.is_blocked(f, user)) continue;
+                if (!first) body += ",";
+                first = false;
+                body += "\"" + json_escape(f) + "\"";
+            }
+            body += "]}";
+        }
+        return http_raw("200 OK", "application/json", body, "Cache-Control: no-store\r\n");
+    }
+
     if(method=="GET"&&path=="/logs") {
         const char* op = std::getenv("LIQUIDGOV_OPERATOR");
         if (!op || !op[0] || user != op)

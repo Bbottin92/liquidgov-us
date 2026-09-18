@@ -1,6 +1,7 @@
 #pragma once
 #include <optional>
 #include <string>
+#include <vector>
 
 // Cookie resolver (cookie-bind.md, Persistence/TheCommons): forwards a
 // visitor's raw Cookie header to civic's own /internal/session-user route
@@ -19,5 +20,17 @@ namespace commons::civic {
 // cookie-bind.md is explicit that the two auth paths never mix and that a
 // missing/expired/unknown cookie is not a rejection, just a fallback.
 std::optional<std::string> resolve_username(const std::string& headers_raw);
+
+// True when the raw Cookie header carries lg_session at all -- the same
+// gate resolve_username uses, exposed so callers can skip cache bookkeeping
+// for anonymous guests without a socket round trip.
+bool has_session_cookie(const std::string& headers_raw);
+
+// Friends query (glue.md, GROK_V6_ANSWER.md): the mutual, non-blocked
+// friends of *that cookie's* account, via civic's same-box
+// /internal/friends. Empty on every failure path -- no cookie, civic
+// unreachable, unresolved session -- because a caller can't do anything
+// different for "no friends" vs "couldn't ask".
+std::vector<std::string> resolve_friends(const std::string& headers_raw);
 
 } // namespace commons::civic

@@ -160,6 +160,18 @@ void PresenceStore::forget(const std::string& id) {
     erase_id_locked(id);
 }
 
+std::vector<std::string> PresenceStore::bound_usernames() {
+    std::lock_guard<std::mutex> lock(mu_);
+    reap_locked(now_ms());
+    std::vector<std::string> out;
+    for (const auto& kv : regions_) {
+        for (const auto& o : kv.second) {
+            if (o.id.rfind("u:", 0) == 0) out.push_back(o.id.substr(2));
+        }
+    }
+    return out;
+}
+
 bool PresenceStore::contains(const std::string& region, const std::string& id) {
     std::lock_guard<std::mutex> lock(mu_);
     reap_locked(now_ms());

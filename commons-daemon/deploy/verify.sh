@@ -4,6 +4,7 @@
 # public site mints for any visitor). No flooding: one guest, a handful of requests.
 #
 #   on the droplet   the service is active, NRestarts=0, civic still active, the daemon answers on loopback,
+#                    the running daemon's /health commit equals the deployed revision (.deployed-rev),
 #                    the journal since it started has no error lines
 #   through nginx    civic `/` 200, the game page 200, lots 200, and the public site does NOT serve /internal/*
 #   a real guest     mint (id g_+16 hex, secret 32 hex) -> join -> visible in /presence/1,1 -> move 200 ->
@@ -13,7 +14,8 @@
 #
 # Usage: verify.sh [--guest-name NAME] [--compare-backup PATH]
 #   --guest-name  join under this name (default "deploy-check"); use x to check the reqjson fix in the real Square
-# Environment: DEPLOY_SKIP_SITE=1 skips the civic/static/public-/internal checks (the tests talk to the daemon alone).
+# Environment: DEPLOY_SKIP_SITE=1 skips the civic/static/public-/internal checks (the tests talk to the daemon alone);
+#              DEPLOY_SKIP_REV_CHECK=1 skips the running-revision comparison (the tests' fake droplet has no matching build).
 # Exit 0 = every check passed.
 set -euo pipefail
 # shellcheck source=lib.sh
@@ -24,7 +26,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --guest-name) NAME="${2:?--guest-name needs a value}"; shift 2;;
     --compare-backup) BACKUP="${2:?--compare-backup needs a path}"; shift 2;;
-    -h|--help) sed -n '2,20p' "$0"; exit 0;;
+    -h|--help) sed -n '2,22p' "$0"; exit 0;;
     *) die "unknown argument: $1";;
   esac
 done
@@ -47,6 +49,17 @@ check "$SERVICE is active" "$(remote "systemctl is-active $(q "$SERVICE")" || tr
 check "$CIVIC_SERVICE (civic) is still active" "$(remote "systemctl is-active $(q "$CIVIC_SERVICE")" || true)" active
 check "$SERVICE has not restarted on its own (NRestarts)" "$(remote "systemctl show -p NRestarts --value $(q "$SERVICE")" || true)" 0
 check "the daemon answers on loopback" "$(remote "curl -s -m 10 -o /dev/null -w '%{http_code}' http://127.0.0.1:8765/health" || true)" 200
+# The RUNNING code is the DEPLOYED code: /health's commit (baked in at build time from the marker the sync wrote) against
+# that marker. Catches "synced but not rebuilt" and "rebuilt but not restarted". Only compared when both sides exist.
+if [ "${DEPLOY_SKIP_REV_CHECK:-0}" != 1 ]; then
+  running="$(remote "curl -s -m 10 http://127.0.0.1:8765/health" 2>/dev/null | sed -n 's/.*"commit":"\([^"]*\)".*/\1/p' || true)"
+  deployed="$(deployed_rev daemon || true)"
+  if [ -z "$deployed" ]; then say "  note the droplet has no .deployed-rev marker: the running revision ($running) cannot be compared"
+  elif [ -z "$running" ]; then say "  note /health reports no commit (a daemon older than this check): cannot compare with the deployed revision $deployed"
+  elif [ "$running" = "$deployed" ]; then ok "the running daemon IS the deployed revision (${running:0:12})"
+  else bad "the running daemon is the deployed revision" "running $running, deployed $deployed: the source was synced but the binary is stale (not rebuilt, or not restarted)"
+  fi
+fi
 since="$(remote "systemctl show -p ActiveEnterTimestamp --value $(q "$SERVICE")" || true)"
 journal="$(remote "journalctl -u $(q "$SERVICE") --since $(q "$since") --no-pager -o cat" || true)"
 if grep -Eiq 'listening' <<<"$journal"; then ok "the journal shows it listening"; else bad "the journal shows it listening" "no 'listening' line since $since"; fi

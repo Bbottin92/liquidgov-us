@@ -10,7 +10,7 @@ commons-daemon/tests/run_all.sh test_guest       # one test
 ```
 
 Needs the built daemon (`commons-daemon/build/commons_daemon`, or `COMMONS_DAEMON_BIN`),
-`python3`, `curl`, `rsync`, `git`, `g++`, and (optionally, always in CI) `nginx` and `node` (`test_reqjson` compiles its unit cases; `test_deploy` drives the deploy scripts). `strace` is optional (one extra check, skipped when absent).
+`python3`, `curl`, `rsync`, `git`, `g++`, `cmake`, and (optionally, always in CI) `nginx` and `node` (`test_reqjson` compiles its unit cases; `test_deploy` drives the deploy scripts). `strace` is optional (one extra check, skipped when absent).
 
 ## Why a civic stub
 
@@ -38,6 +38,7 @@ change the stub and re-run the suite in both modes.
 | `test_snapshot` | kill -9 crash recovery from the periodic snapshot (with a control that proves the test can tell) |
 | `test_orphans` | the reap and every valve (two passes, cap 3, backup first, last look, SUSPECT, kill switch, online skipped) |
 | `test_migrations` | startup migrations on databases from OLDER schemas (`fixtures/` are frozen from git history) |
+| `test_health` | `/health` reports the commit the daemon was built from: the build-info generator's rules (hostile tokens rejected), the value refreshing on `cmake --build` with NO reconfigure on the real build dir, and the endpoint (57) |
 | `test_netmint` | the client's guest-credential mint: the shipped `netMint` block run under node with a fake clock and scripted fetch (88 checks): credential only from a 200 `{id, secret}`, backoff + Retry-After, single-flight, re-auth |
 | `test_retention` | backup retention: 378 unit checks on the pure decision (incl. 300 random directories with sidecars and orphans) + the real script against a fake backups directory with real `-wal`/`-shm` files (dry run by default, exact deletions, sidecar pairing, newest-first, refusals) |
 | `test_nginx_guest` | the `/guest` rate limit: config text checks (anywhere) + a real nginx in front of the real daemon (CI): burst absorbed, then 429, per address, only minting limited, refills |

@@ -1921,6 +1921,14 @@ Not bug classes. Not “what is live on the droplet.”
   22/22; live page has the `netMint:begin` block. The tree guard first refused on a stray `deploy/__pycache__/*.pyc` made by my
   retention unit test; deleted it and fixed the cause (`b04970e`: no bytecode written, syncs exclude `__pycache__`/`*.pyc`).
   Parked: `index.html` split, `/health` hash. `/commons/recipes` 404 left alone.
+- **2026-09-19 -- `BUILD /health commit hash` built (daemon + verify.sh; tested; NOT deployed).** `GET /health` is now
+  `{"status":"ok","commit":"<sha>[+dirty]|unknown"}` (additive: nothing parses the body; loopback-only). The droplet is not a git clone and
+  deploys build with NO reconfigure, so the value is generated on EVERY `cmake --build` (custom target running
+  `cmake/gen_build_info.cmake`; header rewritten only on change; only `src/buildinfo.cpp` includes it): env override > `<src>/.deployed-rev`
+  (the marker the sync writes before the build) > git (+dirty) > unknown; only sha-shaped tokens get through (it lands in a C string and JSON).
+  `verify.sh` now fails if the RUNNING commit differs from the marker (a stale, unrebuilt or unrestarted binary); skipped with a note when
+  either side is missing. `test_health.sh` (57, incl. the real no-reconfigure incremental rebuild) + `test_deploy.sh` (131), mutation-checked
+  (8). Format is my choice (veto in `health-commit-built.md`). A deploy will reconfigure (CMake changed). Parked: `index.html` split.
 
 ## Split: civic site vs game
 

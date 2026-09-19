@@ -54,6 +54,7 @@ export PATH="$BIN_STUBS:$PATH"
 export DEPLOY_HOST=fake DEPLOY_SSH="$WORK/fakessh"
 export DEPLOY_DAEMON_DIR="$FAKE/opt/commons-daemon" DEPLOY_CLIENT_DIR="$FAKE/opt/commons" DEPLOY_DATA_DIR="$FAKE/var/lib/commons"
 export DEPLOY_SERVICE_USER="$(id -un)" DEPLOY_PUBLIC_BASE="http://127.0.0.1:8765" DEPLOY_PREFIX="" DEPLOY_SKIP_SITE=1
+export DEPLOY_SKIP_REV_CHECK=1      # the fake droplet's marker is the temp repo's commit, the test daemon is a different build: compared in its own section below
 DD="$FAKE/opt/commons-daemon"; CD="$FAKE/opt/commons"
 
 # ---- a throwaway repo shaped like the real one
@@ -260,6 +261,32 @@ rm -f "$WORK/inactive.liquidgov"
 runs "$S/verify.sh"
 assert_eq "no 'listening' line in the journal fails the verify" "1" "$RC"
 echo "commons-daemon: listening on 127.0.0.1:8765" > "$JOURNAL"
+
+echo "-- verify: the RUNNING daemon must be the DEPLOYED revision (/health's commit against the marker)"
+cp -p "$DD/.deployed-rev" "$WORK/marker.save"                                  # later sections rely on the real marker
+running="$(curl -s "$D/health" | sed -n 's/.*"commit":"\([^"]*\)".*/\1/p')"
+[ -n "$running" ] && _ok "the test daemon reports a commit ($running)" || _bad "the test daemon reports a commit" "$(curl -s "$D/health")"
+printf '%s 2026-09-19T00:00:00Z\n' "$running" > "$DD/.deployed-rev"
+runs env DEPLOY_SKIP_REV_CHECK=0 "$S/verify.sh"
+assert_eq "a marker equal to /health's commit passes" "0" "$RC"
+assert_contains "and says so" "$OUT" "the running daemon IS the deployed revision"
+printf 'abcdef0123456 2026-09-19T00:00:00Z\n' > "$DD/.deployed-rev"
+runs env DEPLOY_SKIP_REV_CHECK=0 "$S/verify.sh"
+assert_eq "a marker that differs (source synced, binary stale) FAILS the verify" "1" "$RC"
+assert_contains "naming both revisions" "$OUT" "running $running, deployed abcdef0123456"
+assert_contains "and the likely cause" "$OUT" "the binary is stale (not rebuilt, or not restarted)"
+printf '%s+dirty 2026-09-19T00:00:00Z\n' "${running%+dirty}" > "$DD/.deployed-rev"
+if [ "$running" = "${running%+dirty}+dirty" ]; then printf '%s 2026-09-19T00:00:00Z\n' "${running%+dirty}" > "$DD/.deployed-rev"; fi
+runs env DEPLOY_SKIP_REV_CHECK=0 "$S/verify.sh"
+assert_eq "+dirty vs clean is a mismatch too (the exact token is compared)" "1" "$RC"
+rm -f "$DD/.deployed-rev"
+runs env DEPLOY_SKIP_REV_CHECK=0 "$S/verify.sh"
+assert_eq "no marker: nothing to compare against, so it does not fail" "0" "$RC"
+assert_contains "but it says it could not compare" "$OUT" "has no .deployed-rev marker"
+printf 'abcdef0123456 2026-09-19T00:00:00Z\n' > "$DD/.deployed-rev"
+runs "$S/verify.sh"
+assert_eq "the seam: with DEPLOY_SKIP_REV_CHECK=1 (the tests' default) a mismatch is not compared" "0" "$RC"
+cp -p "$WORK/marker.save" "$DD/.deployed-rev"
 
 echo "-- deploy-daemon.sh: plan only without --go"
 : > "$CALLS"; before="$(sum "$DD/src/main.cpp")"; nb="$(ls "$FAKE/var/lib/commons/backups" | wc -l)"

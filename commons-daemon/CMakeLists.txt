@@ -35,8 +35,21 @@ target_include_directories(sqlite3_vendored PUBLIC ${sqlite3_amalgamation_SOURCE
 # default THREADSAFE=1 build is still correct and harmless, just not
 # required. Left at SQLite's own default rather than tuned.
 
+# The commit this binary was built from, for GET /health. A custom TARGET (no OUTPUT), so it runs on EVERY
+# `cmake --build`, not just at configure: the droplet deploys with no reconfigure and is not a git clone, so the value
+# comes from the .deployed-rev marker the deploy sync writes before the build (cmake/gen_build_info.cmake). The header
+# is only rewritten when it changes; only src/buildinfo.cpp includes it.
+set(COMMONS_BUILD_INFO_H ${CMAKE_CURRENT_BINARY_DIR}/build_info.h)
+add_custom_target(commons_build_info
+    COMMAND ${CMAKE_COMMAND} -DSRC=${CMAKE_CURRENT_SOURCE_DIR} -DOUT=${COMMONS_BUILD_INFO_H}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/gen_build_info.cmake
+    BYPRODUCTS ${COMMONS_BUILD_INFO_H}
+    COMMENT "commons build info (the commit for /health)"
+    VERBATIM)
+
 add_executable(commons_daemon
     src/main.cpp
+    src/buildinfo.cpp
     src/db.cpp
     src/presence.cpp
     src/guest.cpp
@@ -47,6 +60,8 @@ add_executable(commons_daemon
     src/friends.cpp
 )
 target_link_libraries(commons_daemon PRIVATE sqlite3_vendored)
+add_dependencies(commons_daemon commons_build_info)
+target_include_directories(commons_daemon PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 
 find_package(Threads REQUIRED)
 target_link_libraries(commons_daemon PRIVATE Threads::Threads)

@@ -131,7 +131,7 @@ systemctl status commons-daemon   # expect "active (running)"
 
 # 6. Verify the daemon itself, still loopback-only, before touching nginx:
 curl -s http://127.0.0.1:8765/health
-# expect {"status":"ok"} -- if this fails, stop, do not touch nginx yet.
+# expect {"status":"ok"} (later builds add "commit":"<sha>", see health-commit-built.md) -- if this fails, stop, do not touch nginx yet.
 
 # 7. nginx -- backed up the live /etc/nginx/sites-available/liquidgov
 #    first (liquidgov.bak-pre-commons-<timestamp>), pasted

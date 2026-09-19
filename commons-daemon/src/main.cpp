@@ -27,6 +27,7 @@
 #include <string>
 #include <vector>
 
+#include "buildinfo.hpp"
 #include "civic.hpp"
 #include "db.hpp"
 #include "friends.hpp"
@@ -299,7 +300,9 @@ int main(int argc, char** argv) {
 
     server.route("GET", "/health", [](const commons::HttpRequest&) {
         commons::HttpResponse r;
-        r.body = "{\"status\":\"ok\"}";
+        // "commit": what this binary was built from (7-40 hex, optionally +dirty, or "unknown"; validated at build
+        // time, so it is safe inside this JSON string). Lets a deploy check that the RUNNING code is the deployed code.
+        r.body = std::string("{\"status\":\"ok\",\"commit\":\"") + commons::build_rev() + "\"}";
         return r;
     });
 

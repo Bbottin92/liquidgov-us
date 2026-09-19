@@ -91,3 +91,30 @@ integrity ok and counts unchanged.
 ## Not here
 
 `rebind()` (3), `open` + orphans (4). No client change.
+
+## Deployed (2026-09-19, Brandon: "deploy"; Grok accepted in `GROK_REST_2_REVIEW.md`)
+
+Daemon only. Client, civic, nginx untouched (`liquidgov.service` not restarted).
+
+1. **Drift check:** the daemon dry-run listed exactly `civic.cpp`, `civic.hpp`,
+   `house.cpp`, `http.cpp`, `main.cpp` (changed) and the new `sqlx.hpp`.
+2. **Online backup first** (SQLite backup API):
+   `/var/lib/commons/backups/commons.sqlite.pre-janitor-20260919T084253Z`,
+   `integrity_check` ok. Baseline: items 3, recipes 3, maps 14, map_instances 6,
+   players 5 (all `friends`), placed 3, inventory 4. Left on the box.
+3. **Sync**, **`-j1` build with no reconfigure** (`sqlx.hpp` is header-only; only
+   `main`, `http`, `civic`, `house`, `friends` recompiled), chown, `systemctl
+   restart commons-daemon` (drops RAM presence; houses are durable).
+4. **Live check across a 40s window (> the 15s cache TTL) through nginx:**
+   `/commons/presence/lots`, `/presence/1,1`, a house `/placed/` GET all 200 every
+   5s; public `/internal/friends` 404; a guest mint works; `house-policy` with no
+   cookie is `403 not_bound`. (`/commons/recipes` is 404 through nginx: that path
+   was never proxied, so it was a bad probe, not a regression.)
+5. **Journal:** no `failed`, sqlite-error, abort or `periodic` lines since the
+   restart; `NRestarts=0`; both services active; live DB `integrity_check` ok and
+   every row count identical to the baseline; still bound to `127.0.0.1:8765` only.
+
+Not observable from outside: the cache hit itself for a real bound player (needs
+a login, and I don't sign in to production). It is the code path the SIGSTOP test
+exercised locally; the visible symptom of a working cache is nothing at all,
+which is the point.

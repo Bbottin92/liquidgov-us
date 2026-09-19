@@ -1677,6 +1677,15 @@ Not bug classes. Not “what is live on the droplet.”
   regressions pass. See `janitor-built.md`. Deploy: daemon only, online SQLite
   copy first, after Grok's review and Brandon's `deploy`. Parked: `rebind()` (3),
   `open` + orphans (4).
+- **2026-09-19 -- daemon janitor (rest slice 2) deployed (daemon only).** Grok
+  accepted (`GROK_REST_2_REVIEW.md`); Brandon said `deploy`. Drift check clean
+  (five edited files + new `sqlx.hpp`), online SQLite backup first
+  (`commons.sqlite.pre-janitor-20260919T084253Z`, left on the box), sync, `-j1`
+  build with no reconfigure, restart. 40s window through nginx all 200 (lots,
+  `1,1`, house placed), `/internal/friends` 404, no `failed`/sqlite lines in the
+  journal, no restarts, DB integrity ok with counts unchanged, loopback bind. A
+  real bound cache hit is not observable from outside. Parked: `rebind()` (slice
+  3), `open` + orphans (slice 4, the only civic one).
 
 ## Split: civic site vs game
 

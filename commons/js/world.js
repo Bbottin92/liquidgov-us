@@ -632,19 +632,6 @@ function paintBake() {
       });
     }
   }
-  // Region names are static world-space strings -- stamp them onto the
-  // bake once (canvas.md #1) instead of fillText-ing all 12 every frame.
-  // They scroll for free with the blit from here on.
-  bctx.fillStyle = INK;
-  bctx.font = "8px monospace";
-  bctx.textAlign = "center";
-  bctx.textBaseline = "middle";
-  for (var i = 0; i < REGIONS.length; i++) {
-    var a = regionAABB(REGIONS[i]);
-    var cx = ((a.x0 + a.x1 + 1) / 2) * TILE;
-    var cy = ((a.y0 + a.y1 + 1) / 2) * TILE;
-    bctx.fillText(REGIONS[i].name, cx, cy);
-  }
 }
 paintBake();
 spaceRebakers.push(paintBake);

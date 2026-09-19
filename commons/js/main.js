@@ -71,18 +71,10 @@ function drawSpace(camX, camY) {
       ctx.fillStyle = info.color;
       if (portraitOn) {
         ctx.fillRect(6 * TILE - camX + 3 * TILE - 11, wy + 2 * TILE - 11, 9, 9);
-        ctx.fillStyle = INK;
-        ctx.font = "7px monospace";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText(info.label, 6 * TILE - camX + 1.5 * TILE, wy + 2 * TILE + 6);
+        drawNameplate(ctx, info.label, 6 * TILE - camX + 1.5 * TILE, wy + 2 * TILE + 6);
       } else {
         ctx.fillRect(wx + 2, wy + 2, TILE - 4, TILE - 4);
-        ctx.fillStyle = INK;
-        ctx.font = "7px monospace";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText(info.label, wx + TILE / 2, wy + TILE + 6);
+        drawNameplate(ctx, info.label, wx + TILE / 2, wy + TILE + 6);
       }
     }
   }
@@ -94,11 +86,7 @@ function drawSpace(camX, camY) {
       var fx = f.x * TILE - camX, fy = f.y * TILE - camY;
       ctx.fillStyle = finfo.color;
       ctx.fillRect(fx + 3, fy + 3, TILE - 6, TILE - 6);
-      ctx.fillStyle = INK;
-      ctx.font = "7px monospace";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(finfo.label, fx + TILE / 2, fy + TILE + 5);
+      drawNameplate(ctx, finfo.label, fx + TILE / 2, fy + TILE + 5);
     }
   }
 
@@ -180,6 +168,7 @@ function frame(t) {
   lastTickAt = t;
   netStatusTick(t);   // the "Reconnecting…" badge: observe-only, every frame (net.js)
   tickToast(t);
+  tickPlaceName(t);
 
   var playerMoved = movePlayer(currentDX(), currentDY(), dt);
 

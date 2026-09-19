@@ -18,6 +18,8 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-19 — place banner built, not deployed.** `place-banner-built.md`.
+  Region names off the grass; FireRed-style banner on enter. Client only.
 - **2026-09-19 — chrome polish live.** Brandon deployed `12a78ff`
   (`--label chrome-polish`). Verify 33/0. `GROK_CHROME_POLISH_LIVE.md`.
 - **2026-09-19 — chrome polish built, not deployed.** `chrome-polish-built.md`.

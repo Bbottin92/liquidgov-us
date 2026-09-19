@@ -28,6 +28,36 @@ function tickToast(now) {
   } else if (el.textContent) el.textContent = "";
 }
 
+var lastAnnouncedPlace = "";
+var placeUntil = 0;
+function interiorPlaceName() {
+  if (mode === "lab") return "the Lab";
+  if (mode === "mine") return "the mine";
+  if (mode === "demoHouse") return "the demo house";
+  if (mode === "house") return "your house";
+  if (mode === "visit") return visitingOwner ? (visitingOwner + "'s house") : "a house";
+  return "";
+}
+function announcePlace(name) {
+  if (!name || name === lastAnnouncedPlace) return;
+  lastAnnouncedPlace = name;
+  placeUntil = performance.now() + 2200;
+  var el = document.getElementById("placeName");
+  if (el) el.textContent = name;
+}
+function tickPlaceName(now) {
+  var name = "";
+  if (mode === "outdoor") {
+    var r = regionAt(Math.floor(player.x / TILE), Math.floor(player.y / TILE));
+    name = r ? r.name : "";
+  } else {
+    name = interiorPlaceName();
+  }
+  announcePlace(name);
+  var el = document.getElementById("placeName");
+  if (el && now >= placeUntil && el.textContent) el.textContent = "";
+}
+
 function findNearestInteractable() {
   var ptx = Math.floor(player.x / TILE), pty = Math.floor(player.y / TILE);
   var best = null, bestDist = Infinity;

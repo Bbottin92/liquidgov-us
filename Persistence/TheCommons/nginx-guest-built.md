@@ -66,6 +66,8 @@ includes the zone file.
 
 ## Limits, said plainly
 
-- The behavioural half ran nowhere before CI (no nginx binary in the dev environment); CI is its first run.
+- The behavioural half ran nowhere before CI (no nginx binary in the dev environment). Its first CI run (`14278e4`,
+  ubuntu-24.04 nginx) passed **33/33** (12 static + 21 behavioural), the whole suite 15 files / 229s, and the
+  workflow's `nginx -t` step (now including the zone file) is green. It has still never run on the droplet's nginx.
 - The droplet's nginx version and any front proxy are unchecked until the deploy (step 1).
 - Not built: backup retention; the client's `netMint` status check.

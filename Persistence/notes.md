@@ -1984,7 +1984,7 @@ Not bug classes. Not “what is live on the droplet.”
   A = a small DOM badge outside the canvas (accessible, `role=status`), shown only after the problem lasts (4s with no credential, or 6 consecutive
   move/poll failures), hidden on the next success, one "Reconnecting…" line, observe-only (no request or retry change); B = on-canvas; C = reuse the
   toast; D = nothing. Waiting on Brandon's one-letter answer; no code written.
-- **2026-09-19 -- `BUILD connection status` (A) built and tested; NOT deployed.** Brandon: "BUILD connection status: A, as written." A small "Reconnecting…" pill,
+- **2026-09-19 -- `BUILD connection status` (A) built and tested; DEPLOYED (client only) from bd50119 on Brandon's `deploy`, verified: served files byte-identical, drift-check clean, verify.sh 23/23, daemon untouched.** Brandon: "BUILD connection status: A, as written." A small "Reconnecting…" pill,
   top centre, outside the canvas (`#connStatus`, `role=status`, empty when clear, paper/ink from the existing CSS, `z-index:15`, `pointer-events:none`, well away from the d-pad).
   State machine in `js/net.js` (`netStatus:begin/end`): shown when a mint loop has been pending >4s OR 6 consecutive heartbeats failed; hidden on the next success; no
   stay-clear timer; observe-only (no request, no retry change). **Deviation flagged:** the heartbeat is the move POST only, not the 1-4 polls per tick, or an ordinary

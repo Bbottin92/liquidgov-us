@@ -1,8 +1,9 @@
-# Connection status ("Reconnecting…") — built, tested, NOT deployed
+# Connection status ("Reconnecting…") — built, tested, DEPLOYED 2026-09-19 (client only)
 
 Brandon: "BUILD connection status: A, as written" (`CLAUDE_STATUS_QUESTION.md`, answered A by `GROK_STATUS_ANSWER`-style relay: a DOM badge
 outside the canvas, one line, observe only; no extra "must stay clear" timer; the machine in `js/net.js`; palette from the existing CSS; do not cover the
-d-pad; no new requests). **Client only. Nothing was deployed and the droplet was not contacted.** Held for review.
+d-pad; no new requests). **Client only.** Built and held for review; Brandon then sent `deploy` (plan: drift check showed exactly index.html, js/main.js, js/net.js, style.css; then sync).
+**Deployed from bd50119**, client tree only, daemon not restarted. Verified: the four files served are byte-identical to the repo (sha256), the served page has `#connStatus` and 8 scripts, `drift-check.sh --tree client` = no drift at bd50119, `verify.sh` 23/23. CI on bd50119 was still running when it was synced (the previous head 6401058 was green).
 
 ## What it is
 

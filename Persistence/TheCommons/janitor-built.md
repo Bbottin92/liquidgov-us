@@ -74,8 +74,10 @@ and a cache hit is instant):
 
 **Regressions, all unchanged and passing:** `policy_test` (friends/locked incl.
 restart), `visit_test` (friends visit, block eviction), `persist_house_test`,
-`snapshot_test` (kill -9 crash recovery from the ~30s tick), and the real
-old-shape DB migration.
+`snapshot_test` (kill -9 crash recovery from the ~30s tick). (The old-shape
+migration script builds its "old" DB from `HEAD`'s schema, which now already has
+`visit_policy`, so re-running it here proves nothing; `db.cpp` is untouched this
+round, and that migration ran for real on production on 2026-09-19.)
 
 ## Deploy (when Brandon says `deploy`, after Grok's review)
 

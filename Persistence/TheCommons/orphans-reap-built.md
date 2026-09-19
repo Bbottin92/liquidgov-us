@@ -88,3 +88,33 @@ After it: `players` should be exactly `Bbottin`. To stop it at any point, set
 ## Not here
 
 Any other cleanup (guest data, unused house rows for live accounts): unchanged.
+
+## Deployed (2026-09-19 11:30:28Z, Brandon: "deploy"; Grok accepted in `GROK_ORPHAN_REAP_REVIEW.md`)
+
+Daemon only. Civic, client and nginx untouched (`liquidgov.service` not restarted).
+(WSL failed to start twice with `HCS 0x800705aa` right before this and cleared on
+its own; nothing was changed while it was down.)
+
+1. **Drift check:** exactly this round's five daemon files (`db.cpp/.hpp`,
+   `house.cpp/.hpp`, `main.cpp`); civic and client dry-runs empty.
+2. **Manual online SQLite copy first:**
+   `/var/lib/commons/backups/commons.sqlite.pre-reap-manual-20260919T112956Z`,
+   `integrity_check` ok. Baseline: items 3, recipes 3, maps 14, map_instances 6,
+   players 5, placed 3, inventory 4. The players table at that moment:
+   `persistverify9` (house 3, 0 inv, 1 placed), `vtowner` (house 4, 0, 1),
+   `invverify1` (house 5, 2 inv, 1), `Bbottin` (no house, 2 inv), `ptvisitor`
+   (house 6, 0, 0). On the box, civic answered `Bbottin` -> exists, `persistverify9` ->
+   gone. The backups directory is owned by `liquidgov` (the daemon's user), so the
+   automatic per-pass backup can write there.
+3. Synced, `-j1` build with no reconfigure, restarted at **11:30:28Z**. The journal
+   says `orphan watch is REAPING (every 600s, needs 2 consecutive explicit civic
+   negatives, cap 3 per pass, online backup first)`. Live DB read-only: integrity ok,
+   counts identical to the baseline (nothing reaped yet). Through nginx: lots, `1,1`,
+   house `/placed/` 200; public `/internal/user-exists/x` 404; no failures;
+   `NRestarts=0`; no `COMMONS_ORPHAN_REAP` override in the unit (reap is on).
+
+**Timeline (the restart reset the RAM streaks):** first pass ~11:40:28Z logs `is
+gone (1st pass)` for the four; the second pass ~11:50:28Z takes an automatic backup
+and reaps `persistverify9`, `vtowner`, `invverify1` (cap 3); the third ~12:00:28Z
+reaps `ptvisitor`. `Bbottin` is never touched (civic says it exists).
+Stop at any time: set `COMMONS_ORPHAN_REAP=0` in the unit and restart.

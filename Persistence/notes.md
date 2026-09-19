@@ -1785,6 +1785,14 @@ Not bug classes. Not “what is live on the droplet.”
   `orphans-reap-built.md`. Deploy: daemon only, backup first, after Grok's review and Brandon's
   `deploy`; expect `persistverify9`, `vtowner`, `invverify1` at ~20 min and `ptvisitor` at ~30.
   Also noted: Grok's `civic-ratelimit.md` (explore, not a build): no limiter on `/internal/`.
+- **2026-09-19 11:30Z -- orphan REAP deployed (daemon only).** Grok accepted
+  (`GROK_ORPHAN_REAP_REVIEW.md`); Brandon said `deploy`. Drift clean (five daemon files),
+  manual online SQLite copy first (`commons.sqlite.pre-reap-manual-20260919T112956Z`),
+  `-j1` build + restart at 11:30:28Z; journal: `orphan watch is REAPING`; DB integrity
+  ok, counts unchanged, no failures. Expected: 1st pass ~11:40Z (logs gone), 2nd ~11:50Z
+  reaps persistverify9, vtowner, invverify1 (automatic backup first), 3rd ~12:00Z reaps
+  ptvisitor; Bbottin untouched (civic says it exists). Kill switch:
+  `COMMONS_ORPHAN_REAP=0` + restart. Result to be read from the journal and recorded.
 
 ## Split: civic site vs game
 

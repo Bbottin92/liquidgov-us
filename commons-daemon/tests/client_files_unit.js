@@ -99,7 +99,9 @@ function makeEnv() {
     },
     addEventListener(n) { rec.listeners.push(n); }, removeEventListener() {},
     console: { log() {}, warn() {}, error: (...a) => rec.errors.push(a.join(" ")) },
-    URLSearchParams, URL, encodeURIComponent, Promise, Date, screen: { width: 1280, height: 800 }, localStorage: { getItem: () => null, setItem() {} },
+    URLSearchParams, URL, encodeURIComponent, Promise, Date, screen: { width: 1280, height: 800 },
+    localStorage: { getItem: () => null, setItem() {} },
+    sessionStorage: { getItem: () => null, setItem() {} },
   };
   g.window = g; vm.createContext(g); return { g, rec };
 }

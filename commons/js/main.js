@@ -240,12 +240,9 @@ function frame(t) {
 
   nearestInteractable = findNearestInteractable();
   interactBtn.classList.toggle("show", !!nearestInteractable || mode !== "outdoor");
-  // Parked since P2: the button always said "Enter" even at a Try/Read/
-  // Look station -- harmless (nearest interactable still won on tap), but
-  // the caption was lying about which key it stood in for.
   interactBtn.textContent = nearestInteractable
     ? (nearestInteractable.type === "wallSlot" && mode === "visit" ? "Look" : nearestInteractable.prompt)
-    : "Enter";
+    : "Leave";
 
   // canvas.md #2: skip the blit entirely if the scene truly hasn't changed
   // -- rAF still runs (vsync), we just don't touch the GPU for nothing.
@@ -340,6 +337,7 @@ var go = document.getElementById("nameGo");
 
 function enter() {
   playerName = (input.value || "Guest").trim().slice(0, 20) || "Guest";
+  try { sessionStorage.setItem("commons-name", playerName); } catch (e) {}
   overlay.style.display = "none";
   input.blur(); // else document.activeElement is still the input and the
                 // typingInField() guard would keep eating movement keys
@@ -353,4 +351,13 @@ go.addEventListener("click", enter);
 input.addEventListener("keydown", function (e) {
   if (e.key === "Enter") enter();
 });
-input.focus();
+(function resumeName() {
+  var saved = "";
+  try { saved = sessionStorage.getItem("commons-name") || ""; } catch (e) {}
+  if (saved) {
+    input.value = saved;
+    enter();
+  } else {
+    input.focus();
+  }
+})();

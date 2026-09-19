@@ -40,10 +40,7 @@ std::optional<std::string> session_cookie_header(const std::string& headers_raw)
 // One same-box GET to civic with the visitor's cookie; returns the response
 // body, or nullopt on any transport failure (no cookie, civic down, timeout,
 // malformed reply). Every caller treats nullopt as "nothing resolved".
-std::optional<std::string> fetch_body(const std::string& path, const std::string& headers_raw) {
-    auto cookie = session_cookie_header(headers_raw);
-    if (!cookie) return std::nullopt;
-
+std::optional<std::string> http_get_loopback(const std::string& path, const std::string* cookie) {
     int fd = socket(AF_INET, SOCK_STREAM, 0);
     if (fd < 0) return std::nullopt;
 
@@ -61,8 +58,8 @@ std::optional<std::string> fetch_body(const std::string& path, const std::string
     if (connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0) { close(fd); return std::nullopt; }
 
     const std::string request = "GET " + path + " HTTP/1.1\r\n"
-                                 "Host: 127.0.0.1\r\n"
-                                 "Cookie: " + *cookie + "\r\n"
+                                 "Host: 127.0.0.1\r\n" +
+                                 (cookie ? "Cookie: " + *cookie + "\r\n" : std::string()) +
                                  "Connection: close\r\n\r\n";
     if (send(fd, request.data(), request.size(), 0) < 0) { close(fd); return std::nullopt; }
 
@@ -78,6 +75,13 @@ std::optional<std::string> fetch_body(const std::string& path, const std::string
     auto sep = response.find("\r\n\r\n");
     if (sep == std::string::npos) return std::nullopt;
     return response.substr(sep + 4);
+}
+
+// The cookie-forwarding form every session-aware route uses: no lg_session, no socket.
+std::optional<std::string> fetch_body(const std::string& path, const std::string& headers_raw) {
+    auto cookie = session_cookie_header(headers_raw);
+    if (!cookie) return std::nullopt;
+    return http_get_loopback(path, &*cookie);
 }
 
 // lg_session -> username, 15s, RAM only (BUILD rest slice 2, GROK_REST_2.md).
@@ -165,6 +169,16 @@ std::optional<bool> block_answer(const std::string& headers_raw, const std::stri
     }
     cache[key] = BlockEntry{blocked, now};
     return blocked;
+}
+
+Existence user_exists(const std::string& username) {
+    // The name goes into a request line: same plain-username gate as block_answer.
+    if (!plain_username(username)) return Existence::Unknown;
+    auto body = http_get_loopback("/internal/user-exists/" + username, nullptr);
+    if (!body) return Existence::Unknown;
+    if (body->find("\"exists\":true") != std::string::npos) return Existence::Exists;
+    if (body->find("\"exists\":false") != std::string::npos) return Existence::Gone;
+    return Existence::Unknown; // {"exists":null}, an error page, anything unreadable
 }
 
 bool has_session_cookie(const std::string& headers_raw) {

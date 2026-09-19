@@ -19,6 +19,7 @@
 #include <cctype>
 #include <chrono>
 #include <cstdlib>
+#include <map>
 #include <iostream>
 #include <sstream>
 #include <string>
@@ -858,7 +859,87 @@ int main(int argc, char** argv) {
     // needs no thread and no extra locking; an exception here is caught by
     // HttpServer and cannot take the daemon down.
     constexpr long long kSnapshotIntervalMs = 30000;
-    server.set_periodic(kSnapshotIntervalMs, [&]() {
+
+    // Orphan watch (BUILD orphans log-only, rest slice 4b; GROK_REST_4_ANSWER.md
+    // valves). Civic lets a deleted username be registered again, so a deleted
+    // player's house, wall item and inventory would be inherited by whoever takes
+    // the name. This pass only FINDS and LOGS such rows; there is deliberately no
+    // DELETE anywhere in this build -- the reap is a separate, later BUILD after
+    // the journal has been read. Rules: only an explicit {"exists":false} from
+    // civic counts (anything else, including civic being down, is "don't know" and
+    // resets the streak); a name must be gone on TWO CONSECUTIVE passes; at most 3
+    // "would reap" per pass; anyone currently in the game is skipped; and if EVERY
+    // checked account is reported gone the pass is treated as suspect (a civic
+    // store problem, not a mass deletion) and counts nothing. Runs on the existing
+    // accept-loop hook, ~every 10 minutes; stops at the first "civic didn't
+    // answer" so a dead civic costs one bounded wait, not one per player.
+    // COMMONS_TEST_TICK_MS (tests only) makes the hook and this pass run that often.
+    long long tick_ms = kSnapshotIntervalMs;
+    long long orphan_pass_ms = 600000;
+    if (const char* t = std::getenv("COMMONS_TEST_TICK_MS")) {
+        long long v = std::atoll(t);
+        if (v >= 200) { tick_ms = v; orphan_pass_ms = v; }
+    }
+    constexpr int kOrphanCap = 3;
+    constexpr int kOrphanMaxChecks = 50;
+    std::map<std::string, int> gone_streak;          // RAM only; a restart starts over
+    long long last_orphan_pass_ms = now_ms();        // first pass one interval after start
+    std::cerr << "commons-daemon: orphan watch is LOG-ONLY (every " << orphan_pass_ms / 1000
+              << "s, needs 2 consecutive explicit civic negatives, cap " << kOrphanCap
+              << " per pass); nothing is deleted\n";
+    auto orphan_pass = [&]() {
+        auto online = presence.bound_usernames();
+        std::vector<std::string> gone_now;
+        int checked = 0, exists = 0;
+        bool civic_silent = false;
+        for (const auto& u : house.all_usernames()) {
+            if (checked >= kOrphanMaxChecks) break;
+            if (std::find(online.begin(), online.end(), u) != online.end()) continue;
+            ++checked;
+            auto e = commons::civic::user_exists(u);
+            if (e == commons::civic::Existence::Unknown) { civic_silent = true; break; }
+            if (e == commons::civic::Existence::Exists) { ++exists; gone_streak.erase(u); }
+            else gone_now.push_back(u);
+        }
+        if (civic_silent) { gone_streak.clear(); return; } // don't know: forget every streak
+        if (checked >= 2 && static_cast<int>(gone_now.size()) == checked) {
+            std::cerr << "commons-daemon: orphan watch SUSPECT: civic reports all " << checked
+                      << " checked accounts gone; treating it as a civic problem, counting nothing\n";
+            gone_streak.clear();
+            return;
+        }
+        // Anyone not gone this pass loses their streak (consecutive means consecutive).
+        for (auto it = gone_streak.begin(); it != gone_streak.end();) {
+            if (std::find(gone_now.begin(), gone_now.end(), it->first) == gone_now.end()) it = gone_streak.erase(it);
+            else ++it;
+        }
+        int would = 0, deferred = 0;
+        for (const auto& u : gone_now) {
+            int streak = ++gone_streak[u];
+            if (streak < 2) {
+                std::cerr << "commons-daemon: orphan watch: '" << u << "' is gone from civic (1st pass; needs 2 in a row)\n";
+                continue;
+            }
+            if (would >= kOrphanCap) { ++deferred; continue; }
+            ++would;
+            auto f = house.footprint_of(u);
+            std::cerr << "commons-daemon: orphan watch (LOG-ONLY, nothing deleted): would reap '" << u
+                      << "': house instance " << f.house_instance << ", " << f.inventory_rows
+                      << " inventory rows (qty " << f.inventory_qty << "), " << f.placed_rows
+                      << " placed rows, gone for " << streak << " passes\n";
+        }
+        if (deferred > 0)
+            std::cerr << "commons-daemon: orphan watch: " << deferred << " more would-reap deferred by the cap of "
+                      << kOrphanCap << " per pass\n";
+    };
+
+    server.set_periodic(tick_ms, [&]() {
+        if (now_ms() - last_orphan_pass_ms >= orphan_pass_ms) {
+            last_orphan_pass_ms = now_ms();
+            try { orphan_pass(); } catch (const std::exception& e) {
+                std::cerr << "commons-daemon: orphan watch failed: " << e.what() << "\n";
+            }
+        }
         for (const auto& user : presence.bound_usernames()) {
             const std::string region = "instance:house:" + user;
             const std::string bound_id = "u:" + user;

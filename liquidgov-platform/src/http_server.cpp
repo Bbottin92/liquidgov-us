@@ -6926,6 +6926,25 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             "Cache-Control: no-store\r\n");
     }
 
+    // Same-box only, same gate as /internal/blocked above. Does this username
+    // exist as a LiquidGov account right now? The commons-daemon uses it to find
+    // game rows whose owner is GONE (orphans: civic lets a deleted username be
+    // registered again, and the new owner would otherwise inherit the old
+    // player's house and inventory). No cookie and no identity: it asks only
+    // about existence. It answers {"exists":false} ONLY for a well-formed name
+    // that is not in the store; a malformed name answers {"exists":null}, never
+    // false, so nothing weird can ever read as "gone". Read-only.
+    if(method=="GET"&&path.rfind("/internal/user-exists/",0)==0) {
+        if (!header_value(req, "X-Forwarded-For").empty() ||
+            (peer_ip != "127.0.0.1" && peer_ip != "::1"))
+            return http_raw("404 Not Found", "text/plain", "not found\n");
+        const std::string who = path.substr(std::string("/internal/user-exists/").size());
+        std::string exists_body = "{\"exists\":null}";
+        if (valid_username(who))
+            exists_body = g_store.find_by_username(who) ? "{\"exists\":true}" : "{\"exists\":false}";
+        return http_raw("200 OK", "application/json", exists_body, "Cache-Control: no-store\r\n");
+    }
+
     if(method=="GET"&&path=="/logs") {
         const char* op = std::getenv("LIQUIDGOV_OPERATOR");
         if (!op || !op[0] || user != op)

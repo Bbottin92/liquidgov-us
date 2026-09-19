@@ -45,6 +45,14 @@ std::optional<std::string> session_cookie(const std::string& headers_raw);
 // value, owner); a failure is never cached, never remembered.
 std::optional<bool> block_answer(const std::string& headers_raw, const std::string& owner);
 
+// Orphan watch (BUILD orphans log-only, rest slice 4b): does this LiquidGov
+// account exist? Gone means civic explicitly answered {"exists":false} for a
+// well-formed name. Everything else -- civic down or slow, a malformed name,
+// {"exists":null}, an unreadable reply -- is Unknown, and Unknown is NEVER read
+// as gone. No cookie, no caching (the caller paces itself).
+enum class Existence { Exists, Gone, Unknown };
+Existence user_exists(const std::string& username);
+
 // Friends query (glue.md, GROK_V6_ANSWER.md): the mutual, non-blocked
 // friends of *that cookie's* account, via civic's same-box
 // /internal/friends. Empty on every failure path -- no cookie, civic

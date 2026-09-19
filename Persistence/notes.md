@@ -1740,6 +1740,20 @@ Not bug classes. Not “what is live on the droplet.”
   a real house to `open` and a stranger's door lighting is unproven on prod (needs two
   real accounts). **4a is live.** Parked: 4b orphans (own BUILD: `user-exists`,
   log-only first, two passes, cap 3, backup).
+- **2026-09-19 -- orphan watch, LOG-ONLY (rest slice 4b) built, local-tested, not
+  deployed.** Brandon: "BUILD orphans log-only"; Grok's valves (`GROK_REST_4_ANSWER.md`).
+  Civic: same-box `GET /internal/user-exists/<username>` (`exists` true/false for a
+  well-formed name, `null` for a malformed one, never false). Daemon: `civic::user_exists`
+  (Exists/Gone/Unknown; only an explicit false is Gone) and a ~10-minute pass on the
+  existing hook that finds players rows whose account is gone and only LOGS `would reap`
+  with a read-only footprint (inventory rows, placed rows, house instance). Valves: two
+  consecutive passes, cap 3 per pass, online players skipped, stops at the first
+  don't-know, suspect guard when every account reads gone. **No DELETE anywhere.**
+  Verified against real civic with real deleted accounts (rows unchanged; SIGSTOP resets
+  the streak; re-registered name clears it; cap defers the 4th; suspect guard). See
+  `orphans-built.md`. Deploy: civic then daemon, no client, backup first; then read the
+  journal (~20 min) -- expect the earlier throwaway accounts. The reap itself is a
+  separate later BUILD Brandon names after reading the list.
 
 ## Split: civic site vs game
 

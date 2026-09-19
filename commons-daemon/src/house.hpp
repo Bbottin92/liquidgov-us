@@ -60,6 +60,18 @@ public:
     // never creates a row).
     bool set_visit_policy(const std::string& username, const std::string& policy);
 
+    // Orphan watch (rest slice 4b, log-only): READ-ONLY. Every username that has
+    // a players row (guests have none), and how much game data hangs off one.
+    // Nothing here writes or deletes.
+    std::vector<std::string> all_usernames();
+    struct Footprint {
+        int house_instance = -1;   // -1 = never entered a house
+        int inventory_rows = 0;
+        int inventory_qty = 0;
+        int placed_rows = 0;       // in that house
+    };
+    Footprint footprint_of(const std::string& username);
+
     // Bound inventory (GROK_V6_ANSWER.md: lab pickups "vanish on refresh"
     // for a bound player). schema.sql's `inventory` table, first time it is
     // ever written. Guests stay RAM-only -- nothing here is reachable

@@ -113,6 +113,36 @@ bool HouseStore::set_visit_policy(const std::string& username, const std::string
     return sqlite3_changes(db_) > 0;
 }
 
+std::vector<std::string> HouseStore::all_usernames() {
+    std::vector<std::string> out;
+    sqlx::Stmt sel(db_, "SELECT lg_username FROM players WHERE lg_username IS NOT NULL ORDER BY player_id;");
+    while (sel.row()) out.push_back(sel.column_text(0));
+    return out;
+}
+
+HouseStore::Footprint HouseStore::footprint_of(const std::string& username) {
+    Footprint f;
+    int player_id = -1;
+    {
+        sqlx::Stmt sel(db_, "SELECT player_id, house_instance_id FROM players WHERE lg_username = ?1;");
+        sel.text(1, username);
+        if (!sel.row()) return f;
+        player_id = sel.column_int(0);
+        if (!sel.column_null(1)) f.house_instance = sel.column_int(1);
+    }
+    {
+        sqlx::Stmt sel(db_, "SELECT COUNT(*), COALESCE(SUM(quantity), 0) FROM inventory WHERE player_id = ?1;");
+        sel.integer(1, player_id);
+        if (sel.row()) { f.inventory_rows = sel.column_int(0); f.inventory_qty = sel.column_int(1); }
+    }
+    if (f.house_instance >= 0) {
+        sqlx::Stmt sel(db_, "SELECT COUNT(*) FROM placed WHERE instance_id = ?1;");
+        sel.integer(1, f.house_instance);
+        if (sel.row()) f.placed_rows = sel.column_int(0);
+    }
+    return f;
+}
+
 bool HouseStore::add_pickup(const std::string& username, const std::string& item_slug, long long now_ms) {
     int player_id = find_or_create_player(username);
     // MIN(.., 99): a lookup station can be pressed forever; the count is a

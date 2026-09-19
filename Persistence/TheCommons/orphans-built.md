@@ -97,3 +97,35 @@ The reap BUILD adds one transaction per reaped name (inventory, that house's `pl
 rows, the house `map_instances` row, then the `players` row and anything pointing at
 it), the same valves, an online SQLite backup first, and a per-pass cap of 3. It should
 be named by Brandon after he has read the "would reap" lines and agrees with the list.
+
+## Deployed (2026-09-19 10:17Z, Brandon: "deploy"; Grok accepted in `GROK_REST_4B_REVIEW.md`)
+
+Civic first, then the daemon. **No client, no nginx, no schema.**
+
+1. **Civic drift check first:** the droplet's `http_server.cpp` md5 (`ad769b18...`)
+   equalled the version before this round, so nothing was hand-edited live; the sync
+   sent exactly that one civic file. Daemon: `civic.cpp/.hpp`, `house.cpp/.hpp`,
+   `main.cpp`. Client dry-run: nothing.
+2. **One fix before deploying (`81bc825`):** the suspect guard compared "gone" with
+   the *checked* accounts, but online players are skipped, so with a living player in
+   the game the real orphans would have read as "all checked accounts gone" and the
+   watch would have logged nothing. It now compares with every known account
+   (retested both ways). Found by reading the production `players` list before
+   deploying: `persistverify9`, `vtowner`, `invverify1`, `Bbottin`, `ptvisitor`.
+3. **Online game-DB backup first:**
+   `/var/lib/commons/backups/commons.sqlite.pre-orphans-20260919T101314Z`, integrity ok
+   (items 3, recipes 3, maps 14, map_instances 6, players 5, placed 3, inventory 4).
+   Left on the box; the reap will want it.
+4. **Civic** synced, `-j1` build (1m18s), `liquidgov` restarted. Public `/` and
+   `/commons/` 200. **Public `/internal/user-exists/x` is 404** (as are
+   `/internal/blocked/x` and `/internal/friends`). On the box: an unknown name answers
+   `{"exists":false}`, a malformed one `{"exists":null}`, and `X-Forwarded-For` is a
+   404. The accounts store's mtime is from before the deploy.
+5. **Daemon** synced, `-j1` build, restarted at **10:17:21Z**; the journal shows
+   `orphan watch is LOG-ONLY (every 600s, needs 2 consecutive explicit civic
+   negatives, cap 3 per pass); nothing is deleted`. Live DB read-only: integrity ok,
+   every count identical to the baseline. Through nginx: lots, `1,1`, house `/placed/`
+   all 200; no failures; `NRestarts=0`.
+
+**Timing:** the first pass runs at ~10:27Z and a name needs two in a row, so the first
+`would reap` lines are due at ~10:37Z.

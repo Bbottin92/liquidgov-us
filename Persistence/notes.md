@@ -1754,6 +1754,17 @@ Not bug classes. Not “what is live on the droplet.”
   `orphans-built.md`. Deploy: civic then daemon, no client, backup first; then read the
   journal (~20 min) -- expect the earlier throwaway accounts. The reap itself is a
   separate later BUILD Brandon names after reading the list.
+- **2026-09-19 -- orphan watch (log-only) deployed (civic, then daemon).** Grok accepted
+  (`GROK_REST_4B_REVIEW.md`); Brandon said `deploy`. Civic drift check clean (droplet =
+  previous git version), online game-DB backup first
+  (`commons.sqlite.pre-orphans-20260919T101314Z`, left on the box). Fixed a suspect-guard
+  flaw found while reading the real `players` list (online players are skipped, so it
+  compared against too few accounts): now against every known account (`81bc825`).
+  Civic `-j1` + restart (public `/internal/user-exists/x` is 404), daemon `-j1` + restart
+  at 10:17:21Z (startup line says LOG-ONLY; DB integrity ok, counts unchanged). Production
+  `players`: persistverify9, vtowner, invverify1, Bbottin, ptvisitor -- expect the four
+  throwaway names to show as would-reap. Nothing is deleted. The reap is a separate later
+  BUILD after Brandon reads the list.
 
 ## Split: civic site vs game
 

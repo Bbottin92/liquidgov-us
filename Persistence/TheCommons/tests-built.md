@@ -43,6 +43,7 @@ client code change, no deploy.** Files: `commons-daemon/tests/` and one workflow
 | `health` | `/health`'s commit: the generator's rules, the no-reconfigure refresh on the real build dir, the endpoint (59) |
 | `client_files` | the split client's load order: the real files evaluated in tag order under a stubbed DOM, effects checked, wrong orders must throw (48) |
 | `netstatus` | the connection badge: the shipped state machine (fake clock, 31 checks) + its wiring, markup and CSS (29) |
+| `world_scatter` | the extra region props: refused if not plain ground, none on the spine / seams / doors / labels / spawn, flood fill leaves nothing sealed (14 + 7 wiring, 9 mutations) |
 | `harness` | the harness itself: no daemon survives `stop_daemon`/`crash_daemon` even under a forking wrapper; `start_daemon` refuses a busy port (8) |
 
 ## Does it actually catch regressions? (mutation check)

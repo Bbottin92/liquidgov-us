@@ -266,6 +266,55 @@ SOLID_TILE[T_ADIT] = 1;
 SOLID_TILE[T_MINE_DOOR] = 1;
 SOLID_TILE[T_LAMP] = 1;
 
+// ---- Scatter: the extra props (BUILD objects B) ------------------------------
+// Data, not code: [x, y] tile coords per region, drawn with tiles that already exist (tree, sit-log,
+// crate, flower bed, low wall, hedge), so no new art and no new collision rule. scatterRegions() (called
+// last in dressRegions) refuses any spot that is not plain ground, so a wrong coordinate can never
+// overwrite a door, the path or a wall: it is listed in SCATTER_REFUSED instead, and
+// tests/world_scatter_unit.js fails on that. The same test enforces what the coordinates below keep clear:
+// the path spine and the bridge jog, every region's edge tiles (the seams between regions), the strip
+// where a region's name is stamped, one tile around every door / sign / interactable, the spawn, and the
+// passerby's waypoints; and it flood-fills the result so no walkable tile is ever sealed off.
+// Declared up here, not beside dressRegions(): the world is built during script load (see FRIEND_LOT_DOORS).
+var SCATTER = [
+  { region: "North Woods", tile: T_TREE, at: [[3,3],[8,3],[13,4],[20,3],[21,8],[3,9],[2,13],[8,15],[14,14],[19,12],[20,16],[16,17],[4,17]] },
+  { region: "North Woods", tile: T_BENCH, at: [[7,8],[8,8],[15,7]] },
+  { region: "Lookout", tile: T_TREE, at: [[26,3],[29,6],[33,3],[39,4],[44,3],[45,8],[27,9],[45,12]] },
+  { region: "Lookout", tile: T_BENCH, at: [[31,14],[39,14]] },
+  { region: "Lookout", tile: T_FLOWERBED, at: [[43,6],[44,6]] },
+  { region: "Orchard", tile: T_TREE, at: [[54,4],[58,4],[62,4],[66,4],[66,8],[66,12],[52,16],[68,16]] },
+  { region: "Orchard", tile: T_BENCH, at: [[60,14],[52,10],[68,10]] },
+  { region: "Orchard", tile: T_FLOWERBED, at: [[50,5],[50,6]] },
+  { region: "Workshop Lane", tile: T_CRATE, at: [[3,25],[3,26],[15,25],[19,25],[20,25],[20,26],[19,32],[5,33]] },
+  { region: "Workshop Lane", tile: T_TREE, at: [[3,23],[21,23],[3,36],[7,37],[14,35],[19,36]] },
+  { region: "Workshop Lane", tile: T_LOWWALL, at: [[5,31],[6,31],[7,31]] },
+  { region: "Workshop Lane", tile: T_FLOWERBED, at: [[2,29],[2,30]] },
+  { region: "the Square", tile: T_TREE, at: [[27,23],[44,23],[27,37],[44,37]] },
+  { region: "the Square", tile: T_FLOWERBED, at: [[29,26],[30,26],[41,26],[42,26],[29,35],[30,35],[41,35],[42,35]] },
+  { region: "the Square", tile: T_BENCH, at: [[28,29],[44,29]] },
+  { region: "Hall Lawn", tile: T_TREE, at: [[52,23],[68,23],[52,36],[68,36]] },
+  { region: "Hall Lawn", tile: T_FLOWERBED, at: [[54,34],[55,34],[65,34],[66,34]] },
+  { region: "Hall Lawn", tile: T_BENCH, at: [[57,36],[63,36]] },
+  { region: "Hall Lawn", tile: T_HEDGE, at: [[56,27],[64,27],[56,33],[64,33]] },
+  { region: "Lab Yard", tile: T_CRATE, at: [[6,49],[7,49],[16,48],[17,47],[17,48]] },
+  { region: "Lab Yard", tile: T_TREE, at: [[3,42],[20,43],[3,55],[19,55],[21,50]] },
+  { region: "Lab Yard", tile: T_BENCH, at: [[9,52],[16,52]] },
+  { region: "Lab Yard", tile: T_FLOWERBED, at: [[17,55],[18,55],[4,47],[4,48]] },
+  { region: "Homestead Row", tile: T_TREE, at: [[27,43],[44,43],[30,42],[41,42],[26,54],[46,54],[29,57],[42,57]] },
+  { region: "Homestead Row", tile: T_FLOWERBED, at: [[37,44],[38,44],[31,44],[30,44],[27,51],[28,51],[44,51],[45,51]] },
+  { region: "Homestead Row", tile: T_BENCH, at: [[40,45],[28,44],[30,53],[40,53]] },
+  { region: "Garden", tile: T_FLOWERBED, at: [[52,44],[53,44],[54,44],[66,44],[67,44],[65,54],[66,54],[65,55]] },
+  { region: "Garden", tile: T_TREE, at: [[50,42],[69,42],[50,56],[69,56],[60,55],[54,52]] },
+  { region: "Garden", tile: T_BENCH, at: [[57,52],[63,52]] },
+  { region: "Garden", tile: T_LOWWALL, at: [[52,50],[53,50],[54,50],[67,50],[68,50]] },
+  { region: "Quarry Ridge", tile: T_LOWWALL, at: [[4,64],[5,64],[18,65],[19,65],[19,66],[3,72],[4,73],[17,73],[18,73],[15,76],[6,76],[20,70]] },
+  { region: "Quarry Ridge", tile: T_CRATE, at: [[6,67],[6,68],[16,64]] },
+  { region: "Quarry Ridge", tile: T_TREE, at: [[2,62],[21,62],[21,77],[3,77]] },
+  { region: "Creek", tile: T_BENCH, at: [[29,72],[41,64]] },   // driftwood, like the one already there
+  { region: "Shore", tile: T_BENCH, at: [[52,66],[66,74]] }
+];
+var SCATTER_PLACED = 0, SCATTER_REFUSED = [];   // read by tests/world_scatter_unit.js
+
 // ---- Build the tile + collision arrays (once) ---------------------------
 var tiles = new Uint8Array(WORLD_W * WORLD_H);
 var solid = new Uint8Array(WORLD_W * WORLD_H);
@@ -511,6 +560,26 @@ function dressRegions() {
   var signX = quarry.x0 + 14, signY = quarry.y0 + 8;
   tiles[idx(signX, signY)] = T_SIGN;
   interactables.push({ type: "sign", x: signX, y: signY, prompt: "Read", text: "Watch your step." });
+
+  scatterRegions();
+}
+
+// The extra props (SCATTER above), placed after everything else so they can only fill plain ground.
+// Plain ground = grass, dirt or the Lookout plateau. A driftwood bench may sit on water (the Creek and Shore
+// ones already do); nothing else may.
+function scatterRegions() {
+  for (var g = 0; g < SCATTER.length; g++) {
+    var grp = SCATTER[g], box = regionAABB(findRegion(grp.region));
+    for (var k = 0; k < grp.at.length; k++) {
+      var x = grp.at[k][0], y = grp.at[k][1];
+      var inside = x >= box.x0 && x <= box.x1 && y >= box.y0 && y <= box.y1;
+      var base = inside ? tiles[idx(x, y)] : -1;
+      var ground = base === T_GRASS_A || base === T_GRASS_B || base === T_DIRT || base === T_PLATEAU || (base === T_WATER && grp.tile === T_BENCH);
+      if (!ground) { SCATTER_REFUSED.push(grp.region + " (" + x + "," + y + ")"); continue; }
+      tiles[idx(x, y)] = grp.tile;
+      SCATTER_PLACED++;
+    }
+  }
 }
 
 // ---- Bake the world once to an offscreen canvas (tilemap.md: bake once,

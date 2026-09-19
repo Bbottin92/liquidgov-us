@@ -88,7 +88,11 @@ function makeEnv() {
     document: deepWith({ getElementById: (id) => rec.byId[id] || el(id), createElement: (t) => t === "canvas" ? canvasEl() : el("_" + t), addEventListener() {}, hidden: false }),
     requestAnimationFrame: () => 0, setTimeout: () => 0, setInterval: () => 0, clearTimeout() {}, clearInterval() {},
     performance: { now: () => 0 }, fetch: () => new Promise(() => {}),
-    Image: function () { const o = new Proxy({}, { set: (t, k, v) => { t[k] = v; return true } }); rec.images.push(o); return o; },
+    // (a decoded image reports the size the game checks for, so its onload does its real work when fired)
+    Image: function () {
+      const o = new Proxy({}, { set: (t, k, v) => { t[k] = v; if (k === "src") { const s = /tiles\.png/.test(v) ? [256, 64] : /sprites\.png/.test(v) ? [128, 24] : [0, 0]; t.naturalWidth = s[0]; t.naturalHeight = s[1]; } return true; } });
+      rec.images.push(o); return o;
+    },
     addEventListener(n) { rec.listeners.push(n); }, removeEventListener() {},
     console: { log() {}, warn() {}, error: (...a) => rec.errors.push(a.join(" ")) },
     URLSearchParams, URL, encodeURIComponent, Promise, Date, screen: { width: 1280, height: 800 }, localStorage: { getItem: () => null, setItem() {} },
@@ -134,6 +138,24 @@ for (const [label, order] of ctl) {
   const r = load(order);
   check(!r.ok && /^ReferenceError/.test(r.error), "control: " + label + " throws a ReferenceError (" + (r.ok ? "it did NOT throw" : r.error) + ")");
 }
+// ---- async callbacks between scripts: the browser runs the <script> tags one after another with the event loop free in between, so an
+// image that is already cached can fire its onload after ANY tag. A handler in an early file that touches a name declared in a LATER file
+// throws a ReferenceError (strict mode) -- the live client did exactly that with forceRedraw (assigned in sprites.js, declared in main.js).
+function asyncBetweenScripts(order) {
+  const env = makeEnv(); const errs = [];
+  for (const f of order) {
+    vm.runInContext(read(f), env.g, { filename: f });
+    for (const img of env.rec.images) {
+      if (typeof img.onload !== "function") continue;
+      try { img.onload(); } catch (e) { errs.push("after " + f + ": " + img.src + " onload threw " + e.name + ": " + e.message); }
+    }
+  }
+  return errs;
+}
+const asyncErrs = asyncBetweenScripts(ORDER);
+check(asyncErrs.length === 0, "an image finishing its load between any two scripts causes no ReferenceError: " + asyncErrs.slice(0, 3).join(" | "));
+check(load(ORDER).rec.images.filter((i) => typeof i.onload === "function").length >= 2, "and the two sheets' onload handlers are registered, so that check really fires them");
+
 const missing = load(ORDER.slice(0, 4).concat(ORDER.slice(5)));            // a file left out of the tags (a missing net.js)
 check(!missing.ok || ev(missing, "typeof netMint") === "undefined", "control: with net.js missing, netMint is not defined (so a missing file cannot pass unnoticed)");
 

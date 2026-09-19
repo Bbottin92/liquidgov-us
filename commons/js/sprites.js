@@ -53,6 +53,12 @@ function spriteDestX(worldX) { return worldX - SPRITE_W / 2; }
 function spriteDestY(worldY, half) { return worldY - (SPRITE_H - half); }
 function spriteSrcX(dir, frame) { return (dir * 2 + frame) * SPRITE_W; }
 
+// "Redraw next frame" flag, read and reset by frame() in main.js. It is declared HERE, not there: the sheets'
+// onload handlers below assign it, and a cached image can fire onload between two <script> tags, before
+// main.js has run; in strict mode assigning an undeclared name then throws. Declare a name in the first file
+// that can touch it from an async callback (tests/client_files_unit.js fires the handlers between scripts).
+var forceRedraw = true;
+
 // Load tiles.png and sprites.png (same folder as this page). Each is used only
 // if it decodes at exactly the size the generator writes; anything else leaves
 // the painted look in place. Re-baking is a one-off: every space re-stamps from

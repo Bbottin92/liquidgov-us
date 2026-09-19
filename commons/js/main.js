@@ -3,7 +3,7 @@
 var running = false;
 var lastT = 0;
 var lastTickAt = 0; // performance.now() of the last frame() call, any source
-var forceRedraw = true;
+// (forceRedraw is declared in sprites.js, the first file whose async handlers assign it -- see there.)
 var prevPlayerX = player.x, prevPlayerY = player.y;
 var prevPlayerDir = player.dir, prevPlayerAnim = player.animFrame;
 var prevPbVisible = false, prevPbX = passerby.x, prevPbY = passerby.y;

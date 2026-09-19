@@ -98,8 +98,15 @@ function drawSpace(camX, camY) {
       if (!lot.friend) continue;
       var lsx = lot.x * TILE - camX, lsy = lot.y * TILE - camY;
       if (lsx < -TILE || lsx > crop.vw || lsy < -TILE || lsy > crop.vh) continue;
-      ctx.fillStyle = "#d8b46a";
-      ctx.fillRect(lsx + 2, lsy + 2, TILE - 4, TILE - 4);
+      if (tileSheet) {
+        ctx.drawImage(tileSheet, (T_DOOR_HOUSE % 16) * TILE, Math.floor(T_DOOR_HOUSE / 16) * TILE,
+          TILE, TILE, lsx, lsy, TILE, TILE);
+      } else {
+        ctx.fillStyle = "#6b4a28";
+        ctx.fillRect(lsx + 2, lsy + 1, 12, 14);
+        ctx.fillStyle = "#d8b46a";
+        ctx.fillRect(lsx + 11, lsy + 8, 2, 2);
+      }
       var lname = lot.friend.length > 9 ? lot.friend.slice(0, 8) + "…" : lot.friend;
       drawNameplate(ctx, lname, lsx + TILE / 2, lsy - 5);
     }

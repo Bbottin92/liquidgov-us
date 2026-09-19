@@ -18,6 +18,8 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-19 — polish built, not deployed.** `polish-built.md`.
+  Back-to-site link both sides of the door. No duplicate grass [Look]. Desktop hides Enter.
 - **2026-09-19 — door built, not deployed.** `door-built.md`.
   Civic: Quad CTAs and GET /world now send people to /commons/. Guests walk in.
 - **2026-09-19 — fill map built, not deployed.** `fill-map-built.md`.

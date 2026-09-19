@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <title>The Commons</title>
+<meta name="description" content="The Commons, a shared plaza on LiquidGov.US. Guests can walk.">
+<meta name="theme-color" content="#0c0b09">
+<link rel="icon" href="/favicon.svg">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -20,13 +23,15 @@
   <button id="dDown" type="button" tabindex="-1" aria-label="Down">&#9660;</button>
 </div>
 <button id="interactBtn" type="button" tabindex="-1" aria-label="Interact">Enter</button>
+<a id="siteLink" href="/">LiquidGov</a>
 
 <div id="nameOverlay">
   <div id="nameCard">
     <h1>Welcome to the Square</h1>
-    <p>Pick a name for this visit. If you're logged in on LiquidGov, the game uses that name instead.</p>
+    <p>Pick a name for this visit. If you're signed in on LiquidGov, the game uses that name instead.</p>
     <input id="nameInput" type="text" maxlength="20" placeholder="A throwaway name" autocomplete="off">
     <button id="nameGo" type="button">Walk in</button>
+    <p class="toSite"><a href="/">Back to LiquidGov</a></p>
   </div>
 </div>
 

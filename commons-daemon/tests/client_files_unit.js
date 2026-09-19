@@ -25,7 +25,7 @@ check(JSON.stringify(srcs) === JSON.stringify(ORDER), "the <script src> tags are
 check(scripts.every((m) => m[2].trim() === ""), "no inline script is left in index.html");
 check(scripts.every((m) => !/\b(defer|async|type\s*=|nomodule)\b/i.test(m[1])), "no defer / async / type=module on any tag (the order must match the old inline script)");
 check(!/<style\b/i.test(html), "no inline <style> is left in index.html");
-const links = [...html.matchAll(/<link\b([^>]*)>/g)].map((m) => (m[1].match(/\bhref="([^"]*)"/) || [])[1]);
+const links = [...html.matchAll(/<link\b([^>]*)>/g)].filter((m) => /rel="stylesheet"/.test(m[1])).map((m) => (m[1].match(/\bhref="([^"]*)"/) || [])[1]);
 check(JSON.stringify(links) === JSON.stringify(["style.css"]), "one stylesheet, style.css: " + JSON.stringify(links));
 const lastTag = html.lastIndexOf("<script"), bodyEnd = html.indexOf("</body>");
 check(lastTag > 0 && lastTag < bodyEnd && html.indexOf("<div id=\"nameOverlay\">") < html.indexOf("<script"), "the scripts come after all the markup they use (the old script sat at the end of <body>)");
@@ -46,6 +46,8 @@ check(/<div id="invHud"[^>]*><\/div>/.test(html), "index.html has the empty #inv
 check(/<div id="toast"[^>]*role="status"[^>]*><\/div>/.test(html), "index.html has the empty #toast pill");
 check(/<div id="placeName"><\/div>/.test(html), "index.html has the empty #placeName banner");
 check(/<title>The Commons<\/title>/.test(html), "the tab title is The Commons, not a leftover P3");
+check(/id="siteLink" href="\/"/.test(html), "the in-game LiquidGov link goes to the civic site, not a new URL");
+check(/class="toSite"/.test(html), "the welcome card has a way back to LiquidGov");
 
 // ---- no name is declared in two files (a redeclaration would silently change which one wins)
 const declared = new Map(); const dups = [];

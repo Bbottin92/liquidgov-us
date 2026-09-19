@@ -43,6 +43,21 @@
     border:1px solid var(--ink); border-radius:6px;
     background:var(--ink); color:var(--paper); cursor:pointer;
   }
+  #nameCard .toSite{
+    margin:.75rem 0 0; font-size:.75rem;
+  }
+  #nameCard .toSite a{ color:#6b6458; }
+  #siteLink{
+    position:fixed;
+    top:calc(.55rem + env(safe-area-inset-top,0px));
+    right:calc(.6rem + env(safe-area-inset-right,0px));
+    z-index:14;
+    padding:.28rem .7rem; border:1px solid var(--ink); border-radius:999px;
+    background:var(--paper); color:var(--ink);
+    font-size:.75rem; line-height:1.2; font-weight:600;
+    text-decoration:none;
+    box-shadow:0 1px 4px rgba(26,24,20,.35);
+  }
   /* "Reconnecting…": top centre, well away from the bottom-anchored d-pad and Enter button, above them (15) but under the
      name overlay (20). Empty = hidden (netStatusTick writes the text only while the problem lasts); it never takes a tap. */
   #connStatus{
@@ -159,5 +174,6 @@
      on a fine pointer uncovers the bottom of the Square. */
   @media (hover: hover) and (pointer: fine) {
     #dpad{ display:none; }
+    #interactBtn{ display:none !important; }
     #toast{ bottom:calc(1.2rem + env(safe-area-inset-bottom,0px)); }
   }

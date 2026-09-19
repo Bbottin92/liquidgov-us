@@ -209,16 +209,6 @@ function drawSpace(camX, camY) {
   }
 
   drawSortedActors(ctx, camX, camY);
-
-  if (nearestInteractable) {
-    var ix = (nearestInteractable.x * TILE + 8) - camX;
-    var iy = (nearestInteractable.y * TILE + 8) - camY - 14;
-    ctx.font = "8px monospace";
-    var promptText = "[" + nearestInteractable.prompt + "]";
-    var promptW = ctx.measureText(promptText).width;
-    ix = Math.max(promptW / 2 + 1, Math.min(crop.vw - promptW / 2 - 1, ix));
-    drawNameplate(ctx, promptText, ix, iy);
-  }
 }
 
 function frame(t) {

@@ -1,4 +1,8 @@
-# Inventory strip — built, not deployed
+# Inventory strip — **live** (`a9a998d`)
+
+Deployed 2026-09-19 by Brandon (`--label inv-strip`). Verify 33/0.
+
+# was: built, not deployed
 
 Brandon: continue (after objects live). The play gap was “how do I use
 these” — you could hold 11 things and only see a toast.

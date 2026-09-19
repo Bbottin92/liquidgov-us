@@ -18,6 +18,8 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-19 — inventory strip live.** Brandon deployed `a9a998d`
+  (`--label inv-strip`). Verify 33/0, items 11 unchanged. `GROK_INV_STRIP_LIVE.md`.
 - **2026-09-19 — inventory strip built, not deployed.** `inventory-strip-built.md`.
   Chips of what you hold, tap to change the item in hand. Client only.
 - **2026-09-19 — D+C1+C2 live.** Brandon deployed `ccdf06f`

@@ -1565,6 +1565,13 @@ Not bug classes. Not “what is live on the droplet.”
   alone: `actions/checkout@v4` (Node 20 annotation remains; a `@v5` bump is
   a separate one-liner) and `ci.md`'s block still says `ubuntu-latest`
   (Grok's doc). Parked still: house `open`/`locked`, the ~30s snapshot.
+- **2026-09-19 -- checkout@v5.** Brandon: "BUILD checkout@v5" (Grok's
+  `GROK_CHECKOUT_V5.md`; Node 20 leaves the runners 2026-09-23). One line:
+  `actions/checkout@v4` -> `@v5`; `fetch-depth: 0` and `ubuntu-24.04` stay;
+  no `ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION`. `ci.md`'s block synced to
+  match. Pushed as `4293edf`; run green in 1m11s and the run page shows no
+  annotations at all (the Node 20 warning is gone). No droplet, no game.
+  Parked still: house `open`/`locked`, the ~30s snapshot.
 
 ## Split: civic site vs game
 

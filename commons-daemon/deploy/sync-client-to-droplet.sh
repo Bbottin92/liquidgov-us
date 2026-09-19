@@ -8,6 +8,7 @@
 # Client goes LAST in a deploy: after the daemon it talks to is live. Same refusals as the daemon sync (dirty tree).
 #
 # Usage: sync-client-to-droplet.sh [-n|--dry-run] [--allow-dirty]
+# shellcheck disable=SC2034  # ALLOW_DIRTY / ALLOW_UNPUSHED are set here and read by need_clean_tree / need_pushed in lib.sh
 set -euo pipefail
 # shellcheck source=lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"

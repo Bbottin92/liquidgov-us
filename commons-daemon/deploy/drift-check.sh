@@ -13,6 +13,7 @@
 # Usage: drift-check.sh [--tree daemon|client|both] [--baseline REV] [--allow-dirty] [--allow-unpushed]
 #   --baseline REV   required when the droplet has no marker yet (first use). The revision that is live now.
 # Exit: 0 no drift / 1 drift or a refused precondition / 2 cannot decide (no baseline)
+# shellcheck disable=SC2034  # ALLOW_DIRTY / ALLOW_UNPUSHED are set here and read by need_clean_tree / need_pushed in lib.sh
 set -euo pipefail
 # shellcheck source=lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"

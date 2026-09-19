@@ -21,6 +21,7 @@
 #                         [--label LABEL] [--allow-dirty] [--allow-unpushed]
 #   --baseline REV  the revision live now; only needed until the droplet has a marker (first use: 60f6745)
 #   --label LABEL   names the backup (default: the short HEAD sha)
+# shellcheck disable=SC2034  # ALLOW_DIRTY / ALLOW_UNPUSHED are set here and read by need_clean_tree / need_pushed in lib.sh
 set -euo pipefail
 # shellcheck source=lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"

@@ -17,6 +17,7 @@
 #
 # Usage: sync-to-droplet.sh [-n|--dry-run] [--allow-dirty]
 #   Host/paths come from lib.sh (DEPLOY_HOST etc.); the old positional [user@]host[:path] argument is gone.
+# shellcheck disable=SC2034  # ALLOW_DIRTY / ALLOW_UNPUSHED are set here and read by need_clean_tree / need_pushed in lib.sh
 set -euo pipefail
 # shellcheck source=lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"

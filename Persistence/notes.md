@@ -1933,6 +1933,11 @@ Not bug classes. Not “what is live on the droplet.”
   `commons.sqlite.pre-d9363b5-20260919T172306Z` (integrity ok); sync wrote the marker, then a RECONFIGURE + `-j1` build (CMake changed) picked it up;
   restart; verify 33/33 including the new check that the running commit equals the deployed revision (`d9363b5d7aa5`). Live `/health` now
   `{"status":"ok","commit":"d9363b5d7aa511beae70de082bb3203ad33e37ec"}`, loopback-only (`/commons/health` is 404 publicly). Row counts unchanged. Parked: `index.html` split.
+- **2026-09-19 -- `BUILD index.html split`: asked before building (no spec).** No doc says how (only "one vanilla file, no build step"), and the
+  file is 2,243 lines / 103 KB of shared global state (106 vars, 68 functions, load-order-dependent, one `"use strict"`). `CLAUDE_SPLIT_QUESTION.md`
+  gives options (A classic `<script src>` files in the same global scope, recommended; B ES modules; C extract only CSS + networking; D don't) and
+  the traps (`"use strict"` is per file; a multi-file deploy is not atomic: two-phase client sync). Proof plan: byte-equivalence of the JS,
+  `node --check`, a CI file-reference test, a real-browser before/after parity check. Waiting on Brandon's one-letter answer; no code written.
 
 ## Split: civic site vs game
 

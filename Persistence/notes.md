@@ -18,6 +18,8 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-19 — occupant lerp built, not deployed.** `occupant-lerp-built.md`.
+  2Hz snapshots walk instead of teleport. Client only.
 - **2026-09-19 — place banner live.** Brandon deployed `cfd1fde`
   (`--label place-banner`). Verify 33/0. `GROK_PLACE_BANNER_LIVE.md`.
 - **2026-09-19 — place banner built, not deployed.** `place-banner-built.md`.

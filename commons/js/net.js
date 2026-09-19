@@ -104,6 +104,7 @@ var netBoundId = null;
 function isSelfId(id) { return id === netId || (netBoundId !== null && id === netBoundId); }
 var netRegion = null;        // an outdoor REGIONS entry, an interior instance key string, or null
 var otherOccupants = [];     // merged poll across every camera-intersecting region, self filtered out
+var occupantViz = Object.create(null); // id -> {x,y,tx,ty,dir,...} world pixels, lerped between 2Hz polls
 var netOccupantsDirty = false;
 var netPollBusy = false;     // one batch of camera-region GETs in flight at a time
 var lastNetSendAt = -Infinity;
@@ -150,6 +151,65 @@ function regionLocalToWorld(region, lx, ly) {
   if (typeof region === "string") return { x: lx * TILE, y: ly * TILE };
   var aabb = regionAABB(region);
   return { x: (aabb.x0 + lx) * TILE, y: (aabb.y0 + ly) * TILE };
+}
+
+function clearOccupantViz() {
+  occupantViz = Object.create(null);
+}
+
+// Turn a 2Hz snapshot list into viz targets. Same-region updates lerp;
+// a region change (or first sight) snaps. Draw reads occupantViz.
+function ingestOccupants(list) {
+  var seen = Object.create(null);
+  for (var i = 0; i < list.length; i++) {
+    var o = list[i];
+    seen[o.id] = true;
+    var wp = regionLocalToWorld(o.region, o.x, o.y);
+    var face = (typeof o.facing === "number" && o.facing >= 0 && o.facing <= 3) ? o.facing : DIR_DOWN;
+    var key = regionKeyFor(o.region);
+    var v = occupantViz[o.id];
+    if (!v || v.regionKey !== key) {
+      occupantViz[o.id] = {
+        id: o.id, region: o.region, regionKey: key,
+        x: wp.x, y: wp.y, tx: wp.x, ty: wp.y,
+        dir: face, animFrame: 0, animTimer: 0,
+        display_name: o.display_name
+      };
+    } else {
+      v.tx = wp.x; v.ty = wp.y;
+      v.dir = face;
+      v.display_name = o.display_name;
+      v.region = o.region;
+    }
+  }
+  for (var id in occupantViz) if (!seen[id]) delete occupantViz[id];
+  otherOccupants = list;
+  netOccupantsDirty = true;
+}
+
+function stepOccupants(dt) {
+  var moved = false;
+  var speed = player.speed;
+  for (var id in occupantViz) {
+    var v = occupantViz[id];
+    var dx = v.tx - v.x, dy = v.ty - v.y;
+    var dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < 0.4) {
+      if (v.x !== v.tx || v.y !== v.ty) { v.x = v.tx; v.y = v.ty; moved = true; }
+      v.animFrame = 0;
+      continue;
+    }
+    moved = true;
+    if (dist > 96) { v.x = v.tx; v.y = v.ty; v.animFrame = 0; continue; }
+    var step = speed * dt;
+    if (step >= dist) { v.x = v.tx; v.y = v.ty; }
+    else { v.x += (dx / dist) * step; v.y += (dy / dist) * step; }
+    if (Math.abs(dx) > Math.abs(dy)) v.dir = dx < 0 ? DIR_LEFT : DIR_RIGHT;
+    else v.dir = dy < 0 ? DIR_UP : DIR_DOWN;
+    v.animTimer += dt;
+    if (v.animTimer > 0.18) { v.animTimer = 0; v.animFrame = v.animFrame ? 0 : 1; }
+  }
+  return moved;
 }
 
 function netBody(extra) {
@@ -395,7 +455,10 @@ function netApplyJoinJson(j) {
       // already sitting in the last poll instead of drawing it until the next
       // one lands.
       netBoundId = (j.bound && j.username) ? "u:" + j.username : null;
-      if (netBoundId) otherOccupants = otherOccupants.filter(function (o) { return o.id !== netBoundId; });
+      if (netBoundId) {
+        otherOccupants = otherOccupants.filter(function (o) { return o.id !== netBoundId; });
+        delete occupantViz[netBoundId];
+      }
       // Bound: pull my saved pickups once per bind. Guests never do.
       if (j.bound && !inventoryLoaded) { inventoryLoaded = true; netLoadInventory(); }
       if (!j.bound) inventoryLoaded = false;
@@ -427,6 +490,7 @@ function netJoin(region) {
   var lp = worldToRegionLocal(region, player.x, player.y);
   netRegion = region; // optimistic -- matches the existing join_locked/rekey de-dupe on the daemon side either way
   otherOccupants = []; // stale data from whatever region we were just in shouldn't render for a frame in the new one
+  clearOccupantViz();
   placedItem = null;   // likewise -- a different room's placed item must not bleed into this one's render
   placedFloor = [];
   fetch(DAEMON + "/presence/join", {
@@ -440,6 +504,7 @@ function netRekey(fromRegion, toRegion) {
   var lp = worldToRegionLocal(toRegion, player.x, player.y);
   netRegion = toRegion;
   otherOccupants = [];
+  clearOccupantViz();
   placedItem = null;
   placedFloor = [];
   fetch(DAEMON + "/presence/rekey", {
@@ -480,10 +545,9 @@ function netPollCurrentRegion() {
     .then(function (r) { return r.json(); })
     .then(function (list) {
       var region = netRegion;
-      otherOccupants = list.filter(function (o) { return !isSelfId(o.id); }).map(function (o) {
+      ingestOccupants(list.filter(function (o) { return !isSelfId(o.id); }).map(function (o) {
         return { region: region, id: o.id, display_name: o.display_name, x: o.x, y: o.y, facing: o.facing };
-      });
-      netOccupantsDirty = true;
+      }));
     })
     .catch(function () {})
     .finally(function () { netPollBusy = false; });
@@ -597,8 +661,7 @@ function netPollRegions(regions) {
       })
       .catch(function () { return []; }); // one region's GET failing shouldn't drop every other region's occupants
   })).then(function (perRegion) {
-    otherOccupants = perRegion.reduce(function (acc, list) { return acc.concat(list); }, []);
-    netOccupantsDirty = true;
+    ingestOccupants(perRegion.reduce(function (acc, list) { return acc.concat(list); }, []));
   }).finally(function () { netPollBusy = false; });
 }
 
@@ -621,6 +684,7 @@ function netLeave() {
   fetch(DAEMON + "/presence/leave", { method: "POST", body: body, keepalive: true }).catch(function () {});
   netRegion = null;
   otherOccupants = [];
+  clearOccupantViz();
 }
 window.addEventListener("pagehide", netLeave);
 

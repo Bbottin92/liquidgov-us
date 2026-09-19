@@ -119,17 +119,11 @@ function drawSpace(camX, camY) {
   // netPollCurrentRegion indoors) and regionLocalToWorld already handles
   // both an outdoor REGIONS entry and an interior instance-key string.
   if (netReady && netRegion) {
-    for (var oi = 0; oi < otherOccupants.length; oi++) {
-      var o = otherOccupants[oi];
-      var owp = regionLocalToWorld(o.region, o.x, o.y);
-      var osx = owp.x - camX, osy = owp.y - camY;
-      var oDir = (typeof o.facing === "number" && o.facing >= 0 && o.facing <= 3) ? o.facing : DIR_DOWN;
-      // No animFrame in the occupant feed (2Hz snapshots, not a walk
-      // cycle) -- a static standing frame per poll is enough to prove
-      // real multiplayer works; smoothing/interpolating between polls is
-      // a later nice-to-have, not attempted here.
+    for (var oid in occupantViz) {
+      var o = occupantViz[oid];
+      var osx = o.x - camX, osy = o.y - camY;
       var oDestY = spriteDestY(osy, 6);
-      ctx.drawImage(spriteAtlas, spriteSrcX(oDir, 0), 0, SPRITE_W, SPRITE_H,
+      ctx.drawImage(spriteAtlas, spriteSrcX(o.dir, o.animFrame), 0, SPRITE_W, SPRITE_H,
         spriteDestX(osx), oDestY, SPRITE_W, SPRITE_H);
       drawNameplate(ctx, o.display_name || o.id, osx, oDestY - 4);
     }
@@ -171,6 +165,7 @@ function frame(t) {
   tickPlaceName(t);
 
   var playerMoved = movePlayer(currentDX(), currentDY(), dt);
+  var occupantsMoved = stepOccupants(dt);
 
   // Hoisted above the outdoor block (not just above drawSpace, where it
   // used to live) so the presence networking tick can compute which
@@ -263,7 +258,7 @@ function frame(t) {
   // cell to redraw. Track prevPlayerDir/Anim (and passerby's) the same
   // way position is tracked.
   var playerFacingChanged = player.dir !== prevPlayerDir || player.animFrame !== prevPlayerAnim;
-  var changed = forceRedraw || cropChangedThisFrame || playerMoved || playerFacingChanged;
+  var changed = forceRedraw || cropChangedThisFrame || playerMoved || playerFacingChanged || occupantsMoved;
   if (mode === "outdoor") {
     var pbFacingChanged = passerby.dir !== prevPbDir || passerby.animFrame !== prevPbAnim;
     changed = changed ||

@@ -1863,6 +1863,12 @@ Not bug classes. Not “what is live on the droplet.”
   fake droplet behind a shim ssh) is mutation-checked (10 breakages) and found 2 real bugs in my own scripts;
   CI also runs `bash -n` + `shellcheck` on them. The reqjson fix is still not live (needs `deploy`). See
   `deploy-scripts-built.md`, `commons-daemon/deploy/README.md`. Still unbuilt: nginx `/guest`, backup retention.
+- **2026-09-19 ~15:25Z -- reqjson DEPLOYED (daemon only), the first real run of the deploy scripts.** Brandon: `deploy`
+  (plan-only: no drift, 10 files: `reqjson.hpp` + nine `deploy/` files) then `deploy` again (`--go --baseline 60f6745
+  --guest-name x`). Backup `commons.sqlite.pre-a56eba3-20260919T152437Z` (integrity ok); `-j1` build, no reconfigure;
+  restart; verify 32/32 incl. a real guest named `x` through nginx, journal clean, every row count unchanged. The
+  droplet now has `/opt/commons-daemon/.deployed-rev` = a56eba3, so the next deploy needs no `--baseline`. Civic, client
+  and nginx untouched. Unbuilt: nginx `/guest` limit (own deploy word), backup retention (backups now accumulate).
 
 ## Split: civic site vs game
 

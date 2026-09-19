@@ -2,7 +2,7 @@
 
 Brandon: "BUILD reqjson: parse "key": not the first quoted token. Daemon only. Name-first body, guest
 named x must join. test_reqjson.sh in CI. No nginx. No deploy." (`GROK_REQJSON.md`.)
-**Not deployed**: the daemon on the droplet is still the old parser until Brandon says `deploy`.
+**Deployed 2026-09-19 (~15:25Z), Brandon: `deploy` twice (plan, then `--go`)**: see "Deployed" at the bottom.
 
 ## The bug (latent, reproduced before fixing)
 
@@ -51,3 +51,23 @@ passes against both the stub and the real civic, which is what pins that.
 ## Not here
 
 Deploy scripts, nginx `/guest`, backup retention, `index.html` split, `/health` hash: still unbuilt names.
+
+## Deployed (2026-09-19, ~15:25Z; first real use of the deploy scripts)
+
+`deploy-daemon.sh --baseline 60f6745` (plan only) first: no drift, and exactly 10 files to change
+(`src/reqjson.hpp` and nine under `deploy/`; nothing under `tests/`; civic diff since `60f6745` empty). Then
+`deploy-daemon.sh --go --baseline 60f6745 --guest-name x`, daemon only (no client, no civic, no nginx), deploying
+`a56eba3`. Exit 0:
+
+1. Drift check clean. 2. Online backup
+`/var/lib/commons/backups/commons.sqlite.pre-a56eba3-20260919T152437Z`, `integrity_check` ok (counts: inventory 3,
+items 3, map_instances 2, maps 14, placed 0, players 1, recipe_inputs 0, recipe_outputs 3, recipes 3).
+3. Synced; `.deployed-rev` written (so the NEXT deploy needs no `--baseline`). 4. `-j1` build, no reconfigure
+(five objects rebuilt, linked). 5. Restarted (drops RAM presence and guest credentials; houses are durable).
+6. `verify.sh --compare-backup --guest-name x`: **32 passed, 0 failed**: both services active, `NRestarts=0`,
+journal shows listening and no error lines, civic `/` 200, `/commons/` 200, public `/internal/` 404, lots and
+region 200, **a real guest named `x` minted, joined (under the name `x`, at the coordinates sent), moved, a bad
+secret 403, left and gone**, `integrity_check` ok, every table's row count identical to the backup.
+
+That is the real-Square proof of the reqjson fix: a guest named `x` joins through nginx against the live daemon.
+It is also the first run of the deploy scripts over real ssh/rsync/systemd, which the fake droplet could not prove.

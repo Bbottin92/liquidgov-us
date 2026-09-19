@@ -18,6 +18,10 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-19 — SSG crib, no generator.** `ssgs.md`: Hugo / Eleventy /
+  Astro / Vite would be a compile step. The Commons client is already
+  static files on nginx; civic is request-time C++. Do not add `_site/`.
+  No code change.
 - **2026-09-19 — split client live, Grok independent check.** Claude's
   two-phase deploy accepted. From here, no SSH: `/commons/` is the 41-line
   shell (0 inline, 8 classic `js/*.js` tags + `style.css`), all eight

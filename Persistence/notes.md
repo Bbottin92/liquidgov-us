@@ -1885,6 +1885,15 @@ Not bug classes. Not “what is live on the droplet.”
   civic 200, public `/internal/` 404, no 'limiting requests' in the log. The 429 itself was proven in CI, not by
   flooding. Side observation (pre-existing): something polls `GET /commons/recipes` every ~6s and 404s (not proxied
   by design). Unbuilt: backup retention (Brandon picks how many / how old); client `netMint` r.ok check.
+- **2026-09-19 -- `BUILD backup retention` built (files + fake-backup tests; NO droplet, nothing deleted anywhere).**
+  `deploy/prune-backups.py` (pure decision) + `prune-backups.sh [--delete]` (dry run by default). Brandon's policy: delete only
+  if BOTH outside the newest 14 AND older than 30 days; newest 14 stay however old; anything within 30 days stays however
+  many; never the newest; never < 24h (a hard floor, redundant at the defaults, independent if `--days` is overridden).
+  Naming inspected: deploy `pre-<label>-<stamp>` and the daemon's `pre-reap-<stamp>` are ONE scheme, ranked together and
+  treated identically; non-backup names are ignored. Age = the younger of the name's stamp and the mtime. Refuses on a failed
+  listing or a future-dated backup. `test_retention.sh` (47) + `prune_backups_unit.py` (361, incl. 300 random directories),
+  mutation-checked (12 breakages). Not scheduled; not run by `deploy-daemon.sh`. Today the droplet has ~a dozen backups all
+  < 2 days old, so a first real run (a dry run, on `deploy`) would delete nothing for ~a month. See `backup-retention-built.md`.
 
 ## Split: civic site vs game
 

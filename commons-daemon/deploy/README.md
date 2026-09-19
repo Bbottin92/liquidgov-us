@@ -20,6 +20,7 @@ deploy-daemon.sh --go --guest-name x  # verify joins the real Square as a guest 
 | `sync-client-to-droplet.sh [-n]` | `commons/` -> `/opt/commons` (+ `.deployed-client-rev`, kept OUTSIDE the served dir) | client files |
 | `build-on-droplet.sh [--reconfigure]` | `cmake --build -j1`; reconfigure only when asked | the build dir |
 | `verify.sh [--guest-name N] [--compare-backup P]` | systemd, journal, loopback, public routes, a real guest, row counts | one throwaway guest (RAM) |
+| `prune-backups.sh [--delete]` | Retention for `/var/lib/commons/backups`: delete only if outside the newest 14 AND older than 30 days (never the newest, never < 24h); DRY RUN unless `--delete`; not run by `deploy-daemon.sh` | only with `--delete`: removes old backup files |
 | `deploy-daemon.sh` | runs them in order; refuses to continue past a failed step | all of the above |
 | `lib.sh` | shared config, the exclusion lists, the marker | (sourced) |
 
@@ -67,6 +68,5 @@ at all (the 2026-09-12 civic incident: a stray local `.lgp` overwrote production
 
 ## Not here
 
-nginx (`nginx-commons.conf` and `nginx-commons-http.conf` are installed by hand, their own deploy word; see `nginx-guest-built.md`), backup **retention** (backups
-accumulate in `/var/lib/commons/backups/`; pruning is a later named item), and `commons-daemon.service`
+nginx (`nginx-commons.conf` and `nginx-commons-http.conf` are installed by hand, their own deploy word; see `nginx-guest-built.md`), scheduling retention (a separate decision; see `backup-retention-built.md`), and `commons-daemon.service`
 installation (a one-time step in `Persistence/TheCommons/deploy-plan.md`).

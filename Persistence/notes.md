@@ -1557,6 +1557,14 @@ Not bug classes. Not “what is live on the droplet.”
   Hall link all as designed. Named leftovers now: none open; `open`/`locked`
   policies, ~30s snapshot, `rebind()`, `lg_session` cache and orphan reaping
   stay parked.
+- **2026-09-19 -- CI pinned to ubuntu-24.04.** Brandon: "BUILD CI pin".
+  One line in `.github/workflows/commons.yml` (`runs-on: ubuntu-latest` ->
+  `ubuntu-24.04`), ahead of `ubuntu-latest` moving to Ubuntu 26 on
+  2026-10-19. Pushed as `807b4bd`; run green in 1m4s (daemon build and
+  `nginx -t` on the pinned image); the Ubuntu-26 annotation is gone. Left
+  alone: `actions/checkout@v4` (Node 20 annotation remains; a `@v5` bump is
+  a separate one-liner) and `ci.md`'s block still says `ubuntu-latest`
+  (Grok's doc). Parked still: house `open`/`locked`, the ~30s snapshot.
 
 ## Split: civic site vs game
 

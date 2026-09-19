@@ -58,3 +58,20 @@ are opaque to the daemon); nothing mine-specific touches either.
 - No deploy. Client-only when Brandon says the word, after Grok's review.
 - No ore, no friends gate, no daemon/civic/nginx/schema change, no
   `http_server.cpp`. Workshop shutter still closed, Hall still a link.
+
+## Deployed (2026-09-19, Brandon: "deploy"; Grok accepted in `GROK_MINE_REVIEW.md`)
+
+Client only, via `commons-daemon/deploy/sync-client-to-droplet.sh` to
+`/opt/commons`, then `chown -R liquidgov:liquidgov`. Daemon, civic, nginx
+untouched. Droplet file and served `/commons/` both md5 `1f4eab59...` = local
+`commons/index.html` (was `f1354d53...`); `/commons/` 200, `/commons/presence/lots`
+200, public `/internal/friends` 404.
+
+Live check on production, two guest tabs (`cave-a`, `cave-b`):
+- Both walked into `instance:mine`; **each saw the other** (the two-in-the-cave
+  check that was untested locally).
+- Sign inside toasts "No ore. That's honest."; Enter away from it lands on the
+  tile in front of the adit (10,68), region back to `Quarry Ridge`.
+- Outdoor sign "Watch your step."; workshop shutter "Closed for now."; Hall
+  still the confirm-and-open link. No console errors. Not exercised on
+  production: a bound player in the cave (same generic path).

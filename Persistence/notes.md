@@ -1549,6 +1549,14 @@ Not bug classes. Not “what is live on the droplet.”
   Verified as a guest in a real browser against a scratch daemon. See
   `mine-built.md`. Deploy is client only, after Grok's review and Brandon's
   `deploy`.
+- **2026-09-19 -- mine A deployed (client only).** Grok accepted
+  (`GROK_MINE_REVIEW.md`); Brandon said `deploy`. Synced to `/opt/commons`,
+  droplet and served md5 equal local (`1f4eab59...`); no daemon/civic/nginx
+  change. Live check with two guest tabs: both in `instance:mine`, each saw
+  the other; sign, exit-to-adit, outdoor sign, workshop "Closed for now.",
+  Hall link all as designed. Named leftovers now: none open; `open`/`locked`
+  policies, ~30s snapshot, `rebind()`, `lg_session` cache and orphan reaping
+  stay parked.
 
 ## Split: civic site vs game
 

@@ -1,7 +1,7 @@
-# nginx `/guest` rate limit — built (config + CI tests; NOT installed on the droplet)
+# nginx `/guest` rate limit — built, CI-tested, DEPLOYED 2026-09-19 (~15:46Z)
 
 Brandon: "BUILD nginx /guest" (`GROK_NEXT.md` #3, `GROK_HARDENING.md` §2, `GROK_REQJSON_LIVE.md`: "nginx also
-needs its own **deploy**"). **No droplet was touched, no nginx was reloaded, nothing is deployed.** Files:
+needs its own **deploy**"). **Built without touching the droplet; deployed afterwards (see "Deployed" at the bottom).** Files:
 `commons-daemon/deploy/nginx-commons-http.conf` (new, http level), `nginx-commons.conf` (one new location),
 `tests/test_nginx_guest.sh`, two workflow edits.
 
@@ -71,3 +71,32 @@ includes the zone file.
   workflow's `nginx -t` step (now including the zone file) is green. It has still never run on the droplet's nginx.
 - The droplet's nginx version and any front proxy are unchecked until the deploy (step 1).
 - Not built: backup retention; the client's `netMint` status check.
+
+## Deployed (2026-09-19, ~15:46Z, Brandon: `deploy`; Grok had accepted the rates and the HTML 429)
+
+nginx only: no daemon, civic or client change. By hand, per the recipe above (there is no script for nginx):
+
+1. **Read-only checks:** nginx **1.24.0** (dry run supported); `conf.d/*.conf` is included at http level and was
+   empty; no existing `limit_req`/`commons_guest` anywhere; the public response is straight from nginx with no
+   CDN/proxy headers in front (so the peer address is the real client). The live `location = /commons`,
+   `/commons/`, `/commons/presence/` and `/commons/placed/` blocks were **identical** to the repo's
+   (whitespace-insensitive); the guest block was not there.
+2. **Backup:** `/etc/nginx/sites-available/liquidgov.bak-pre-guestlimit-20260919T154553Z`.
+3. **Installed:** the zone as `/etc/nginx/conf.d/commons-guest-zone.conf`; the guest location inserted after the
+   `/commons/placed/` block in `/etc/nginx/sites-available/liquidgov` (written beside, then moved into place,
+   with an automatic rollback if `nginx -t` failed; it did not). `nginx -t` OK, `systemctl reload nginx`;
+   nginx, liquidgov and commons-daemon all active.
+4. **Verified without flooding:** exactly two active `limit_req*` lines in `nginx -T` (the zone, and the one
+   `limit_req` in the guest location); five mints in a row through https all 200 with real credentials
+   (`application/json`); `verify.sh --guest-name x` **22 passed, 0 failed** (civic `/` 200, `/commons/` 200, public
+   `/internal/` still 404, lots 200, a real guest named `x` joined/moved/left, journal clean); zero "limiting
+   requests" lines in the nginx error log; the live guest location and the three neighbouring blocks are identical
+   to the repo's. The 429 itself was not exercised on production (proven in CI, per the plan).
+
+**Rollback** (not needed): `cp` the `.bak-pre-guestlimit-*` file back over the site file, `rm` the conf.d file,
+`nginx -t`, `systemctl reload nginx`.
+
+**Side observation, unrelated to this change (already happening before it):** the nginx error log shows some
+client polling `GET /commons/recipes` about every 6s, and 404ing (`open() "/opt/commons/recipes" failed`): that
+route is deliberately not proxied (`deploy-plan.md`: the client never fetches catalogs from the daemon). Something
+requests it anyway; nothing here acts on it.

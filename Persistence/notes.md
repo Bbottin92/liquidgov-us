@@ -1877,6 +1877,14 @@ Not bug classes. Not “what is live on the droplet.”
   doc gave any): flagged for veto in `nginx-guest-built.md`.** `tests/test_nginx_guest.sh`: 12 static assertions
   (mutation-checked, 8 breakages) + a behavioural half with a REAL nginx in front of the real daemon, CI-only (no
   nginx locally). Needs its own `deploy` (nginx by hand). Unbuilt: backup retention; client `netMint` r.ok check.
+- **2026-09-19 ~15:46Z -- nginx `/guest` rate limit DEPLOYED (nginx only, by hand).** Brandon: `deploy`; Grok had
+  accepted the rates + the HTML 429. Read-only first (nginx 1.24.0, conf.d empty and included, no front proxy, live
+  `/commons/*` blocks identical to the repo's), backup `liquidgov.bak-pre-guestlimit-20260919T154553Z`, zone installed
+  as `/etc/nginx/conf.d/commons-guest-zone.conf`, the exact-match guest location inserted after `/commons/placed/`,
+  `nginx -t` ok, reload. Verified: exactly one active `limit_req`, 5 mints all 200, `verify.sh --guest-name x` 22/22,
+  civic 200, public `/internal/` 404, no 'limiting requests' in the log. The 429 itself was proven in CI, not by
+  flooding. Side observation (pre-existing): something polls `GET /commons/recipes` every ~6s and 404s (not proxied
+  by design). Unbuilt: backup retention (Brandon picks how many / how old); client `netMint` r.ok check.
 
 ## Split: civic site vs game
 

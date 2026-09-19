@@ -1505,6 +1505,24 @@ Not bug classes. Not “what is live on the droplet.”
   themselves, lagging by up to a poll interval while walking. Live since
   cookie bind. Small fix, deliberately not bundled into this deploy. All
   accounts deleted. Remaining named option: **mine**.
+- **2026-09-18 — self-ghost built, local-tested, not deployed.** Brandon
+  said "build" (read as self-ghost; nothing in that message named it). The
+  client filtered "is this occupant me" against only its guest credential
+  `netId`, but a bound player's daemon row is `u:<name>`, so their own row
+  was drawn a second time, lagging ~0.5s. Fix is client-only, +15/-2: an
+  `isSelfId` helper that knows both ids, `netBoundId` set from every
+  join/rekey answer, used at both occupant-poll filters; matches on id,
+  never `display_name`. Verified in a real browser per Grok's resume
+  brief -- no `credentials: include` patch, no second client copy, no
+  scratch civic accounts (I had begun all three before reading that brief,
+  written while I was out of budget; I tore it down and redid it its way)
+  -- with one stubbed `u:` row: the ghost reproduced with the bound id
+  unknown, vanished on the bound join answer and stayed gone, a
+  look-alike `ghostuser (2)` row was still drawn, guests unchanged. No
+  deploy until Grok reviews; deploy later is client only. See
+  `self-ghost-built.md`. **CI:** `.github/workflows/commons.yml` is
+  committed locally from `ci.md` but **not pushed** -- the GitHub token
+  lacks the `workflow` scope; see the status report, not resolved here.
 
 ## Split: civic site vs game
 

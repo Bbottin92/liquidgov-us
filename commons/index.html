@@ -980,6 +980,14 @@ var NET_INTERVAL_MS = 500; // presence.md: per-region ~2Hz
 // the player just walked into.
 var INTERIOR_INSTANCE_KEY = { demoHouse: "instance:demo", lab: "instance:lab" };
 var netId = null, netSecret = null, netReady = false;
+// A bound player has two ids: the guest credential above (what this client
+// authenticates with) and "u:<username>", the id the daemon actually files
+// their occupant row under once a civic cookie resolves (cookie-bind.md).
+// Every poll returns the caller's own row too; comparing only against netId
+// never matched a bound player's, so they were drawn a second time as a
+// lagging copy of themselves. Set from the join/rekey answers below.
+var netBoundId = null;
+function isSelfId(id) { return id === netId || (netBoundId !== null && id === netBoundId); }
 var netRegion = null;        // an outdoor REGIONS entry, an interior instance key string, or null
 var otherOccupants = [];     // merged poll across every camera-intersecting region, self filtered out
 var netOccupantsDirty = false;
@@ -1166,6 +1174,11 @@ function netHandleJoinResponse(r) {
     }
     if (j) {
       isBound = !!j.bound;
+      // My own occupant row is "u:<username>" once bound. Drop any copy of it
+      // already sitting in the last poll instead of drawing it until the next
+      // one lands.
+      netBoundId = (j.bound && j.username) ? "u:" + j.username : null;
+      if (netBoundId) otherOccupants = otherOccupants.filter(function (o) { return o.id !== netBoundId; });
       // Bound: pull my saved pickups once per bind. Guests never do.
       if (j.bound && !inventoryLoaded) { inventoryLoaded = true; netLoadInventory(); }
       if (!j.bound) inventoryLoaded = false;
@@ -1244,7 +1257,7 @@ function netPollCurrentRegion() {
     .then(function (r) { return r.json(); })
     .then(function (list) {
       var region = netRegion;
-      otherOccupants = list.filter(function (o) { return o.id !== netId; }).map(function (o) {
+      otherOccupants = list.filter(function (o) { return !isSelfId(o.id); }).map(function (o) {
         return { region: region, id: o.id, display_name: o.display_name, x: o.x, y: o.y, facing: o.facing };
       });
       netOccupantsDirty = true;
@@ -1324,7 +1337,7 @@ function netPollRegions(regions) {
       .then(function (r) { return r.json(); })
       .then(function (list) {
         return list
-          .filter(function (o) { return o.id !== netId; })
+          .filter(function (o) { return !isSelfId(o.id); })
           .map(function (o) {
             return { region: region, id: o.id, display_name: o.display_name, x: o.x, y: o.y, facing: o.facing };
           });

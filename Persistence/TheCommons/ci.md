@@ -1,8 +1,11 @@
-# GitHub Action — spec, not installed
+# GitHub Action — live at `.github/workflows/commons.yml`
 
-Claude lands `.github/workflows/commons.yml` from the block below.
-Needs the `workflow` OAuth scope (`gh auth refresh -h github.com -s workflow`).
-Do not SSH. Do not deploy. Do not compile civic. No secrets (`gha-secrets.md`).
+Runner is **`ubuntu-24.04`** (807b4bd), not `ubuntu-latest`, so the
+2026-10-19 Ubuntu 26 cutover does not change cmake or nginx. No secrets.
+`fetch-depth: 0`. Do not SSH. Do not compile civic.
+
+`actions/checkout@v4` stays. Node 20 annotation is noise; GitHub already
+runs it on 24. Bump to `@v5` only as a named one-liner.
 
 ## What it gates
 
@@ -13,18 +16,9 @@ Do not SSH. Do not deploy. Do not compile civic. No secrets (`gha-secrets.md`).
 4. `nginx-commons.conf` parses inside a wrap that defines
    `$connection_upgrade`.
 5. Same-commit `http_server.cpp` **and** `commons/index.html` needs
-   `civic` or `deploy` in the subject. Only the commits in *this* push/PR
-   — history is not rewritten. Friends/`/latest` already merged stay.
+   `civic` or `deploy` in the subject.
 
-## Checkout depth (Claude found this)
-
-Default `actions/checkout@v4` is depth 1. Gate 5 then `git diff`s
-`github.event.before`, which is a **missing object**, and `|| true`
-exits 0. **`fetch-depth: 0`** (full history of the branch, not the
-whole repo's every branch) is the one-line fix. Do not keep the silent
-`|| true` once the parent exists.
-
-## Land this file at `.github/workflows/commons.yml`
+## YAML (keep in sync with the workflow file)
 
 ```yaml
 name: commons
@@ -39,92 +33,12 @@ permissions:
 
 jobs:
   daemon:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: schema.sql is the spec copy
-        run: |
-          set -euo pipefail
-          spec="Persistence/TheCommons/schema.sql"
-          dmn="commons-daemon/schema.sql"
-          test -f "$spec"
-          test -e "$dmn"
-          if [ -L "$dmn" ]; then
-            target=$(readlink "$dmn")
-            echo "symlink -> $target"
-            test -f "commons-daemon/$target" || test -f "$target"
-          fi
-          cmp -s "$spec" "$dmn"
-
-      - name: exact GET /presence/* before the prefix route
-        run: |
-          set -euo pipefail
-          f=commons-daemon/src/main.cpp
-          inv=$(grep -n 'server.route("GET", "/presence/inventory"' "$f" | head -1 | cut -d: -f1)
-          lots=$(grep -n 'server.route("GET", "/presence/lots"' "$f" | head -1 | cut -d: -f1)
-          prefix=$(grep -n 'server.route("GET", "/presence/"' "$f" | grep -v inventory | grep -v lots | head -1 | cut -d: -f1)
-          test -n "$inv" && test -n "$lots" && test -n "$prefix"
-          echo "inventory@$inv lots@$lots prefix@$prefix"
-          test "$inv" -lt "$prefix"
-          test "$lots" -lt "$prefix"
-
-      - name: civic+client same commit is named
-        run: |
-          set -euo pipefail
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            git fetch origin "${{ github.base_ref }}"
-            base=$(git merge-base HEAD origin/${{ github.base_ref }})
-          else
-            base=${{ github.event.before }}
-            if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ]; then
-              echo "no parent; skip mixed-commit gate"
-              exit 0
-            fi
-          fi
-          files=$(git diff --name-only "$base" HEAD)
-          echo "$files"
-          echo "$files" | grep -q '^liquidgov-platform/src/http_server.cpp$' && civic=1 || civic=0
-          echo "$files" | grep -q '^commons/index.html$' && client=1 || client=0
-          if [ "$civic" = 1 ] && [ "$client" = 1 ]; then
-            subj=$(git log -1 --format=%s)
-            echo "subject: $subj"
-            echo "$subj" | grep -qiE 'civic|deploy' || {
-              echo "http_server.cpp and commons/index.html in one commit need 'civic' or 'deploy' in the subject"
-              exit 1
-            }
-          fi
-
-      - name: build commons-daemon
-        working-directory: commons-daemon
-        run: |
-          set -euo pipefail
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-          cmake --build build -j2
-          test -x build/commons_daemon
-
-      - name: nginx -t on a wrapped fragment
-        run: |
-          set -euo pipefail
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq nginx
-          wrap=$(mktemp --suffix=.conf)
-          cat > "$wrap" <<EOF
-          pid /tmp/ci-nginx.pid;
-          error_log /tmp/ci-nginx.log;
-          events {}
-          http {
-            map \$http_upgrade \$connection_upgrade {
-              default upgrade;
-              ''      close;
-            }
-            server {
-              listen 127.0.0.1:18080;
-              include ${{ github.workspace }}/commons-daemon/deploy/nginx-commons.conf;
-            }
-          }
-          EOF
-          sudo nginx -t -c "$wrap"
 ```
+
+The remaining steps are in `.github/workflows/commons.yml`. Do not paste
+a second copy that can drift.

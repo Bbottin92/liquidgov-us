@@ -120,7 +120,7 @@ check(ok.ok, "all eight files load in tag order" + (ok.ok ? "" : ": " + ok.file 
 if (ok.ok) {
   // the load-time code must have RUN (a silent skip would look like success), judged by its effects
   check(ev(ok, "typeof spriteAtlasCtx !== 'undefined' && spriteAtlasCtx !== null"), "paintSpriteAtlas ran (the sprite atlas context is set)");
-  check(ev(ok, "(function () { var c = regionAABB(findRegion('Creek')); return tiles[c.y0 * WORLD_W + c.x0] === T_WATER; })()"), "bakeTileIds ran (the Creek is water in the tile array)");
+  check(ev(ok, "(function () { var c = regionAABB(findRegion('Creek')); return tiles[66 * WORLD_W + (c.x0 + 2)] === T_WATER && tiles[c.y0 * WORLD_W + (c.x0 + 2)] !== T_WATER; })()"), "bakeTileIds ran (Creek has a water ribbon and a grass bank)");
   const bakeDraws = ok.rec.byEl.get(ev(ok, "baked")).draws, worldCells = ev(ok, "WORLD_W * WORLD_H");
   check(bakeDraws >= worldCells, "paintBake ran: the `baked` canvas got at least one draw per world cell (" + bakeDraws + " >= " + worldCells + ")");
   check(ok.rec.byEl.get(ev(ok, "spriteAtlas")).draws > 0, "paintSpriteAtlas drew onto the sprite atlas canvas");

@@ -335,8 +335,14 @@ var SCATTER = [
   { region: "Quarry Ridge", tile: T_LOWWALL, at: [[4,64],[5,64],[18,65],[19,65],[19,66],[3,72],[4,73],[17,73],[18,73],[15,76],[6,76],[20,70]] },
   { region: "Quarry Ridge", tile: T_CRATE, at: [[6,67],[6,68],[16,64]] },
   { region: "Quarry Ridge", tile: T_TREE, at: [[2,62],[21,62],[21,77],[3,77]] },
-  { region: "Creek", tile: T_BENCH, at: [[29,72],[41,64]] },   // driftwood, like the one already there
-  { region: "Shore", tile: T_BENCH, at: [[52,66],[66,74]] }
+  { region: "Creek", tile: T_BENCH, at: [[29,72],[41,64],[27,65],[45,74]] },
+  { region: "Creek", tile: T_TREE, at: [[25,62],[27,64],[31,63],[38,62],[42,64],[45,63],[25,75],[28,77],[31,74],[38,76],[43,75],[46,77]] },
+  { region: "Creek", tile: T_FLOWERBED, at: [[26,63],[44,75],[39,64]] },
+  { region: "Shore", tile: T_BENCH, at: [[52,66],[66,74],[51,64],[68,76]] },
+  { region: "Shore", tile: T_TREE, at: [[50,62],[54,64],[58,63],[69,62],[50,75],[55,77],[61,76],[68,75]] },
+  { region: "Shore", tile: T_FLOWERBED, at: [[51,74],[53,74],[67,76]] },
+  { region: "Shore", tile: T_CRATE, at: [[50,73],[70,74]] },
+  { region: "Shore", tile: T_LOWWALL, at: [[54,75],[55,75]] }
 ];
 var SCATTER_PLACED = 0, SCATTER_REFUSED = [];   // read by tests/world_scatter_unit.js
 
@@ -364,16 +370,27 @@ var MINE_DOOR_TILE = null;
   for (var y = 0; y < WORLD_H; y++) {
     for (var x = 0; x < WORLD_W; x++) {
       var t;
-      if (x >= creek.x0 && x <= creek.x1 && y >= creek.y0 && y <= creek.y1) {
-        t = T_WATER;
-      } else if (x >= shore.x0 && x <= shore.x1 && y >= shore.y0 && y <= shore.y1) {
-        t = T_WATER;
-      } else if (x >= quarry.x0 && x <= quarry.x1 && y >= quarry.y0 && y <= quarry.y1) {
+      if (x >= quarry.x0 && x <= quarry.x1 && y >= quarry.y0 && y <= quarry.y1) {
         t = T_DIRT;
       } else {
         t = ((x + y) % 2 === 0) ? T_GRASS_A : T_GRASS_B;
       }
       tiles[idx(x, y)] = t;
+    }
+  }
+
+  // Creek + Shore: a water ribbon with grass/sand banks, not a flooded
+  // region (atlas.md: "one water ribbon + one bridge; rest open bank").
+  // P0 painted the whole 24×20 as water; this is the remaining map fill.
+  var waterY0 = 66, waterY1 = 72;
+  for (var wy = waterY0; wy <= waterY1; wy++) {
+    for (var wx = creek.x0; wx <= shore.x1; wx++) {
+      tiles[idx(wx, wy)] = T_WATER;
+    }
+  }
+  for (var sy = 73; sy <= shore.y1; sy++) {
+    for (var sx = shore.x0; sx <= shore.x1; sx++) {
+      tiles[idx(sx, sy)] = T_DIRT;
     }
   }
 
@@ -496,6 +513,12 @@ function dressRegions() {
   tiles[idx(63, 73)] = T_DIRT;
   tiles[idx(62, 73)] = T_CRATE;
   interactables.push({ type: "worldPickup", pickup: "seashell", x: 62, y: 73, prompt: "Look" });
+  // Atlas Shore set piece: a short pier into the water, 2 tiles wide,
+  // meeting the existing east-west bridge jog so it is not a sealed dock.
+  for (var pierY = 67; pierY <= 72; pierY++) {
+    tiles[idx(62, pierY)] = T_BRIDGE;
+    tiles[idx(63, pierY)] = T_BRIDGE;
+  }
 
   // Lab Yard (P2): the building exterior + a small sign. The door is a
   // walk-in trigger (atlas.md), not an Enter-to-confirm door like Hall or

@@ -18,6 +18,8 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-19 — fill map built, not deployed.** `fill-map-built.md`.
+  Creek/Shore banks + Shore pier. Scatter 168→202. Atlas ribbon, not P0 flood.
 - **2026-09-19 — tree canopies built, not deployed.** `canopy-built.md`.
   Second-storey foliage on the tile north of each tree trunk.
 - **2026-09-19 — behind trees built, not deployed.** `behind-trees-built.md`.

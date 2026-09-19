@@ -1793,6 +1793,18 @@ Not bug classes. Not “what is live on the droplet.”
   reaps persistverify9, vtowner, invverify1 (automatic backup first), 3rd ~12:00Z reaps
   ptvisitor; Bbottin untouched (civic says it exists). Kill switch:
   `COMMONS_ORPHAN_REAP=0` + restart. Result to be read from the journal and recorded.
+- **2026-09-19 12:20Z -- orphan reap ran; four throwaways gone, Bbottin untouched.** Read
+  (read-only) at 11:55Z and 12:20Z. 11:50:26Z: automatic backup, then REAPED
+  persistverify9, vtowner, invverify1, 1 deferred by the cap; 12:00:27Z: second automatic
+  backup, REAPED ptvisitor. Live DB: integrity ok, foreign_key_check clean, nothing
+  dangling; players 5 -> 1 (exactly Bbottin), map_instances 6 -> 2 (demo, lab), placed 3 ->
+  0, inventory 4 -> 2. Bbottin is kept because civic says it exists, not by name. Three
+  backups on the box (manual, 11:50, 12:00), all integrity ok, the 11:50 one holds all 5
+  players. No failures, no restarts. The inheritance hole (a re-registered deleted
+  username getting the old player's house/inventory) is closed; the watch keeps running,
+  kill switch `COMMONS_ORPHAN_REAP=0`. **Rest slices 1-4 and the reap are all live.**
+  Nothing is parked from that list; `backup-strat.md` and `civic-ratelimit.md` are explore
+  notes, not builds.
 
 ## Split: civic site vs game
 

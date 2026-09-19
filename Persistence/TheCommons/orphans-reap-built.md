@@ -118,3 +118,45 @@ gone (1st pass)` for the four; the second pass ~11:50:28Z takes an automatic bac
 and reaps `persistverify9`, `vtowner`, `invverify1` (cap 3); the third ~12:00:28Z
 reaps `ptvisitor`. `Bbottin` is never touched (civic says it exists).
 Stop at any time: set `COMMONS_ORPHAN_REAP=0` in the unit and restart.
+
+## The reap ran (2026-09-19, read 11:55Z and 12:20Z; nothing restarted, nothing touched)
+
+Read-only both times (journal, directory listing, `mode=ro` queries). The first read
+was at 11:55Z, before the ~12:01 mark Grok asked for, because Brandon said "read it";
+it wrote nothing. (Opening the 11:50 backup read-only for its integrity check left an
+empty `-wal`/`-shm` beside that backup file: harmless, and a restore copies the main
+file only.)
+
+**Journal:**
+- 11:40Z first pass: `persistverify9`, `vtowner`, `invverify1`, `ptvisitor` each `gone
+  from civic (1st pass; needs 2 in a row)`.
+- **11:50:26Z** second pass: `backup taken before reaping:
+  .../commons.sqlite.pre-reap-20260919T115026Z`, then
+  - `REAPED 'persistverify9'`: 0 inventory, 1 placed, house row and players row removed
+  - `REAPED 'vtowner'`: 0 inventory, 1 placed, house row and players row removed
+  - `REAPED 'invverify1'`: 2 inventory, 1 placed, house row and players row removed
+  - `1 more deferred by the cap of 3 per pass`
+- **12:00:27Z** third pass: `backup taken before reaping:
+  .../commons.sqlite.pre-reap-20260919T120027Z`, then `REAPED 'ptvisitor'`: 0
+  inventory, 0 placed, house row and players row removed (gone for 3 passes).
+
+**Live DB after:** `integrity_check` ok; `foreign_key_check` 0 rows; nothing dangling
+(no placed row without its instance, no inventory row without its player, no player
+pointing at a missing house). items 3, recipes 3, maps 14 unchanged;
+`map_instances` 6 -> 2 (the two shared ones with no owner, demo and lab),
+`players` 5 -> **1**, `placed` 3 -> 0, `inventory` 4 -> 2.
+`players` is exactly `Bbottin` (visit_policy `friends`, 2 inventory rows, no house
+instance): **untouched, because civic answers `{"exists":true}` for it, not because of
+any hardcoded name.** Civic still answers `exists:false` for the four reaped names.
+
+**Backups (all `integrity_check` ok):** manual `pre-reap-manual-20260919T112956Z`
+(the pre-deploy copy), automatic `pre-reap-20260919T115026Z` (holds all **5** players,
+4 inventory rows: the full pre-reap state) and `pre-reap-20260919T120027Z` (2 players,
+2 inventory). No failures, `NRestarts=0`, `/`, lots and presence all 200 throughout.
+
+**What it closed:** deleted LiquidGov usernames can no longer be re-registered by
+someone else and inherit the old player's house, wall item or inventory: the watch
+removes the game rows once civic says the account is gone (two passes, last look,
+backup first, cap 3). The watch keeps running every ~10 minutes; from here it only
+acts when a real account is deleted. Stop at any time with `COMMONS_ORPHAN_REAP=0`
+and a restart.

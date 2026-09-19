@@ -1846,6 +1846,12 @@ Not bug classes. Not “what is live on the droplet.”
   bodies make a guest named `x`/`y` 400, `secret` 403, `id`/`facing` get a wrong "(2)" rename. The shipped client
   sends `display_name` last, so it does not bite today (all seven colliding names joined) -- luck of key order.
   Awaiting Brandon's `BUILD reqjson` (daemon only; parse `"key":` as a real key walk + `test_reqjson.sh`).
+- **2026-09-19 -- `BUILD reqjson` built (daemon only, NOT deployed).** `reqjson.hpp` now walks the flat object
+  (key, `:`, value, `,`) so a field is found only in KEY position; a value equal to a field name (a guest named
+  `x`, name-first body) can no longer be read as a key. Same API/call sites; `field_num` stricter (JSON-number
+  token only). `tests/reqjson_unit.cpp` (201 checks) + `tests/test_reqjson.sh` (102 assertions incl. name-first
+  bodies through the daemon) run in CI via `run_all.sh`; mutation-checked against the old header. The live
+  daemon still has the old parser until `deploy`. See `reqjson-built.md`. Next per Grok: deploy scripts, then nginx.
 
 ## Split: civic site vs game
 

@@ -10,7 +10,7 @@ commons-daemon/tests/run_all.sh test_guest       # one test
 ```
 
 Needs the built daemon (`commons-daemon/build/commons_daemon`, or `COMMONS_DAEMON_BIN`),
-`python3`, `curl`. `strace` is optional (one extra check, skipped when absent).
+`python3`, `curl`, and `g++` (`test_reqjson` compiles its unit cases). `strace` is optional (one extra check, skipped when absent).
 
 ## Why a civic stub
 
@@ -38,6 +38,7 @@ change the stub and re-run the suite in both modes.
 | `test_snapshot` | kill -9 crash recovery from the periodic snapshot (with a control that proves the test can tell) |
 | `test_orphans` | the reap and every valve (two passes, cap 3, backup first, last look, SUSPECT, kill switch, online skipped) |
 | `test_migrations` | startup migrations on databases from OLDER schemas (`fixtures/` are frozen from git history) |
+| `test_reqjson` | request fields are found as KEYS: 200+ parser cases (`reqjson_unit.cpp`) and name-first bodies through the daemon (a guest named `x` joins) |
 | `test_harness` | the harness itself: `stop_daemon` kills what a wrapper (strace) launched; `start_daemon` refuses when something already answers on the port |
 
 ## Writing a test

@@ -3,44 +3,121 @@
 #include <optional>
 #include <string>
 
-// Ad-hoc extraction of a handful of known flat fields out of a small POST
-// body, e.g. {"id":"g1","region":"1,1","x":10,"y":20.5,"facing":0}.
-// Not a JSON parser: no nesting, no arrays, no escapes beyond \" and \\.
-// That's a deliberate match to this daemon's actual inputs (presence
-// join/move/leave bodies only) -- see json.hpp for the same reasoning on
-// the output side.
+// Extraction of a handful of known fields out of a small flat POST body, e.g.
+// {"id":"g1","region":"1,1","x":10,"y":20.5,"facing":0}.
+//
+// Not a full JSON parser (no \uXXXX decoding, no numbers-as-exponent policing
+// beyond what strtod accepts), but it does walk the object the way JSON reads
+// it: key, ':', value, ',' -- in order. A field is found only where a KEY can
+// be, never by matching a quoted token anywhere in the text. The earlier
+// version searched for the text "key" and so matched a VALUE equal to a field
+// name first (a guest named x: {"display_name":"x","x":5} read the name as the
+// x coordinate's key). Nested objects/arrays are skipped whole (their inner keys
+// are never fields of this body); the first top-level occurrence of a key wins.
+// See json.hpp for the same "small and specific" reasoning on the output side.
 namespace commons::reqjson {
 
-inline std::optional<std::string> field_str(const std::string& body, const std::string& key) {
-    std::string needle = "\"" + key + "\"";
-    auto pos = body.find(needle);
-    if (pos == std::string::npos) return std::nullopt;
-    pos = body.find(':', pos + needle.size());
-    if (pos == std::string::npos) return std::nullopt;
-    ++pos;
-    while (pos < body.size() && std::isspace(static_cast<unsigned char>(body[pos]))) ++pos;
-    if (pos >= body.size() || body[pos] != '"') return std::nullopt;
-    ++pos;
-    std::string out;
-    while (pos < body.size() && body[pos] != '"') {
-        if (body[pos] == '\\' && pos + 1 < body.size()) { out += body[pos + 1]; pos += 2; }
-        else { out += body[pos]; ++pos; }
+namespace detail {
+
+inline void skip_ws(const std::string& b, std::size_t& p) {
+    while (p < b.size() && std::isspace(static_cast<unsigned char>(b[p]))) ++p;
+}
+
+// p is at an opening '"'. Reads to the closing '"' (\" and \\ and any \c yield c),
+// leaves p just past it. False if the string is never closed.
+inline bool read_string(const std::string& b, std::size_t& p, std::string& out) {
+    out.clear();
+    ++p;
+    while (p < b.size()) {
+        char c = b[p];
+        if (c == '"') { ++p; return true; }
+        if (c == '\\' && p + 1 < b.size()) { out += b[p + 1]; p += 2; }
+        else { out += c; ++p; }
     }
-    return out;
+    return false;
+}
+
+// p is at '{' or '['. Skips the whole balanced value, ignoring brackets inside strings.
+inline bool skip_composite(const std::string& b, std::size_t& p) {
+    int depth = 0;
+    while (p < b.size()) {
+        char c = b[p];
+        if (c == '"') { std::string s; if (!read_string(b, p, s)) return false; continue; }
+        if (c == '{' || c == '[') ++depth;
+        else if (c == '}' || c == ']') { if (--depth == 0) { ++p; return true; } }
+        ++p;
+    }
+    return false;
+}
+
+struct Value {
+    bool is_string = false;
+    std::string text;   // the unescaped string, or the raw token for numbers/literals ("" for nested values)
+    bool nested = false;
+};
+
+// The value of the first top-level `key` in a flat object, or nullopt if it is not
+// there or the text is not a well-formed object up to that point.
+inline std::optional<Value> find_value(const std::string& b, const std::string& key) {
+    std::size_t p = 0;
+    skip_ws(b, p);
+    if (p >= b.size() || b[p] != '{') return std::nullopt;
+    ++p;
+    while (true) {
+        skip_ws(b, p);
+        if (p >= b.size() || b[p] != '"') return std::nullopt;   // '}' (no more keys) or garbage
+        std::string k;
+        if (!read_string(b, p, k)) return std::nullopt;
+        skip_ws(b, p);
+        if (p >= b.size() || b[p] != ':') return std::nullopt;
+        ++p;
+        skip_ws(b, p);
+        if (p >= b.size()) return std::nullopt;
+
+        Value v;
+        if (b[p] == '"') {
+            v.is_string = true;
+            if (!read_string(b, p, v.text)) return std::nullopt;
+        } else if (b[p] == '{' || b[p] == '[') {
+            v.nested = true;
+            if (!skip_composite(b, p)) return std::nullopt;
+        } else {
+            std::size_t start = p;
+            while (p < b.size() && b[p] != ',' && b[p] != '}' && b[p] != ']' &&
+                   !std::isspace(static_cast<unsigned char>(b[p]))) ++p;
+            v.text = b.substr(start, p - start);
+        }
+        if (k == key) return v;
+
+        skip_ws(b, p);
+        if (p < b.size() && b[p] == ',') { ++p; continue; }
+        return std::nullopt;   // '}' (key not present) or malformed
+    }
+}
+
+} // namespace detail
+
+inline std::optional<std::string> field_str(const std::string& body, const std::string& key) {
+    auto v = detail::find_value(body, key);
+    if (!v || !v->is_string) return std::nullopt;
+    return v->text;
 }
 
 inline std::optional<double> field_num(const std::string& body, const std::string& key) {
-    std::string needle = "\"" + key + "\"";
-    auto pos = body.find(needle);
-    if (pos == std::string::npos) return std::nullopt;
-    pos = body.find(':', pos + needle.size());
-    if (pos == std::string::npos) return std::nullopt;
-    ++pos;
-    while (pos < body.size() && std::isspace(static_cast<unsigned char>(body[pos]))) ++pos;
-    std::size_t start = pos;
-    while (pos < body.size() && (std::isdigit(static_cast<unsigned char>(body[pos])) || body[pos] == '-' || body[pos] == '.')) ++pos;
-    if (pos == start) return std::nullopt;
-    try { return std::stod(body.substr(start, pos - start)); } catch (...) { return std::nullopt; }
+    auto v = detail::find_value(body, key);
+    if (!v || v->is_string || v->nested || v->text.empty()) return std::nullopt;
+    const std::string& t = v->text;
+    // a JSON number starts with '-' or a digit; anything else (true, null, +5, .5, nan) is not one
+    if (!(t[0] == '-' || std::isdigit(static_cast<unsigned char>(t[0])))) return std::nullopt;
+    for (char c : t)   // strtod would also take hex floats ("0x10"), "inf", "nan": only JSON-number characters
+        if (!(std::isdigit(static_cast<unsigned char>(c)) || c == '-' || c == '+' || c == '.' || c == 'e' || c == 'E'))
+            return std::nullopt;
+    try {
+        std::size_t used = 0;
+        double d = std::stod(t, &used);
+        if (used != t.size()) return std::nullopt;   // trailing junk: not a number
+        return d;
+    } catch (...) { return std::nullopt; }
 }
 
 } // namespace commons::reqjson

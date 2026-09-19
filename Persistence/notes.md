@@ -1852,6 +1852,17 @@ Not bug classes. Not “what is live on the droplet.”
   token only). `tests/reqjson_unit.cpp` (201 checks) + `tests/test_reqjson.sh` (102 assertions incl. name-first
   bodies through the daemon) run in CI via `run_all.sh`; mutation-checked against the old header. The live
   daemon still has the old parser until `deploy`. See `reqjson-built.md`. Next per Grok: deploy scripts, then nginx.
+- **2026-09-19 -- `BUILD deploy scripts` built (files + fake-droplet tests; NO droplet contact).** `commons-daemon/deploy/`:
+  `lib.sh` (shared config + the one exclusion list + a deployed-revision marker), `drift-check.sh` (droplet vs the
+  LAST-DEPLOYED revision by checksum, so a hand edit on the box is reported, plus what this deploy will change),
+  `backup-db.sh` (SQLite backup API, integrity_check, counts, never overwrites), the two syncs reworked (refuse a
+  dirty/unpushed tree, write the marker, `-n`), `build-on-droplet.sh` (`-j1`, reconfigure only if CMake changed),
+  `verify.sh` (systemd, journal, loopback, public routes, a real guest incl. one named `x`, row counts vs the backup),
+  `deploy-daemon.sh` (the sequence; PLAN-ONLY without `--go`; refuses past an undeployed civic change). First real
+  run: `deploy-daemon.sh --baseline 60f6745` (plan, read-only) on `deploy`. `tests/test_deploy.sh` (119 assertions,
+  fake droplet behind a shim ssh) is mutation-checked (10 breakages) and found 2 real bugs in my own scripts;
+  CI also runs `bash -n` + `shellcheck` on them. The reqjson fix is still not live (needs `deploy`). See
+  `deploy-scripts-built.md`, `commons-daemon/deploy/README.md`. Still unbuilt: nginx `/guest`, backup retention.
 
 ## Split: civic site vs game
 

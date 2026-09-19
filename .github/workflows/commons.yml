@@ -69,6 +69,15 @@ jobs:
             }
           fi
 
+      # The deploy scripts are never RUN against the droplet here (no ssh, no secrets, no droplet key). They are
+      # syntax-checked and linted; their behaviour is exercised against a fake droplet by tests/test_deploy.sh.
+      - name: deploy scripts (syntax + shellcheck)
+        run: |
+          set -euo pipefail
+          for f in commons-daemon/deploy/*.sh commons-daemon/tests/*.sh; do bash -n "$f"; done
+          shellcheck --version | sed -n 2p
+          shellcheck -x -S warning commons-daemon/deploy/*.sh
+
       - name: build commons-daemon
         working-directory: commons-daemon
         run: |

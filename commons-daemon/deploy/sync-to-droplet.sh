@@ -1,46 +1,35 @@
 #!/usr/bin/env bash
-# Syncs commons-daemon/ source to the production droplet's /opt/commons-daemon
-# (a sibling path -- NOT inside /opt/liquidgov, never the LGP1 store; see
-# sibling.md). Does not build, chown, or restart the service; run those
-# separately afterward (see Persistence/TheCommons/deploy-plan.md).
+# Syncs commons-daemon/ source to the production droplet's /opt/commons-daemon (a sibling path -- NOT inside
+# /opt/liquidgov, never the LGP1 store; see sibling.md). Does not build, chown or restart: build-on-droplet.sh
+# and deploy-daemon.sh do that. Run drift-check.sh first (deploy-daemon.sh does it for you).
 #
-# Modeled on deploy/sync-to-droplet.sh (the civic script) for the same
-# reasons that one exists: no hand-typed rsync command for a production
-# target. This script's own reason to be careful is different from
-# civic's (no live account data here to overwrite) but just as real:
+# Why a script and never a hand-typed rsync: on 2026-09-12 a hand-typed civic rsync overwrote live account data
+# with a stale local copy that happened to sit in the source tree. The exclusions live in lib.sh
+# (DAEMON_EXCLUDES: build, .git, tests, every sqlite file, backups/) and are shared with drift-check.sh so the
+# two can never disagree.
 #
-#   commons-daemon/schema.sql is a git symlink to
-#   ../Persistence/TheCommons/schema.sql (deduped there on purpose --
-#   see notes.md, 2026-09-16). A plain rsync copies the symlink itself,
-#   not its target. On the droplet that symlink would point at
-#   /opt/Persistence/TheCommons/schema.sql, which does not exist --
-#   Database::migrate() would fail to find the file at daemon startup.
-#   `-L` (--copy-links) makes rsync send the real file content instead
-#   of the symlink, exactly the fix GROK_DAEMON_REVIEW.md's deploy-gate
-#   list already named ("Sibling install should copy the real file").
+# commons-daemon/schema.sql is a git symlink to ../Persistence/TheCommons/schema.sql. A plain rsync would copy
+# the link, which dangles on the droplet; -L sends the real file (GROK_DAEMON_REVIEW.md's deploy gate).
 #
-# Usage: commons-daemon/deploy/sync-to-droplet.sh [user@]host[:path]
-#   defaults to root@143.198.159.58:/opt/commons-daemon/
-
+# Refuses a working tree that differs from HEAD (a sync ships the tree, not a commit) unless --allow-dirty.
+# After a real sync it writes /opt/commons-daemon/.deployed-rev (the revision now on the droplet), which is what
+# drift-check.sh compares against next time.
+#
+# Usage: sync-to-droplet.sh [-n|--dry-run] [--allow-dirty]
+#   Host/paths come from lib.sh (DEPLOY_HOST etc.); the old positional [user@]host[:path] argument is gone.
 set -euo pipefail
+# shellcheck source=lib.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-DEST="${1:-root@143.198.159.58:/opt/commons-daemon/}"
-SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/"
-KEY="${LIQUIDGOV_DEPLOY_KEY:-$HOME/.ssh/liquidgov_deploy_key}"
+dry=""
+for a in "$@"; do
+  case "$a" in
+    -n|--dry-run) dry="-n";;
+    --allow-dirty) ALLOW_DIRTY=1;;
+    -h|--help) sed -n '2,20p' "$0"; exit 0;;
+    *) die "unknown argument: $a";;
+  esac
+done
 
-echo "Syncing $SRC -> $DEST (excluding build/.git/data, dereferencing the schema.sql symlink)"
-rsync -az -L -e "ssh -i $KEY" \
-    --exclude build \
-    --exclude .git \
-    --exclude 'data/*.sqlite' \
-    --exclude 'data/*.sqlite-shm' \
-    --exclude 'data/*.sqlite-wal' \
-    "$SRC" "$DEST"
-
-echo "Sync done. Still need on the remote:"
-echo "  cmake -S /opt/commons-daemon -B /opt/commons-daemon/build"
-echo "  cmake --build /opt/commons-daemon/build -j1   # 512MB box, matches civic's own -j1"
-echo "  chown -R liquidgov:liquidgov /opt/commons-daemon"
-echo "  mkdir -p /var/lib/commons && chown liquidgov:liquidgov /var/lib/commons"
-echo "  systemctl daemon-reload && systemctl enable --now commons-daemon"
-echo "See Persistence/TheCommons/deploy-plan.md for the full sequence and verification steps."
+sync_tree daemon ${dry:+"$dry"}
+[ -n "$dry" ] || say "Synced. Still to do on the droplet: build-on-droplet.sh, then restart (deploy-daemon.sh does all of it)."

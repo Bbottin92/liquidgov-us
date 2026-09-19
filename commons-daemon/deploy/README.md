@@ -67,6 +67,6 @@ at all (the 2026-09-12 civic incident: a stray local `.lgp` overwrote production
 
 ## Not here
 
-nginx (`nginx-commons.conf` is installed by hand, its own deploy word), backup **retention** (backups
+nginx (`nginx-commons.conf` and `nginx-commons-http.conf` are installed by hand, their own deploy word; see `nginx-guest-built.md`), backup **retention** (backups
 accumulate in `/var/lib/commons/backups/`; pruning is a later named item), and `commons-daemon.service`
 installation (a one-time step in `Persistence/TheCommons/deploy-plan.md`).

@@ -1,0 +1,71 @@
+# nginx `/guest` rate limit — built (config + CI tests; NOT installed on the droplet)
+
+Brandon: "BUILD nginx /guest" (`GROK_NEXT.md` #3, `GROK_HARDENING.md` §2, `GROK_REQJSON_LIVE.md`: "nginx also
+needs its own **deploy**"). **No droplet was touched, no nginx was reloaded, nothing is deployed.** Files:
+`commons-daemon/deploy/nginx-commons-http.conf` (new, http level), `nginx-commons.conf` (one new location),
+`tests/test_nginx_guest.sh`, two workflow edits.
+
+## What it is
+
+```
+limit_req_zone $binary_remote_addr zone=commons_guest:1m rate=20r/m;          # http level (conf.d)
+location = /commons/presence/guest {                                          # server level, EXACT match
+    limit_req zone=commons_guest burst=30 nodelay;  limit_req_status 429;  ...proxy_pass .../presence/guest;
+}
+```
+
+An exact-match location beats the `/commons/presence/` prefix, so ONLY the mint route is limited; join, move,
+leave, lots, regions and `/placed/` keep the prefix location and are never limited. `/internal/*` is never named:
+no `limit_req` on it or on any location that can match it (`civic-ratelimit.md`; it would 429 the daemon and look
+like "civic down").
+
+## The numbers are a decision, not a spec: no doc gave any. Chosen, with reasons (veto before deploy)
+
+- **20 per minute per address, burst 30, nodelay.** Legitimate traffic is one mint per page load plus ONE per
+  daemon restart (every client's first 403 re-mints). A shared address (a school, a household, an office) with 30
+  players all re-minting after a restart must fit the burst and never be slowed. A script hammering the route gets
+  429s after 30. The daemon already bounds memory (registry cap 256, never-used guests expire in 2 min and are
+  evicted first), so this limit is about noise and CPU, not survival; it is deliberately loose.
+- **Key `$binary_remote_addr`**: nginx is the edge here. If a CDN/proxy is ever put in front, every visitor shares
+  one bucket and the key must change (the zone file says so). Confirm at deploy: no `cf-`/proxy headers in front.
+- **429, not nginx's default 503** (503 reads as "the daemon is down").
+- **No custom error body, on purpose.** The client's `netMint()` never checks the status: a JSON body would be
+  read as credentials (`netReady=true`, `id` undefined) and loop on 403s. nginx's default HTML 429 makes
+  `r.json()` throw, and the client stays local-only for the session (its existing failure path). The cost of a
+  false positive is therefore "that visitor plays local-only until reload", which is why the burst is generous.
+  **Follow-up, not built (a client change):** `netMint()` should check `r.ok` and retry after a delay.
+- `limit_req_dry_run on;` is left commented out (nginx >= 1.17.1). It would log what WOULD be limited without
+  limiting, if a first rollout should be cautious: `grep 'dry run' /var/log/nginx/error.log`.
+
+## Tests (in CI; the workflow now installs nginx before the suite)
+
+`tests/test_nginx_guest.sh`. **Static half (12 assertions, runs anywhere, mutation-checked with 8 breakages):**
+exactly one `limit_req_zone` and one `limit_req`, inside exactly the guest location, keyed on the peer address,
+429, no `error_page`, dry run off, burst >= 20, nothing active mentions `internal`. **Behavioural half (CI only):**
+a REAL nginx (as the runner user, its own prefix/port, never the system config) in front of the real daemon:
+`nginx -t` with the zone file; a mint through nginx returns a real credential (the exact-match `proxy_pass`
+rewrite works); 61 rapid mints -> 30-34 accepted then 429s with nothing else (no 502/503) and the first 429 only
+after the burst; a limited mint answers 429 with a non-JSON body and is logged; another address (127.0.0.2) is not
+limited while 127.0.0.1 is; 30 lots polls, 30 region polls, join/move/leave with an earlier credential are all fine
+while mint is limited; `/commons/presence/guests` is not the limited route; after ~3.5s a mint is accepted again
+and the limit re-engages. In CI a missing nginx is a failure, not a skip. The workflow's `nginx -t` step now also
+includes the zone file.
+
+## Deploy (when Brandon says `deploy`; nginx is installed by hand, there is no script for it)
+
+1. On the droplet, read-only first: `nginx -v` (>= 1.17.1 for dry run); `grep -n conf.d /etc/nginx/nginx.conf`
+   (conf.d included in `http{}`); nothing in front of nginx (real client addresses); back up the live site file
+   (`liquidgov.bak-pre-guestlimit-<utc>`) and confirm the live `/commons/*` blocks match the repo's fragment.
+2. `cp nginx-commons-http.conf /etc/nginx/conf.d/commons-guest-zone.conf`; paste the new
+   `location = /commons/presence/guest` block into the existing server{}; `nginx -t`; only then reload.
+3. Verify without flooding production: one mint through `https://liquidgov.us/commons/presence/guest` is 200 with a
+   real credential; five mints in a row are all 200; join/move/leave/lots unchanged; civic `/` 200 and `/internal/*`
+   still 404 publicly; `nginx -T | grep -c 'limit_req '` is 1. The 429 itself is proven in CI, not by hammering the
+   live site.
+4. Rollback: remove the location and the conf.d file, `nginx -t`, reload (civic's blocks are never edited).
+
+## Limits, said plainly
+
+- The behavioural half ran nowhere before CI (no nginx binary in the dev environment); CI is its first run.
+- The droplet's nginx version and any front proxy are unchecked until the deploy (step 1).
+- Not built: backup retention; the client's `netMint` status check.

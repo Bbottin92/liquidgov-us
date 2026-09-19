@@ -1869,6 +1869,14 @@ Not bug classes. Not “what is live on the droplet.”
   restart; verify 32/32 incl. a real guest named `x` through nginx, journal clean, every row count unchanged. The
   droplet now has `/opt/commons-daemon/.deployed-rev` = a56eba3, so the next deploy needs no `--baseline`. Civic, client
   and nginx untouched. Unbuilt: nginx `/guest` limit (own deploy word), backup retention (backups now accumulate).
+- **2026-09-19 -- `BUILD nginx /guest` built (config + CI tests; NOT installed, no droplet, no reload).** New
+  `deploy/nginx-commons-http.conf` (`limit_req_zone $binary_remote_addr zone=commons_guest:1m rate=20r/m`, installed
+  as `/etc/nginx/conf.d/commons-guest-zone.conf`) and one EXACT-match `location = /commons/presence/guest` in
+  `nginx-commons.conf` (`burst=30 nodelay`, status 429, default HTML body on purpose: the client's `netMint` never
+  checks status, a JSON body would loop it on 403). `/internal/` is never touched. **The numbers are my decision (no
+  doc gave any): flagged for veto in `nginx-guest-built.md`.** `tests/test_nginx_guest.sh`: 12 static assertions
+  (mutation-checked, 8 breakages) + a behavioural half with a REAL nginx in front of the real daemon, CI-only (no
+  nginx locally). Needs its own `deploy` (nginx by hand). Unbuilt: backup retention; client `netMint` r.ok check.
 
 ## Split: civic site vs game
 

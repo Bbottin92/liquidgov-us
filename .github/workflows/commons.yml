@@ -88,13 +88,15 @@ jobs:
 
       # The daemon's regression suite, against a Python stand-in for civic's routes
       # (commons-daemon/tests/civic_stub.py) -- civic itself cannot be built here.
-      # No droplet, no secrets, no nginx: it only starts local processes on loopback.
+      # No droplet, no secrets: it only starts local processes on loopback. nginx is installed here because
+      # test_nginx_guest.sh runs a REAL nginx (as the runner user, own prefix/ports) in front of the daemon to
+      # check the /guest rate limit; it never touches the runner's system nginx config.
       - name: daemon regression suite (civic stub)
         timeout-minutes: 15
         run: |
           set -euo pipefail
           sudo apt-get update -qq
-          sudo apt-get install -y -qq strace
+          sudo apt-get install -y -qq strace nginx
           bash commons-daemon/tests/run_all.sh
 
       - name: nginx -t on a wrapped fragment
@@ -112,6 +114,7 @@ jobs:
               default upgrade;
               ''      close;
             }
+            include ${{ github.workspace }}/commons-daemon/deploy/nginx-commons-http.conf;
             server {
               listen 127.0.0.1:18080;
               include ${{ github.workspace }}/commons-daemon/deploy/nginx-commons.conf;

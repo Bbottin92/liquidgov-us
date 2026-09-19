@@ -10,7 +10,7 @@ commons-daemon/tests/run_all.sh test_guest       # one test
 ```
 
 Needs the built daemon (`commons-daemon/build/commons_daemon`, or `COMMONS_DAEMON_BIN`),
-`python3`, `curl`, `rsync`, `git`, and `g++` (`test_reqjson` compiles its unit cases; `test_deploy` drives the deploy scripts). `strace` is optional (one extra check, skipped when absent).
+`python3`, `curl`, `rsync`, `git`, `g++`, and (optionally, always in CI) `nginx` (`test_reqjson` compiles its unit cases; `test_deploy` drives the deploy scripts). `strace` is optional (one extra check, skipped when absent).
 
 ## Why a civic stub
 
@@ -38,6 +38,7 @@ change the stub and re-run the suite in both modes.
 | `test_snapshot` | kill -9 crash recovery from the periodic snapshot (with a control that proves the test can tell) |
 | `test_orphans` | the reap and every valve (two passes, cap 3, backup first, last look, SUSPECT, kill switch, online skipped) |
 | `test_migrations` | startup migrations on databases from OLDER schemas (`fixtures/` are frozen from git history) |
+| `test_nginx_guest` | the `/guest` rate limit: config text checks (anywhere) + a real nginx in front of the real daemon (CI): burst absorbed, then 429, per address, only minting limited, refills |
 | `test_deploy` | the deploy scripts against a FAKE droplet (temp dir behind a shim ssh, stub systemctl/cmake): drift, dirty/unpushed refusals, backup, -j1 build, ordered `--go`, verify |
 | `test_reqjson` | request fields are found as KEYS: 200+ parser cases (`reqjson_unit.cpp`) and name-first bodies through the daemon (a guest named `x` joins) |
 | `test_harness` | the harness itself: `stop_daemon` kills what a wrapper (strace) launched; `start_daemon` refuses when something already answers on the port |

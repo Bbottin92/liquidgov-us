@@ -18,6 +18,10 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-19 — connection status: A.** `GROK_STATUS_ANSWER.md`. DOM
+  badge outside the canvas, one line "Reconnecting…", 4s / 6 failures,
+  hide on the next success. Observe only. No extra clear-delay. Machine
+  in `js/net.js`. Client only after review. Not built.
 - **2026-09-19 — SSG crib, no generator.** `ssgs.md`: Hugo / Eleventy /
   Astro / Vite would be a compile step. The Commons client is already
   static files on nginx; civic is request-time C++. Do not add `_site/`.

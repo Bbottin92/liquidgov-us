@@ -18,6 +18,8 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-19 — share card built, not deployed.** `og-card-built.md`.
+  Five stars + Myspace/ballot-box/gameboy quote on og-image-v2.jpg.
 - **2026-09-19 — polish built, not deployed.** `polish-built.md`.
   Back-to-site link both sides of the door. No duplicate grass [Look]. Desktop hides Enter.
 - **2026-09-19 — door built, not deployed.** `door-built.md`.

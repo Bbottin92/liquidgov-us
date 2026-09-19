@@ -1336,17 +1336,11 @@ std::string page_wrap(const std::string& title, const std::string& navhtml, cons
     // summary tracked anywhere to draw from, and this is what the site
     // itself opens with.
     const std::string og_desc =
-        "A voluntary natural democracy. Genesis, not a government -- "
-        "three rules hold, the rest is your call.";
-    // One shared image site-wide, same reasoning as og_desc above -- a
-    // generated 1200x630 card (see assets/og-image.png, made once by
-    // og-image/render.js -- @napi-rs/canvas, real serif type, run with
-    // node outside this build entirely) so a shared link actually shows
-    // something branded instead of the bare title-only card platforms
-    // fall back to with no image at all. summary_large_image (not
-    // summary) is what makes X/Twitter actually render it at that size
-    // instead of a small square thumbnail.
-    const std::string og_image = "https://liquidgov.us/assets/og-image.png";
+        "It's like Myspace had a three-way with a ballot box and a gameboy. "
+        "— Anonymous";
+    // One shared image site-wide. v2 is a new path because the old
+    // /assets/og-image.png is cached immutable for a year on crawlers.
+    const std::string og_image = "https://liquidgov.us/assets/og-image-v2.jpg";
     return "<!doctype html><html lang=\"en\""+theme_attr+"><head><meta charset=\"utf-8\">"
            // viewport-fit=cover: without it, env(safe-area-inset-bottom)
            // resolves to 0 everywhere per spec -- every bottom-fixed
@@ -5207,7 +5201,7 @@ std::string genesis_body() {
         "inside well-designed structures are naturally corrected by them.&rdquo;</p>"
         "<p class=\"attrib\">&mdash; Brandon Bottin</p></div>"
         "<div class=\"card quote centered\"><p class=\"stars\">&#9733;&#9733;&#9733;&#9733;&#9733;</p>"
-        "<p>&ldquo;It's like a ballot box and Myspace had a baby.&rdquo;</p>"
+        "<p>&ldquo;It's like Myspace had a three-way with a ballot box and a gameboy.&rdquo;</p>"
         "<p class=\"attrib muted\">&mdash; Anonymous</p></div>";
     // The decorative emblem from the top of the design's own welcome
     // screen -- a triangle (the three laws) with a droplet at its
@@ -7301,6 +7295,18 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             }
         }
         return http_raw("200 OK", "video/mp4", cached, cache_hdr);
+    }
+    if(method=="GET"&&path=="/assets/og-image-v2.jpg") {
+        static std::string cached;
+        static bool tried = false;
+        if (!tried) {
+            tried = true;
+            std::ifstream in("assets/og-image-v2.jpg", std::ios::binary);
+            if (in) { std::ostringstream ss; ss << in.rdbuf(); cached = ss.str(); }
+        }
+        if (cached.empty()) return http_raw("404 Not Found", "text/plain; charset=utf-8", "not found");
+        return http_raw("200 OK", "image/jpeg", cached,
+            "Cache-Control: public, max-age=31536000, immutable\r\n");
     }
     // The og:image/twitter:image referenced from every page's <head> (see
     // page_wrap) -- what a shared liquidgov.us link actually shows on

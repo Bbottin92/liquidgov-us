@@ -58,3 +58,13 @@ everything else in the poll is real.
   reviews.
 - A real bound session on production will be the true end-to-end check
   (the local page can't carry a civic cookie); that comes with the deploy.
+
+## Deployed (2026-09-18, Brandon: "deploy")
+
+Client only, via `commons-daemon/deploy/sync-client-to-droplet.sh` to
+`/opt/commons`, then `chown -R liquidgov:liquidgov`. Daemon, civic and
+nginx untouched. Droplet file and the served `/commons/` both md5
+`f1354d53...` = local `commons/index.html` (was `d58ebe19...`); `/commons/`
+and `/commons/presence/lots` answer 200; served page contains `isSelfId`.
+Still to see: a real bound session on production walking with one sprite
+(the local page can't carry a civic cookie).

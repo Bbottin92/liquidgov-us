@@ -1523,6 +1523,19 @@ Not bug classes. Not “what is live on the droplet.”
   `self-ghost-built.md`. **CI:** `.github/workflows/commons.yml` is
   committed locally from `ci.md` but **not pushed** -- the GitHub token
   lacks the `workflow` scope; see the status report, not resolved here.
+- **2026-09-18 -- CI landed; self-ghost deployed (client only).** After
+  Brandon granted the `workflow` scope, `.github/workflows/commons.yml`
+  (rebuilt from the updated `ci.md`: `fetch-depth: 0`, no `|| true` on the
+  gate-5 `git diff`) was pushed as `91880e5`; first run green (56s, incl.
+  `nginx -t`). Gate 5 checked locally: full clone fails a civic+client range
+  whose head subject lacks `civic`/`deploy`, passes with it, skips an
+  all-zero `before`, and a shallow clone now fails loud (`bad object`)
+  instead of skipping. Then Brandon said `deploy`: client only via
+  `sync-client-to-droplet.sh` -> `/opt/commons`, chown liquidgov; droplet
+  and served `index.html` md5 both equal local (`f1354d53...`). No daemon,
+  civic or nginx change. Not yet checked: a real bound session on production
+  (one sprite while walking) -- the local page can't carry a civic cookie.
+  Remaining named option: **mine**.
 
 ## Split: civic site vs game
 

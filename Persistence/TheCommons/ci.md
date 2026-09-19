@@ -1,38 +1,28 @@
 # GitHub Action — spec, not installed
 
-Brandon asked Grok to specify the YAML. Claude lands
-`.github/workflows/commons.yml` from the block below when he says
-**BUILD ci**. Do not SSH. Do not deploy. Do not compile civic
-(`liquidgov-platform/` has droplet-only deps). Do not add
-`credentials: include` tests.
+Claude lands `.github/workflows/commons.yml` from the block below.
+Needs the `workflow` OAuth scope (`gh auth refresh -h github.com -s workflow`).
+Do not SSH. Do not deploy. Do not compile civic. No secrets (`gha-secrets.md`).
 
 ## What it gates
 
-1. `commons-daemon` configures + links (FetchContent sqlite 3.53.4, needs
-   runner network; same SHA as `CMakeLists.txt`).
-2. `schema.sql` in the daemon tree is still the symlink to
-   `Persistence/TheCommons/schema.sql` (or byte-identical if git
-   flattened it).
-3. Exact `GET /presence/inventory` and `GET /presence/lots` are
-   registered **before** the prefix `GET /presence/` in `src/main.cpp`
-   (first-match dispatch).
+1. `commons-daemon` configures + links (FetchContent sqlite 3.53.4).
+2. `schema.sql` matches `Persistence/TheCommons/schema.sql`.
+3. Exact `GET /presence/inventory` and `GET /presence/lots` **before**
+   the prefix `GET /presence/`.
 4. `nginx-commons.conf` parses inside a wrap that defines
-   `$connection_upgrade` (the live `server{}` already has that map;
-   `nginx -t` on the fragment alone would fail on an unknown variable).
-5. Same-commit touch of `liquidgov-platform/src/http_server.cpp` **and**
-   `commons/index.html` requires the word `civic` or `deploy` in the
-   commit subject. Paired civic+client deploys already use those words.
+   `$connection_upgrade`.
+5. Same-commit `http_server.cpp` **and** `commons/index.html` needs
+   `civic` or `deploy` in the subject. Only the commits in *this* push/PR
+   — history is not rewritten. Friends/`/latest` already merged stay.
 
-Fail the Action, not the droplet. A red X is cheaper than a 404 on
-`/presence/lots` because it was registered after the prefix.
+## Checkout depth (Claude found this)
 
-## What it does not
-
-- `systemctl`, rsync, `nginx reload`, droplet curl
-- Building `http_server.cpp`
-- Running the daemon as a long test (WAL, presence, civic loopback all
-  need a cookie and a box). Keep those in Claude's local script.
-- Windows symlink semantics. Runner is `ubuntu-latest`.
+Default `actions/checkout@v4` is depth 1. Gate 5 then `git diff`s
+`github.event.before`, which is a **missing object**, and `|| true`
+exits 0. **`fetch-depth: 0`** (full history of the branch, not the
+whole repo's every branch) is the one-line fix. Do not keep the silent
+`|| true` once the parent exists.
 
 ## Land this file at `.github/workflows/commons.yml`
 
@@ -52,6 +42,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: schema.sql is the spec copy
         run: |
@@ -63,7 +55,6 @@ jobs:
           if [ -L "$dmn" ]; then
             target=$(readlink "$dmn")
             echo "symlink -> $target"
-            # relative from commons-daemon/
             test -f "commons-daemon/$target" || test -f "$target"
           fi
           cmp -s "$spec" "$dmn"
@@ -83,9 +74,8 @@ jobs:
       - name: civic+client same commit is named
         run: |
           set -euo pipefail
-          # On a PR, compare against base; on push, against the parent.
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            git fetch --depth=1 origin "${{ github.base_ref }}"
+            git fetch origin "${{ github.base_ref }}"
             base=$(git merge-base HEAD origin/${{ github.base_ref }})
           else
             base=${{ github.event.before }}
@@ -94,7 +84,7 @@ jobs:
               exit 0
             fi
           fi
-          files=$(git diff --name-only "$base" HEAD || true)
+          files=$(git diff --name-only "$base" HEAD)
           echo "$files"
           echo "$files" | grep -q '^liquidgov-platform/src/http_server.cpp$' && civic=1 || civic=0
           echo "$files" | grep -q '^commons/index.html$' && client=1 || client=0
@@ -136,11 +126,5 @@ jobs:
             }
           }
           EOF
-          # The fragment uses alias /opt/commons/; -t does not need the dir.
           sudo nginx -t -c "$wrap"
 ```
-
-## After it is green once
-
-Leave it. A later round can add a loopback daemon smoke (`POST /presence/guest`
-then `GET /presence/1,1`) if you want; that is not this file.

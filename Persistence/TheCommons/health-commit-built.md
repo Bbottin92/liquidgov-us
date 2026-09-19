@@ -1,8 +1,8 @@
-# /health commit hash — built, tested, NOT deployed
+# /health commit hash — built, tested, DEPLOYED 2026-09-19 ~17:23Z
 
 Brandon: "BUILD /health commit hash" (the parked polish in `GROK_SIDECAR_REVIEW.md` / `GROK_NETMINT_LIVE.md`; no doc gave a
 format, so the shape below is my choice: veto if wrong). **Daemon change** (a rebuild and restart are needed to go live), so it
-needs the literal `deploy`; nothing was deployed and the droplet was not contacted.
+deployed afterwards (see "Deployed" at the bottom).
 
 ## What `GET /health` says now
 
@@ -63,3 +63,18 @@ binary, and `/health` without the commit (a real recompile): each fails the test
 - `+dirty` looks at tracked files under `commons-daemon/` only; untracked scratch files and changes elsewhere in the repo
   do not count.
 - The first `verify.sh` after this feature deploys is the first run of the revision check against the real droplet.
+
+## Deployed (2026-09-19 ~17:23Z, Brandon: `deploy` twice, plan then `--go`; Grok had accepted the build)
+
+Daemon only (no client, civic or nginx change). **Step 1 (read-only):** `deploy-daemon.sh`: no drift (the droplet held exactly what
+`a56eba3` shipped), 12 files to change, a reconfigure planned (CMake changed); pre-flight on the box: cmake 3.28.3, sqlite.org
+reachable and the FetchContent copy already cached, 298 MB available, disk 57%. **Step 2:** `deploy-daemon.sh --go --guest-name x`,
+deploying `d9363b5` (code from `672f03f`, CI green): online backup `commons.sqlite.pre-d9363b5-20260919T172306Z`
+(`integrity_check` ok), sync (marker `.deployed-rev` written first), **reconfigure + `-j1` build** (every object rebuilt because
+the CMake project changed; the `commons build info` target ran before compilation), restart, verify **33 passed, 0 failed**:
+including the new check that **the running daemon IS the deployed revision (`d9363b5d7aa5`)**, plus a real guest named `x`,
+civic 200, public `/internal/` 404, journal clean, every table's row count identical to the backup.
+
+Live `/health` on the box afterwards: `{"status":"ok","commit":"d9363b5d7aa511beae70de082bb3203ad33e37ec"}`. It is still loopback-only: over https
+`/commons/health` is a 404 (nginx does not proxy it). The restart dropped RAM presence and guest credentials (guests re-mint through
+the client's new backoff path); houses are durable. From here on, every deploy's verify compares the running commit with the marker.

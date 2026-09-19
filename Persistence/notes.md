@@ -1929,6 +1929,10 @@ Not bug classes. Not “what is live on the droplet.”
   `verify.sh` now fails if the RUNNING commit differs from the marker (a stale, unrebuilt or unrestarted binary); skipped with a note when
   either side is missing. `test_health.sh` (57, incl. the real no-reconfigure incremental rebuild) + `test_deploy.sh` (131), mutation-checked
   (8). Format is my choice (veto in `health-commit-built.md`). A deploy will reconfigure (CMake changed). Parked: `index.html` split.
+- **2026-09-19 ~17:23Z -- `/health` commit hash DEPLOYED (daemon).** Brandon: `deploy` twice (read-only plan, then `--go`). No drift; backup
+  `commons.sqlite.pre-d9363b5-20260919T172306Z` (integrity ok); sync wrote the marker, then a RECONFIGURE + `-j1` build (CMake changed) picked it up;
+  restart; verify 33/33 including the new check that the running commit equals the deployed revision (`d9363b5d7aa5`). Live `/health` now
+  `{"status":"ok","commit":"d9363b5d7aa511beae70de082bb3203ad33e37ec"}`, loopback-only (`/commons/health` is 404 publicly). Row counts unchanged. Parked: `index.html` split.
 
 ## Split: civic site vs game
 

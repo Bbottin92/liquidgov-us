@@ -1490,7 +1490,7 @@ std::string nav(const std::string& user, int unread) {
         "<a href=\"/communities\">Groups</a>"
         "<a href=\"/proposals\">Proposals</a>"
         "<a href=\"/officials\">Officials</a>"
-        "<a href=\"/world\">World</a>"
+        "<a href=\"/commons/\">The Commons</a>"
         "<a href=\"/laws\">Laws</a>"
         "<a href=\"/logout\">Log out</a>"
         "</nav>";
@@ -5232,15 +5232,8 @@ std::string genesis_body() {
         "</div>"
         "<p class=\"muted\" style=\"text-align:center;max-width:22rem;margin:.7rem auto 0\">"
         "Three rules hold. Whoever you are, wherever you're starting from, the rest is your call.</p>";
-    // "What is inside" in the source is a 2x2 grid of feature cards --
-    // Live rooms, People near you, Meetups, and a fourth. Only Live rooms
-    // maps to something real (/world plus the jukebox stations); the
-    // other two are exactly the geolocation/meetup concepts already set
-    // aside as having no backend at all, so only this one card is built,
-    // per Brandon's own call rather than presenting the other two as if
-    // they existed. Icon and copy are the source's own (rect+two-dot
-    // glyph, "Live rooms"), with "Studio" dropped from the description
-    // since that feature doesn't exist either.
+    // "What is inside" -- Live rooms is The Commons. Guests walk; the
+    // old Quad (/world) is no longer the door.
     std::string liveRoomsIcon =
         "<svg viewBox=\"0 0 24 24\" width=\"19\" height=\"19\" fill=\"none\" style=\"stroke:var(--accent)\" "
         "stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\">"
@@ -5248,6 +5241,8 @@ std::string genesis_body() {
         "<circle cx=\"9.2\" cy=\"11.4\" r=\"1.7\" style=\"fill:var(--accent)\" stroke=\"none\"/>"
         "<circle cx=\"15\" cy=\"15.2\" r=\"1.7\" style=\"fill:var(--accent)\" stroke=\"none\"/>"
         "</svg>";
+    // Live rooms is The Commons (the Square), not The Quad. Guests can
+    // walk; do not put a login wall in front of a guest-playable plaza.
     std::string inside =
         "<p class=\"eyebrow\" style=\"color:var(--accent)\">What is inside</p>"
         "<div class=\"card\" style=\"display:flex;gap:.8rem;align-items:flex-start\">"
@@ -5255,8 +5250,8 @@ std::string genesis_body() {
         "border:1px solid var(--rule);display:flex;align-items:center;justify-content:center;flex-shrink:0\">" +
         liveRoomsIcon + "</div>"
         "<div><strong>Live rooms</strong>"
-        "<p class=\"muted\" style=\"margin:.3rem 0 0\">The Quad is a shared room. "
-        "<a href=\"/login?next=/world\">Sign in to walk in</a>.</p></div></div>";
+        "<p class=\"muted\" style=\"margin:.3rem 0 0\">The Commons is a shared plaza. "
+        "<a href=\"/commons/\">Walk in</a>.</p></div></div>";
     // Real recorded narration (Helios), served from /assets/chapter1.mp3.
     // The latest file already starts on the first sentence (no spoken
     // title), so no #t= skip is needed anymore. No native <audio controls>
@@ -5360,29 +5355,15 @@ std::string home_dashboard(const std::string& user) {
     const auto friends = g_store.friends_of(user).size();
     const auto committees = g_store.communities_of(user);
 
-    size_t world_here = 0;
-    {
-        std::lock_guard<std::mutex> lock(g_world_mu);
-        world_here = g_world_players.size();
-    }
-
-    // The design's home screen leads with a prominent Quad callout card
-    // (gradient card, live headline, "Walk in" CTA) above the plain rooms
-    // list, not just another row in it -- found in the raw source since
-    // an accessibility-tree read shows the same text either way and
-    // doesn't distinguish "one row among several" from "the lead card."
-    // The design's own copy ("2 here now", "Somebody is in the Quad.")
-    // was a static example, not template-bound -- built here with real
-    // conditional copy off the actual live world_here count instead.
-    std::string quadHeadline = world_here == 0 ? "Nobody's in the Quad right now."
-        : world_here == 1 ? "Somebody is in the Quad."
-        : std::to_string(world_here) + " people are in the Quad.";
+    // The lead card used to be The Quad (/world) with a live occupant
+    // count from g_world_players. Brandon replaced that door with The
+    // Commons. Do not show Quad occupancy here -- that count is the old
+    // room. Commons presence is the daemon; civic does not read it.
     std::string quadCard =
-        "<a class=\"card quadcard\" href=\"/world\">"
-        "<p class=\"eyebrow\" style=\"color:var(--accent)\">The Quad &middot; " +
-        (world_here == 0 ? std::string("quiet") : std::to_string(world_here) + " here now") + "</p>"
-        "<p class=\"quadhead\">" + quadHeadline + "</p>"
-        "<p class=\"muted\">Walk in and see who is around. No call to join, no scheduling.</p>"
+        "<a class=\"card quadcard\" href=\"/commons/\">"
+        "<p class=\"eyebrow\" style=\"color:var(--accent)\">The Commons</p>"
+        "<p class=\"quadhead\">Walk the Square.</p>"
+        "<p class=\"muted\">A shared plaza. Guests can walk. Your house opens when you are signed in.</p>"
         "<span class=\"btn\" style=\"margin-top:.6rem\">Walk in &rarr;</span></a>";
 
     std::string rooms;
@@ -7456,8 +7437,9 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
     }
 
     if(method=="GET"&&path=="/world") {
-        if(!acc) return need_login();
-        return pg("World", world_page(user));
+        // The Quad is no longer the public walk-in. Bookmarks and old
+        // login?next=/world land in The Commons.
+        return http_redir("/commons/");
     }
     if(method=="GET"&&path=="/me/canvas") {
         if(!acc) return need_login();

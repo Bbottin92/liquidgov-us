@@ -1535,7 +1535,8 @@ Not bug classes. Not “what is live on the droplet.”
   and served `index.html` md5 both equal local (`f1354d53...`). No daemon,
   civic or nginx change. Not yet checked: a real bound session on production
   (one sprite while walking) -- the local page can't carry a civic cookie.
-  Remaining named option: **mine**.
+  **Confirmed by Brandon, logged in on production: nothing trailing.**
+  Self-ghost closed. Remaining named option: **mine**.
 
 ## Split: civic site vs game
 

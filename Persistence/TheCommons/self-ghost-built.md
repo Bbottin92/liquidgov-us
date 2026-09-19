@@ -68,3 +68,10 @@ nginx untouched. Droplet file and the served `/commons/` both md5
 and `/commons/presence/lots` answer 200; served page contains `isSelfId`.
 Still to see: a real bound session on production walking with one sprite
 (the local page can't carry a civic cookie).
+
+## Confirmed on production (2026-09-18)
+
+Brandon, logged in and walking the Square: no copy trailing him. Closes the
+one open check above. (My own production check was guest-only: joined as
+`g_...`, own row not listed, no console errors -- I don't log in or create
+accounts.)

@@ -18,6 +18,8 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-19 — lit friend door + item glyphs live.** Brandon deployed `cc0498b`
+  (`--label lit-door`). Verify 33/0. `GROK_LIT_DOOR_LIVE.md`. Also ships `f57d13d` item glyphs.
 - **2026-09-19 — lit friend door built, not deployed.** `lit-door-built.md`.
   Online friend lots stamp T_DOOR_HOUSE instead of a gold square.
 - **2026-09-19 — item glyphs built, not deployed.** `item-glyphs-built.md`.

@@ -1611,6 +1611,17 @@ Not bug classes. Not “what is live on the droplet.”
   (schema change: online SQLite backup first), then client, after Grok's review
   and Brandon's `deploy`. Parked still: `open`, `rebind()`, `lg_session` cache,
   orphan reaping.
+- **2026-09-19 -- house friends/locked deployed (daemon, then client).**
+  Brandon said `deploy`; Grok's review was not on file yet, so it went on his
+  word. Drift check clean (only the six edited daemon files + the client
+  differed), online SQLite backup first
+  (`commons.sqlite.pre-house-policy-20260919T070744Z`, left on the box),
+  daemon `-j1` build + restart, and the migration ran on the real DB: column
+  present, all 5 players `friends`, integrity ok, counts unchanged. Then the
+  client (droplet = served = local `e99898fa...`). New route 403s without a
+  cookie; `/internal/friends` still 404. A real bound owner locking a real
+  house is unproven on prod (needs Brandon logged in). Parked still: `open`
+  (needs a civic block probe), `rebind()`, `lg_session` cache, orphan reaping.
 
 ## Split: civic site vs game
 

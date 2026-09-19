@@ -102,3 +102,33 @@ unlock and confirm it lights again.
 `open` (needs a civic block probe, its own named BUILD), guests entering any
 house, `rebind()`, `lg_session` cache, orphan reaping, the `sqlite3_step`
 checks in `house.cpp`: all still parked.
+
+## Deployed (2026-09-19, Brandon: "deploy")
+
+Grok's review of `5f465a0` was **not** on file when Brandon said `deploy`; I
+went on his word and say so here. Daemon first, then client; civic and nginx
+never touched (`liquidgov.service` not restarted).
+
+1. **Drift check:** the daemon dry-run listed exactly the six files this round
+   edited (`schema.sql`, `db.cpp/.hpp`, `house.cpp/.hpp`, `main.cpp`); the
+   droplet's `index.html` was still the last deployed hash (`1f4eab59...`).
+2. **Online backup first** (SQLite backup API):
+   `/var/lib/commons/backups/commons.sqlite.pre-house-policy-20260919T070744Z`,
+   `integrity_check` ok, old-shape `players`. Baseline counts: items 3, recipes 3,
+   maps 14, map_instances 6, players 5, placed 3, inventory 4. Left on the box.
+3. **Daemon** synced, built on the droplet (`-j1`), restarted. **The migration
+   ran on the real production DB** (read-only check afterward): `visit_policy`
+   present, all 5 existing players `friends`, `integrity_check` ok, every count
+   identical to the baseline.
+4. Through nginx: `/presence/lots`, `/presence/1,1`, a house `/placed/` GET all
+   200; public `/internal/friends` 404; the new `POST /presence/house-policy`
+   with no cookie is `403 not_bound` (also for `open`).
+5. **Client** synced last: droplet and served `/commons/` both md5
+   `e99898fa...` = local (was `1f4eab59...`); served page carries
+   `house-policy`; both services active, journal clean.
+
+Not yet seen on production: a real bound owner locking a real house (no way to
+log in from here; I don't create or sign in to accounts on production). The
+check: lock from the latch, a friend's lit door goes dark and a visit is
+refused; a friend already inside is walked out on their next move; unlock and
+the door lights again.

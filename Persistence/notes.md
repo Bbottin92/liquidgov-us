@@ -1906,6 +1906,15 @@ Not bug classes. Not “what is live on the droplet.”
   sidecars, orphans, ignored. Unit checks 361 -> 378, `test_retention.sh` 47 -> 76 (real sidecar files, orphans, look-alikes),
   mutation-checked (8 more breakages). Today's droplet dry run would read `12 backups: keep 12, delete 0; sidecars: keep 24,
   delete 0`. Still not scheduled; no `--delete` until something is old enough (~a month). See `backup-retention-built.md`.
+- **2026-09-19 -- `BUILD netMint check` built (client only; tested; NOT deployed).** `commons/index.html` `netMint()` now accepts a credential
+  only from a 200 with string `id` + `secret` (the old one read any JSON, a JSON error body would have set `netReady` with `id` undefined
+  and looped on 403s), retries every failure with capped backoff (2s,4s,8s,16s,30s cap, +/-20% jitter, honours a capped Retry-After)
+  instead of leaving the player local-only until reload, and shares ONE mint loop between startup and `netHandleAuthFailure()`. The
+  numbers are my decision (veto in `netmint-built.md`). `tests/netmint_unit.js` runs the SHIPPED block under node (fake clock, scripted
+  fetch): 88 checks, mutation-checked (11 breakages), in CI via `test_netmint.sh`. Verified in a real browser against a real daemon:
+  injected 429s retried at 0/1.7/6.5s then recovered; a real daemon restart gave 3 simultaneous 403s -> ONE mint -> rejoin. Client deploy
+  needs `deploy` (`drift-check.sh --tree client --baseline <live commit>`, then `sync-client-to-droplet.sh`; no daemon restart, no nginx).
+  Parked: `index.html` split, `/health` hash.
 
 ## Split: civic site vs game
 

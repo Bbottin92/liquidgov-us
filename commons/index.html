@@ -1243,13 +1243,57 @@ function netBody(extra) {
   return JSON.stringify(body);
 }
 
+// ---- netMint:begin (tests/netmint_unit.js runs THIS block, extracted verbatim: keep it self-contained)
+// The guest credential mint. A credential is accepted ONLY from a 200 answer whose body has a non-empty string
+// `id` and `secret`: the old version never looked at the status and read whatever JSON came back as
+// credentials (a JSON error body would have set netReady with id undefined and looped on 403s), and any failure
+// (a 429 from nginx's /guest limit, a 502 while the daemon restarts, a network blip) left the player local-only
+// until they reloaded the page. Now a failure retries with capped exponential backoff, forever but quietly: the
+// game keeps running local-only meanwhile, and the next frame() tick joins as soon as a credential arrives (the
+// same path as a late first mint). A Retry-After header, if a server ever sends one, is honoured (capped).
+// One mint loop at a time: startup and netHandleAuthFailure() share it instead of stacking.
+var NET_MINT_BASE_MS = 2000, NET_MINT_CAP_MS = 30000, NET_MINT_RETRY_AFTER_CAP_MS = 120000;
+var netMintAttempt = 0;      // consecutive failures so far; a success resets it
+var netMintPending = null;   // the mint loop in flight (a promise that resolves once a credential is in hand)
+function netMintBackoffMs(attempt, retryAfterSec) {
+  var ms = Math.min(NET_MINT_CAP_MS, NET_MINT_BASE_MS * Math.pow(2, attempt));
+  ms *= 0.8 + Math.random() * 0.4;   // +/-20%: a room of clients behind one address must not retry in lockstep
+  if (retryAfterSec > 0) ms = Math.max(ms, Math.min(retryAfterSec * 1000, NET_MINT_RETRY_AFTER_CAP_MS));
+  return ms;
+}
 function netMint() {
-  return fetch(DAEMON + "/presence/guest", { method: "POST" })
-    .then(function (r) { return r.json(); })
-    .then(function (j) { netId = j.id; netSecret = j.secret; netReady = true; })
-    .catch(function (e) {
-      console.error("Commons: presence/guest failed -- staying local-only this session", e);
-    });
+  if (netMintPending) return netMintPending;
+  netMintPending = new Promise(function (resolve) {
+    function attempt() {
+      var retryAfter = 0;
+      Promise.resolve().then(function () { return fetch(DAEMON + "/presence/guest", { method: "POST" }); })
+        .then(function (r) {
+          if (!r.ok) {
+            var ra = r.headers && r.headers.get ? parseInt(r.headers.get("Retry-After"), 10) : 0;
+            retryAfter = ra > 0 ? ra : 0;
+            throw new Error("presence/guest answered " + r.status);
+          }
+          return r.json();
+        })
+        .then(function (j) {
+          if (!j || typeof j.id !== "string" || !j.id || typeof j.secret !== "string" || !j.secret)
+            throw new Error("presence/guest answered 200 without a credential");
+          netId = j.id; netSecret = j.secret; netReady = true;
+          netMintAttempt = 0; netMintPending = null;
+          resolve();
+        })
+        .catch(function (e) {
+          var wait = netMintBackoffMs(netMintAttempt, retryAfter);
+          netMintAttempt++;
+          if (netMintAttempt === 1 || netMintAttempt % 10 === 0)
+            console.warn("Commons: presence/guest failed (attempt " + netMintAttempt + ") -- local-only until it answers; retrying in " +
+              Math.round(wait / 1000) + "s", e);
+          setTimeout(attempt, wait);
+        });
+    }
+    attempt();
+  });
+  return netMintPending;
 }
 
 // Must-fix (GROK_PRESENCE_REVIEW.md / CLAUDE_PRESENCE_PATCH.md): the
@@ -1269,6 +1313,8 @@ function netHandleAuthFailure() {
   netRegion = null;
   otherOccupants = [];
   netMint().then(function () {
+    // netMint() resolves only once a credential is in hand (it retries until then), so this flag stays set
+    // for as long as the remint takes and one outage cannot start several overlapping remints.
     netReauthInFlight = false;
     // No mode-specific rejoin here on purpose: the next frame() network
     // tick (outdoor or interior branch, whichever `mode` currently is)
@@ -1277,6 +1323,7 @@ function netHandleAuthFailure() {
     // the player is outdoors or in a shared interior right now.
   });
 }
+// ---- netMint:end
 
 // V2 (GROK_V2_ANSWER.md): join/rekey/move are no longer outdoor-only --
 // `region` can be an outdoor REGIONS entry or a shared interior instance
@@ -2181,9 +2228,9 @@ function enter() {
   input.blur(); // else document.activeElement is still the input and the
                 // typingInField() guard would keep eating movement keys
   start();
-  // Fire-and-forget: if the daemon is unreachable, netReady just stays
-  // false and the game runs exactly as it did before this round (local
-  // simulation only, no presence networking) -- see netMint()'s catch.
+  // Fire-and-forget: if the daemon is unreachable (or refuses, or is restarting), netReady stays false and the
+  // game runs as a local simulation, while netMint() keeps retrying with backoff and presence starts the moment
+  // it gets a credential.
   netMint();
 }
 go.addEventListener("click", enter);

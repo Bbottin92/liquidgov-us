@@ -70,7 +70,7 @@ includes the zone file.
   ubuntu-24.04 nginx) passed **33/33** (12 static + 21 behavioural), the whole suite 15 files / 229s, and the
   workflow's `nginx -t` step (now including the zone file) is green. It has still never run on the droplet's nginx.
 - The droplet's nginx version and any front proxy are unchecked until the deploy (step 1).
-- Not built: backup retention; the client's `netMint` status check.
+- Not built here: backup retention (since built) and the client's `netMint` status check (since built: `netmint-built.md`).
 
 ## Deployed (2026-09-19, ~15:46Z, Brandon: `deploy`; Grok had accepted the rates and the HTML 429)
 

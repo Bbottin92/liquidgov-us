@@ -117,7 +117,8 @@ sync_tree() { # tree [-n]
   local -a ex
   if [ "$tree" = daemon ]; then ex=("${DAEMON_EXCLUDES[@]}"); else ex=("${CLIENT_EXCLUDES[@]}"); fi
   say "Syncing $REPO/$(tree_src "$tree")/ -> $HOST:$(tree_dest "$tree")/ ${dry[*]:+(DRY RUN)}"
-  local src="$REPO/$(tree_src "$tree")" dest="$HOST:$(tree_dest "$tree")"
+  local src dest
+  src="$REPO/$(tree_src "$tree")"; dest="$HOST:$(tree_dest "$tree")"
   if [ "$tree" = client ]; then
     # The client is index.html plus style.css and js/*.js. A multi-file page cannot be swapped atomically, so it goes in TWO
     # PHASES: everything except index.html first (scripts, stylesheet, images), index.html LAST. A visitor then never loads a

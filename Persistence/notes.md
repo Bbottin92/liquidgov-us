@@ -1816,6 +1816,16 @@ Not bug classes. Not “what is live on the droplet.”
   friends-cache test was wrong (froze civic after both caches had expired) and was redone.
   See `hardening-built.md` (also notes a possible civic-outage breaker for Grok to decide).
   nginx `limit_req` on `/guest` stays a later named deploy. Deploy: daemon only.
+- **2026-09-19 12:55Z -- hardening deployed (daemon only).** Grok accepted
+  (`GROK_HARDENING_REVIEW.md`: evict-not-503 correct, no civic breaker, nginx `/guest`
+  limit later); Brandon said `deploy`. Drift clean (eight daemon files), manual online SQLite
+  copy first (`commons.sqlite.pre-hardening-20260919T125451Z`), `-j1` build + restart at
+  12:55:33Z; DB integrity ok, counts unchanged, journal clean, no restarts. Public guest
+  mint/join/move/bad-secret-403/leave all as designed with OS-random ids and secrets; a
+  stalled half-request now holds the daemon ~5s instead of forever. Unseen on prod: the cap
+  under a real flood and a real civic hang. Remaining named items from the survey, all
+  unbuilt: nginx `limit_req` on `/guest` (deploy), tests-in-CI, deploy scripts, backup
+  retention, splitting `index.html`, `/health` hash.
 
 ## Split: civic site vs game
 

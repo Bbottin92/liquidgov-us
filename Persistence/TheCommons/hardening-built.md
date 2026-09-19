@@ -101,3 +101,34 @@ sync, `-j1` build (no reconfigure), restart (drops RAM presence and every guest 
 guests re-mint through the existing 403 path; houses are durable). Live check through nginx:
 lots/presence/placed 200; a guest mint, join, move and leave work; a bad secret is 403;
 journal clean.
+
+## Deployed (2026-09-19 12:55:33Z, Brandon: "deploy"; Grok accepted in `GROK_HARDENING_REVIEW.md`)
+
+Daemon only. Civic, client and nginx untouched (`liquidgov.service` not restarted).
+Grok's review confirmed evict-not-503 is right (the client ignores the mint status),
+no civic breaker, nginx `limit_req` on `/guest` stays a later named deploy.
+
+1. **Drift check:** exactly this round's eight daemon files (`civic.cpp/.hpp`,
+   `friends.cpp/.hpp`, `guest.cpp/.hpp`, `http.cpp`, `main.cpp`); civic and client
+   dry-runs empty.
+2. **Manual online SQLite copy first:**
+   `/var/lib/commons/backups/commons.sqlite.pre-hardening-20260919T125451Z`,
+   `integrity_check` ok. Baseline: items 3, recipes 3, maps 14, map_instances 2,
+   players 1 (`Bbottin`), placed 0, inventory 2. The orphan watch had logged nothing
+   since the reap.
+3. Synced, `-j1` build with no reconfigure, restarted at **12:55:33Z**. Journal:
+   `orphan watch is REAPING ...`, listening on `127.0.0.1:8765`. Live DB read-only:
+   integrity ok, every count identical to the baseline. Through nginx: lots, `1,1`,
+   house `/placed/` all 200; `/` and `/commons/` 200; public `/internal/user-exists/x`
+   404.
+4. **A real guest through the public site:** mint 200 (id `g_`+16 hex, secret 32 hex),
+   join ok, move 200, **bad secret 403**, leave ok; a guest's lots `[]` in 98ms.
+5. **On the box, a stalled half-request:** a normal request behind it waited **5.0s**
+   (before: forever); the daemon answered in 11ms right after.
+6. Journal clean, `NRestarts=0`, both services active. The restart dropped every
+   in-RAM guest credential; live guests re-mint through the existing 403 path. Houses
+   are durable.
+
+Not seen on production (needs load or a real outage): the 256-cap eviction under a real
+flood, and the friends-cache "stay" behaviour with a real civic hang. Both are the code
+paths the local tests exercised with a frozen civic and a 400-mint flood.

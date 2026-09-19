@@ -22,6 +22,11 @@ Civic (`http_server.cpp` + `assets/apps.html`)
   (or login).
 * Footer Privacy. Robots.txt also disallows `/internal`.
 * "This website is the door" now names The Commons.
+* `/communities` now keeps `?next=` like feed/mail (it used to dump you
+  on a bare login).
+* Genesis intro: Skip button, click-off, error, 12s timeout — so a stuck
+  `intro.mp4` cannot trap the homepage.
+* `/officials` title is no longer doubled.
 
 Client (`commons/js/interact.js`)
 
@@ -30,12 +35,18 @@ Client (`commons/js/interact.js`)
 
 Left alone on purpose
 
-* The old Quad websocket (`/world/ws`) is unused by the public door.
-  Ripping it is a later civic pass — Juketube still shares that pattern.
+* The old Quad websocket (`/world/ws`) is unused by the public door
+  (nginx 502s the upgrade). Ripping it is a later civic pass — Juketube
+  still shares that pattern.
+* Social/Civic home-screen manifests still open Genesis. Mail is the
+  one that was done right. Own round if Brandon wants those icons to
+  land in the right app.
+* `www.liquidgov.us` does not 301 to apex — nginx, named separately.
 * Workshop shutter, house open policy, rebind, orphan reaping: parked
   until named.
 * No live-elections claim. No React. No LGP1 tags.
 
 Deploy is civic first (binary + `assets/apps.html`), then the client.
 After civic: `/privacy` and `/terms` 200, guest nav contains The Commons,
-`/profile` 303s, `/apps` has Walk in.
+`/profile` 303s, `/apps` has Walk in, `/communities` login keeps next,
+intro has Skip.

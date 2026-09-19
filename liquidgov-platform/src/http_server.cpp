@@ -1141,20 +1141,31 @@ std::string intro_overlay_html(bool always_play) {
            "try{if(localStorage.getItem('liquidgov.intro.seen')){el.remove();return;}}"
            "catch(e){el.remove();return;}";
     return "<div id=\"lgintro\" style=\"position:fixed;inset:0;z-index:999;background:#14120f;"
-           "display:flex;align-items:center;justify-content:center;overflow:hidden\">"
+           "display:flex;align-items:center;justify-content:center;overflow:hidden;cursor:pointer\">"
            "<video id=\"lgintrovid\" autoplay muted playsinline "
            "style=\"width:100%;height:100%;object-fit:cover\" src=\"/assets/intro.mp4?v=2\"></video>"
+           "<button type=\"button\" id=\"lgintroskip\" style=\"position:absolute;right:1rem;bottom:1rem;"
+           "z-index:1;min-height:44px;padding:.5rem 1rem;border:1px solid rgba(242,234,216,.35);"
+           "border-radius:8px;background:rgba(20,18,15,.7);color:#f2ead8;font:600 .9rem system-ui,sans-serif;"
+           "cursor:pointer\">Skip</button>"
            "</div>"
            "<script>(function(){"
            "var el=document.getElementById('lgintro');"
            +gate+
            "var vid=document.getElementById('lgintrovid');"
+           "var done=false;"
            "function finish(){"
+           "if(done||!el)return;done=true;"
            "try{localStorage.setItem('liquidgov.intro.seen','1');}catch(e){}"
            "el.style.transition='opacity .7s ease';el.style.opacity='0';"
-           "setTimeout(function(){el.remove();},720);"
+           "setTimeout(function(){if(el&&el.parentNode)el.remove();},720);"
            "}"
            "vid.addEventListener('ended',finish);"
+           "vid.addEventListener('error',finish);"
+           "el.addEventListener('click',finish);"
+           "var skip=document.getElementById('lgintroskip');"
+           "if(skip)skip.addEventListener('click',function(e){e.stopPropagation();finish();});"
+           "setTimeout(finish,12000);"
            "})();</script>";
 }
 
@@ -8251,7 +8262,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
     }
 
     if(method=="GET"&&path=="/communities") {
-        if(!acc) return http_redir("/login");
+        if(!acc) return need_login();
         std::string err = flash_error(qs);
         std::string html = "<h1>Groups</h1>"+err+
             "<p class=\"lede\">Platform groups. Not AVND localities, and they do not confer standing.</p>";
@@ -9220,7 +9231,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         } else {
             form = "<p class=\"muted\"><a href=\"/login?next=/officials\">Log in</a> to vote or open a race.</p>";
         }
-        return http_ok(wrap("Officials — LiquidGov.US", user, unread,
+        return http_ok(wrap("Officials", user, unread,
             std::string("<h1>Officials</h1>"
             "<p class=\"muted\">Account vote only. Not a certified election and not proof of residency.</p>")
             + cards + form));

@@ -43,6 +43,18 @@
     border:1px solid var(--ink); border-radius:6px;
     background:var(--ink); color:var(--paper); cursor:pointer;
   }
+  /* "Reconnecting…": top centre, well away from the bottom-anchored d-pad and Enter button, above them (15) but under the
+     name overlay (20). Empty = hidden (netStatusTick writes the text only while the problem lasts); it never takes a tap. */
+  #connStatus{
+    position:fixed; top:calc(.6rem + env(safe-area-inset-top,0px)); left:50%; transform:translateX(-50%);
+    z-index:15; max-width:calc(100% - 2rem);
+    padding:.3rem .8rem; border:1px solid var(--ink); border-radius:999px;
+    background:var(--paper); color:var(--ink);
+    font-size:.85rem; line-height:1.2; white-space:nowrap;
+    box-shadow:0 1px 4px rgba(26,24,20,.35);
+    pointer-events:none; user-select:none; -webkit-user-select:none;
+  }
+  #connStatus:empty{ display:none; }
   #dpad{
     position:fixed; left:0; right:0;
     bottom:calc(.8rem + env(safe-area-inset-bottom,0px));

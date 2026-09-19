@@ -194,6 +194,7 @@ function frame(t) {
   var dt = Math.min((t - lastT) / 1000, 1 / 20) || 0;
   lastT = t;
   lastTickAt = t;
+  netStatusTick(t);   // the "Reconnecting…" badge: observe-only, every frame (net.js)
 
   var playerMoved = movePlayer(currentDX(), currentDY(), dt);
 

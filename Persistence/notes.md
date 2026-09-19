@@ -1984,6 +1984,14 @@ Not bug classes. Not “what is live on the droplet.”
   A = a small DOM badge outside the canvas (accessible, `role=status`), shown only after the problem lasts (4s with no credential, or 6 consecutive
   move/poll failures), hidden on the next success, one "Reconnecting…" line, observe-only (no request or retry change); B = on-canvas; C = reuse the
   toast; D = nothing. Waiting on Brandon's one-letter answer; no code written.
+- **2026-09-19 -- `BUILD connection status` (A) built and tested; NOT deployed.** Brandon: "BUILD connection status: A, as written." A small "Reconnecting…" pill,
+  top centre, outside the canvas (`#connStatus`, `role=status`, empty when clear, paper/ink from the existing CSS, `z-index:15`, `pointer-events:none`, well away from the d-pad).
+  State machine in `js/net.js` (`netStatus:begin/end`): shown when a mint loop has been pending >4s OR 6 consecutive heartbeats failed; hidden on the next success; no
+  stay-clear timer; observe-only (no request, no retry change). **Deviation flagged:** the heartbeat is the move POST only, not the 1-4 polls per tick, or an ordinary
+  restart would show it after ~1s. `netstatus_unit.js` (31) + `test_netstatus.sh` (29), mutation-checked (14). That run found a real bug in my own wrappers: under Windows node the
+  unit's exit code was lost (`PIPESTATUS` after `$(...|tr)`), so a failing unit passed locally (CI unaffected); fixed in netmint/client_files/netstatus. Real browser
+  + real daemon (frame loop driven from a timer, the pane being hidden): badge at the 6th failed heartbeat, hidden 257ms after the daemon answered, a refused remint
+  shows at 5s and clears on recovery, no overlap with the d-pad on desktop or a 375x812 phone. Client deploy needs `deploy` (index.html, style.css, js/main.js, js/net.js). See `connection-status-built.md`.
 
 ## Split: civic site vs game
 

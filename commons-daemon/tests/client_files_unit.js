@@ -40,6 +40,8 @@ for (const f of ORDER) {
 }
 check(read("style.css").length > 500, "style.css is not empty");
 check(read("js/net.js").includes("// ---- netMint:begin") && read("js/net.js").includes("// ---- netMint:end"), "the netMint test markers are in js/net.js");
+check(read("js/net.js").includes("// ---- netStatus:begin") && read("js/net.js").includes("// ---- netStatus:end"), "the netStatus (connection badge) test markers are in js/net.js");
+check(/<div id="connStatus"[^>]*role="status"[^>]*aria-live="polite"[^>]*><\/div>/.test(html), "index.html has the empty #connStatus live region (the badge)");
 
 // ---- no name is declared in two files (a redeclaration would silently change which one wins)
 const declared = new Map(); const dups = [];
@@ -119,7 +121,8 @@ if (ok.ok) {
   check(!ok.rec.errors.some((e) => /spawn tile is blocked/.test(e)), "assertSpawnIsFree ran and found the spawn free");
   check(ev(ok, "typeof player === 'object' && player.x > 0 && player.y > 0"), "the player exists at a spawn");
   check(ok.rec.listeners.includes("keydown") || ok.rec.listeners.includes("resize"), "the input and resize listeners were registered");
-  for (const fn of ["netMint", "netHandleAuthFailure", "enter", "tryInteract", "applyCrop", "paintBake"]) check(ev(ok, "typeof " + fn) === "function", fn + " is a function after load");
+  for (const fn of ["netMint", "netHandleAuthFailure", "enter", "tryInteract", "applyCrop", "paintBake", "netStatusTick", "netStatusReport"]) check(ev(ok, "typeof " + fn) === "function", fn + " is a function after load");
+  check(ev(ok, "netStatusShown") === false && ev(ok, "netStatusFails") === 0, "the badge starts hidden with no failures counted");
   check(ok.rec.errors.length === 0, "nothing was reported through console.error during load: " + JSON.stringify(ok.rec.errors));
 }
 

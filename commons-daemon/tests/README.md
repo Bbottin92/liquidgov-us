@@ -38,7 +38,8 @@ change the stub and re-run the suite in both modes.
 | `test_snapshot` | kill -9 crash recovery from the periodic snapshot (with a control that proves the test can tell) |
 | `test_orphans` | the reap and every valve (two passes, cap 3, backup first, last look, SUSPECT, kill switch, online skipped) |
 | `test_migrations` | startup migrations on databases from OLDER schemas (`fixtures/` are frozen from git history) |
-| `test_client_files` | the split client (`index.html` + `style.css` + `js/*.js`): the eight scripts loaded IN TAG ORDER under node with a stubbed DOM, failing on any `ReferenceError`; the load-time code must have really run (48) |
+| `test_netstatus` | the client's "Reconnecting…" badge: the shipped state machine under node with a fake clock (31 checks) + its wiring (move heartbeat only, tick per frame), markup and CSS (29) |
+| `test_client_files` | the split client (`index.html` + `style.css` + `js/*.js`): the eight scripts loaded IN TAG ORDER under node with a stubbed DOM, failing on any `ReferenceError`; the load-time code must have really run (53) |
 | `test_health` | `/health` reports the commit the daemon was built from: the build-info generator's rules (hostile tokens rejected), the value refreshing on `cmake --build` with NO reconfigure on the real build dir (after asserting the build dir is up to date), and the endpoint (59) |
 | `test_netmint` | the client's guest-credential mint: the shipped `netMint` block run under node with a fake clock and scripted fetch (88 checks): credential only from a 200 `{id, secret}`, backoff + Retry-After, single-flight, re-auth |
 | `test_retention` | backup retention: 378 unit checks on the pure decision (incl. 300 random directories with sidecars and orphans) + the real script against a fake backups directory with real `-wal`/`-shm` files (dry run by default, exact deletions, sidecar pairing, newest-first, refusals) |

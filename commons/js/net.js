@@ -240,6 +240,31 @@ function netHandleAuthFailure() {
 }
 // ---- netMint:end
 
+// ---- netStatus:begin (tests/netstatus_unit.js runs THIS block, extracted verbatim: keep it self-contained)
+// The "Reconnecting…" badge. It only OBSERVES: it sends no request and changes no retry or backoff. Before this, a visitor got no
+// signal at all when the client could not reach the daemon (moves failed silently, the player kept walking a local copy of the
+// world and vanished for everyone else). The badge shows when EITHER
+//   - a credential has been missing for more than 4s: a mint loop (startup, or a remint after a 403) pending that long, or
+//   - 6 heartbeats in a row have failed: the move POST is the heartbeat (exactly one per tick, so 6 = 3s at 2Hz; the 1-4 polls per
+//     tick are NOT counted, or an ordinary daemon restart would show the badge after about a second).
+// It hides on the next success. There is deliberately no "stay clear" timer: the two thresholds are the anti-flap. A daemon that
+// answers (200, or a 403 that the remint path handles) counts as reached; a network error, a 5xx from nginx, or a 429 does not.
+var NET_STATUS_MINT_MS = 4000, NET_STATUS_FAILS = 6;
+var netStatusFails = 0;        // consecutive failed heartbeats; any success resets it
+var netMintSeenAt = null;      // when the current mint loop was first seen pending (frame time), or null
+var netStatusShown = false;
+function netStatusReport(reached) { if (reached) netStatusFails = 0; else netStatusFails++; }
+function netStatusTick(t) {    // once per frame, with the frame time
+  if (netMintPending) { if (netMintSeenAt === null) netMintSeenAt = t; } else netMintSeenAt = null;
+  var noCredential = netMintSeenAt !== null && t - netMintSeenAt > NET_STATUS_MINT_MS;
+  var show = noCredential || netStatusFails >= NET_STATUS_FAILS;
+  if (show === netStatusShown) return;
+  netStatusShown = show;
+  var el = document.getElementById("connStatus");
+  if (el) el.textContent = show ? "Reconnecting…" : "";     // the element is :empty when clear (display:none), and a live region
+}
+// ---- netStatus:end
+
 // V2 (GROK_V2_ANSWER.md): join/rekey/move are no longer outdoor-only --
 // `region` can be an outdoor REGIONS entry or a shared interior instance
 // key ("instance:demo" / "instance:lab"). worldToRegionLocal/regionKeyFor
@@ -430,9 +455,10 @@ function netMove() {
     method: "POST",
     body: netBody({ region: regionKeyFor(netRegion), x: lp.x, y: lp.y, facing: player.dir })
   }).then(function (r) {
+    netStatusReport(r.ok || r.status === 403);   // the heartbeat for the connection badge: did the daemon answer?
     if (r.status === 403) { netHandleAuthFailure(); return null; }
     return r.json();
-  }).then(function (j) {
+  }, function (e) { netStatusReport(false); throw e; }).then(function (j) {   // (a network error: count it, then fall to the same silent catch as before)
     // Answered 200 on purpose (a 403 would look like a dead credential): the
     // owner unfriended or blocked me, and the daemon has already removed me.
     if (j && j.reason === "not_welcome") netVisitEnded("You're no longer welcome there.");

@@ -20,9 +20,11 @@ assert_eq "one netMint:end marker" "1" "$(grep -c '// ---- netMint:end' "$HTML")
 assert_eq "the mint is called from exactly two places across the client (startup in main.js, and the re-auth handler in net.js); comments do not count" "2" "$(cat "$CLIENT_JS"/*.js | grep -cE '^[^/]*netMint\(\)(;|\.then)')"
 
 echo "-- the unit cases ($("$NODE" --version | tr -d '\r'))"
-if [ "$WIN" = 1 ]; then out="$("$NODE" "$(wslpath -w "$UNIT")" "$(wslpath -w "$HTML")" 2>&1 | tr -d '\r')"; rc=${PIPESTATUS[0]}
+# (Windows node under WSL: write to a file so $? is node's own exit code; ${PIPESTATUS[0]} after $(...| tr) would always be tr's 0.)
+if [ "$WIN" = 1 ]; then "$NODE" "$(wslpath -w "$UNIT")" "$(wslpath -w "$HTML")" > "$WORK/unit.out" 2>&1; rc=$?; out="$(tr -d '\r' < "$WORK/unit.out")"
 else out="$("$NODE" "$UNIT" "$HTML" 2>&1)"; rc=$?; fi
 echo "$out" | sed 's/^/     /'
-assert_eq "no unit case failed" "0" "$rc"
+assert_eq "no unit case failed (node's exit code)" "0" "$rc"
+assert_contains "and the unit's own summary says 0 failed" "$out" " checks, 0 failed"
 n="$(sed -n 's/^netmint_unit: \([0-9]*\) checks.*/\1/p' <<<"$out")"
 [ "${n:-0}" -ge 80 ] && _ok "at least 80 checks executed ($n)" || _bad "at least 80 checks executed" "$n"

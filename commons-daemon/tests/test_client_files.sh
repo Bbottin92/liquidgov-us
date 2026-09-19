@@ -23,9 +23,11 @@ done
 assert_eq "no inline <script> body is left in index.html (one line per tag, no code)" "0" "$(awk '/<script>/{c++} END{print c+0}' "$COMMONS/index.html")"
 
 echo "-- structure and LOAD ORDER (client_files_unit.js)"
-if [ "$WIN" = 1 ]; then out="$("$NODE" "$(wslpath -w "$UNIT")" "$(wslpath -w "$COMMONS")" 2>&1 | tr -d '\r')"; rc=${PIPESTATUS[0]}
+# (Windows node under WSL: write to a file so $? is node's own exit code; ${PIPESTATUS[0]} after $(...| tr) would always be tr's 0.)
+if [ "$WIN" = 1 ]; then "$NODE" "$(wslpath -w "$UNIT")" "$(wslpath -w "$COMMONS")" > "$WORK/unit.out" 2>&1; rc=$?; out="$(tr -d '\r' < "$WORK/unit.out")"
 else out="$("$NODE" "$UNIT" "$COMMONS" 2>&1)"; rc=$?; fi
 echo "$out" | sed 's/^/     /'
-assert_eq "no client-file check failed" "0" "$rc"
+assert_eq "no client-file check failed (node's exit code)" "0" "$rc"
+assert_contains "and the unit's own summary says 0 failed" "$out" " checks, 0 failed"
 n="$(sed -n 's/^client_files_unit: \([0-9]*\) checks.*/\1/p' <<<"$out")"
 [ "${n:-0}" -ge 40 ] && _ok "at least 40 checks executed ($n)" || _bad "at least 40 checks executed" "$n"

@@ -42,6 +42,7 @@ client code change, no deploy.** Files: `commons-daemon/tests/` and one workflow
 | `netmint` | the client's guest-credential mint (the shipped block under node, fake clock + fetch): 88 checks |
 | `health` | `/health`'s commit: the generator's rules, the no-reconfigure refresh on the real build dir, the endpoint (59) |
 | `client_files` | the split client's load order: the real files evaluated in tag order under a stubbed DOM, effects checked, wrong orders must throw (48) |
+| `netstatus` | the connection badge: the shipped state machine (fake clock, 31 checks) + its wiring, markup and CSS (29) |
 | `harness` | the harness itself: no daemon survives `stop_daemon`/`crash_daemon` even under a forking wrapper; `start_daemon` refuses a busy port (8) |
 
 ## Does it actually catch regressions? (mutation check)

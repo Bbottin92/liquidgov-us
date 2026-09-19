@@ -146,6 +146,18 @@ function drawSpace(camX, camY) {
     }
   }
 
+  if (mode === "outdoor") {
+    for (var wi = 0; wi < interactables.length; wi++) {
+      var wpi = interactables[wi];
+      if (wpi.type !== "worldPickup") continue;
+      var wp = WORLD_PICKUPS[wpi.pickup];
+      if (!wp) continue;
+      var gx = wpi.x * TILE - camX, gy = wpi.y * TILE - camY;
+      if (gx < -TILE || gx > crop.vw || gy < -TILE || gy > crop.vh) continue;
+      drawItemGlyph(ctx, wp.item, gx, gy + 6);
+    }
+  }
+
   drawSortedActors(ctx);
 
   if (nearestInteractable) {
@@ -156,8 +168,6 @@ function drawSpace(camX, camY) {
     var promptW = ctx.measureText(promptText).width;
     ix = Math.max(promptW / 2 + 1, Math.min(crop.vw - promptW / 2 - 1, ix));
     drawNameplate(ctx, promptText, ix, iy);
-  } else if (mode !== "outdoor") {
-    drawNameplate(ctx, "[Enter] to step back outside", crop.vw / 2, crop.vh - 18);
   }
 }
 

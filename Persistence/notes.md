@@ -18,6 +18,13 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-19 — D built, not deployed.** `world-pickups-built.md`.
+  Oak galls (North Woods), seashells (Shore), cider apples (Orchard).
+  No limestone. Catalog 8→11 items, still 8 recipes. Client only those
+  three Look markers. C1 waits.
+- **2026-09-19 — lab A live.** Brandon deployed `f8d111f` with
+  `--label catalog-a`. Verify 33/0, items 3→8. `GROK_CATALOG_LIVE.md`.
+  Hard-refresh the Square for the second row of lab benches.
 - **2026-09-19 — deploy A requested, Grok cannot SSH.**
   `CLAUDE_DEPLOY_CATALOG.md`. `9dba50b` CI green. This sandbox has
   no `liquidgov_deploy_key` (publickey denied). Command:

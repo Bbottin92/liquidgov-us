@@ -474,6 +474,18 @@ function dressRegions() {
   // atlas.md, no new art needed), not off alone in open water.
   tiles[idx(60, 71)] = T_BENCH;
 
+  // D: a short sand tongue off the Shore bridge (walkable dirt, not a new
+  // tile), shells as a crate pile. No limestone. Connects to the bridge so
+  // the beach is not a sealed pocket (world_scatter_unit flood-fill).
+  tiles[idx(62, 71)] = T_DIRT;
+  tiles[idx(63, 71)] = T_DIRT;
+  tiles[idx(62, 72)] = T_DIRT;
+  tiles[idx(63, 72)] = T_DIRT;
+  tiles[idx(62, 73)] = T_DIRT;
+  tiles[idx(63, 73)] = T_DIRT;
+  tiles[idx(62, 73)] = T_CRATE;
+  interactables.push({ type: "worldPickup", pickup: "seashell", x: 62, y: 73, prompt: "Look" });
+
   // Lab Yard (P2): the building exterior + a small sign. The door is a
   // walk-in trigger (atlas.md), not an Enter-to-confirm door like Hall or
   // the demo house -- it's deliberately not solid and not pushed into
@@ -509,6 +521,9 @@ function dressRegions() {
   tiles[idx(11, 10)] = T_TREE;
   tiles[idx(10, 11)] = T_TREE;
   tiles[idx(11, 11)] = T_BENCH; // the sit-log
+  // D: one oak with galls. A solitary tree already in this region, not the
+  // sit-log cluster and not on the name stamp. Look up, never depleted.
+  interactables.push({ type: "worldPickup", pickup: "oak_gall", x: 17, y: 6, prompt: "Look" });
 
   // Lookout: a raised plateau (walkable, +1 visual layer), a railing along
   // the south edge facing the Square (the sightline the P1 patch fixed --
@@ -533,6 +548,10 @@ function dressRegions() {
   for (var ot = 0; ot < orchardTrees.length; ot++) {
     tiles[idx(orchardTrees[ot][0], orchardTrees[ot][1])] = T_TREE;
   }
+  // D: fallen apples on the grass between rows, not a harvest on the trees
+  // (atlas.md: no farming). Flowerbed as a coloured pile, existing tile.
+  tiles[idx(56, 10)] = T_FLOWERBED;
+  interactables.push({ type: "worldPickup", pickup: "cider_apple", x: 56, y: 10, prompt: "Look" });
 
   // Workshop Lane: closed-shutter facade (decorative -- interacting says
   // it's closed, nothing else, same honesty as the boarded doors) + a

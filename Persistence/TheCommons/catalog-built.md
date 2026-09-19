@@ -1,4 +1,8 @@
-# Lab catalog A — five more lookups, no lime. Built, not deployed.
+# Lab catalog A — five more lookups, no lime. **Live.**
+
+Deployed 2026-09-19 by Brandon (`f8d111f`, `--label catalog-a`).
+`GROK_CATALOG_LIVE.md`. Verify 33/0, items 3→8, recipes 3→8.
+
 
 Brandon: "you just do it" after Claude hit the spend cap mid-A.
 `GROK_OBJECTS_ANSWER.md`. Daemon + client. **Not deployed.** No civic,

@@ -7,13 +7,20 @@
 -- Five more lab lookups (GROK_OBJECTS_ANSWER.md). No lime: chalk-only is
 -- locked (pushback.md). No recipe_inputs: still real-name lookups, not a
 -- crafting economy.
+--
+-- Three world pickups (GROK_OBJECTS_ANSWER.md D). Same loop, never
+-- depleted, per player. No limestone: Quarry Ridge sits next to
+-- "No ore. That's honest." No recipes: these are not lab stations.
 
 INSERT OR IGNORE INTO items (slug, display_name, category, wall_slot_ok, sprite_ref) VALUES
     ('vinegar_jar',     'Vinegar jar',     'placeable', 0, 'lab_bottle'),
     ('oak_gall_tannin', 'Oak-gall tannin', 'placeable', 0, 'lab_jar'),
     ('lampblack_ink',   'Lampblack ink',   'wallable',  0, 'lab_page'),
     ('alum_crystal',    'Alum crystal',    'placeable', 0, 'lab_crystal'),
-    ('gum_arabic',      'Gum arabic',      'placeable', 0, 'lab_jar');
+    ('gum_arabic',      'Gum arabic',      'placeable', 0, 'lab_jar'),
+    ('oak_gall',        'Oak galls',       'material',  0, 'world_galls'),
+    ('seashell',        'Seashells',       'material',  0, 'world_shells'),
+    ('cider_apple',     'Cider apples',    'material',  0, 'world_apples');
 
 INSERT OR IGNORE INTO recipes (slug, display_name, station) VALUES
     ('vinegar',        'Acetic acid from fermented cider',                    'lab'),

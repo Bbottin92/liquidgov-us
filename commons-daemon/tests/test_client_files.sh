@@ -22,14 +22,16 @@ for f in "$COMMONS"/js/*.js; do
 done
 assert_eq "no inline <script> body is left in index.html (one line per tag, no code)" "0" "$(awk '/<script>/{c++} END{print c+0}' "$COMMONS/index.html")"
 
-echo "-- lab catalog slugs match the daemon (GROK_OBJECTS_ANSWER.md, no lime)"
+echo "-- lab catalog slugs match the daemon (GROK_OBJECTS_ANSWER.md, no lime); world pickups are extra items, not recipes"
 python3 - "$COMMONS/js/interiors.js" "$DAEMON_DIR/seed.sql" "$DAEMON_DIR/catalog.sql" <<'PY'
 import re, sys
 js, seed, cat = (open(p, encoding="utf-8").read() for p in sys.argv[1:])
-items = set(re.findall(r"item:\s*\"([a-z0-9_]+)\"", js))
-sql = set(re.findall(r"\('([a-z0-9_]+)',", seed + cat))
-# seed/catalog item INSERT first column is slug; recipes also match this pattern.
-# Keep only slugs that appear as items.slug in INSERT INTO items blocks.
+def block(name):
+    m = re.search(r"var %s = \{([\s\S]*?)\n\};" % name, js)
+    assert m, name
+    return set(re.findall(r"item:\s*\"([a-z0-9_]+)\"", m.group(1)))
+lab = block("LAB_RECIPES")
+world = block("WORLD_PICKUPS")
 def item_slugs(s):
     out=set(); parts=re.split(r"INSERT(?: OR IGNORE)? INTO items\b", s, flags=re.I)
     for p in parts[1:]:
@@ -37,15 +39,13 @@ def item_slugs(s):
         out.update(re.findall(r"\('([a-z0-9_]+)'", block))
     return out
 sql = item_slugs(seed) | item_slugs(cat)
-missing = items - sql
-extra_needed = sql - items
-assert not missing, "client LAB_RECIPES items missing from SQL: %s" % missing
-assert items == sql, "client %s vs sql %s" % (sorted(items), sorted(sql))
-assert "lime_water" not in items and "lime_water" not in sql
-assert len(items) == 8
-print("ok 8 slugs, no lime, client matches seed+catalog")
+assert lab.isdisjoint(world), "lab and world slugs overlap: %s" % (lab & world)
+assert lab | world == sql, "client %s vs sql %s" % (sorted(lab|world), sorted(sql))
+assert "lime_water" not in sql and "limestone" not in sql
+assert len(lab) == 8 and len(world) == 3
+print("ok 8 lab + 3 world = 11 slugs, no lime, no limestone, client matches seed+catalog")
 PY
-[ $? -eq 0 ] && _ok "LAB_RECIPES items match seed.sql+catalog.sql (8, no lime)" || _bad "LAB_RECIPES items match catalog" "python mismatch"
+[ $? -eq 0 ] && _ok "LAB_RECIPES + WORLD_PICKUPS match seed.sql+catalog.sql (11, no lime)" || _bad "catalog items match client" "python mismatch"
 
 
 echo "-- structure and LOAD ORDER (client_files_unit.js)"

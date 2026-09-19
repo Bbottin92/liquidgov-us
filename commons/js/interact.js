@@ -102,6 +102,14 @@ function tryInteract() {
       lastPickedItem = r.item;
       netPickup(r.item);
       showToast(r.name + ".");
+    } else if (it.type === "worldPickup") {
+      // D: same loop as a lab station (look up, +1, never consumed). The
+      // marker is never removed from the map.
+      var wp = WORLD_PICKUPS[it.pickup];
+      inventory[wp.item] = (inventory[wp.item] || 0) + 1;
+      lastPickedItem = wp.item;
+      netPickup(wp.item);
+      showToast(wp.name + ".");
     } else if (it.type === "shutter") {
       showToast("Closed for now.");
     } else if (it.type === "sign") {

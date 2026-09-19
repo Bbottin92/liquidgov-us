@@ -112,6 +112,13 @@ var LAB_RECIPES = {
   alum:      { name: "Potassium aluminium sulfate, crystallised", item: "alum_crystal" },
   gum:       { name: "Acacia resin dissolved in water", item: "gum_arabic" }
 };
+// D (GROK_OBJECTS_ANSWER.md): outdoor lookups, same loop as the lab, never
+// depleted. No limestone. Item slugs must match catalog.sql.
+var WORLD_PICKUPS = {
+  oak_gall:    { name: "Oak galls on this tree", item: "oak_gall" },
+  seashell:    { name: "Seashells, calcium carbonate", item: "seashell" },
+  cider_apple: { name: "Fallen cider apples", item: "cider_apple" }
+};
 var PLACED_ITEM_INFO = {
   chalk_block:            { color: "#e8e2d0", label: "chalk" },
   iron_gall_ink_page:     { color: "#2a2320", label: "ink" },
@@ -120,7 +127,10 @@ var PLACED_ITEM_INFO = {
   oak_gall_tannin:        { color: "#4a3020", label: "tannin" },
   lampblack_ink:          { color: "#2a2824", label: "soot" },
   alum_crystal:           { color: "#c5c8c2", label: "alum" },
-  gum_arabic:             { color: "#a07a48", label: "gum" }
+  gum_arabic:             { color: "#a07a48", label: "gum" },
+  oak_gall:               { color: "#4a3020", label: "galls" },
+  seashell:               { color: "#c5c0b4", label: "shell" },
+  cider_apple:            { color: "#8a3a32", label: "apple" }
 };
 var labSpace = buildInterior(20, 16, function (t, w) {
   t[idxIn(w, LAB_DOOR.x, LAB_DOOR.y)] = T_IDOOR;

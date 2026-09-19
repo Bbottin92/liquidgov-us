@@ -724,6 +724,29 @@ int main(int argc, char** argv) {
         return r;
     }, /*prefix=*/true);
 
+    // presence.md's "periodic safety snapshot, ~every 30s, of bound players
+    // only, for crash recovery". The leave and rekey-away snapshots cover
+    // ordinary play; this is the half that survives a crash (or a kill)
+    // while someone is standing in their own house -- without it they would
+    // resume from wherever they last walked *out*. Same write, same guard as
+    // leave (owner's own house only, bound only, nothing for guests, visitors
+    // or the shared rooms). Runs on the accept loop between requests, so it
+    // needs no thread and no extra locking; an exception here is caught by
+    // HttpServer and cannot take the daemon down.
+    constexpr long long kSnapshotIntervalMs = 30000;
+    server.set_periodic(kSnapshotIntervalMs, [&]() {
+        for (const auto& user : presence.bound_usernames()) {
+            const std::string region = "instance:house:" + user;
+            const std::string bound_id = "u:" + user;
+            for (const auto& o : presence.occupants(region)) {
+                if (o.id == bound_id) {
+                    house.snapshot_leave(user, static_cast<int>(o.x), static_cast<int>(o.y), o.facing);
+                    break;
+                }
+            }
+        }
+    });
+
     server.run();
     return 0;
 }

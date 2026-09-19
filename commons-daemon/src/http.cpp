@@ -2,10 +2,13 @@
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
+#include <poll.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <cstring>
 #include <iostream>
 #include <sstream>
@@ -258,13 +261,43 @@ void HttpServer::run() {
     }
 
     std::cerr << "commons-daemon listening on " << bind_addr_ << ":" << port_ << "\n";
+    using Clock = std::chrono::steady_clock;
+    auto ms_since = [](Clock::time_point t) {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - t).count();
+    };
+    auto last_periodic = Clock::now();
     for (;;) {
+        // The periodic hook runs here, between requests, on this same
+        // thread -- checked on every pass so a steady stream of requests
+        // can't starve it, and poll() below wakes an idle loop in time.
+        int wait_ms = -1;
+        if (periodic_fn_ && periodic_ms_ > 0) {
+            long long since = ms_since(last_periodic);
+            if (since >= periodic_ms_) {
+                try { periodic_fn_(); } catch (const std::exception& e) {
+                    std::cerr << "commons-daemon: periodic task failed: " << e.what() << "\n";
+                }
+                last_periodic = Clock::now();
+                since = 0;
+            }
+            wait_ms = static_cast<int>(std::max<long long>(1, periodic_ms_ - since));
+        }
+        if (wait_ms >= 0) {
+            pollfd pfd{listen_fd_, POLLIN, 0};
+            int pr = poll(&pfd, 1, wait_ms);
+            if (pr <= 0) continue; // timeout (tick is due) or EINTR
+        }
         sockaddr_in client_addr{};
         socklen_t len = sizeof(client_addr);
         int client_fd = accept(listen_fd_, reinterpret_cast<sockaddr*>(&client_addr), &len);
         if (client_fd < 0) continue; // e.g. EINTR; keep serving, don't die on one bad accept
         serve_one(client_fd);
     }
+}
+
+void HttpServer::set_periodic(long long interval_ms, std::function<void()> fn) {
+    periodic_ms_ = interval_ms;
+    periodic_fn_ = std::move(fn);
 }
 
 } // namespace commons

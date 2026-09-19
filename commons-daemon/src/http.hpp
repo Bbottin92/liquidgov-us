@@ -40,6 +40,13 @@ public:
     // starting with it matches (used for /presence/<region>).
     void route(const std::string& method, const std::string& path, Handler h, bool prefix = false);
 
+    // Runs fn on the accept-loop thread about every interval_ms, in
+    // the gaps between requests (never during one) -- so it may touch the
+    // same stores a handler does with no new threading or locking. Must be
+    // called before run(). Used for presence.md's ~30s bound-player
+    // snapshot; the daemon stays a single-threaded synchronous loop.
+    void set_periodic(long long interval_ms, std::function<void()> fn);
+
     void run(); // blocks forever (or until the process is killed)
 
 private:
@@ -48,6 +55,8 @@ private:
     int port_;
     int listen_fd_ = -1;
     std::vector<Route> routes_;
+    long long periodic_ms_ = 0;
+    std::function<void()> periodic_fn_;
 
     void serve_one(int client_fd);
     HttpResponse dispatch(const HttpRequest& req);

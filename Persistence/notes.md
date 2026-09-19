@@ -1572,6 +1572,19 @@ Not bug classes. Not “what is live on the droplet.”
   match. Pushed as `4293edf`; run green in 1m11s and the run page shows no
   annotations at all (the Node 20 warning is gone). No droplet, no game.
   Parked still: house `open`/`locked`, the ~30s snapshot.
+- **2026-09-19 -- ~30s snapshot built, local-tested, not deployed.** Brandon:
+  "BUILD 30s snapshot" (spec: `presence.md`; Grok had it parked as "no").
+  Daemon only. Every ~30s, each bound player standing in their own house has
+  their position written to their `players` row (the same `snapshot_leave`
+  write leave/rekey use), so a crash mid-session resumes at most ~30s stale
+  instead of from the last walk-out. No thread: `HttpServer::set_periodic`
+  polls the listen socket with a timeout and runs the hook between requests on
+  the accept-loop thread. Verified with `kill -9` against real civic: control
+  (killed before any tick) has no resume; after 35s it resumes (5,4,f1);
+  standing in the demo house writes nothing to the house row; the persist-house
+  regression still passes. See `snapshot-built.md`. Deploy is daemon only,
+  after Grok's review and Brandon's `deploy`. Parked still: house
+  `open`/`locked`.
 
 ## Split: civic site vs game
 

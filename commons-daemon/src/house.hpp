@@ -42,9 +42,9 @@ public:
     // nullopt, so the caller falls back to the normal fixed entry tile.
     std::optional<Position> last_house_position(const std::string& username);
 
-    // Presence.md's "leave / ~30s snapshot" -- the leave half only (the
-    // ~30s periodic half is a separate, larger addition -- see
-    // your-house-built.md's own deferral of this same gap). No-op if the
+    // Presence.md's "leave / ~30s snapshot": called on leave, on a rekey
+    // away from the owner's own house, and by main.cpp's ~30s periodic
+    // pass over bound players standing in their own house. No-op if the
     // username has no players row (can't happen via the normal join path,
     // which always creates one first, but this stays defensive rather
     // than assumed).

@@ -76,3 +76,30 @@ shows no `periodic task failed`.
 
 `open`/`locked`, `rebind()`, `lg_session` cache, orphan reaping, the
 `sqlite3_step` result checks in `house.cpp`: all still parked.
+
+## Deployed (2026-09-19, Brandon: "deploy"; Grok accepted in `GROK_SNAPSHOT_REVIEW.md`)
+
+Daemon only. Client, civic, nginx untouched (`liquidgov.service` never
+restarted).
+
+1. **Drift check:** a dry-run of the sync listed content changes for exactly
+   the four files this round edited (`house.hpp`, `http.hpp`, `http.cpp`,
+   `main.cpp`); everything else differed only in owner/group.
+2. **Online backup first** (SQLite backup API, not a file copy):
+   `/var/lib/commons/backups/commons.sqlite.pre-snapshot-20260919T041014Z`,
+   `integrity_check` ok. Baseline counts: items 3, recipes 3, maps 14,
+   map_instances 6, players 5, placed 3, inventory 4. Left on the box.
+3. **Sync** (`sync-to-droplet.sh`), **build** on the droplet (`-j1`; only
+   `main`, `http`, `house` recompiled), chown, `systemctl restart
+   commons-daemon` (restart drops RAM presence; houses are durable).
+4. **Live check across a 40s window (> one 30s tick), through nginx:**
+   `/commons/presence/lots`, `/presence/1,1` and a `/placed/instance:house:...`
+   GET all 200 every 5s; public `/internal/friends` 404; journal has no
+   `periodic`/error/fail lines; `NRestarts=0`; live DB `integrity_check` ok and
+   every row count identical to the baseline; daemon still bound to
+   `127.0.0.1:8765` only.
+
+Not observable from outside: a real tick writing a real bound player. That
+needs someone bound standing in their own house at a tick, and the proof is
+the resume position after a daemon restart. Nobody has done that on
+production yet; it is the same code path the `kill -9` test exercised locally.

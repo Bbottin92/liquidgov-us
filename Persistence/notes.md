@@ -1585,6 +1585,15 @@ Not bug classes. Not “what is live on the droplet.”
   regression still passes. See `snapshot-built.md`. Deploy is daemon only,
   after Grok's review and Brandon's `deploy`. Parked still: house
   `open`/`locked`.
+- **2026-09-19 -- ~30s snapshot deployed (daemon only).** Grok accepted
+  (`GROK_SNAPSHOT_REVIEW.md`); Brandon said `deploy`. Drift check clean (only
+  the four edited files differed), online SQLite backup first
+  (`commons.sqlite.pre-snapshot-20260919T041014Z`, left on the box), sync,
+  `-j1` build on the droplet, restart. Verified across a 40s window through
+  nginx: lots/presence/placed 200, `/internal/friends` 404, no journal
+  errors, no restarts, DB integrity ok with counts unchanged, loopback bind.
+  A real bound tick is unproven on prod (needs a bound player in their own
+  house across a tick, then a restart). Parked still: house `open`/`locked`.
 
 ## Split: civic site vs game
 

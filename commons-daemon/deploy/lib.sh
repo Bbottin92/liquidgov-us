@@ -39,8 +39,10 @@ DAEMON_EXCLUDES=(--exclude build --exclude .git --exclude tests
                  --exclude '.deployed-*' --exclude '.deploy-log')
 CLIENT_EXCLUDES=(--exclude .git --exclude '.deployed-*')
 
-ALLOW_DIRTY=0
-ALLOW_UNPUSHED=0
+# The scripts set these from --allow-dirty / --allow-unpushed; need_clean_tree / need_pushed below read them.
+# Reset to 0 on every load, so nothing in the operator's environment can loosen the guards.
+export ALLOW_DIRTY=0
+export ALLOW_UNPUSHED=0
 
 say() { printf '%s\n' "$*"; }
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }

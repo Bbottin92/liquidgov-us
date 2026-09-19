@@ -892,7 +892,8 @@ int main(int argc, char** argv) {
         std::vector<std::string> gone_now;
         int checked = 0, exists = 0;
         bool civic_silent = false;
-        for (const auto& u : house.all_usernames()) {
+        const auto known = house.all_usernames();
+        for (const auto& u : known) {
             if (checked >= kOrphanMaxChecks) break;
             if (std::find(online.begin(), online.end(), u) != online.end()) continue;
             ++checked;
@@ -902,9 +903,12 @@ int main(int argc, char** argv) {
             else gone_now.push_back(u);
         }
         if (civic_silent) { gone_streak.clear(); return; } // don't know: forget every streak
-        if (checked >= 2 && static_cast<int>(gone_now.size()) == checked) {
-            std::cerr << "commons-daemon: orphan watch SUSPECT: civic reports all " << checked
-                      << " checked accounts gone; treating it as a civic problem, counting nothing\n";
+        // Compared with EVERY known account, not just the ones asked about: anyone
+        // currently in the game is skipped above, and a live player is proof civic
+        // still has accounts. Only "nobody at all still exists" is suspect.
+        if (known.size() >= 2 && gone_now.size() == known.size()) {
+            std::cerr << "commons-daemon: orphan watch SUSPECT: civic reports all " << known.size()
+                      << " known accounts gone; treating it as a civic problem, counting nothing\n";
             gone_streak.clear();
             return;
         }

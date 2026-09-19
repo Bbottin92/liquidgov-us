@@ -35,8 +35,14 @@ step toward closing it, and it deletes nothing.)
   3. **two consecutive passes** of `Gone` are required; anyone not gone this pass
      loses their streak;
   4. **at most 3** "would reap" per pass, the rest logged as deferred;
-  5. **suspect guard:** if every checked account (at least 2) is reported gone, the
+  5. **suspect guard:** if **every known account** (at least 2) is reported gone, the
      pass is treated as a civic problem, not a mass deletion, and counts nothing.
+     (It is compared with every account in `players`, not just the ones asked about:
+     I first compared against the *checked* set, and found before deploying that a
+     living player who is online is skipped, so the four real test orphans would have
+     read as "all checked accounts gone" and the watch would have logged nothing
+     whenever Brandon was in the game. Fixed and retested with a living online
+     player.)
 - **What it logs** (journal, stderr): a startup line `orphan watch is LOG-ONLY ...`;
   `'<name>' is gone from civic (1st pass; needs 2 in a row)`; and from the second
   pass, `would reap '<name>': house instance N, X inventory rows (qty Q), Y placed
@@ -63,8 +69,9 @@ Five accounts each entered their house, picked up two lookups and hung chalk.
    would-reap lines.
 6. **Cap:** four gone (alice again, bob, carol, dave) and erin alive: exactly three
    would-reap lines and `1 more would-reap deferred by the cap of 3`.
-7. **Suspect guard:** erin deleted too: `SUSPECT: civic reports all 5 checked accounts
-   gone`, and no would-reap. Final DB counts still equal the baseline.
+7. **Suspect guard:** erin deleted too: `SUSPECT: civic reports all 5 known accounts
+   gone`, and no would-reap. **And the reverse:** two deleted accounts plus one living
+   player who is *online* (so never asked): both orphans are found, zero SUSPECT. Final DB counts still equal the baseline.
 8. Regressions passing: the ~30s snapshot test (the hook I restructured), open
    houses (block probe, lots, fail-closed), session cache, rebind, visiting,
    persist-house.

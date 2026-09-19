@@ -101,6 +101,14 @@ health_commit() { get "$D/health"; jget commit; }
 
 if [ -f "$BUILD_DIR/CMakeCache.txt" ]; then
   echo "-- 5. the real wiring: the value refreshes on 'cmake --build' with NO reconfigure"
+  # Precondition: bring the build directory up to date FIRST. A `git pull --rebase` (or any checkout) rewrites source mtimes, and a
+  # build dir left behind them recompiles main.cpp and even reconfigures inside the assertions below, and the binary still holds an
+  # older revision: that measures the directory's stale history, not the feature (found when a rebase made this test fail locally;
+  # CI builds fresh and never sees it).
+  env -u COMMONS_BUILD_REV "$CMAKE" --build "$BUILD_DIR" -j2 > "$WORK/prebuild.log" 2>&1 || _bad "the build directory builds" "$(tail -5 "$WORK/prebuild.log")"
+  pre="$(env -u COMMONS_BUILD_REV "$CMAKE" --build "$BUILD_DIR" -j2 2>&1)"
+  assert_not_contains "precondition: the build directory is up to date (a second build recompiles nothing)" "$pre" "Building CXX"
+  assert_not_contains "and does not reconfigure" "$pre" "Configuring done"
   start_daemon
   R0="$(health_commit)"; stop_daemon
   [[ "$R0" =~ ^([0-9a-f]{7,40}(\+dirty)?|unknown)$ ]] && _ok "the binary under test reports a real value ($R0)" || _bad "the binary reports a valid commit" "$R0"

@@ -117,7 +117,19 @@ sync_tree() { # tree [-n]
   local -a ex
   if [ "$tree" = daemon ]; then ex=("${DAEMON_EXCLUDES[@]}"); else ex=("${CLIENT_EXCLUDES[@]}"); fi
   say "Syncing $REPO/$(tree_src "$tree")/ -> $HOST:$(tree_dest "$tree")/ ${dry[*]:+(DRY RUN)}"
-  # -L: schema.sql is a symlink to ../Persistence/TheCommons/schema.sql; the droplet needs the real file.
-  rsync -az -L "${dry[@]}" -e "$SSH_E" "${ex[@]}" "$REPO/$(tree_src "$tree")/" "$HOST:$(tree_dest "$tree")/"
+  local src="$REPO/$(tree_src "$tree")" dest="$HOST:$(tree_dest "$tree")"
+  if [ "$tree" = client ]; then
+    # The client is index.html plus style.css and js/*.js. A multi-file page cannot be swapped atomically, so it goes in TWO
+    # PHASES: everything except index.html first (scripts, stylesheet, images), index.html LAST. A visitor then never loads a
+    # NEW index.html that points at scripts the droplet does not have yet. If phase 1 fails, index.html is untouched and the
+    # marker is not written (set -e stops here). rsync never deletes, so a removed or renamed file lingers on the droplet.
+    say "  phase 1/2: everything except index.html (scripts, stylesheet, images)"
+    rsync -az -L "${dry[@]}" -e "$SSH_E" "${ex[@]}" --exclude '/index.html' "$src/" "$dest/"
+    say "  phase 2/2: index.html (last)"
+    rsync -az -L "${dry[@]}" -e "$SSH_E" "$src/index.html" "$dest/"
+  else
+    # -L: schema.sql is a symlink to ../Persistence/TheCommons/schema.sql; the droplet needs the real file.
+    rsync -az -L "${dry[@]}" -e "$SSH_E" "${ex[@]}" "$src/" "$dest/"
+  fi
   if [ "${#dry[@]}" = 0 ]; then mark_deployed "$tree"; say "marked $(tree_marker "$tree") on the droplet"; fi
 }

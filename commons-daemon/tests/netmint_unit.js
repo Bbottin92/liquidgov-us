@@ -1,7 +1,7 @@
-// Unit cases for the client's guest-credential mint (commons/index.html, the block between the `netMint:begin` and
+// Unit cases for the client's guest-credential mint (commons/js/net.js, the block between the `netMint:begin` and
 // `netMint:end` markers). The SHIPPED code is extracted from the page and run in a vm with a fake clock and a scripted
 // fake fetch, so this tests what players actually load, not a copy.
-//   node netmint_unit.js <path to commons/index.html>
+//   node netmint_unit.js <path to commons/js/net.js>
 // Prints 'netmint_unit: N checks, F failed'; exit 1 if any failed.
 "use strict";
 const fs = require("fs");

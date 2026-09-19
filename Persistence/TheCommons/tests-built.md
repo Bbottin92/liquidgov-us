@@ -40,7 +40,8 @@ client code change, no deploy.** Files: `commons-daemon/tests/` and one workflow
 | `nginx_guest` | the `/guest` rate limit: config text + a real nginx in front of the daemon (CI) |
 | `retention` | backup retention: 378 unit checks + the script against a fake backups directory incl. sidecars (76) |
 | `netmint` | the client's guest-credential mint (the shipped block under node, fake clock + fetch): 88 checks |
-| `health` | `/health`'s commit: the generator's rules, the no-reconfigure refresh on the real build dir, the endpoint (57) |
+| `health` | `/health`'s commit: the generator's rules, the no-reconfigure refresh on the real build dir, the endpoint (59) |
+| `client_files` | the split client's load order: the real files evaluated in tag order under a stubbed DOM, effects checked, wrong orders must throw (48) |
 | `harness` | the harness itself: no daemon survives `stop_daemon`/`crash_daemon` even under a forking wrapper; `start_daemon` refuses a busy port (8) |
 
 ## Does it actually catch regressions? (mutation check)

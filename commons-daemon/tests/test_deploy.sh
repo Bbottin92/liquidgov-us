@@ -49,6 +49,14 @@ cat > "$BIN_STUBS/chown" <<EOF
 echo "chown \$*" >> "$CALLS"
 exit 0
 EOF
+# rsync: logs each CLIENT invocation (not the "remote" --server side) and can be told to fail phase 1 of a client sync
+RSYNC_LOG="$WORK/rsync.log"; REAL_RSYNC="$(command -v rsync)"; : > "$RSYNC_LOG"
+cat > "$BIN_STUBS/rsync" <<EOF
+#!/usr/bin/env bash
+case " \$* " in *" --server "*) ;; *) echo "rsync \$*" >> "$RSYNC_LOG";; esac
+if [ -n "\${FAKE_RSYNC_FAIL_PHASE1:-}" ] && [[ " \$* " == *" --exclude /index.html "* ]]; then echo "rsync: simulated failure" >&2; exit 23; fi
+exec $REAL_RSYNC "\$@"
+EOF
 chmod +x "$WORK/fakessh" "$BIN_STUBS"/*
 export PATH="$BIN_STUBS:$PATH"
 export DEPLOY_HOST=fake DEPLOY_SSH="$WORK/fakessh"
@@ -67,6 +75,7 @@ echo "a test" > "$R/commons-daemon/tests/t.sh"
 echo "create table t(x);" > "$R/Persistence/TheCommons/schema.sql"
 ln -s ../Persistence/TheCommons/schema.sql "$R/commons-daemon/schema.sql"
 echo "client v1" > "$R/commons/index.html"
+mkdir -p "$R/commons/js"; echo "js v1" > "$R/commons/js/a.js"; echo "css v1" > "$R/commons/style.css"
 echo "civic v1" > "$R/liquidgov-platform/src/http_server.cpp"
 printf 'build/\ndata/*.sqlite\n__pycache__/\n*.pyc\n' > "$R/.gitignore"
 echo "live data that must never leave" > "$R/commons-daemon/data/junk.sqlite"       # ignored, must not be synced
@@ -109,13 +118,38 @@ assert_eq "with the spec's content" "create table t(x);" "$(cat "$DD/schema.sql"
 [ -e "$DD/src/stray.pyc" ] && r=shipped || r=absent;      assert_eq "and neither is a stray .pyc" "absent" "$r"
 assert_eq "the marker holds the deployed revision" "$BASE1" "$(awk 'NR==1{print $1}' "$DD/.deployed-rev")"
 assert_contains "and the deploy log has a line" "$(cat "$DD/.deploy-log")" "$BASE1"
+: > "$RSYNC_LOG"
 runs "$S/sync-client-to-droplet.sh"
 assert_eq "client sync ok" "0" "$RC"
 assert_eq "client landed" "client v1" "$(cat "$CD/index.html" 2>/dev/null)"
+assert_eq "the scripts (js/) landed too" "js v1" "$(cat "$CD/js/a.js" 2>/dev/null)"
+assert_eq "and the stylesheet" "css v1" "$(cat "$CD/style.css" 2>/dev/null)"
+assert_eq "the client sync is exactly TWO rsync runs (two phases)" "2" "$(wc -l < "$RSYNC_LOG")"
+assert_contains "phase 1 is first, and excludes index.html" "$(sed -n 1p "$RSYNC_LOG")" "--exclude /index.html"
+assert_contains "phase 2 is LAST and is index.html alone" "$(sed -n 2p "$RSYNC_LOG")" "commons/index.html"
+assert_not_contains "and does not exclude it" "$(sed -n 2p "$RSYNC_LOG")" "--exclude"
+assert_contains "the output announces both phases" "$OUT" "phase 2/2: index.html (last)"
 [ -e "$CD/.deployed-client-rev" ] && r=in-served-dir || r=not-served
 assert_eq "the client marker is NOT in the nginx-served directory" "not-served" "$r"
 assert_eq "it is beside the daemon's marker" "$BASE1" "$(awk 'NR==1{print $1}' "$DD/.deployed-client-rev")"
 assert_contains "the client dir was chowned to the service user" "$(cat "$CALLS")" "chown -R $(id -un):$(id -un) $CD"
+
+echo "-- the client goes in two phases: index.html LAST, and never if phase 1 failed (a second fake droplet)"
+F2="$WORK/droplet2"; mkdir -p "$F2/opt/commons" "$F2/opt/commons-daemon"
+E2=(DEPLOY_CLIENT_DIR="$F2/opt/commons" DEPLOY_DAEMON_DIR="$F2/opt/commons-daemon")
+runs env FAKE_RSYNC_FAIL_PHASE1=1 "${E2[@]}" "$S/sync-client-to-droplet.sh"
+[ "$RC" != 0 ] && r=failed || r=succeeded; assert_eq "a failing phase 1 fails the whole sync" "failed" "$r"
+[ -e "$F2/opt/commons/index.html" ] && r=LANDED || r=absent; assert_eq "index.html never landed (the page cannot point at scripts that are not there)" "absent" "$r"
+[ -e "$F2/opt/commons-daemon/.deployed-client-rev" ] && r=WRITTEN || r=absent; assert_eq "and the marker was not written" "absent" "$r"
+assert_not_contains "phase 2 did not run" "$OUT" "phase 2/2"
+runs env "${E2[@]}" "$S/sync-client-to-droplet.sh" -n
+assert_eq "a dry run exits 0" "0" "$RC"
+assert_contains "and shows both phases" "$OUT" "phase 2/2"
+assert_eq "and transfers nothing" "0" "$(find "$F2/opt/commons" -type f | wc -l)"
+runs env "${E2[@]}" "$S/sync-client-to-droplet.sh"
+assert_eq "the real sync succeeds" "0" "$RC"
+assert_eq "scripts, stylesheet AND index.html are all there" "3" "$(find "$F2/opt/commons" -type f \( -name index.html -o -name a.js -o -name style.css \) | wc -l)"
+[ -e "$F2/opt/commons-daemon/.deployed-client-rev" ] && r=written || r=absent; assert_eq "and the marker is written, after both phases" "written" "$r"
 
 echo "-- drift check"
 runs "$S/drift-check.sh"

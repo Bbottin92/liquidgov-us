@@ -5,7 +5,8 @@
 # clock and a scripted fetch (tests/netmint_unit.js). In CI node is installed: a missing node there is a FAILURE.
 source "$(dirname "$0")/lib.sh"
 
-HTML="$REPO/commons/index.html"; UNIT="$TESTS_DIR/netmint_unit.js"
+HTML="$REPO/commons/js/net.js"; UNIT="$TESTS_DIR/netmint_unit.js"      # the client was split into js/*.js: netMint lives in js/net.js
+CLIENT_JS="$REPO/commons/js"
 NODE="$(command -v node || true)"; WIN=0
 if [ -z "$NODE" ] && command -v node.exe >/dev/null 2>&1; then NODE="$(command -v node.exe)"; WIN=1; fi   # WSL: the Windows node
 if [ -z "$NODE" ]; then
@@ -16,7 +17,7 @@ fi
 echo "-- the page carries the markers, and the mint is checked, retried and shared"
 assert_eq "one netMint:begin marker" "1" "$(grep -c '// ---- netMint:begin' "$HTML")"
 assert_eq "one netMint:end marker" "1" "$(grep -c '// ---- netMint:end' "$HTML")"
-assert_eq "the mint is called from exactly two places (startup, and the re-auth handler); comments do not count" "2" "$(grep -cE '^[^/]*netMint\(\)(;|\.then)' "$HTML")"
+assert_eq "the mint is called from exactly two places across the client (startup in main.js, and the re-auth handler in net.js); comments do not count" "2" "$(cat "$CLIENT_JS"/*.js | grep -cE '^[^/]*netMint\(\)(;|\.then)')"
 
 echo "-- the unit cases ($("$NODE" --version | tr -d '\r'))"
 if [ "$WIN" = 1 ]; then out="$("$NODE" "$(wslpath -w "$UNIT")" "$(wslpath -w "$HTML")" 2>&1 | tr -d '\r')"; rc=${PIPESTATUS[0]}

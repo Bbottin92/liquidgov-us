@@ -1938,6 +1938,15 @@ Not bug classes. Not “what is live on the droplet.”
   gives options (A classic `<script src>` files in the same global scope, recommended; B ES modules; C extract only CSS + networking; D don't) and
   the traps (`"use strict"` is per file; a multi-file deploy is not atomic: two-phase client sync). Proof plan: byte-equivalence of the JS,
   `node --check`, a CI file-reference test, a real-browser before/after parity check. Waiting on Brandon's one-letter answer; no code written.
+- **2026-09-19 -- `BUILD index.html split` (A) built and proven; NOT deployed.** Brandon: "BUILD A. Prove load order in CI. Two-phase sync.
+  Do not deploy." (`GROK_SPLIT_ANSWER.md`: classic `<script src>` files, one global scope, no modules.) `commons/index.html` is now a 42-line shell
+  + `style.css` + eight scripts (`js/world, interiors, sprites, actors, net, input, interact, main`), each starting with `"use strict";`. Proof:
+  the JS minus the added directives equals the old script body byte for byte; `tests/client_files_unit.js` loads the REAL files IN TAG ORDER under a
+  stubbed DOM and fails on any ReferenceError (hoisting is what the split loses), checks the load-time code really ran by its effects, and its
+  wrong-order controls throw; mutation-checked (11); a real-browser old-vs-new comparison found identical globals, function sources, values, baked
+  world and sprite atlas, and identical runtime behaviour. Two-phase client sync (`index.html` last; nothing lands if phase 1 fails; 148 deploy
+  assertions, 3 mutations). netMint tests repointed at `js/net.js`; CI gate 5 now matches any `commons/` file. See `split-built.md`. A client deploy
+  needs `deploy` (client only, no daemon restart).
 
 ## Split: civic site vs game
 

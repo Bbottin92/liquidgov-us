@@ -6,6 +6,8 @@
 # tree is kept in /opt/commons-daemon (.deployed-client-rev), not in the publicly served directory.
 #
 # Client goes LAST in a deploy: after the daemon it talks to is live. Same refusals as the daemon sync (dirty tree).
+# The client is index.html + style.css + js/*.js, and it goes in TWO PHASES (lib.sh sync_tree): everything except index.html
+# first, index.html LAST, so a visitor never loads a new page that points at scripts the droplet does not have yet.
 #
 # Usage: sync-client-to-droplet.sh [-n|--dry-run] [--allow-dirty]
 # shellcheck disable=SC2034  # ALLOW_DIRTY / ALLOW_UNPUSHED are set here and read by need_clean_tree / need_pushed in lib.sh

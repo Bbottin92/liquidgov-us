@@ -1,0 +1,88 @@
+  :root{
+    --ink:#1a1814;
+    --paper:#f7f1e4;
+  }
+  html,body{
+    margin:0; padding:0; width:100%; height:100%; overflow:hidden;
+    background:#0c0b09; color:var(--ink);
+    font-family:"Segoe UI",system-ui,-apple-system,sans-serif;
+  }
+  #stage{
+    position:fixed; inset:0;
+    display:flex; align-items:center; justify-content:center;
+  }
+  #game{
+    image-rendering:pixelated;
+    image-rendering:crisp-edges;
+    background:#000;
+  }
+  #nameOverlay{
+    position:fixed; inset:0; z-index:20;
+    background:rgba(12,11,9,.92);
+    display:flex; align-items:center; justify-content:center;
+  }
+  #nameCard{
+    background:var(--paper); color:var(--ink);
+    border:1px solid rgba(26,24,20,.25);
+    border-radius:8px; padding:1.2rem 1.4rem;
+    width:min(20rem,88vw); text-align:center;
+  }
+  #nameCard h1{
+    font-size:1.05rem; margin:0 0 .6rem; font-weight:700;
+  }
+  #nameCard p{
+    font-size:.8rem; margin:0 0 .8rem; color:#6b6458;
+  }
+  #nameInput{
+    width:100%; box-sizing:border-box; font-size:1rem;
+    padding:.5rem .6rem; border:1px solid rgba(26,24,20,.3);
+    border-radius:6px; margin-bottom:.7rem; background:#fff;
+  }
+  #nameGo{
+    width:100%; font-size:.95rem; padding:.55rem 0;
+    border:1px solid var(--ink); border-radius:6px;
+    background:var(--ink); color:var(--paper); cursor:pointer;
+  }
+  #dpad{
+    position:fixed; left:0; right:0;
+    bottom:calc(.8rem + env(safe-area-inset-bottom,0px));
+    z-index:10;
+    display:grid;
+    grid-template-columns:44px 44px 44px;
+    grid-template-rows:44px 44px 44px;
+    gap:4px;
+    width:136px; margin:0 auto;
+    user-select:none; -webkit-user-select:none;
+    touch-action:none;
+  }
+  #dpad button{
+    grid-column:var(--c); grid-row:var(--r);
+    border:1px solid rgba(26,24,20,.55);
+    background:rgba(247,241,228,.28);
+    color:var(--paper);
+    border-radius:8px;
+    font-size:1.1rem;
+    display:flex; align-items:center; justify-content:center;
+    padding:0;
+  }
+  #dpad button:active{ background:rgba(247,241,228,.55); }
+  #dUp{ --c:2; --r:1; }
+  #dLeft{ --c:1; --r:2; }
+  #dRight{ --c:3; --r:2; }
+  #dDown{ --c:2; --r:3; }
+  #interactBtn{
+    position:fixed;
+    right:calc(.9rem + env(safe-area-inset-right,0px));
+    bottom:calc(1.6rem + env(safe-area-inset-bottom,0px));
+    z-index:11;
+    width:64px; height:64px; border-radius:50%;
+    border:1px solid rgba(26,24,20,.55);
+    background:rgba(196,165,116,.55);
+    color:var(--ink);
+    font-size:.85rem; font-weight:700;
+    display:none; align-items:center; justify-content:center;
+    user-select:none; -webkit-user-select:none;
+    touch-action:none;
+  }
+  #interactBtn.show{ display:flex; }
+  #interactBtn:active{ background:rgba(196,165,116,.85); }

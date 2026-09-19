@@ -59,12 +59,13 @@ jobs:
           files=$(git diff --name-only "$base" HEAD)
           echo "$files"
           echo "$files" | grep -q '^liquidgov-platform/src/http_server.cpp$' && civic=1 || civic=0
-          echo "$files" | grep -q '^commons/index.html$' && client=1 || client=0
+          # the client is commons/index.html plus style.css and js/*.js: ANY commons/ file counts
+          echo "$files" | grep -q '^commons/' && client=1 || client=0
           if [ "$civic" = 1 ] && [ "$client" = 1 ]; then
             subj=$(git log -1 --format=%s)
             echo "subject: $subj"
             echo "$subj" | grep -qiE 'civic|deploy' || {
-              echo "http_server.cpp and commons/index.html in one commit need 'civic' or 'deploy' in the subject"
+              echo "http_server.cpp and a commons/ client file in one commit need 'civic' or 'deploy' in the subject"
               exit 1
             }
           fi

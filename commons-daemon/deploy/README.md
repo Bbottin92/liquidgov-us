@@ -17,7 +17,7 @@ deploy-daemon.sh --go --guest-name x  # verify joins the real Square as a guest 
 | `drift-check.sh` | Is the droplet still what was last deployed, and what will this deploy change? | never |
 | `backup-db.sh [label]` | Online copy of `commons.sqlite` (SQLite backup API, never `cp`), `integrity_check`, row counts | a new file in `/var/lib/commons/backups/` |
 | `sync-to-droplet.sh [-n]` | `commons-daemon/` -> `/opt/commons-daemon` (+ `.deployed-rev` marker) | source files |
-| `sync-client-to-droplet.sh [-n]` | `commons/` -> `/opt/commons` (+ `.deployed-client-rev`, kept OUTSIDE the served dir) | client files |
+| `sync-client-to-droplet.sh [-n]` | `commons/` (index.html, style.css, js/*.js, images) -> `/opt/commons`, in TWO PHASES: everything except `index.html` first, `index.html` last (+ `.deployed-client-rev`, kept OUTSIDE the served dir) | client files |
 | `build-on-droplet.sh [--reconfigure]` | `cmake --build -j1`; reconfigure only when asked | the build dir |
 | `verify.sh [--guest-name N] [--compare-backup P]` | systemd, the running daemon's `/health` commit equals the deployed revision (`.deployed-rev`), journal, loopback, public routes, a real guest, row counts | one throwaway guest (RAM) |
 | `prune-backups.sh [--delete]` | Retention for `/var/lib/commons/backups`: delete only if outside the newest 14 AND older than 30 days (never the newest, never < 24h); a backup's `-wal`/`-shm` go WITH it (exact names; orphans are reported, never deleted); DRY RUN unless `--delete`; not run by `deploy-daemon.sh` | only with `--delete`: removes old backup files |

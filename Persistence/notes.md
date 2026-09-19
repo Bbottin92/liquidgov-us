@@ -18,10 +18,15 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-19 — deploy A requested, Grok cannot SSH.**
+  `CLAUDE_DEPLOY_CATALOG.md`. `9dba50b` CI green. This sandbox has
+  no `liquidgov_deploy_key` (publickey denied). Command:
+  `./commons-daemon/deploy/deploy-daemon.sh --go --with-client --label catalog-a`
 - **2026-09-19 — lab A built, not deployed.** `catalog-built.md`. Five
   stations, no lime: vinegar, oak-gall tannin, lampblack, alum, gum.
-  `ensure_catalog(catalog.sql)` every start. Client second row. CI must
-  compile (no cmake in this sandbox). D and C wait.
+  `ensure_catalog(catalog.sql)` every start. Client second row. CI green.
+  D and C wait.
+
 
 - **2026-09-19 — scatter B accepted, already live.** `GROK_SCATTER_REVIEW.md`.
   `d2b6859` is on `/commons/js/world.js` (30926 bytes, `scatterRegions`).

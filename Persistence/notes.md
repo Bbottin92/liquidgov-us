@@ -1622,6 +1622,16 @@ Not bug classes. Not “what is live on the droplet.”
   cookie; `/internal/friends` still 404. A real bound owner locking a real
   house is unproven on prod (needs Brandon logged in). Parked still: `open`
   (needs a civic block probe), `rebind()`, `lg_session` cache, orphan reaping.
+- **2026-09-19 -- tile dither built, local-tested, not deployed.** Brandon:
+  "BUILD tile dither" (Grok's graphics note: the cheap pass, code only).
+  Client only. `paintTile()` replaces the bake's flat `fillRect` with the same
+  base colour plus grass 2x2 checker dots (position-hashed phase), a darker
+  water lip on edges that meet non-water, and wood grain on `T_BENCH`; every
+  shade derived from the tile's own colour, so no new palette, asset or draw
+  path. One bake, one blit, ~51ms at load. Looked at in a real browser and
+  pixel-checked; console clean. See `tile-dither-built.md`. The tileset PNG +
+  player sheet is the separate, un-named next step. Deploy: client sync on
+  Brandon's `deploy`.
 
 ## Split: civic site vs game
 

@@ -254,6 +254,62 @@ COLOR[T_MINE_DOOR]    = "#25211c";
 COLOR[T_LAMP]         = "#e6b957";
 var INK = "#1a1814";
 
+// ---- Tile painter (BUILD tile dither) --------------------------------------
+// The bake used to be one fillRect per tile. It is still one bake, one blit,
+// the same COLOR palette and the same 16x16 ids -- this only adds a little
+// detail inside a tile so flat fields stop reading as a spreadsheet:
+//   * grass A/B: a sparse 2x2px checker of slightly darker/lighter dots,
+//     offset per tile by a fixed hash so the lattice doesn't tile visibly
+//   * water: a darker 2px lip on any edge that meets a non-water tile
+//   * bench / sit-rock / sit-log (T_BENCH): two lines of wood grain and a
+//     lighter top edge
+// Every shade is derived from the tile's own COLOR (mixed toward black or
+// white), so there is no new palette entry. No new asset, no new draw path.
+function shadeHex(hex, f) {
+  var n = parseInt(hex.slice(1), 16);
+  var r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  var t = f < 0 ? 0 : 255, a = Math.abs(f);
+  r = Math.round(r + (t - r) * a); g = Math.round(g + (t - g) * a); b = Math.round(b + (t - b) * a);
+  return "rgb(" + r + "," + g + "," + b + ")";
+}
+
+// nb(dx, dy) returns the tile id next to (tx, ty), or -1 off the map.
+function paintTile(c, id, tx, ty, nb) {
+  var px = tx * TILE, py = ty * TILE, base = COLOR[id];
+  c.fillStyle = base;
+  c.fillRect(px, py, TILE, TILE);
+
+  if (id === T_GRASS_A || id === T_GRASS_B) {
+    // two dot lattices on a 4px pitch, checkered; which phase a tile gets
+    // comes from a fixed hash of its position, and A/B use opposite tones.
+    var phase = (tx * 7 + ty * 13) % 3;
+    var dark = shadeHex(base, -0.10), light = shadeHex(base, 0.07);
+    for (var gy = 0; gy < 4; gy++) {
+      for (var gx = 0; gx < 4; gx++) {
+        if (((gx + gy + phase) & 1) !== 0) continue;
+        c.fillStyle = ((gx * 3 + gy + phase) % 4 === 0) ? light : dark;
+        c.fillRect(px + gx * 4 + (phase & 1), py + gy * 4 + ((phase >> 1) & 1), 2, 2);
+      }
+    }
+  } else if (id === T_WATER) {
+    var lip = shadeHex(base, -0.28);
+    c.fillStyle = lip;
+    if (nb(0, -1) !== T_WATER && nb(0, -1) !== -1) c.fillRect(px, py, TILE, 2);
+    if (nb(0, 1) !== T_WATER && nb(0, 1) !== -1) c.fillRect(px, py + TILE - 2, TILE, 2);
+    if (nb(-1, 0) !== T_WATER && nb(-1, 0) !== -1) c.fillRect(px, py, 2, TILE);
+    if (nb(1, 0) !== T_WATER && nb(1, 0) !== -1) c.fillRect(px + TILE - 2, py, 2, TILE);
+  } else if (id === T_BENCH) {
+    c.fillStyle = shadeHex(base, 0.14);
+    c.fillRect(px, py, TILE, 1);                       // lit top edge
+    c.fillStyle = shadeHex(base, -0.22);
+    c.fillRect(px + 1, py + 5, 9, 1);                  // grain, broken so it isn't a ruled line
+    c.fillRect(px + 12, py + 5, 3, 1);
+    c.fillRect(px + 1, py + 10, 4, 1);
+    c.fillRect(px + 7, py + 10, 8, 1);
+    c.fillRect(px, py + TILE - 1, TILE, 1);            // shaded underside
+  }
+}
+
 // collision.md: doors are solid -- "stand next to them, press Enter," not
 // walk-through. A boarded door reads as a wall with a prompt, same as any
 // other closed door; Hall's confirm() is the interaction, not stepping in.
@@ -547,8 +603,10 @@ bctx.imageSmoothingEnabled = false;
 (function paintBake() {
   for (var y = 0; y < WORLD_H; y++) {
     for (var x = 0; x < WORLD_W; x++) {
-      bctx.fillStyle = COLOR[tiles[idx(x, y)]];
-      bctx.fillRect(x * TILE, y * TILE, TILE, TILE);
+      paintTile(bctx, tiles[idx(x, y)], x, y, function (dx, dy) {
+        var nx = x + dx, ny = y + dy;
+        return (nx < 0 || ny < 0 || nx >= WORLD_W || ny >= WORLD_H) ? -1 : tiles[idx(nx, ny)];
+      });
     }
   }
   // Region names are static world-space strings -- stamp them onto the
@@ -593,8 +651,10 @@ function buildInterior(w, h, fillFn) {
   bc.imageSmoothingEnabled = false;
   for (var yy = 0; yy < h; yy++) {
     for (var xx = 0; xx < w; xx++) {
-      bc.fillStyle = COLOR[t[idxIn(w, xx, yy)]];
-      bc.fillRect(xx * TILE, yy * TILE, TILE, TILE);
+      paintTile(bc, t[idxIn(w, xx, yy)], xx, yy, function (dx, dy) {
+        var nx = xx + dx, ny = yy + dy;
+        return (nx < 0 || ny < 0 || nx >= w || ny >= h) ? -1 : t[idxIn(w, nx, ny)];
+      });
     }
   }
   return { tiles: t, solid: s, w: w, h: h, pw: w * TILE, ph: h * TILE, baked: bake, interactables: [] };

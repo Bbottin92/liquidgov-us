@@ -50,6 +50,16 @@ public:
     // than assumed).
     void snapshot_leave(const std::string& username, int x, int y, int facing);
 
+    // House policy (BUILD house friends/locked A). "friends" (the default,
+    // and what any unknown value or a username with no row reads as) or
+    // "locked" -- nobody but the owner. Read on every visit decision, so it
+    // is one indexed SELECT.
+    std::string visit_policy_of(const std::string& username);
+    // False for any policy other than friends/locked, or a username with no
+    // players row (a house that was never entered has nothing to lock; this
+    // never creates a row).
+    bool set_visit_policy(const std::string& username, const std::string& policy);
+
     // Bound inventory (GROK_V6_ANSWER.md: lab pickups "vanish on refresh"
     // for a bound player). schema.sql's `inventory` table, first time it is
     // ever written. Guests stay RAM-only -- nothing here is reachable

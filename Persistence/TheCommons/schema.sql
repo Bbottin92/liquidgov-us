@@ -103,7 +103,14 @@ CREATE TABLE players (
     last_instance_id   INTEGER REFERENCES map_instances(instance_id),
     last_x             INTEGER,
     last_y             INTEGER,
-    last_facing        INTEGER
+    last_facing        INTEGER,
+    -- Who may visit this player's own house (house policy, BUILD house
+    -- friends/locked A): 'friends' = mutual non-blocked friends while the
+    -- owner is in the game (the visiting rule); 'locked' = nobody but the
+    -- owner. There is deliberately no 'open': civic can't tell the game who
+    -- has blocked whom, so a stranger-facing door could not honour a block.
+    -- Any other value is read as 'friends'. Only ever set by the owner.
+    visit_policy       TEXT NOT NULL DEFAULT 'friends'
 );
 
 CREATE TABLE inventory (

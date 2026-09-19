@@ -27,6 +27,9 @@ public:
     // inventory.updated_at (bound inventory). No-op when the column is
     // already there (fresh DBs get it from schema.sql itself).
     void ensure_inventory_recency();
+    // Same shape, for players.visit_policy (house friends/locked). Existing
+    // rows take the DEFAULT, so every current house stays friends-only.
+    void ensure_visit_policy();
     void exec_file(const std::string& path);
     void exec(const std::string& sql);
 

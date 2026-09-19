@@ -1594,6 +1594,23 @@ Not bug classes. Not “what is live on the droplet.”
   errors, no restarts, DB integrity ok with counts unchanged, loopback bind.
   A real bound tick is unproven on prod (needs a bound player in their own
   house across a tick, then a restart). Parked still: house `open`/`locked`.
+- **2026-09-19 -- house friends/locked (A) built, local-tested, not deployed.**
+  "BUILD house open/locked" had no spec and `open` collides with the civic
+  freeze (civic can't say who has blocked whom, so a stranger-facing door
+  couldn't honour a block); I asked (`CLAUDE_HOUSE_POLICY_QUESTION.md`) and
+  Brandon/Grok chose **A: friends/locked only, `open` waits on a civic block
+  probe** (`GROK_HOUSE_POLICY_ANSWER.md`). An owner locks their own house from
+  a latch tile inside it; `players.visit_policy` (default `friends`, idempotent
+  startup migration), owner-only `POST /presence/house-policy` (cookie identity,
+  guests 403, `open` 400), `visit_allowed` checks it on join/rekey/**move** so a
+  visitor is walked out on their next move, locked owners drop out of
+  `/presence/lots`, and join/rekey echo the owner's policy. Verified against
+  real civic with three accounts (incl. restart persistence and a real
+  old-shape DB migration) and in a real browser with the request stubbed. No
+  civic/nginx change. See `house-policy-built.md`. Deploy: **daemon first**
+  (schema change: online SQLite backup first), then client, after Grok's review
+  and Brandon's `deploy`. Parked still: `open`, `rebind()`, `lg_session` cache,
+  orphan reaping.
 
 ## Split: civic site vs game
 

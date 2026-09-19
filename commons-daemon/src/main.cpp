@@ -218,11 +218,16 @@ std::optional<std::string> house_username_from_region(const std::string& region)
 // requires the owner to be in the game right now (the same "friend is
 // online" condition that lights the door in the first place); staying does
 // not, so a visitor isn't thrown out just because the owner logged off.
+// The owner's own `players.visit_policy` gates all of it (friends|locked).
 // Read-only: a visit never creates a players/map_instances row and never
 // snapshots -- only the owner's own entry does either.
 bool visit_allowed(const std::string& headers_raw, const std::string& owner,
                    commons::FriendsCache& friends, commons::PresenceStore& presence,
-                   bool require_owner_online) {
+                   commons::HouseStore& house, bool require_owner_online) {
+    // House policy first (BUILD house friends/locked A): a locked house lets
+    // in nobody but its owner, friends included -- and the move re-check
+    // below is what walks out anyone already inside when it gets locked.
+    if (house.visit_policy_of(owner) == "locked") return false;
     auto mine = friends.get(headers_raw);
     if (std::find(mine.begin(), mine.end(), owner) == mine.end()) return false;
     if (!require_owner_online) return true;
@@ -260,6 +265,7 @@ int main(int argc, char** argv) {
     commons::Database db(db_path);
     db.migrate("schema.sql", "seed.sql");
     db.ensure_inventory_recency();
+    db.ensure_visit_policy();
     std::cerr << "commons-daemon: DB ready at " << db_path << "\n";
 
     commons::PresenceStore presence;
@@ -354,6 +360,38 @@ int main(int argc, char** argv) {
         return r;
     });
 
+    // House policy (BUILD house friends/locked A, GROK_HOUSE_POLICY_ANSWER.md):
+    // the owner locks or unlocks their own house. Identity is the forwarded
+    // session cookie and nothing else -- there is no username in the body to
+    // read, so no one can set another player's door, and guests (no cookie)
+    // get 403. Only "friends" and "locked" exist; "open" is refused. Lives
+    // under /presence/ so the existing nginx location covers it (no nginx
+    // change). Locking takes effect on a visitor's next move (not_welcome,
+    // the same path as an unfriend) and drops the door out of /presence/lots.
+    server.route("POST", "/presence/house-policy", [&](const commons::HttpRequest& req) {
+        using namespace commons::reqjson;
+        commons::HttpResponse r;
+        auto username = commons::civic::resolve_username(req.headers_raw);
+        if (!username) {
+            r.status = 403; r.status_text = "Forbidden";
+            r.body = "{\"ok\":false,\"reason\":\"not_bound\"}";
+            return r;
+        }
+        auto policy = field_str(req.body, "policy");
+        if (!policy || (*policy != "friends" && *policy != "locked")) {
+            r.status = 400; r.status_text = "Bad Request";
+            r.body = "{\"ok\":false,\"reason\":\"bad_policy\"}";
+            return r;
+        }
+        if (!house.set_visit_policy(*username, *policy)) {
+            r.status = 409; r.status_text = "Conflict";
+            r.body = "{\"ok\":false,\"reason\":\"no_house\"}";
+            return r;
+        }
+        r.body = "{\"ok\":true,\"policy\":" + commons::json::str(*policy) + "}";
+        return r;
+    });
+
     // Friends query (GROK_V6_ANSWER.md: "mutual accept, RAM TTL, Homestead
     // lots 2-7"). Which of *your* mutual friends are in the game right now,
     // in a stable order, for the six dynamic Homestead doors. Identity is
@@ -370,6 +408,8 @@ int main(int argc, char** argv) {
         auto online = presence.bound_usernames();
         std::vector<std::string> lots;
         for (const auto& f : friends) {
+            // A locked house drops out of the lots, so its door goes dark.
+            if (house.visit_policy_of(f) == "locked") continue;
             if (std::find(online.begin(), online.end(), f) != online.end() &&
                 std::find(lots.begin(), lots.end(), f) == lots.end())
                 lots.push_back(f);
@@ -431,19 +471,21 @@ int main(int argc, char** argv) {
         double resume_x = *x, resume_y = *y;
         int resume_facing = static_cast<int>(field_num(req.body, "facing").value_or(0));
         bool has_resume = false;
+        std::string house_policy; // set only when the owner enters their own house
         if (auto house_user = house_username_from_region(*region)) {
             const bool is_owner = is_bound && *house_user == eff_id->substr(2);
             // Visiting (friends policy): anyone else who is bound, a mutual
             // friend of the owner, with the owner in the game. Guests never
             // qualify -- they have no friends. Refused with the same 403 as
             // before; the client tells a refused visit apart by its reason.
-            if (!is_owner && !(is_bound && visit_allowed(req.headers_raw, *house_user, friends_cache, presence, true))) {
+            if (!is_owner && !(is_bound && visit_allowed(req.headers_raw, *house_user, friends_cache, presence, house, true))) {
                 r.status = 403; r.status_text = "Forbidden";
                 r.body = "{\"ok\":false,\"reason\":\"not_your_house\"}";
                 return r;
             }
             if (is_owner) {
                 house.house_instance_for(*house_user);
+                house_policy = house.visit_policy_of(*house_user);
                 // presence.md: "walking back in later resumes there, not the
                 // fixed entry tile every time" -- only the position, never the
                 // client-submitted facing/display_name, which stay as-is.
@@ -483,6 +525,7 @@ int main(int argc, char** argv) {
                 ? ",\"display_name\":" + commons::json::str(accepted_name) +
                   ",\"bound\":" + (is_bound ? "true" : "false") +
                   (is_bound ? ",\"username\":" + commons::json::str(eff_id->substr(2)) : "") +
+                  (!house_policy.empty() ? ",\"house_policy\":" + commons::json::str(house_policy) : "") +
                   (has_resume ? ",\"resume_x\":" + std::to_string(static_cast<int>(resume_x)) +
                                  ",\"resume_y\":" + std::to_string(static_cast<int>(resume_y)) +
                                  ",\"resume_facing\":" + std::to_string(resume_facing) : "")
@@ -519,7 +562,7 @@ int main(int argc, char** argv) {
         // would reauth instead of walking the visitor out.
         if (auto house_user = house_username_from_region(*region)) {
             const bool is_owner = eff_id->rfind("u:", 0) == 0 && *house_user == eff_id->substr(2);
-            if (!is_owner && !visit_allowed(req.headers_raw, *house_user, friends_cache, presence, false)) {
+            if (!is_owner && !visit_allowed(req.headers_raw, *house_user, friends_cache, presence, house, false)) {
                 presence.leave(*region, *eff_id);
                 r.body = "{\"ok\":false,\"reason\":\"not_welcome\"}";
                 return r;
@@ -557,15 +600,17 @@ int main(int argc, char** argv) {
         double resume_x = *x, resume_y = *y;
         int resume_facing = static_cast<int>(field_num(req.body, "facing").value_or(0));
         bool has_resume = false;
+        std::string house_policy; // set only when the owner enters their own house
         if (auto house_user = house_username_from_region(*to_region)) {
             const bool is_owner = is_bound && *house_user == eff_id->substr(2);
-            if (!is_owner && !(is_bound && visit_allowed(req.headers_raw, *house_user, friends_cache, presence, true))) {
+            if (!is_owner && !(is_bound && visit_allowed(req.headers_raw, *house_user, friends_cache, presence, house, true))) {
                 r.status = 403; r.status_text = "Forbidden";
                 r.body = "{\"ok\":false,\"reason\":\"not_your_house\"}";
                 return r;
             }
             if (is_owner) {
                 house.house_instance_for(*house_user);
+                house_policy = house.visit_policy_of(*house_user);
                 if (auto pos = house.last_house_position(*house_user)) {
                     resume_x = pos->x; resume_y = pos->y; resume_facing = pos->facing;
                     has_resume = true;
@@ -608,6 +653,7 @@ int main(int argc, char** argv) {
                 ? ",\"display_name\":" + commons::json::str(accepted_name) +
                   ",\"bound\":" + (is_bound ? "true" : "false") +
                   (is_bound ? ",\"username\":" + commons::json::str(eff_id->substr(2)) : "") +
+                  (!house_policy.empty() ? ",\"house_policy\":" + commons::json::str(house_policy) : "") +
                   (has_resume ? ",\"resume_x\":" + std::to_string(static_cast<int>(resume_x)) +
                                  ",\"resume_y\":" + std::to_string(static_cast<int>(resume_y)) +
                                  ",\"resume_facing\":" + std::to_string(resume_facing) : "")

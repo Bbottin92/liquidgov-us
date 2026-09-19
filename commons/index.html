@@ -606,7 +606,7 @@ function buildInterior(w, h, fillFn) {
 // placeholder is replaced with real content this round.
 var DEMO_ENTRY = { x: 7, y: 14 };
 var DEMO_DOOR = { x: 7, y: 15 };
-var demoHouseSpace = buildInterior(16, 16, function (t, w) {
+function fillHouse(t, w) {
   t[idxIn(w, DEMO_DOOR.x, DEMO_DOOR.y)] = T_IDOOR;
   t[idxIn(w, 7, 0)] = T_WALLSLOT; // on the wall itself, not standing on the floor
   t[idxIn(w, 7, 7)] = T_TABLE;
@@ -614,7 +614,8 @@ var demoHouseSpace = buildInterior(16, 16, function (t, w) {
   t[idxIn(w, 8, 7)] = T_CHAIR;
   t[idxIn(w, 7, 8)] = T_RUG;
   t[idxIn(w, 7, 9)] = T_RUG;
-});
+}
+var demoHouseSpace = buildInterior(16, 16, fillHouse);
 // V2 stretch (GROK_V2_ANSWER.md): the wall-slot is interactable now, but
 // only to place a lab item as a game tile -- explicitly "not a civic
 // PNG." The real profile-canvas wall slot (glue.md/canvas-frame.md) is a
@@ -622,6 +623,29 @@ var demoHouseSpace = buildInterior(16, 16, function (t, w) {
 // this reuses the same physical tile for a simpler, local-only purpose.
 demoHouseSpace.interactables = [
   { type: "wallSlot", x: 7, y: 0, prompt: "Place" }
+];
+
+// House policy (BUILD house friends/locked A, GROK_HOUSE_POLICY_ANSWER.md):
+// the owner's own house is the same room plus one latch, a sign tile on the
+// left wall, well away from the entry so the Enter-to-leave fallback never
+// lands on it. Only mode "house" uses this space -- the demo house and a
+// friend's house (mode "visit") keep the plain one, so nobody sees or
+// touches a latch in a room that isn't theirs. `houseLocked` mirrors the
+// daemon's players.visit_policy ('locked' vs the default 'friends'); the
+// daemon sends it on the join/rekey that lands me in my own house.
+var HOUSE_LATCH = { type: "latch", x: 0, y: 13, prompt: "Lock" };
+var houseLocked = false;
+function setHouseLocked(v) {
+  houseLocked = !!v;
+  HOUSE_LATCH.prompt = houseLocked ? "Unlock" : "Lock";
+}
+var ownHouseSpace = buildInterior(16, 16, function (t, w) {
+  fillHouse(t, w);
+  t[idxIn(w, HOUSE_LATCH.x, HOUSE_LATCH.y)] = T_SIGN;
+});
+ownHouseSpace.interactables = [
+  { type: "wallSlot", x: 7, y: 0, prompt: "Place" },
+  HOUSE_LATCH
 ];
 
 // Lab -- 20x16. Three lookup stations (pushback.md's chalk-only recipe
@@ -1183,6 +1207,29 @@ function netPickup(item) {
   fetch(DAEMON + "/presence/pickup", { method: "POST", body: netBody({ item: item }) }).catch(function () {});
 }
 
+// House policy: lock or unlock my own door. The daemon takes identity from my
+// session cookie only (a guest is refused, and there is no username to send),
+// and answers with the policy it stored -- the latch and the toast follow that
+// answer, not my guess, so a failed request never leaves the label lying.
+var housePolicyBusy = false;
+function netSetHousePolicy(policy) {
+  if (!isBound || !netReady || mode !== "house" || housePolicyBusy) return;
+  housePolicyBusy = true;
+  fetch(DAEMON + "/presence/house-policy", { method: "POST", body: netBody({ policy: policy }) })
+    .then(function (r) { return r.json(); })
+    .then(function (j) {
+      if (j && j.ok && (j.policy === "locked" || j.policy === "friends")) {
+        setHouseLocked(j.policy === "locked");
+        showToast(houseLocked ? "Door locked. Only you can come in." : "Door unlocked. Friends can visit.", 2200);
+        forceRedraw = true;
+      } else {
+        showToast("Couldn't change the door.");
+      }
+    })
+    .catch(function () { showToast("Couldn't change the door."); })
+    .finally(function () { housePolicyBusy = false; });
+}
+
 // A refused or ended visit walks the visitor back outside. The next frame's
 // ordinary region-mismatch tick rekeys them out of the optimistic visit key
 // -- the same mechanism every other door already relies on.
@@ -1224,6 +1271,7 @@ function netHandleJoinResponse(r) {
       // the raw, unsuffixed lg_username the daemon only ever sends when
       // actually bound; that's the one safe to key a house off of.
       if (j.bound && j.username) INTERIOR_INSTANCE_KEY.house = "instance:house:" + j.username;
+      if (typeof j.house_policy === "string") setHouseLocked(j.house_policy === "locked");
       // V5 (GROK_V5_ANSWER.md): "walking back in later resumes there, not
       // the fixed entry tile every time." The daemon only ever sends
       // resume_* when this join/rekey actually landed in the caller's own
@@ -1543,6 +1591,8 @@ function tryInteract() {
     if (it.type === "hall") {
       var ok = window.confirm("Open liquidgov.us/proposals in a new tab?");
       if (ok) window.open("https://liquidgov.us/proposals", "_blank", "noopener");
+    } else if (it.type === "latch") {
+      netSetHousePolicy(houseLocked ? "friends" : "locked");
     } else if (it.type === "mineDoor") {
       enterInterior("mine", mineSpace, MINE_ENTRY);
     } else if (it.type === "demoDoor") {
@@ -1564,7 +1614,7 @@ function tryInteract() {
       // Same interior template as the demo house (V4: mechanically just
       // another shared-shape instance, like lab/demo already are) --
       // what makes it "yours" is the instance key, not different art.
-      if (isBound) enterInterior("house", demoHouseSpace, DEMO_ENTRY);
+      if (isBound) enterInterior("house", ownHouseSpace, DEMO_ENTRY);
       else showToast("Log in on LiquidGov to open your own house.");
     } else if (it.type === "labStation") {
       var r = LAB_RECIPES[it.recipe];

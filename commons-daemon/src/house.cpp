@@ -125,6 +125,30 @@ void HouseStore::snapshot_leave(const std::string& username, int x, int y, int f
     sqlite3_finalize(st);
 }
 
+std::string HouseStore::visit_policy_of(const std::string& username) {
+    sqlite3_stmt* st = nullptr;
+    sqlite3_prepare_v2(db_, "SELECT visit_policy FROM players WHERE lg_username = ?1;", -1, &st, nullptr);
+    sqlite3_bind_text(st, 1, username.c_str(), -1, SQLITE_TRANSIENT);
+    std::string policy = "friends";
+    if (sqlite3_step(st) == SQLITE_ROW) {
+        const unsigned char* v = sqlite3_column_text(st, 0);
+        if (v && std::string(reinterpret_cast<const char*>(v)) == "locked") policy = "locked";
+    }
+    sqlite3_finalize(st);
+    return policy;
+}
+
+bool HouseStore::set_visit_policy(const std::string& username, const std::string& policy) {
+    if (policy != "friends" && policy != "locked") return false;
+    sqlite3_stmt* st = nullptr;
+    sqlite3_prepare_v2(db_, "UPDATE players SET visit_policy = ?1 WHERE lg_username = ?2;", -1, &st, nullptr);
+    sqlite3_bind_text(st, 1, policy.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(st, 2, username.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_step(st);
+    sqlite3_finalize(st);
+    return sqlite3_changes(db_) > 0;
+}
+
 bool HouseStore::add_pickup(const std::string& username, const std::string& item_slug, long long now_ms) {
     int player_id = find_or_create_player(username);
     sqlite3_stmt* st = nullptr;

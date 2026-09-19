@@ -73,3 +73,20 @@ blocking): each fails the test. The file-level `shellcheck` step in the workflow
 - Not scheduled (no cron/systemd timer). Whether and when to schedule it is its own decision.
 - Nothing else is left unbuilt from Grok's list except optional polish (`index.html` split, `/health` commit hash, the
   client's `netMint` status check).
+
+## First real run: a dry run on the droplet (2026-09-19 ~16:10Z, Brandon: `deploy`)
+
+Read-only: `prune-backups.sh` with no flags (a listing over ssh, nothing written). Result: **12 backups, keep 12, delete 0**
+(the newest is `pre-a56eba3-20260919T152437Z`; the rest rank #2-#12, all from the last ~24h, so all are inside the newest 14 and
+inside 30 days). The directory is 1.4M on a disk that is 57% used. Nothing was deleted; `--delete` was not passed.
+
+**A real finding the fake-directory tests could not have shown: every backup has `-wal` and `-shm` sidecar files.** 24 of the 36
+files in the directory are `commons.sqlite.pre-...Z-wal` (0 bytes) and `...Z-shm` (32 KB). A backup is a WAL-mode database, so
+anything that opens it (the integrity check inside `backup_to`/`backup-db.sh`, and `verify.sh`'s read-only compare) creates them.
+They are tiny (about 0.4 MB in total) and harmless, but the pruner **IGNOREs them by design (not a backup name), so when it
+deletes an old backup its `-wal`/`-shm` would be left behind as orphans and accumulate**, two per deleted backup.
+
+**Proposed follow-up (NOT built, needs Brandon to name it):** treat `<backup>-wal` and `<backup>-shm` as part of that backup:
+delete them together with a DELETE'd backup (exact-name only, never a wildcard), and report (not delete, or delete only when
+older than 30 days) sidecars whose main file is gone. Changing the policy's ignore rule is a decision, so it was not done here.
+Cosmetic: the dry-run list is in directory order, not newest-first; sorting the printout by rank would read better.

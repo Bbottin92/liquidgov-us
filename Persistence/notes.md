@@ -1894,6 +1894,10 @@ Not bug classes. Not “what is live on the droplet.”
   listing or a future-dated backup. `test_retention.sh` (47) + `prune_backups_unit.py` (361, incl. 300 random directories),
   mutation-checked (12 breakages). Not scheduled; not run by `deploy-daemon.sh`. Today the droplet has ~a dozen backups all
   < 2 days old, so a first real run (a dry run, on `deploy`) would delete nothing for ~a month. See `backup-retention-built.md`.
+- **2026-09-19 ~16:10Z -- backup retention: first real run = a DRY RUN on the droplet (Brandon: `deploy`).** Read-only,
+  nothing deleted: 12 backups, keep 12, delete 0 (all from the last ~24h; dir 1.4M, disk 57%). **Finding:** every backup
+  also has `-wal` (0 B) and `-shm` (32 KB) sidecars (24 of 36 files); the pruner ignores them, so deleting an old backup would
+  orphan its sidecars. Proposed, not built: delete a backup's exact `-wal`/`-shm` together with it. Needs Brandon to name it.
 
 ## Split: civic site vs game
 

@@ -18,6 +18,9 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-19 — C1+C2 built, not deployed.** `house-objects-built.md`.
+  Furniture in every house; floor-place last pickup, cap 8, owner only.
+  Ships with D in one deploy (`--label objects-d-c`).
 - **2026-09-19 — D built, not deployed.** `world-pickups-built.md`.
   Oak galls (North Woods), seashells (Shore), cider apples (Orchard).
   No limestone. Catalog 8→11 items, still 8 recipes. Client only those

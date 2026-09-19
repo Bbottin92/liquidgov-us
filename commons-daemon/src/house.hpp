@@ -102,6 +102,15 @@ public:
     std::string get_wall_slot(int instance_id);
     void set_wall_slot(int instance_id, const std::string& item_slug);
 
+    // C2 (GROK_OBJECTS_ANSWER.md): floor items in the owner's house, cap 8,
+    // not the wall slot. Visitors see them; only the owner adds or removes.
+    struct FloorItem { std::string slug; int x = 0; int y = 0; };
+    std::vector<FloorItem> list_floor(int instance_id);
+    // "" = ok. Otherwise a short reason: full / occupied / unknown_item / bad_tile.
+    std::string place_floor(int instance_id, const std::string& item_slug, int x, int y);
+    // The slug that was there, or "" if the tile was empty.
+    std::string take_floor(int instance_id, int x, int y);
+
 private:
     sqlite3* db_;
     int find_or_create_player(const std::string& username);

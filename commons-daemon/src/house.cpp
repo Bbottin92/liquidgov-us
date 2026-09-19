@@ -250,4 +250,62 @@ void HouseStore::set_wall_slot(int instance_id, const std::string& item_slug) {
     tx.commit();
 }
 
+std::vector<HouseStore::FloorItem> HouseStore::list_floor(int instance_id) {
+    std::vector<FloorItem> out;
+    sqlx::Stmt sel(db_,
+        "SELECT i.slug, p.x, p.y FROM placed p JOIN items i ON i.item_id = p.item_id "
+        "WHERE p.instance_id = ?1 AND p.is_wall_slot = 0 ORDER BY p.placed_id;");
+    sel.integer(1, instance_id);
+    while (sel.row()) {
+        FloorItem f;
+        f.slug = sel.column_text(0);
+        f.x = sel.column_int(1);
+        f.y = sel.column_int(2);
+        out.push_back(f);
+    }
+    return out;
+}
+
+std::string HouseStore::place_floor(int instance_id, const std::string& item_slug, int x, int y) {
+    // Interior is 16x16 with a 1-tile wall; the door tiles are 7,14 / 7,15.
+    if (x < 1 || y < 1 || x > 14 || y > 14) return "bad_tile";
+    if (x == 7 && (y == 14 || y == 15)) return "bad_tile";
+    {
+        sqlx::Stmt n(db_,
+            "SELECT COUNT(*) FROM placed WHERE instance_id = ?1 AND is_wall_slot = 0;");
+        n.integer(1, instance_id);
+        if (n.row() && n.column_int(0) >= 8) return "full";
+    }
+    {
+        sqlx::Stmt hit(db_,
+            "SELECT 1 FROM placed WHERE instance_id = ?1 AND is_wall_slot = 0 AND x = ?2 AND y = ?3 LIMIT 1;");
+        hit.integer(1, instance_id).integer(2, x).integer(3, y);
+        if (hit.row()) return "occupied";
+    }
+    sqlx::Stmt ins(db_,
+        "INSERT INTO placed (instance_id, item_id, x, y, rot90, is_wall_slot) "
+        "SELECT ?1, item_id, ?2, ?3, 0, 0 FROM items WHERE slug = ?4;");
+    ins.integer(1, instance_id).integer(2, x).integer(3, y).text(4, item_slug);
+    ins.done();
+    if (sqlite3_changes(db_) == 0) return "unknown_item";
+    return std::string();
+}
+
+std::string HouseStore::take_floor(int instance_id, int x, int y) {
+    std::string slug;
+    {
+        sqlx::Stmt sel(db_,
+            "SELECT i.slug FROM placed p JOIN items i ON i.item_id = p.item_id "
+            "WHERE p.instance_id = ?1 AND p.is_wall_slot = 0 AND p.x = ?2 AND p.y = ?3 LIMIT 1;");
+        sel.integer(1, instance_id).integer(2, x).integer(3, y);
+        if (sel.row()) slug = sel.column_text(0);
+    }
+    if (slug.empty()) return std::string();
+    sqlx::Stmt del(db_,
+        "DELETE FROM placed WHERE instance_id = ?1 AND is_wall_slot = 0 AND x = ?2 AND y = ?3;");
+    del.integer(1, instance_id).integer(2, x).integer(3, y);
+    del.done();
+    return slug;
+}
+
 } // namespace commons

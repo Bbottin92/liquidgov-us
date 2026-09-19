@@ -427,6 +427,7 @@ function netJoin(region) {
   netRegion = region; // optimistic -- matches the existing join_locked/rekey de-dupe on the daemon side either way
   otherOccupants = []; // stale data from whatever region we were just in shouldn't render for a frame in the new one
   placedItem = null;   // likewise -- a different room's placed item must not bleed into this one's render
+  placedFloor = [];
   fetch(DAEMON + "/presence/join", {
     method: "POST",
     body: netBody({ region: regionKeyFor(region), x: lp.x, y: lp.y, facing: player.dir, display_name: playerName })
@@ -439,6 +440,7 @@ function netRekey(fromRegion, toRegion) {
   netRegion = toRegion;
   otherOccupants = [];
   placedItem = null;
+  placedFloor = [];
   fetch(DAEMON + "/presence/rekey", {
     method: "POST",
     body: netBody({
@@ -491,6 +493,7 @@ function netPollCurrentRegion() {
 // on the daemon side (PlacedStore) -- polled the same throttled cadence
 // as presence, not its own faster loop.
 var placedItem = null;    // last polled slug for the CURRENT interior instance, or null
+var placedFloor = [];     // C2: [{item, x, y}, ...] in the current house; empty elsewhere
 var netPlacedPollBusy = false;
 
 function netPlace(item) {
@@ -503,6 +506,29 @@ function netPlace(item) {
   }).then(function (r) { if (r.status === 403) netHandleAuthFailure(); }).catch(function () {});
 }
 
+function netPlaceFloor(item, x, y) {
+  if (!netReady || !netRegion || typeof netRegion !== "string") return;
+  placedFloor.push({ item: item, x: x, y: y });
+  forceRedraw = true;
+  fetch(DAEMON + "/placed/" + regionPathSegment(netRegion), {
+    method: "POST",
+    body: netBody({ item: item, x: x, y: y })
+  }).then(function (r) {
+    if (r.status === 403) netHandleAuthFailure();
+    if (r.status === 409) showToast("No more room.");
+  }).catch(function () {});
+}
+
+function netTakeFloor(x, y) {
+  if (!netReady || !netRegion || typeof netRegion !== "string") return;
+  placedFloor = placedFloor.filter(function (f) { return !(f.x === x && f.y === y); });
+  forceRedraw = true;
+  fetch(DAEMON + "/placed/" + regionPathSegment(netRegion), {
+    method: "POST",
+    body: netBody({ item: "", x: x, y: y, pick: 1 })
+  }).then(function (r) { if (r.status === 403) netHandleAuthFailure(); }).catch(function () {});
+}
+
 function netPollPlaced() {
   if (!netReady || !netRegion || typeof netRegion !== "string" || netPlacedPollBusy) return;
   netPlacedPollBusy = true;
@@ -510,7 +536,13 @@ function netPollPlaced() {
     .then(function (r) { return r.json(); })
     .then(function (j) {
       var item = (j && j.item) ? j.item : null;
-      if (item !== placedItem) { placedItem = item; forceRedraw = true; }
+      var floor = (j && j.floor) ? j.floor : [];
+      var floorDirty = JSON.stringify(floor) !== JSON.stringify(placedFloor);
+      if (item !== placedItem || floorDirty) {
+        placedItem = item;
+        placedFloor = floor;
+        forceRedraw = true;
+      }
     })
     .catch(function () {})
     .finally(function () { netPlacedPollBusy = false; });

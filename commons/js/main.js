@@ -79,6 +79,21 @@ function drawSpace(camX, camY) {
     }
   }
 
+  if ((mode === "house" || mode === "visit") && placedFloor.length) {
+    for (var fi = 0; fi < placedFloor.length; fi++) {
+      var f = placedFloor[fi], finfo = PLACED_ITEM_INFO[f.item];
+      if (!finfo) continue;
+      var fx = f.x * TILE - camX, fy = f.y * TILE - camY;
+      ctx.fillStyle = finfo.color;
+      ctx.fillRect(fx + 3, fy + 3, TILE - 6, TILE - 6);
+      ctx.fillStyle = INK;
+      ctx.font = "7px monospace";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(finfo.label, fx + TILE / 2, fy + TILE + 5);
+    }
+  }
+
   // V6: a lot door whose friend is in the game right now reads as lit, with
   // their name over it. Drawn over the baked (still boarded) tile like the
   // placed item above -- the bake stays static, only the overlay changes.

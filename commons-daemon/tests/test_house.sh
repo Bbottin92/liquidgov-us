@@ -89,3 +89,38 @@ import sqlite3, os
 c = sqlite3.connect(os.environ["DB_PATH"]); c.execute("DROP TRIGGER t_snap"); c.commit()
 PY
 assert_contains "the journal has the real sqlite error, not the response" "$(cat "$WORK/daemon.log")" 'injected'
+
+echo "-- C2: floor items, cap 8, owner only, survive restart"
+bjoin alice $H 7 14 >/dev/null
+bplacefloor alice $H seashell 5 10
+assert_contains "owner puts a shell on the floor" "$BODY" '"ok":true'
+get "$D/placed/$H"
+assert_contains "GET lists the shell" "$BODY" 'seashell'
+assert_contains "at the tile" "$BODY" '"x":5'
+bplacefloor bob $H chalk_block 6 10
+assert_code "a visitor cannot floor-place" 403
+btakefloor bob $H 5 10
+assert_code "a visitor cannot take" 403
+bplacefloor alice $H cider_apple 7 15
+assert_code "the door tile is refused" 400
+bplacefloor alice $H cider_apple 5 10
+assert_code "same tile is occupied" 409
+i=1
+while [ $i -le 7 ]; do
+  bplacefloor alice $H oak_gall $((1 + i)) 3 >/dev/null
+  i=$((i + 1))
+done
+bplacefloor alice $H oak_gall 10 3
+assert_code "the 9th floor item is refused" 409
+assert_contains "full" "$BODY" 'full'
+btakefloor alice $H 5 10
+assert_contains "take returns the slug" "$BODY" 'seashell'
+get "$D/placed/$H"
+assert_not_contains "the shell is gone" "$BODY" 'seashell'
+assert_contains "the wall is untouched" "$BODY" 'iron_gall_ink_page'
+bleave alice $H >/dev/null
+stop_daemon; start_daemon
+get "$D/placed/$H"
+assert_contains "floor items survived the restart" "$BODY" 'oak_gall'
+assert_contains "and the wall too" "$BODY" 'iron_gall_ink_page'
+

@@ -53,6 +53,15 @@ function fillHouse(t, w) {
   t[idxIn(w, 8, 7)] = T_CHAIR;
   t[idxIn(w, 7, 8)] = T_RUG;
   t[idxIn(w, 7, 9)] = T_RUG;
+  // C1: extra fixed decor, same in every house, existing tiles, no new art.
+  t[idxIn(w, 2, 1)] = T_WORKBENCH; // shelf
+  t[idxIn(w, 3, 1)] = T_WORKBENCH;
+  t[idxIn(w, 14, 1)] = T_LAMP;
+  t[idxIn(w, 1, 4)] = T_CRATE;     // bookcase
+  t[idxIn(w, 1, 5)] = T_CRATE;
+  t[idxIn(w, 13, 12)] = T_FLOWERBED; // plant
+  t[idxIn(w, 4, 11)] = T_RUG;      // second rug
+  t[idxIn(w, 5, 11)] = T_RUG;
 }
 var demoHouseSpace = buildInterior(16, 16, fillHouse);
 // V2 stretch (GROK_V2_ANSWER.md): the wall-slot is interactable now, but

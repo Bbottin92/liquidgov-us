@@ -140,6 +140,8 @@ bmove() { post "$D/presence/move" "{\"id\":\"g_x\",\"secret\":\"w\",\"region\":\
 bleave() { post "$D/presence/leave" "{\"id\":\"g_x\",\"secret\":\"w\",\"region\":\"$2\"}" "$(jar $1)"; }
 bpickup() { post "$D/presence/pickup" "{\"item\":\"$2\"}" "$(jar $1)"; }
 bplace() { post "$D/placed/$2" "{\"id\":\"g_x\",\"secret\":\"w\",\"item\":\"$3\"}" "$(jar $1)"; }
+bplacefloor() { post "$D/placed/$2" "{\"id\":\"g_x\",\"secret\":\"w\",\"item\":\"$3\",\"x\":$4,\"y\":$5}" "$(jar $1)"; }
+btakefloor() { post "$D/placed/$2" "{\"id\":\"g_x\",\"secret\":\"w\",\"item\":\"\",\"x\":$3,\"y\":$4,\"pick\":1}" "$(jar $1)"; }
 bpolicy() { post "$D/presence/house-policy" "{\"policy\":\"$2\"}" "$(jar $1)"; }
 blots() { get "$D/presence/lots" "$(jar $1)"; }
 occupants() { get "$D/presence/$1"; }

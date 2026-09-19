@@ -810,7 +810,18 @@ int main(int argc, char** argv) {
         if (auto house_user = house_username_from_region(instance)) {
             auto instance_id = house.existing_house_instance_for(*house_user);
             std::string item = instance_id ? house.get_wall_slot(*instance_id) : std::string();
-            r.body = "{\"item\":" + commons::json::str(item) + "}";
+            std::string body = "{\"item\":" + commons::json::str(item) + ",\"floor\":[";
+            if (instance_id) {
+                auto floor = house.list_floor(*instance_id);
+                for (size_t i = 0; i < floor.size(); ++i) {
+                    if (i) body += ",";
+                    body += "{\"item\":" + commons::json::str(floor[i].slug)
+                         + ",\"x\":" + std::to_string(floor[i].x)
+                         + ",\"y\":" + std::to_string(floor[i].y) + "}";
+                }
+            }
+            body += "]}";
+            r.body = std::move(body);
             return r;
         }
         r.body = "{\"item\":" + commons::json::str(placed.get(instance)) + "}";
@@ -824,7 +835,11 @@ int main(int argc, char** argv) {
         auto id = field_str(req.body, "id");
         auto secret = field_str(req.body, "secret");
         auto item = field_str(req.body, "item");
-        if (!id || !secret || !item) {
+        auto xn = field_num(req.body, "x");
+        auto yn = field_num(req.body, "y");
+        auto pick = field_num(req.body, "pick");
+        bool floor = xn && yn;
+        if (!id || !secret || (!floor && !item) || (floor && !(pick && *pick) && !item)) {
             r.status = 400; r.status_text = "Bad Request";
             r.body = "{\"ok\":false,\"reason\":\"missing_field\"}";
             return r;
@@ -835,10 +850,10 @@ int main(int argc, char** argv) {
             r.body = "{\"ok\":false,\"reason\":\"bad_credential\"}";
             return r;
         }
-        // Empty string clears the slot; anything else must be a real,
+        // Empty string clears the wall slot; anything else must be a real,
         // known catalog item -- never an arbitrary client string nothing
-        // can render.
-        if (!item->empty() && !item_exists(db.handle(), *item)) {
+        // can render. Floor take sends pick=1 and may omit item.
+        if (item && !item->empty() && !item_exists(db.handle(), *item)) {
             r.status = 400; r.status_text = "Bad Request";
             r.body = "{\"ok\":false,\"reason\":\"unknown_item\"}";
             return r;
@@ -854,8 +869,38 @@ int main(int argc, char** argv) {
                 return r;
             }
             int instance_id = house.house_instance_for(*house_user);
+            if (floor) {
+                int x = static_cast<int>(*xn), y = static_cast<int>(*yn);
+                if (x != *xn || y != *yn) {
+                    r.status = 400; r.status_text = "Bad Request";
+                    r.body = "{\"ok\":false,\"reason\":\"bad_tile\"}";
+                    return r;
+                }
+                if (pick && *pick) {
+                    std::string got = house.take_floor(instance_id, x, y);
+                    r.body = got.empty()
+                        ? "{\"ok\":false,\"reason\":\"empty\"}"
+                        : "{\"ok\":true,\"item\":" + commons::json::str(got) + "}";
+                    if (got.empty()) { r.status = 400; r.status_text = "Bad Request"; }
+                    return r;
+                }
+                std::string why = house.place_floor(instance_id, *item, x, y);
+                if (!why.empty()) {
+                    r.status = (why == "unknown_item" || why == "bad_tile") ? 400 : 409;
+                    r.status_text = r.status == 409 ? "Conflict" : "Bad Request";
+                    r.body = "{\"ok\":false,\"reason\":" + commons::json::str(why) + "}";
+                    return r;
+                }
+                r.body = "{\"ok\":true}";
+                return r;
+            }
             house.set_wall_slot(instance_id, *item);
             r.body = "{\"ok\":true}";
+            return r;
+        }
+        if (floor) {
+            r.status = 400; r.status_text = "Bad Request";
+            r.body = "{\"ok\":false,\"reason\":\"not_a_house\"}";
             return r;
         }
         placed.set(instance, *item);

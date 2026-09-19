@@ -27,7 +27,46 @@ function findNearestInteractable() {
     var d = Math.max(Math.abs(ptx - it.x), Math.abs(pty - it.y));
     if (d <= 1 && d < bestDist) { best = it; bestDist = d; }
   }
+  if (mode === "house" || mode === "visit") {
+    for (var f = 0; f < placedFloor.length; f++) {
+      var fl = placedFloor[f];
+      var fd = Math.max(Math.abs(ptx - fl.x), Math.abs(pty - fl.y));
+      if (fd <= 1 && fd < bestDist) {
+        best = { type: "floorItem", x: fl.x, y: fl.y, item: fl.item, prompt: mode === "house" ? "Take" : "Look" };
+        bestDist = fd;
+      }
+    }
+  }
   return best;
+}
+
+function tileInFront() {
+  var tx = Math.floor(player.x / TILE), ty = Math.floor(player.y / TILE);
+  if (player.dir === DIR_UP) ty -= 1;
+  else if (player.dir === DIR_DOWN) ty += 1;
+  else if (player.dir === DIR_LEFT) tx -= 1;
+  else tx += 1;
+  return { x: tx, y: ty };
+}
+
+function tryFloorPlace() {
+  var t = tileInFront();
+  if (t.x < 1 || t.y < 1 || t.x > 14 || t.y > 14) return false;
+  if (t.x === DEMO_DOOR.x && (t.y === DEMO_DOOR.y || t.y === DEMO_ENTRY.y)) return false;
+  if (activeSpace.solid[idxIn(activeSpace.w, t.x, t.y)]) return false;
+  for (var i = 0; i < placedFloor.length; i++) {
+    if (placedFloor[i].x === t.x && placedFloor[i].y === t.y) {
+      showToast("Already something there.");
+      return true;
+    }
+  }
+  if (placedFloor.length >= 8) {
+    showToast("No more room.");
+    return true;
+  }
+  netPlaceFloor(lastPickedItem, t.x, t.y);
+  showToast("Set down.");
+  return true;
 }
 
 function enterInterior(key, space, entry) {
@@ -120,14 +159,28 @@ function tryInteract() {
         // too, but a refused POST would read as a dead credential).
         showToast("That's " + visitingOwner + "'s wall.");
       } else if (!lastPickedItem) {
-        showToast("Nothing to place yet -- visit the lab first.");
+        showToast("Nothing to place yet -- pick something up first.");
       } else {
         netPlace(lastPickedItem);
         showToast("Placed.");
       }
+    } else if (it.type === "floorItem") {
+      if (mode === "visit") {
+        var finfo = PLACED_ITEM_INFO[it.item];
+        showToast(finfo ? finfo.label : it.item);
+      } else {
+        netTakeFloor(it.x, it.y);
+        lastPickedItem = it.item;
+        showToast("Picked up.");
+      }
     }
     return;
   }
+
+  // C2: in your own house, empty Enter facing a clear floor tile puts the
+  // last pickup down (cap 8). Facing the door / a wall still leaves, same
+  // as before -- place refuses those tiles first.
+  if (mode === "house" && lastPickedItem && tryFloorPlace()) return;
 
   // Nothing in range: in an interior, Enter is the fallback exit. The lab
   // spawn point is one tile south of the outdoor door -- the same spot

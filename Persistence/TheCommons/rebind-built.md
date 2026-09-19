@@ -86,3 +86,36 @@ just never sees `promoted`.
 
 `open` + orphans (slice 4, the only civic one). Cookie expiry mid-session and
 logout mid-session (a bound row whose cookie stops resolving) are unchanged.
+
+## Deployed (2026-09-19, Brandon: "deploy")
+
+Grok's review of `8e65bac` was **not** on file when Brandon said `deploy`; I went
+on his word and say so here. Daemon first, then client; civic and nginx never
+touched (`liquidgov.service` not restarted).
+
+1. **Drift check:** the daemon dry-run listed exactly `main.cpp`, `presence.cpp`,
+   `presence.hpp`; the client dry-run exactly `index.html`; the droplet's client
+   files were still the last deployed hashes.
+2. **Online backup first** (SQLite backup API):
+   `/var/lib/commons/backups/commons.sqlite.pre-rebind-20260919T085640Z`,
+   `integrity_check` ok. Baseline: items 3, recipes 3, maps 14, map_instances 6,
+   players 5, placed 3, inventory 4. Left on the box.
+3. **Daemon** synced, `-j1` build with no reconfigure (only `main` and `presence`
+   recompiled), restart. Live DB read-only afterward: integrity ok, every count
+   identical to the baseline (no schema change). Through nginx: lots, `1,1`, a
+   house `/placed/` GET all 200; public `/internal/friends` 404; journal has no
+   failures; `NRestarts=0`.
+4. **Guest path unchanged on production:** a real guest minted, joined `1,1`,
+   moved (200), a bad-secret move still `403 bad_credential`, then left.
+5. **Client** synced last: droplet, served and local `index.html` all
+   `9a8ac18c...` (was `1e924625...`; `tiles.png`/`sprites.png` unchanged); the
+   served page contains `netApplyJoinJson`. A guest walk on production: the
+   refactored join handling works (nameplate, region, sheet loaded), console clean.
+
+**Not seen on production:** the promotion itself. It needs someone who starts as a
+guest and logs in mid-walk, and I don't sign in to production. The check for you:
+open the game logged out (or in a private window), log in on LiquidGov in another
+tab, then walk in the game tab. Within about one move the nameplate should turn
+into your username and the friend-lot doors near Homestead Row should start
+lighting, with no second sprite trailing you. If you get a second sprite or the
+name doesn't change, say so.

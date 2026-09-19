@@ -1700,6 +1700,18 @@ Not bug classes. Not “what is live on the droplet.”
   prior cookie/visit/policy/persist regressions pass. See `rebind-built.md`.
   Deploy: daemon, then client, after Grok's review and Brandon's `deploy`. Parked:
   `open` + orphans (slice 4, the only civic one).
+- **2026-09-19 -- `rebind()` (rest slice 3) deployed (daemon, then client).**
+  Brandon said `deploy`; Grok's review was not on file, so it went on his word.
+  Drift check clean (three daemon files + the client), online SQLite backup first
+  (`commons.sqlite.pre-rebind-20260919T085640Z`, left on the box), daemon `-j1`
+  build with no reconfigure + restart (DB integrity ok, counts unchanged, no
+  failures, no restarts), then the client (droplet = served = local
+  `9a8ac18c...`). Real guest join/move/bad-secret/leave unchanged on prod; guest
+  walk clean. The promotion itself is unproven on prod (needs a real mid-session
+  login): log out, open the game, log in on LiquidGov in another tab, walk -- the
+  nameplate should become your username with no second sprite. Parked: `open` +
+  orphans (slice 4, the only civic one; Grok: not before 1-3 are live, which they
+  now are).
 
 ## Split: civic site vs game
 

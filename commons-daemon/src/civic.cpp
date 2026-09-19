@@ -5,6 +5,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <cctype>
 #include <chrono>
 #include <unordered_map>
 
@@ -111,7 +112,60 @@ long long now_ms() {
         .count();
 }
 
+// (Cookie value, owner) -> blocked?, 15s, RAM only. Same shape as the session
+// cache above; only real answers are stored.
+struct BlockEntry {
+    bool blocked = true;
+    long long fetched_ms = 0;
+};
+std::unordered_map<std::string, BlockEntry>& block_cache() {
+    static std::unordered_map<std::string, BlockEntry> cache;
+    return cache;
+}
+
+// The owner name goes straight into a request line to civic, and it comes from a
+// client-supplied region string, so it must be a plain username: nothing that
+// could smuggle a CR/LF, a space or a path segment.
+bool plain_username(const std::string& s) {
+    if (s.empty() || s.size() > 64) return false;
+    for (unsigned char c : s) {
+        if (!(std::isalnum(c) || c == '.' || c == '_' || c == '-')) return false;
+    }
+    return true;
+}
+
 } // namespace
+
+std::optional<bool> block_answer(const std::string& headers_raw, const std::string& owner) {
+    auto cookie = session_cookie_header(headers_raw);
+    if (!cookie || !plain_username(owner)) return std::nullopt;
+
+    auto& cache = block_cache();
+    const long long now = now_ms();
+    const std::string key = *cookie + "\x01" + owner;
+    auto it = cache.find(key);
+    if (it != cache.end()) {
+        if (now - it->second.fetched_ms < kSessionTtlMs) return it->second.blocked;
+        cache.erase(it);
+    }
+
+    auto body = fetch_body("/internal/blocked/" + owner, headers_raw);
+    if (!body) return std::nullopt;
+    bool blocked;
+    if (body->find("\"blocked\":false") != std::string::npos) blocked = false;
+    else if (body->find("\"blocked\":true") != std::string::npos) blocked = true;
+    else return std::nullopt; // not the reply we know how to read: no answer, not "open"
+
+    if (cache.size() >= kSessionCap) {
+        for (auto e = cache.begin(); e != cache.end();) {
+            if (now - e->second.fetched_ms >= kSessionTtlMs) e = cache.erase(e);
+            else ++e;
+        }
+        if (cache.size() >= kSessionCap) cache.clear();
+    }
+    cache[key] = BlockEntry{blocked, now};
+    return blocked;
+}
 
 bool has_session_cookie(const std::string& headers_raw) {
     return session_cookie_header(headers_raw).has_value();

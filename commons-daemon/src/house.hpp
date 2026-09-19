@@ -50,12 +50,12 @@ public:
     // than assumed).
     void snapshot_leave(const std::string& username, int x, int y, int facing);
 
-    // House policy (BUILD house friends/locked A). "friends" (the default,
-    // and what any unknown value or a username with no row reads as) or
-    // "locked" -- nobody but the owner. Read on every visit decision, so it
-    // is one indexed SELECT.
+    // House policy. "friends" (the default, and what any unknown value or a
+    // username with no row reads as), "locked" (nobody but the owner), or
+    // "open" (BUILD open A: any bound, non-blocked player while the owner is in
+    // the game). Read on every visit decision, so it is one indexed SELECT.
     std::string visit_policy_of(const std::string& username);
-    // False for any policy other than friends/locked, or a username with no
+    // False for any policy other than friends/locked/open, or a username with no
     // players row (a house that was never entered has nothing to lock; this
     // never creates a row).
     bool set_visit_policy(const std::string& username, const std::string& policy);

@@ -37,6 +37,14 @@ bool has_session_cookie(const std::string& headers_raw);
 // changes with unrelated headers and is the wrong thing to key on.
 std::optional<std::string> session_cookie(const std::string& headers_raw);
 
+// `open` houses (BUILD open A, GROK_REST_4_ANSWER.md): is there a block, in either
+// direction, between the cookie's account and `owner`? nullopt means "no real
+// answer" (no session, civic down or slow, a malformed name, an unparseable
+// reply) and callers must treat it as BLOCKED: only a real `false` may open a
+// door. Real answers (true or false) are cached 15s in RAM keyed on (Cookie
+// value, owner); a failure is never cached, never remembered.
+std::optional<bool> block_answer(const std::string& headers_raw, const std::string& owner);
+
 // Friends query (glue.md, GROK_V6_ANSWER.md): the mutual, non-blocked
 // friends of *that cookie's* account, via civic's same-box
 // /internal/friends. Empty on every failure path -- no cookie, civic

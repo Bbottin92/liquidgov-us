@@ -6899,6 +6899,33 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         return http_raw("200 OK", "application/json", body, "Cache-Control: no-store\r\n");
     }
 
+    // Same-box only, same gate as /internal/session-user and /internal/friends
+    // above (a plain 404 if X-Forwarded-For is present or the raw peer isn't
+    // loopback -- nginx's only path in sets X-Forwarded-For, so this can never be
+    // reached from the public internet). The commons-daemon asks it whether a
+    // visitor may walk into an `open` house: the VIEWER is the session cookie
+    // (never a parameter), the path is the house OWNER. {"blocked":true} if
+    // either side has blocked the other. It FAILS CLOSED: no session, an unknown
+    // owner or a malformed name all answer {"blocked":true} (still a 200, so the
+    // daemon can tell it from the public 404), and only a real
+    // {"blocked":false} can open a door. Read-only; nothing is written.
+    if(method=="GET"&&path.rfind("/internal/blocked/",0)==0) {
+        if (!header_value(req, "X-Forwarded-For").empty() ||
+            (peer_ip != "127.0.0.1" && peer_ip != "::1"))
+            return http_raw("404 Not Found", "text/plain", "not found\n");
+        bool blocked = true;
+        const std::string owner = path.substr(18);
+        if (acc && valid_username(owner)) {
+            auto found = g_store.find_by_username(owner);
+            if (found)
+                blocked = g_store.is_blocked(user, found->username) ||
+                          g_store.is_blocked(found->username, user);
+        }
+        return http_raw("200 OK", "application/json",
+            blocked ? std::string("{\"blocked\":true}") : std::string("{\"blocked\":false}"),
+            "Cache-Control: no-store\r\n");
+    }
+
     if(method=="GET"&&path=="/logs") {
         const char* op = std::getenv("LIQUIDGOV_OPERATOR");
         if (!op || !op[0] || user != op)

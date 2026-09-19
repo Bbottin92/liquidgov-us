@@ -104,12 +104,12 @@ CREATE TABLE players (
     last_x             INTEGER,
     last_y             INTEGER,
     last_facing        INTEGER,
-    -- Who may visit this player's own house (house policy, BUILD house
-    -- friends/locked A): 'friends' = mutual non-blocked friends while the
-    -- owner is in the game (the visiting rule); 'locked' = nobody but the
-    -- owner. There is deliberately no 'open': civic can't tell the game who
-    -- has blocked whom, so a stranger-facing door could not honour a block.
-    -- Any other value is read as 'friends'. Only ever set by the owner.
+    -- Who may visit this player's own house (house policy): 'friends' = mutual
+    -- non-blocked friends while the owner is in the game (the visiting rule);
+    -- 'locked' = nobody but the owner; 'open' (BUILD open A) = any bound player
+    -- who is not blocked either way (civic's /internal/blocked answers that,
+    -- failing closed) while the owner is in the game. Any other value is read as
+    -- 'friends'. Only ever set by the owner.
     visit_policy       TEXT NOT NULL DEFAULT 'friends'
 );
 

@@ -735,14 +735,22 @@ demoHouseSpace.interactables = [
 // left wall, well away from the entry so the Enter-to-leave fallback never
 // lands on it. Only mode "house" uses this space -- the demo house and a
 // friend's house (mode "visit") keep the plain one, so nobody sees or
-// touches a latch in a room that isn't theirs. `houseLocked` mirrors the
-// daemon's players.visit_policy ('locked' vs the default 'friends'); the
+// touches a latch in a room that isn't theirs. `housePolicy` mirrors the
+// daemon's players.visit_policy ('friends' default, 'open', 'locked'); the
 // daemon sends it on the join/rekey that lands me in my own house.
-var HOUSE_LATCH = { type: "latch", x: 0, y: 13, prompt: "Lock" };
-var houseLocked = false;
-function setHouseLocked(v) {
-  houseLocked = !!v;
-  HOUSE_LATCH.prompt = houseLocked ? "Unlock" : "Lock";
+var HOUSE_LATCH = { type: "latch", x: 0, y: 13, prompt: "Door: friends" };
+var housePolicy = "friends";
+// friends -> open -> locked -> friends. The prompt names the door's current
+// state; Enter moves to the next one.
+var HOUSE_POLICY_NEXT = { friends: "open", open: "locked", locked: "friends" };
+var HOUSE_POLICY_TOAST = {
+  friends: "Door: friends can visit.",
+  open: "Door open: anyone can visit.",
+  locked: "Door locked: only you."
+};
+function setHousePolicy(p) {
+  housePolicy = HOUSE_POLICY_NEXT[p] ? p : "friends";
+  HOUSE_LATCH.prompt = "Door: " + housePolicy;
 }
 var ownHouseSpace = buildInterior(16, 16, function (t, w) {
   fillHouse(t, w);
@@ -1349,9 +1357,9 @@ function netSetHousePolicy(policy) {
   fetch(DAEMON + "/presence/house-policy", { method: "POST", body: netBody({ policy: policy }) })
     .then(function (r) { return r.json(); })
     .then(function (j) {
-      if (j && j.ok && (j.policy === "locked" || j.policy === "friends")) {
-        setHouseLocked(j.policy === "locked");
-        showToast(houseLocked ? "Door locked. Only you can come in." : "Door unlocked. Friends can visit.", 2200);
+      if (j && j.ok && HOUSE_POLICY_NEXT[j.policy]) {
+        setHousePolicy(j.policy);
+        showToast(HOUSE_POLICY_TOAST[housePolicy], 2200);
         forceRedraw = true;
       } else {
         showToast("Couldn't change the door.");
@@ -1409,7 +1417,7 @@ function netApplyJoinJson(j) {
       // the raw, unsuffixed lg_username the daemon only ever sends when
       // actually bound; that's the one safe to key a house off of.
       if (j.bound && j.username) INTERIOR_INSTANCE_KEY.house = "instance:house:" + j.username;
-      if (typeof j.house_policy === "string") setHouseLocked(j.house_policy === "locked");
+      if (typeof j.house_policy === "string") setHousePolicy(j.house_policy);
       // V5 (GROK_V5_ANSWER.md): "walking back in later resumes there, not
       // the fixed entry tile every time." The daemon only ever sends
       // resume_* when this join/rekey actually landed in the caller's own
@@ -1732,7 +1740,7 @@ function tryInteract() {
       var ok = window.confirm("Open liquidgov.us/proposals in a new tab?");
       if (ok) window.open("https://liquidgov.us/proposals", "_blank", "noopener");
     } else if (it.type === "latch") {
-      netSetHousePolicy(houseLocked ? "friends" : "locked");
+      netSetHousePolicy(HOUSE_POLICY_NEXT[housePolicy]);
     } else if (it.type === "mineDoor") {
       enterInterior("mine", mineSpace, MINE_ENTRY);
     } else if (it.type === "demoDoor") {
@@ -1950,7 +1958,12 @@ function drawSpace(camX, camY) {
     ctx.font = "8px monospace";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText("[" + nearestInteractable.prompt + "]", ix, iy);
+    // Keep the prompt inside the viewport: the house latch sits on the wall at
+    // the left edge, where a centred label would be cut off.
+    var promptText = "[" + nearestInteractable.prompt + "]";
+    var promptW = ctx.measureText(promptText).width;
+    ix = Math.max(promptW / 2 + 1, Math.min(crop.vw - promptW / 2 - 1, ix));
+    ctx.fillText(promptText, ix, iy);
   } else if (mode !== "outdoor") {
     // Demo house has no interactables at all (the wall slot is decoration,
     // not a station) and the lab's walk-in exit needs no station nearby

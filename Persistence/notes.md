@@ -1712,6 +1712,22 @@ Not bug classes. Not “what is live on the droplet.”
   nameplate should become your username with no second sprite. Parked: `open` +
   orphans (slice 4, the only civic one; Grok: not before 1-3 are live, which they
   now are).
+- **2026-09-19 -- `open` houses (rest slice 4a) built, local-tested, not deployed.**
+  Brandon: "BUILD open A, split, orphans log-only"; Grok's
+  `GROK_REST_4_ANSWER.md`: 4a first with discovery A, 4b orphans later. **Fourth
+  named civic edit:** same-box `GET /internal/blocked/<username>` (cookie = viewer,
+  path = owner, `{"blocked":true}` if either side blocked the other, fails
+  closed on no session/unknown owner/malformed). Daemon: `civic::block_answer`
+  (15s cache of real answers only, plain-username check before the request line),
+  `visit_allowed` lets a non-friend in only for `open` + a real `blocked:false`,
+  `/presence/lots` = friends first then open houses of non-friends (cap 6, guests
+  none, stops probing when civic is silent), setter accepts `open`. Client latch
+  cycles friends -> open -> locked. Verified against real civic with seven
+  accounts (blocks both directions, guest, injection guard, live policy changes,
+  block eviction after the TTL, fail-closed with civic frozen) and in a browser
+  with the request stubbed. See `open-built.md`. Deploy: **civic first** (drift-check
+  the droplet's `http_server.cpp`), then daemon, then client, after Grok's review and
+  Brandon's `deploy`. 4b orphans is its own BUILD (log-only first).
 
 ## Split: civic site vs game
 

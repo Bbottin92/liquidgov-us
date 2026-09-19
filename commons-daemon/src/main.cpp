@@ -214,12 +214,24 @@ std::optional<std::string> house_username_from_region(const std::string& region)
 bool visit_allowed(const std::string& headers_raw, const std::string& owner,
                    commons::FriendsCache& friends, commons::PresenceStore& presence,
                    commons::HouseStore& house, bool require_owner_online) {
-    // House policy first (BUILD house friends/locked A): a locked house lets
-    // in nobody but its owner, friends included -- and the move re-check
-    // below is what walks out anyone already inside when it gets locked.
-    if (house.visit_policy_of(owner) == "locked") return false;
+    // House policy first: a locked house lets in nobody but its owner, friends
+    // included -- and the move re-check below is what walks out anyone already
+    // inside when it gets locked.
+    const std::string policy = house.visit_policy_of(owner);
+    if (policy == "locked") return false;
     auto mine = friends.get(headers_raw);
-    if (std::find(mine.begin(), mine.end(), owner) == mine.end()) return false;
+    const bool is_friend = std::find(mine.begin(), mine.end(), owner) != mine.end();
+    if (!is_friend) {
+        // Only an `open` house lets in a non-friend (BUILD open A). Civic answers
+        // whether either side has blocked the other, and only a real
+        // {"blocked":false} opens the door: no session, an unknown owner, civic
+        // down or slow, an unreadable reply are all "blocked". The same check
+        // runs on every move, so a block walks a stranger out on their next move
+        // after the 15s cache -- the same path unfriend/block already use.
+        if (policy != "open") return false;
+        auto blocked = commons::civic::block_answer(headers_raw, owner);
+        if (!blocked || *blocked) return false;
+    }
     if (!require_owner_online) return true;
     auto online = presence.bound_usernames();
     return std::find(online.begin(), online.end(), owner) != online.end();
@@ -379,7 +391,7 @@ int main(int argc, char** argv) {
             return r;
         }
         auto policy = field_str(req.body, "policy");
-        if (!policy || (*policy != "friends" && *policy != "locked")) {
+        if (!policy || (*policy != "friends" && *policy != "locked" && *policy != "open")) {
             r.status = 400; r.status_text = "Bad Request";
             r.body = "{\"ok\":false,\"reason\":\"bad_policy\"}";
             return r;
@@ -405,24 +417,60 @@ int main(int argc, char** argv) {
     // dispatch is first-match, and "lots" would otherwise read as a region.
     server.route("GET", "/presence/lots", [&](const commons::HttpRequest& req) {
         commons::HttpResponse r;
-        auto friends = friends_cache.get(req.headers_raw);
-        auto online = presence.bound_usernames();
+        // Discovery for `open` houses (BUILD open A, GROK_REST_4_ANSWER.md): the
+        // Homestead doors are your online mutual friends first, then the online
+        // `open` houses of people who are not your friends, six in all. An `open`
+        // policy with no door would be a no-op. Guests never see any of it.
         std::vector<std::string> lots;
-        for (const auto& f : friends) {
-            // A locked house drops out of the lots, so its door goes dark.
-            if (house.visit_policy_of(f) == "locked") continue;
-            if (std::find(online.begin(), online.end(), f) != online.end() &&
-                std::find(lots.begin(), lots.end(), f) == lots.end())
-                lots.push_back(f);
+        auto viewer = commons::civic::resolve_username(req.headers_raw);
+        if (viewer) {
+            auto friends = friends_cache.get(req.headers_raw);
+            auto online = presence.bound_usernames();
+            auto ci_less = [](const std::string& a, const std::string& b) {
+                std::string la = a, lb = b;
+                for (auto& c : la) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                for (auto& c : lb) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                return la != lb ? la < lb : a < b;
+            };
+            auto is_online = [&](const std::string& u) {
+                return std::find(online.begin(), online.end(), u) != online.end();
+            };
+            auto have = [&](const std::string& u) {
+                return std::find(lots.begin(), lots.end(), u) != lots.end();
+            };
+
+            std::vector<std::string> friend_lots;
+            for (const auto& f : friends) {
+                // A locked house drops out of the lots, so its door goes dark.
+                if (house.visit_policy_of(f) == "locked") continue;
+                if (is_online(f) && std::find(friend_lots.begin(), friend_lots.end(), f) == friend_lots.end())
+                    friend_lots.push_back(f);
+            }
+            // Stable, case-insensitive order so a door doesn't swap who it
+            // shows between polls; six doors, lots 2-7.
+            std::sort(friend_lots.begin(), friend_lots.end(), ci_less);
+            lots = friend_lots;
+
+            if (lots.size() < 6) {
+                std::vector<std::string> open_lots;
+                for (const auto& u : online) {
+                    if (u == *viewer || have(u)) continue;
+                    if (std::find(friends.begin(), friends.end(), u) != friends.end()) continue; // already a friend door (or locked)
+                    if (std::find(open_lots.begin(), open_lots.end(), u) != open_lots.end()) continue;
+                    if (house.visit_policy_of(u) != "open") continue;
+                    open_lots.push_back(u);
+                }
+                std::sort(open_lots.begin(), open_lots.end(), ci_less);
+                for (const auto& u : open_lots) {
+                    if (lots.size() >= 6) break;
+                    auto blocked = commons::civic::block_answer(req.headers_raw, u);
+                    // No real answer (civic down/slow): stop asking. Fail closed, and
+                    // one timeout per request rather than one per candidate.
+                    if (!blocked) break;
+                    if (!*blocked) lots.push_back(u);
+                }
+            }
         }
-        // Stable, case-insensitive order so a door doesn't swap who it
-        // shows between polls; six doors, lots 2-7.
-        std::sort(lots.begin(), lots.end(), [](const std::string& a, const std::string& b) {
-            std::string la = a, lb = b;
-            for (auto& c : la) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-            for (auto& c : lb) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-            return la != lb ? la < lb : a < b;
-        });
         if (lots.size() > 6) lots.resize(6);
         r.body = "{\"lots\":[";
         for (std::size_t i = 0; i < lots.size(); ++i) {

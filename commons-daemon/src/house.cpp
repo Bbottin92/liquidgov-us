@@ -98,12 +98,15 @@ void HouseStore::snapshot_leave(const std::string& username, int x, int y, int f
 std::string HouseStore::visit_policy_of(const std::string& username) {
     sqlx::Stmt sel(db_, "SELECT visit_policy FROM players WHERE lg_username = ?1;");
     sel.text(1, username);
-    if (sel.row() && sel.column_text(0) == "locked") return "locked";
-    return "friends";
+    if (sel.row()) {
+        std::string v = sel.column_text(0);
+        if (v == "locked" || v == "open") return v;
+    }
+    return "friends"; // the default, and what any unknown value reads as
 }
 
 bool HouseStore::set_visit_policy(const std::string& username, const std::string& policy) {
-    if (policy != "friends" && policy != "locked") return false;
+    if (policy != "friends" && policy != "locked" && policy != "open") return false;
     sqlx::Stmt up(db_, "UPDATE players SET visit_policy = ?1 WHERE lg_username = ?2;");
     up.text(1, policy).text(2, username);
     up.done();

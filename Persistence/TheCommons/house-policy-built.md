@@ -132,3 +132,6 @@ log in from here; I don't create or sign in to accounts on production). The
 check: lock from the latch, a friend's lit door goes dark and a visit is
 refused; a friend already inside is walked out on their next move; unlock and
 the door lights again.
+
+
+> Update 2026-09-19: the `open` policy this doc deferred is now built (4a) -- see `open-built.md`.

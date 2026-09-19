@@ -1975,6 +1975,11 @@ Not bug classes. Not “what is live on the droplet.”
   scripts and 0 inline; `.deployed-client-rev` = `cb982a4` (outside the served dir); daemon NOT restarted (17:23:28Z, `NRestarts=0`);
   `verify.sh` 23/23; a real browser on the live page entered as `x`, minted and joined, console clean. Parked list is now empty (`index.html` split done;
   `/commons/recipes` 404 left alone by instruction).
+- **2026-09-19 -- `BUILD connection status`: asked before building (no spec).** My own suggestion, so no doc specifies it. Today a visitor gets NO signal
+  when the client can't reach the daemon (move/poll failures are swallowed at ~10 sites; only the mint retry loop warns in the console). `CLAUDE_STATUS_QUESTION.md`:
+  A = a small DOM badge outside the canvas (accessible, `role=status`), shown only after the problem lasts (4s with no credential, or 6 consecutive
+  move/poll failures), hidden on the next success, one "Reconnecting…" line, observe-only (no request or retry change); B = on-canvas; C = reuse the
+  toast; D = nothing. Waiting on Brandon's one-letter answer; no code written.
 
 ## Split: civic site vs game
 

@@ -1765,6 +1765,12 @@ Not bug classes. Not “what is live on the droplet.”
   `players`: persistverify9, vtowner, invverify1, Bbottin, ptvisitor -- expect the four
   throwaway names to show as would-reap. Nothing is deleted. The reap is a separate later
   BUILD after Brandon reads the list.
+- **2026-09-19 10:37Z -- orphan watch's first list (nothing deleted).** After two passes:
+  would reap `persistverify9` (house 3, 0 inv, 1 placed), `vtowner` (house 4, 0 inv, 1
+  placed), `invverify1` (house 5, 2 inv rows, 1 placed); `ptvisitor` (house 6, empty)
+  deferred by the cap, due next pass. `Bbottin` (real) exists and is not listed. All four
+  are throwaways deleted via `/settings/delete` in earlier live tests. DB counts unchanged.
+  The reap is a later BUILD once Brandon agrees the list.
 
 ## Split: civic site vs game
 

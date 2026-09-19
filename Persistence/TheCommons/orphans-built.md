@@ -129,3 +129,22 @@ Civic first, then the daemon. **No client, no nginx, no schema.**
 
 **Timing:** the first pass runs at ~10:27Z and a name needs two in a row, so the first
 `would reap` lines are due at ~10:37Z.
+
+## The first real list (read 2026-09-19 10:37Z, two passes in)
+
+Nothing deleted; DB counts identical to the pre-deploy baseline (map_instances 6,
+players 5, placed 3, inventory 4). Journal:
+
+| would reap | house instance | inventory rows (qty) | placed rows |
+|---|---|---|---|
+| `persistverify9` | 3 | 0 | 1 |
+| `vtowner` | 4 | 0 | 1 |
+| `invverify1` | 5 | 2 (2) | 1 |
+| `ptvisitor` | 6 | 0 | 0 -- deferred by the cap of 3 this pass, due on the next (~10:47Z) |
+
+`Bbottin` (Brandon's real account: 2 inventory rows, qty 3, no house instance) was
+asked about, civic answered it exists, and it is **not** on the list. All four flagged
+names are throwaway accounts deleted through `/settings/delete` during earlier live
+tests. No SUSPECT line; `NRestarts=0`.
+
+For the reap BUILD, Brandon should agree this list first. The reap is not built.

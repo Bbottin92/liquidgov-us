@@ -36,7 +36,7 @@ BACKUP_DIR_REMOTE="$DATA_DIR/backups"
 # accounts store: it is excluded twice over, by pattern and because nothing here lives in the synced tree.
 DAEMON_EXCLUDES=(--exclude build --exclude .git --exclude tests
                  --exclude '*.sqlite' --exclude '*.sqlite-shm' --exclude '*.sqlite-wal' --exclude 'backups/'
-                 --exclude '.deployed-*' --exclude '.deploy-log')
+                 --exclude '.deployed-*' --exclude '.deploy-log' --exclude '__pycache__' --exclude '*.pyc')
 CLIENT_EXCLUDES=(--exclude .git --exclude '.deployed-*')
 
 # The scripts set these from --allow-dirty / --allow-unpushed; need_clean_tree / need_pushed below read them.

@@ -5,6 +5,10 @@ liquidgov-platform/liquidgov_platform_*_test
 *.o
 build/
 
+# Python bytecode from the test helpers importing deploy/*.py; never source, and never shipped by the deploy syncs.
+__pycache__/
+*.pyc
+
 # Stray backup snapshot pulled in during environment setup (root-owned,
 # predates this session's edits). Not source, not meant to be tracked.
 /liquidgov-platform.bak/

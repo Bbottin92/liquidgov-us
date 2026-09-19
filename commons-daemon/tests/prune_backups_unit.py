@@ -9,6 +9,7 @@ import subprocess
 import sys
 import time
 
+sys.dont_write_bytecode = True      # loading deploy/prune-backups.py must not leave deploy/__pycache__ in the synced tree
 HERE = os.path.dirname(os.path.abspath(__file__))
 PRUNE = os.path.join(HERE, "..", "deploy", "prune-backups.py")
 spec = importlib.util.spec_from_file_location("prune", PRUNE)

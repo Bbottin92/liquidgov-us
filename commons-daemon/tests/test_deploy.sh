@@ -67,8 +67,10 @@ echo "create table t(x);" > "$R/Persistence/TheCommons/schema.sql"
 ln -s ../Persistence/TheCommons/schema.sql "$R/commons-daemon/schema.sql"
 echo "client v1" > "$R/commons/index.html"
 echo "civic v1" > "$R/liquidgov-platform/src/http_server.cpp"
-printf 'build/\ndata/*.sqlite\n' > "$R/.gitignore"
+printf 'build/\ndata/*.sqlite\n__pycache__/\n*.pyc\n' > "$R/.gitignore"
 echo "live data that must never leave" > "$R/commons-daemon/data/junk.sqlite"       # ignored, must not be synced
+mkdir -p "$R/commons-daemon/deploy/__pycache__"; echo bytecode > "$R/commons-daemon/deploy/__pycache__/x.cpython-314.pyc"   # ignored, must not be synced
+echo bytecode > "$R/commons-daemon/src/stray.pyc"
 git init -q -b master "$R"; g config user.email t@t; g config user.name t; g config commit.gpgsign false
 git init -q --bare "$WORK/origin.git"; g remote add origin "$WORK/origin.git"
 g add -A; g commit -q -m v1; g push -q -u origin master
@@ -102,6 +104,8 @@ assert_eq "with the spec's content" "create table t(x);" "$(cat "$DD/schema.sql"
 [ -e "$DD/tests" ] && r=shipped || r=absent;             assert_eq "tests/ is not shipped" "absent" "$r"
 [ -e "$DD/data/junk.sqlite" ] && r=shipped || r=absent;  assert_eq "no sqlite file is ever shipped" "absent" "$r"
 [ -e "$DD/.git" ] && r=shipped || r=absent;              assert_eq ".git is not shipped" "absent" "$r"
+[ -e "$DD/deploy/__pycache__" ] && r=shipped || r=absent; assert_eq "Python bytecode (__pycache__) is not shipped" "absent" "$r"
+[ -e "$DD/src/stray.pyc" ] && r=shipped || r=absent;      assert_eq "and neither is a stray .pyc" "absent" "$r"
 assert_eq "the marker holds the deployed revision" "$BASE1" "$(awk 'NR==1{print $1}' "$DD/.deployed-rev")"
 assert_contains "and the deploy log has a line" "$(cat "$DD/.deploy-log")" "$BASE1"
 runs "$S/sync-client-to-droplet.sh"

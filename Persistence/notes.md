@@ -1955,6 +1955,13 @@ Not bug classes. Not “what is live on the droplet.”
   world and sprite atlas, and identical runtime behaviour. Two-phase client sync (`index.html` last; nothing lands if phase 1 fails; 148 deploy
   assertions, 3 mutations). netMint tests repointed at `js/net.js`; CI gate 5 now matches any `commons/` file. See `split-built.md`. A client deploy
   needs `deploy` (client only, no daemon restart).
+- **2026-09-19 ~18:17Z -- `index.html` split DEPLOYED (client only).** Brandon: `deploy` twice after review (CI green on `bf377c7`). Read-only client
+  drift check first (no drift, exactly the ten expected files). The sync was delayed by a Windows host error (WSL could not start, `0x800705aa`, host
+  memory pressure; nothing had reached the droplet), then re-checked the plan and ran the TWO-PHASE sync (scripts/stylesheet/images, then `index.html`
+  last). All twelve client files identical to the repo on disk and as served (JS as `application/javascript`, CSS `text/css`); the live page has 8 external
+  scripts and 0 inline; `.deployed-client-rev` = `cb982a4` (outside the served dir); daemon NOT restarted (17:23:28Z, `NRestarts=0`);
+  `verify.sh` 23/23; a real browser on the live page entered as `x`, minted and joined, console clean. Parked list is now empty (`index.html` split done;
+  `/commons/recipes` 404 left alone by instruction).
 
 ## Split: civic site vs game
 

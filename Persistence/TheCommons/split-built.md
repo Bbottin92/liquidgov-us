@@ -1,8 +1,8 @@
-# index.html split — built, proven, NOT deployed
+# index.html split — built, proven, DEPLOYED 2026-09-19 ~18:17Z
 
 Brandon: "BUILD A. Prove load order in CI. Two-phase sync. Do not deploy." (`CLAUDE_SPLIT_QUESTION.md`, answered by
 `GROK_SPLIT_ANSWER.md`: A, classic `<script src>` files in one global scope; no modules, no `let`, no rename, no
-`defer`/`async`; cut on the existing headers.) **Client only. Nothing was deployed and the droplet was not contacted.**
+`defer`/`async`; cut on the existing headers.) **Client only.** Deployed afterwards (see "Deployed" at the bottom); the daemon was not restarted.
 
 ## What it is
 
@@ -78,3 +78,23 @@ new files can stay, nothing references them.
 - `"use strict"` per file, the tag order and the file names are pinned by the test on purpose: a future rename or reorder must
   change the test in the same commit.
 - Not done, by instruction: turning globals into modules, `let`/`const` at the top level, merging or renaming files.
+
+## Deployed (2026-09-19 ~18:17Z, Brandon: `deploy` twice after review; CI green on `bf377c7`)
+
+Client only: no daemon, civic or nginx change. **Step 1 (read-only):** `drift-check.sh --tree client`: no drift (the droplet held exactly
+what `b04970e` shipped) and exactly the ten expected files to change (`index.html`, `style.css`, the eight `js/` files). **Step 2** was
+delayed by a Windows host error, not by anything on the droplet: WSL could not start (`0x800705aa`, insufficient system resources, host
+memory pressure) for a few attempts, so the sync script never ran and nothing reached the droplet; once WSL came back, the script
+re-ran the read-only drift check first (it stops unless the plan is unchanged: it was) and then `sync-client-to-droplet.sh` sent the
+client in TWO PHASES (phase 1: scripts, stylesheet, images; phase 2: `index.html` last), chowned it, and wrote the
+`.deployed-client-rev` marker (`cb982a4`, kept outside the served directory: a 404 over https).
+
+Verified: every one of the twelve client files is byte-identical to the repo's on disk AND as served through https (`index.html` 200
+`text/html`, `style.css` 200 `text/css`, the eight scripts 200 `application/javascript`; nginx maps `.js` to that, the local dev server
+sends `text/javascript`, both fine); `Cache-Control: no-cache`; the live page has 0 inline script blocks and 8 external script tags
+(`/commons/js/world.js` was a 404 before); the daemon was NOT restarted (`ActiveEnterTimestamp` 17:23:28 UTC and `NRestarts=0`, before
+and after; the running daemon is still `d9363b5d7aa5`); `verify.sh --guest-name x` **23 passed, 0 failed**; and a real browser on the LIVE
+page: 8 scripts, tiles loaded, entered as `x`, minted, joined and listed by the daemon at the same spawn (576, 480), console clean,
+screenshot showing the game rendering. Visitors mid-session keep the old inline page until they reload.
+
+**Rollback (not needed):** re-sync the previous `index.html` (`b04970e`, self-contained); the new files can stay.

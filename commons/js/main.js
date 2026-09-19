@@ -8,7 +8,19 @@ var prevPlayerX = player.x, prevPlayerY = player.y;
 var prevPlayerDir = player.dir, prevPlayerAnim = player.animFrame;
 var prevPbVisible = false, prevPbX = passerby.x, prevPbY = passerby.y;
 var prevPbDir = passerby.dir, prevPbAnim = passerby.animFrame;
-var prevToastActive = false;
+
+// Paper-backed 8px labels so names read on grass and on paper walls.
+function drawNameplate(c, text, x, y) {
+  if (!text) return;
+  c.font = "8px monospace";
+  c.textAlign = "center";
+  c.textBaseline = "middle";
+  var w = c.measureText(text).width;
+  c.fillStyle = "rgba(247,241,228,0.88)";
+  c.fillRect(Math.round(x - w / 2 - 2), Math.round(y - 5), Math.round(w + 4), 10);
+  c.fillStyle = INK;
+  c.fillText(text, x, y);
+}
 
 // One draw path for outdoor and both interiors -- they already share the
 // same bake/blit/collision shape, so the only per-space differences are
@@ -24,10 +36,6 @@ function drawSpace(camX, camY) {
     ctx.fillRect(0, 0, crop.vw, crop.vh);
   }
   ctx.drawImage(activeSpace.baked, camX, camY, crop.vw, crop.vh, 0, 0, crop.vw, crop.vh);
-  // The hint and toast sit at the bottom of the viewport. In a room shorter
-  // than the viewport that is the black margin, where ink would vanish, so
-  // they switch to paper there.
-  var hintInk = (activeSpace.ph - camY) < crop.vh - 30 ? "#f7f1e4" : INK;
 
   // V2 stretch: the placed lab item, drawn over the baked wall-slot tile
   // itself -- a flat color square + label, not a sprite (this game has
@@ -106,11 +114,7 @@ function drawSpace(camX, camY) {
       ctx.fillStyle = "#d8b46a";
       ctx.fillRect(lsx + 2, lsy + 2, TILE - 4, TILE - 4);
       var lname = lot.friend.length > 9 ? lot.friend.slice(0, 8) + "…" : lot.friend;
-      ctx.fillStyle = INK;
-      ctx.font = "7px monospace";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(lname, lsx + TILE / 2, lsy - 5);
+      drawNameplate(ctx, lname, lsx + TILE / 2, lsy - 5);
     }
   }
 
@@ -119,11 +123,7 @@ function drawSpace(camX, camY) {
     var pbDestY = spriteDestY(pbsy, passerby.half);
     ctx.drawImage(spriteAtlas, spriteSrcX(passerby.dir, passerby.animFrame), 0, SPRITE_W, SPRITE_H,
       spriteDestX(pbsx), pbDestY, SPRITE_W, SPRITE_H);
-    ctx.fillStyle = INK;
-    ctx.font = "8px monospace";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText("passerby", pbsx, pbDestY - 4);
+    drawNameplate(ctx, "passerby", pbsx, pbDestY - 4);
   }
 
   // V2: renders for either outdoor or a shared interior -- otherOccupants
@@ -143,11 +143,7 @@ function drawSpace(camX, camY) {
       var oDestY = spriteDestY(osy, 6);
       ctx.drawImage(spriteAtlas, spriteSrcX(oDir, 0), 0, SPRITE_W, SPRITE_H,
         spriteDestX(osx), oDestY, SPRITE_W, SPRITE_H);
-      ctx.fillStyle = INK;
-      ctx.font = "8px monospace";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(o.display_name || o.id, osx, oDestY - 4);
+      drawNameplate(ctx, o.display_name || o.id, osx, oDestY - 4);
     }
   }
 
@@ -161,46 +157,19 @@ function drawSpace(camX, camY) {
   // nameplate draws rather than showing the raw typed input that might
   // not match what other clients see (GROK_NAME_REVIEW.md).
   if (acceptedDisplayName) {
-    ctx.fillStyle = INK;
-    ctx.font = "8px monospace";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(acceptedDisplayName, sx, sDestY - 4);
+    drawNameplate(ctx, acceptedDisplayName, sx, sDestY - 4);
   }
 
   if (nearestInteractable) {
     var ix = (nearestInteractable.x * TILE + 8) - camX;
     var iy = (nearestInteractable.y * TILE + 8) - camY - 14;
-    ctx.fillStyle = INK;
     ctx.font = "8px monospace";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    // Keep the prompt inside the viewport: the house latch sits on the wall at
-    // the left edge, where a centred label would be cut off.
     var promptText = "[" + nearestInteractable.prompt + "]";
     var promptW = ctx.measureText(promptText).width;
     ix = Math.max(promptW / 2 + 1, Math.min(crop.vw - promptW / 2 - 1, ix));
-    ctx.fillText(promptText, ix, iy);
+    drawNameplate(ctx, promptText, ix, iy);
   } else if (mode !== "outdoor") {
-    // Demo house has no interactables at all (the wall slot is decoration,
-    // not a station) and the lab's walk-in exit needs no station nearby
-    // either -- without this, losing P1's static "[Enter] to step back
-    // outside" stub text would leave keyboard users with no on-screen cue
-    // that Enter still leaves (the interact button covers touch). Drawn
-    // higher than the toast line so a lab-station toast can't overlap it.
-    ctx.fillStyle = hintInk;
-    ctx.font = "8px monospace";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText("[Enter] to step back outside", crop.vw / 2, crop.vh - 26);
-  }
-
-  if (performance.now() < toast.until) {
-    ctx.fillStyle = hintInk;
-    ctx.font = "8px monospace";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(toast.msg, crop.vw / 2, crop.vh - 14);
+    drawNameplate(ctx, "[Enter] to step back outside", crop.vw / 2, crop.vh - 18);
   }
 }
 
@@ -210,6 +179,7 @@ function frame(t) {
   lastT = t;
   lastTickAt = t;
   netStatusTick(t);   // the "Reconnecting…" badge: observe-only, every frame (net.js)
+  tickToast(t);
 
   var playerMoved = movePlayer(currentDX(), currentDY(), dt);
 
@@ -293,16 +263,9 @@ function frame(t) {
     ? (nearestInteractable.type === "wallSlot" && mode === "visit" ? "Look" : nearestInteractable.prompt)
     : "Enter";
 
-  var toastActive = performance.now() < toast.until;
-
   // canvas.md #2: skip the blit entirely if the scene truly hasn't changed
   // -- rAF still runs (vsync), we just don't touch the GPU for nothing.
-  // toastActive alone isn't enough: it covers every frame *while* the
-  // toast is showing, but the frame where it flips back to false (the
-  // off-transition) also needs to redraw, or the last "Closed." bitmap
-  // just sits there forever since nothing else necessarily changed on
-  // that exact frame. Found by testing the actual expiry, not by reading
-  // the code.
+  // Toasts live in a DOM pill now, so they no longer dirty the canvas.
   //
   // Must-fix from sprites review: dir/animFrame can change with the walk
   // blocked (bump a wall, tap a different direction -- updateFacingAnim
@@ -311,8 +274,7 @@ function frame(t) {
   // cell to redraw. Track prevPlayerDir/Anim (and passerby's) the same
   // way position is tracked.
   var playerFacingChanged = player.dir !== prevPlayerDir || player.animFrame !== prevPlayerAnim;
-  var changed = forceRedraw || cropChangedThisFrame || playerMoved || playerFacingChanged ||
-    toastActive || (toastActive !== prevToastActive);
+  var changed = forceRedraw || cropChangedThisFrame || playerMoved || playerFacingChanged;
   if (mode === "outdoor") {
     var pbFacingChanged = passerby.dir !== prevPbDir || passerby.animFrame !== prevPbAnim;
     changed = changed ||
@@ -337,7 +299,6 @@ function frame(t) {
   prevPlayerDir = player.dir; prevPlayerAnim = player.animFrame;
   prevPbVisible = passerby.visible; prevPbX = passerby.x; prevPbY = passerby.y;
   prevPbDir = passerby.dir; prevPbAnim = passerby.animFrame;
-  prevToastActive = toastActive;
 }
 
 // requestAnimationFrame is the loop -- real browsers (including phones)

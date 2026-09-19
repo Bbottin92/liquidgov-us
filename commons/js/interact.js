@@ -15,7 +15,17 @@ var savedOutdoorX = player.x, savedOutdoorY = player.y;
 
 function showToast(msg, ms) {
   toast.msg = msg;
-  toast.until = performance.now() + (ms || 1500);
+  toast.until = performance.now() + (ms || 1800);
+  var el = document.getElementById("toast");
+  if (el) el.textContent = msg;
+}
+
+function tickToast(now) {
+  var el = document.getElementById("toast");
+  if (!el) return;
+  if (now < toast.until) {
+    if (el.textContent !== toast.msg) el.textContent = toast.msg;
+  } else if (el.textContent) el.textContent = "";
 }
 
 function findNearestInteractable() {

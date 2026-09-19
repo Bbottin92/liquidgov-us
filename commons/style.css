@@ -80,6 +80,19 @@
     border-color:var(--ink); box-shadow:0 0 0 1px var(--ink);
     background:var(--paper);
   }
+  /* Toasts used to be 8px canvas text on the grass. Same paper pill as the
+     reconnect badge, bottom-centre, above the d-pad. Empty = hidden. */
+  #toast{
+    position:fixed; left:50%; transform:translateX(-50%);
+    bottom:calc(8.4rem + env(safe-area-inset-bottom,0px));
+    z-index:15; max-width:calc(100% - 2rem);
+    padding:.3rem .85rem; border:1px solid var(--ink); border-radius:999px;
+    background:var(--paper); color:var(--ink);
+    font-size:.8rem; line-height:1.2; white-space:nowrap;
+    box-shadow:0 1px 4px rgba(26,24,20,.35);
+    pointer-events:none; user-select:none; -webkit-user-select:none;
+  }
+  #toast:empty{ display:none; }
   #dpad{
     position:fixed; left:0; right:0;
     bottom:calc(.8rem + env(safe-area-inset-bottom,0px));
@@ -123,3 +136,9 @@
   }
   #interactBtn.show{ display:flex; }
   #interactBtn:active{ background:rgba(196,165,116,.85); }
+  /* Keyboard has arrows. The on-screen pad is for touch (art.md). Hiding it
+     on a fine pointer uncovers the bottom of the Square. */
+  @media (hover: hover) and (pointer: fine) {
+    #dpad{ display:none; }
+    #toast{ bottom:calc(1.2rem + env(safe-area-inset-bottom,0px)); }
+  }

@@ -3,13 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
-<title>The Commons — P3</title>
+<title>The Commons</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <div id="stage"><canvas id="game"></canvas></div>
 <div id="connStatus" role="status" aria-live="polite" title="Can't reach the Square. You can keep walking, but others can't see you until it reconnects."></div>
 <div id="invHud" aria-label="What you are holding"></div>
+<div id="toast" role="status" aria-live="polite"></div>
 
 <div id="dpad">
   <button id="dUp" type="button" tabindex="-1" aria-label="Up">&#9650;</button>
@@ -22,7 +23,7 @@
 <div id="nameOverlay">
   <div id="nameCard">
     <h1>Welcome to the Square</h1>
-    <p>Pick a name for this visit. Nothing is saved.</p>
+    <p>Pick a name for this visit. If you're logged in on LiquidGov, the game uses that name instead.</p>
     <input id="nameInput" type="text" maxlength="20" placeholder="A throwaway name" autocomplete="off">
     <button id="nameGo" type="button">Walk in</button>
   </div>

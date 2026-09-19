@@ -18,6 +18,8 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-19 — chrome polish built, not deployed.** `chrome-polish-built.md`.
+  Title, welcome copy, hide desktop d-pad, DOM toast, paper nameplates.
 - **2026-09-19 — inventory strip live.** Brandon deployed `a9a998d`
   (`--label inv-strip`). Verify 33/0, items 11 unchanged. `GROK_INV_STRIP_LIVE.md`.
 - **2026-09-19 — inventory strip built, not deployed.** `inventory-strip-built.md`.

@@ -18,6 +18,8 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-19 — item glyphs built, not deployed.** `item-glyphs-built.md`.
+  11 lab items, 16×16 atlas, floor/wall/chips. Client only.
 - **2026-09-19 — resume name live.** Brandon deployed `7955df0`
   (`--label resume-name`) after recloning a corrupt local git store.
   Verify 33/0. `GROK_RESUME_NAME_LIVE.md`. Occupant lerp shipped in the same deploy (`f7c8ffe`).

@@ -53,6 +53,72 @@ function spriteDestX(worldX) { return worldX - SPRITE_W / 2; }
 function spriteDestY(worldY, half) { return worldY - (SPRITE_H - half); }
 function spriteSrcX(dir, frame) { return (dir * 2 + frame) * SPRITE_W; }
 
+// 16×16 item glyphs, one cell per PLACED_ITEM_INFO slug. Same bake-once
+// blit as the figure atlas. Floor, wall, and the inventory chip all
+// drawImage from here instead of a flat color square.
+var ITEM_GLYPH = 16;
+var itemAtlas = document.createElement("canvas");
+var itemGlyphIndex = {};
+(function paintItemAtlas() {
+  var slugs = [];
+  for (var k in PLACED_ITEM_INFO) slugs.push(k);
+  slugs.sort();
+  itemAtlas.width = Math.max(ITEM_GLYPH, ITEM_GLYPH * slugs.length);
+  itemAtlas.height = ITEM_GLYPH;
+  var c = itemAtlas.getContext("2d", { alpha: true });
+  c.imageSmoothingEnabled = false;
+  function px(ox, x, y, w, h, col) { c.fillStyle = col; c.fillRect(ox + x, y, w, h); }
+  for (var i = 0; i < slugs.length; i++) {
+    var slug = slugs[i], ox = i * ITEM_GLYPH, col = PLACED_ITEM_INFO[slug].color;
+    itemGlyphIndex[slug] = i;
+    if (slug === "chalk_block") {
+      px(ox, 4, 3, 8, 10, col);
+      px(ox, 4, 3, 8, 1, "#f4efe4");
+      px(ox, 4, 12, 8, 1, "#b8ae94");
+    } else if (slug === "iron_gall_ink_page" || slug === "lampblack_ink") {
+      px(ox, 3, 2, 10, 12, "#efe6d4");
+      px(ox, 5, 4, 6, 1, col);
+      px(ox, 5, 7, 6, 1, col);
+      px(ox, 5, 10, 4, 1, col);
+    } else if (slug === "copper_acetate_bottle" || slug === "vinegar_jar") {
+      px(ox, 6, 1, 4, 3, col);
+      px(ox, 4, 4, 8, 10, col);
+      px(ox, 5, 6, 6, 4, "#f4efe4");
+    } else if (slug === "cider_apple") {
+      px(ox, 4, 5, 8, 8, col);
+      px(ox, 7, 2, 2, 3, "#3a5a28");
+      px(ox, 9, 3, 3, 2, "#3a5a28");
+    } else if (slug === "seashell") {
+      px(ox, 3, 8, 10, 5, col);
+      px(ox, 5, 5, 6, 4, col);
+      px(ox, 7, 3, 2, 3, "#f4efe4");
+    } else if (slug === "alum_crystal") {
+      px(ox, 7, 2, 2, 12, col);
+      px(ox, 4, 6, 8, 4, col);
+      px(ox, 6, 4, 4, 8, "#f4efe4");
+    } else if (slug === "oak_gall" || slug === "oak_gall_tannin") {
+      px(ox, 3, 5, 6, 6, col);
+      px(ox, 8, 7, 5, 5, "#3a2418");
+    } else if (slug === "gum_arabic") {
+      px(ox, 4, 6, 8, 6, col);
+      px(ox, 6, 4, 4, 4, col);
+      px(ox, 6, 7, 4, 2, "#f4efe4");
+    } else {
+      px(ox, 4, 4, 8, 8, col);
+      px(ox, 5, 5, 6, 2, "#f4efe4");
+    }
+  }
+})();
+
+function drawItemGlyph(ctx, slug, dx, dy, size) {
+  var i = itemGlyphIndex[slug];
+  if (i === undefined) return false;
+  size = size || ITEM_GLYPH;
+  ctx.drawImage(itemAtlas, i * ITEM_GLYPH, 0, ITEM_GLYPH, ITEM_GLYPH,
+    Math.round(dx), Math.round(dy), size, size);
+  return true;
+}
+
 // "Redraw next frame" flag, read and reset by frame() in main.js. It is declared HERE, not there: the sheets'
 // onload handlers below assign it, and a cached image can fire onload between two <script> tags, before
 // main.js has run; in strict mode assigning an undeclared name then throws. Declare a name in the first file

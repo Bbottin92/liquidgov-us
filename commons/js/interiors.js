@@ -218,8 +218,14 @@ function renderInvHud() {
     b.className = "invChip" + (slug === lastPickedItem ? " held" : "");
     b.setAttribute("data-item", slug);
     b.setAttribute("title", info.label + " ×" + inventory[slug] + (slug === lastPickedItem ? " (in hand)" : ""));
-    var sw = document.createElement("i");
-    sw.style.background = info.color;
+    var sw = document.createElement("canvas");
+    sw.width = 10; sw.height = 10;
+    var sctx = sw.getContext("2d");
+    sctx.imageSmoothingEnabled = false;
+    if (typeof drawItemGlyph !== "function" || !drawItemGlyph(sctx, slug, 0, 0, 10)) {
+      sctx.fillStyle = info.color;
+      sctx.fillRect(0, 0, 10, 10);
+    }
     var lab = document.createElement("span");
     lab.textContent = info.label;
     var qty = document.createElement("em");

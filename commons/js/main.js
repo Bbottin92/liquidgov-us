@@ -70,10 +70,10 @@ function drawSpace(camX, camY) {
       var wx = 7 * TILE - camX, wy = 0 * TILE - camY;
       ctx.fillStyle = info.color;
       if (portraitOn) {
-        ctx.fillRect(6 * TILE - camX + 3 * TILE - 11, wy + 2 * TILE - 11, 9, 9);
+        drawItemGlyph(ctx, placedItem, 6 * TILE - camX + 3 * TILE - 12, wy + 2 * TILE - 12, 10);
         drawNameplate(ctx, info.label, 6 * TILE - camX + 1.5 * TILE, wy + 2 * TILE + 6);
       } else {
-        ctx.fillRect(wx + 2, wy + 2, TILE - 4, TILE - 4);
+        drawItemGlyph(ctx, placedItem, wx, wy);
         drawNameplate(ctx, info.label, wx + TILE / 2, wy + TILE + 6);
       }
     }
@@ -84,8 +84,7 @@ function drawSpace(camX, camY) {
       var f = placedFloor[fi], finfo = PLACED_ITEM_INFO[f.item];
       if (!finfo) continue;
       var fx = f.x * TILE - camX, fy = f.y * TILE - camY;
-      ctx.fillStyle = finfo.color;
-      ctx.fillRect(fx + 3, fy + 3, TILE - 6, TILE - 6);
+      drawItemGlyph(ctx, f.item, fx, fy);
       drawNameplate(ctx, finfo.label, fx + TILE / 2, fy + TILE + 5);
     }
   }

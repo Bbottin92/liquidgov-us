@@ -18,6 +18,8 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-19 — depth sort built, not deployed.** `depth-sort-built.md`.
+  Actors sort by Y; 10×3 foot shadow. Client only.
 - **2026-09-19 — lit friend door + item glyphs live.** Brandon deployed `cc0498b`
   (`--label lit-door`). Verify 33/0. `GROK_LIT_DOOR_LIVE.md`. Also ships `f57d13d` item glyphs.
 - **2026-09-19 — lit friend door built, not deployed.** `lit-door-built.md`.

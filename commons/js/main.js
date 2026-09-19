@@ -22,6 +22,40 @@ function drawNameplate(c, text, x, y) {
   c.fillText(text, x, y);
 }
 
+function drawFootShadow(c, worldX, worldY) {
+  var x = Math.round(worldX - camX);
+  var y = Math.round(worldY - camY);
+  c.fillStyle = "rgba(26,24,20,0.28)";
+  c.fillRect(x - 5, y - 1, 10, 3);
+}
+
+function drawOneActor(c, a) {
+  drawFootShadow(c, a.x, a.y);
+  var destY = spriteDestY(a.y - camY, a.half);
+  c.drawImage(spriteAtlas, spriteSrcX(a.dir, a.anim), 0, SPRITE_W, SPRITE_H,
+    spriteDestX(a.x - camX), destY, SPRITE_W, SPRITE_H);
+  if (a.name) drawNameplate(c, a.name, a.x - camX, destY - 4);
+}
+
+function drawSortedActors(c) {
+  var list = [];
+  if (mode === "outdoor" && passerby.visible) {
+    list.push({ x: passerby.x, y: passerby.y, dir: passerby.dir, anim: passerby.animFrame,
+      name: "passerby", half: passerby.half });
+  }
+  if (netReady && netRegion) {
+    for (var oid in occupantViz) {
+      var o = occupantViz[oid];
+      list.push({ x: o.x, y: o.y, dir: o.dir, anim: o.animFrame,
+        name: o.display_name || o.id, half: 6 });
+    }
+  }
+  list.push({ x: player.x, y: player.y, dir: player.dir, anim: player.animFrame,
+    name: acceptedDisplayName, half: player.half });
+  list.sort(function (a, b) { return a.y - b.y; });
+  for (var i = 0; i < list.length; i++) drawOneActor(c, list[i]);
+}
+
 // One draw path for outdoor and both interiors -- they already share the
 // same bake/blit/collision shape, so the only per-space differences are
 // "is there a passerby" (outdoor only) and what's in `interactables`.
@@ -112,41 +146,7 @@ function drawSpace(camX, camY) {
     }
   }
 
-  if (mode === "outdoor" && passerby.visible) {
-    var pbsx = passerby.x - camX, pbsy = passerby.y - camY;
-    var pbDestY = spriteDestY(pbsy, passerby.half);
-    ctx.drawImage(spriteAtlas, spriteSrcX(passerby.dir, passerby.animFrame), 0, SPRITE_W, SPRITE_H,
-      spriteDestX(pbsx), pbDestY, SPRITE_W, SPRITE_H);
-    drawNameplate(ctx, "passerby", pbsx, pbDestY - 4);
-  }
-
-  // V2: renders for either outdoor or a shared interior -- otherOccupants
-  // is populated by whichever poll last ran (netPollRegions outdoor,
-  // netPollCurrentRegion indoors) and regionLocalToWorld already handles
-  // both an outdoor REGIONS entry and an interior instance-key string.
-  if (netReady && netRegion) {
-    for (var oid in occupantViz) {
-      var o = occupantViz[oid];
-      var osx = o.x - camX, osy = o.y - camY;
-      var oDestY = spriteDestY(osy, 6);
-      ctx.drawImage(spriteAtlas, spriteSrcX(o.dir, o.animFrame), 0, SPRITE_W, SPRITE_H,
-        spriteDestX(osx), oDestY, SPRITE_W, SPRITE_H);
-      drawNameplate(ctx, o.display_name || o.id, osx, oDestY - 4);
-    }
-  }
-
-  var sx = player.x - camX, sy = player.y - camY;
-  var sDestY = spriteDestY(sy, player.half);
-  ctx.drawImage(spriteAtlas, spriteSrcX(player.dir, player.animFrame), 0, SPRITE_W, SPRITE_H,
-    spriteDestX(sx), sDestY, SPRITE_W, SPRITE_H);
-  // Self-nameplate (GROK_V2_ANSWER.md stretch item): only once the
-  // daemon has actually accepted a name -- before the first join
-  // response lands, or if the daemon was never reachable at all, no
-  // nameplate draws rather than showing the raw typed input that might
-  // not match what other clients see (GROK_NAME_REVIEW.md).
-  if (acceptedDisplayName) {
-    drawNameplate(ctx, acceptedDisplayName, sx, sDestY - 4);
-  }
+  drawSortedActors(ctx);
 
   if (nearestInteractable) {
     var ix = (nearestInteractable.x * TILE + 8) - camX;

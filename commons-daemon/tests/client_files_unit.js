@@ -131,7 +131,7 @@ if (ok.ok) {
   check(!ok.rec.errors.some((e) => /spawn tile is blocked/.test(e)), "assertSpawnIsFree ran and found the spawn free");
   check(ev(ok, "typeof player === 'object' && player.x > 0 && player.y > 0"), "the player exists at a spawn");
   check(ok.rec.listeners.includes("keydown") || ok.rec.listeners.includes("resize"), "the input and resize listeners were registered");
-  for (const fn of ["netMint", "netHandleAuthFailure", "enter", "tryInteract", "applyCrop", "paintBake", "netStatusTick", "netStatusReport", "renderInvHud", "tickToast", "tickPlaceName", "drawNameplate", "ingestOccupants", "stepOccupants", "drawItemGlyph"]) check(ev(ok, "typeof " + fn) === "function", fn + " is a function after load");
+  for (const fn of ["netMint", "netHandleAuthFailure", "enter", "tryInteract", "applyCrop", "paintBake", "netStatusTick", "netStatusReport", "renderInvHud", "tickToast", "tickPlaceName", "drawNameplate", "ingestOccupants", "stepOccupants", "drawItemGlyph", "drawSortedActors"]) check(ev(ok, "typeof " + fn) === "function", fn + " is a function after load");
   check(ev(ok, "netStatusShown") === false && ev(ok, "netStatusFails") === 0, "the badge starts hidden with no failures counted");
   check(ok.rec.errors.length === 0, "nothing was reported through console.error during load: " + JSON.stringify(ok.rec.errors));
 }

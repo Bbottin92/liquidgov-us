@@ -1638,6 +1638,20 @@ Not bug classes. Not “what is live on the droplet.”
   no daemon/civic/nginx change. Guest check on prod: grass checker and creek
   lip render, console clean. Open: Brandon's eye on the dots at real zoom (thin
   the lattice if they crawl). Tileset PNG + player sheet still unnamed.
+- **2026-09-19 -- tileset PNG + player sheet built, local-tested, not deployed.**
+  Brandon: "BUILD tileset PNG + player sheet" (Grok's graphics note +
+  `atlas-pack.md`: `tiles.png` 16x16 grid in `T_*` order, `sprites.png` 4 dir x 2
+  frame, bake stamps once). Client only. I drew it, from `art.md`'s V1 list, with
+  `Persistence/TheCommons/art/make_art.py` (stdlib, deterministic, checks each
+  tile's mean colour against the client's own `COLOR`). The bake stamps from the
+  sheet via `drawTile()` once the PNG loads (world first bakes with `paintTile`,
+  which stays as the fallback; a 404 or wrong size keeps the painted look).
+  Grass variants in cells 48-51 keep the hash variation. One adjacent fix: rooms
+  smaller than the viewport (the mine) left stale outdoor pixels below them; the
+  margin is now cleared to the page black and the bottom hint/toast draw in paper
+  there. Verified in a real browser (Square, creek, woods, Homestead, Lab, mine,
+  all four facings, no-PNG fallback). See `tile-sheets-built.md`. Deploy: client
+  sync now carries index.html + tiles.png + sprites.png; check `200 image/png`.
 
 ## Split: civic site vs game
 

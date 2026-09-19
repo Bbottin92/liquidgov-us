@@ -273,6 +273,45 @@ function shadeHex(hex, f) {
   return "rgb(" + r + "," + g + "," + b + ")";
 }
 
+// ---- Tileset PNG (BUILD tileset PNG + player sheet) --------------------------
+// tiles.png is a 16x16 grid, row-major, cell N = tile id N (the T_* enum),
+// plus grass variants in cells 48..51. Persistence/TheCommons/art/make_art.py
+// generates it deterministically from this file's own COLOR table. The bake
+// stamps from it ONCE per space, exactly as it stamped paintTile's fillRects --
+// the camera still blits the baked crop. The sheet arrives asynchronously, so
+// the world first bakes with paintTile (the fallback) and is re-baked from the
+// sheet the moment it loads; if it never loads (offline, 404, wrong size) the
+// paintTile look simply stays. No runtime packer, no per-frame sheet blits.
+var TILE_SHEET_URL = "tiles.png?v=1", SPRITE_SHEET_URL = "sprites.png?v=1";
+var TILE_SHEET_W = 256, TILE_SHEET_H = 64;
+var tileSheet = null;                  // an <img>, set only once it loaded at the expected size
+var GRASS_VARIANT_CELLS = {};          // grass id -> [phase1 cell, phase2 cell]
+GRASS_VARIANT_CELLS[T_GRASS_A] = [48, 49];
+GRASS_VARIANT_CELLS[T_GRASS_B] = [50, 51];
+var spaceRebakers = [];                // one closure per baked space (outdoor + each interior)
+
+function drawTile(c, id, tx, ty, nb) {
+  if (!tileSheet) { paintTile(c, id, tx, ty, nb); return; }
+  var cell = id;
+  var gv = GRASS_VARIANT_CELLS[id];
+  if (gv) {
+    var phase = (tx * 7 + ty * 13) % 3;      // same hash paintTile's dots used
+    if (phase > 0) cell = gv[phase - 1];
+  }
+  c.drawImage(tileSheet, (cell % 16) * TILE, Math.floor(cell / 16) * TILE, TILE, TILE, tx * TILE, ty * TILE, TILE, TILE);
+  if (id === T_WATER) {
+    // The lip depends on the neighbours, so it stays a small overlay rather
+    // than 16 edge variants in the sheet.
+    var lip = shadeHex(COLOR[T_WATER], -0.28);
+    var px = tx * TILE, py = ty * TILE;
+    c.fillStyle = lip;
+    if (nb(0, -1) !== T_WATER && nb(0, -1) !== -1) c.fillRect(px, py, TILE, 2);
+    if (nb(0, 1) !== T_WATER && nb(0, 1) !== -1) c.fillRect(px, py + TILE - 2, TILE, 2);
+    if (nb(-1, 0) !== T_WATER && nb(-1, 0) !== -1) c.fillRect(px, py, 2, TILE);
+    if (nb(1, 0) !== T_WATER && nb(1, 0) !== -1) c.fillRect(px + TILE - 2, py, 2, TILE);
+  }
+}
+
 // nb(dx, dy) returns the tile id next to (tx, ty), or -1 off the map.
 function paintTile(c, id, tx, ty, nb) {
   var px = tx * TILE, py = ty * TILE, base = COLOR[id];
@@ -600,10 +639,10 @@ baked.width = WORLD_PW; baked.height = WORLD_PH;
 // a compositing channel nothing ever uses.
 var bctx = baked.getContext("2d", { alpha: false });
 bctx.imageSmoothingEnabled = false;
-(function paintBake() {
+function paintBake() {
   for (var y = 0; y < WORLD_H; y++) {
     for (var x = 0; x < WORLD_W; x++) {
-      paintTile(bctx, tiles[idx(x, y)], x, y, function (dx, dy) {
+      drawTile(bctx, tiles[idx(x, y)], x, y, function (dx, dy) {
         var nx = x + dx, ny = y + dy;
         return (nx < 0 || ny < 0 || nx >= WORLD_W || ny >= WORLD_H) ? -1 : tiles[idx(nx, ny)];
       });
@@ -622,7 +661,9 @@ bctx.imageSmoothingEnabled = false;
     var cy = ((a.y0 + a.y1 + 1) / 2) * TILE;
     bctx.fillText(REGIONS[i].name, cx, cy);
   }
-})();
+}
+paintBake();
+spaceRebakers.push(paintBake);
 
 // ---- Interiors (P2): demo house + lab. Same bake-once/blit shape as
 // outdoor, swapped in via `activeSpace` so movement/collision/rendering
@@ -649,14 +690,18 @@ function buildInterior(w, h, fillFn) {
   bake.width = w * TILE; bake.height = h * TILE;
   var bc = bake.getContext("2d", { alpha: false });
   bc.imageSmoothingEnabled = false;
-  for (var yy = 0; yy < h; yy++) {
-    for (var xx = 0; xx < w; xx++) {
-      paintTile(bc, t[idxIn(w, xx, yy)], xx, yy, function (dx, dy) {
-        var nx = xx + dx, ny = yy + dy;
-        return (nx < 0 || ny < 0 || nx >= w || ny >= h) ? -1 : t[idxIn(w, nx, ny)];
-      });
+  function bakeInterior() {
+    for (var yy = 0; yy < h; yy++) {
+      for (var xx = 0; xx < w; xx++) {
+        drawTile(bc, t[idxIn(w, xx, yy)], xx, yy, function (dx, dy) {
+          var nx = xx + dx, ny = yy + dy;
+          return (nx < 0 || ny < 0 || nx >= w || ny >= h) ? -1 : t[idxIn(w, nx, ny)];
+        });
+      }
     }
   }
+  bakeInterior();
+  spaceRebakers.push(bakeInterior);
   return { tiles: t, solid: s, w: w, h: h, pw: w * TILE, ph: h * TILE, baked: bake, interactables: [] };
 }
 
@@ -789,6 +834,7 @@ var lastPickedItem = null;
 // "online others: same sprite, name in ink above head").
 var SPRITE_W = 16, SPRITE_H = 24;
 var DIR_DOWN = 0, DIR_UP = 1, DIR_LEFT = 2, DIR_RIGHT = 3;
+var spriteAtlasCtx = null;
 var spriteAtlas = document.createElement("canvas");
 spriteAtlas.width = SPRITE_W * 8; spriteAtlas.height = SPRITE_H; // 4 dirs x 2 frames
 (function paintSpriteAtlas() {
@@ -798,6 +844,7 @@ spriteAtlas.width = SPRITE_W * 8; spriteAtlas.height = SPRITE_H; // 4 dirs x 2 f
   // opaque black 16x24 box around the figure instead of just the figure.
   var sc = spriteAtlas.getContext("2d", { alpha: true });
   sc.imageSmoothingEnabled = false;
+  spriteAtlasCtx = sc;
   var BODY = "#3a5a7a", SKIN = "#c9a97a";
   function drawFigure(ox, dir, frame) {
     sc.fillStyle = SKIN;
@@ -832,6 +879,30 @@ spriteAtlas.width = SPRITE_W * 8; spriteAtlas.height = SPRITE_H; // 4 dirs x 2 f
 function spriteDestX(worldX) { return worldX - SPRITE_W / 2; }
 function spriteDestY(worldY, half) { return worldY - (SPRITE_H - half); }
 function spriteSrcX(dir, frame) { return (dir * 2 + frame) * SPRITE_W; }
+
+// Load tiles.png and sprites.png (same folder as this page). Each is used only
+// if it decodes at exactly the size the generator writes; anything else leaves
+// the painted look in place. Re-baking is a one-off: every space re-stamps from
+// the sheet, then the next frame redraws.
+(function loadSheets() {
+  var ti = new Image();
+  ti.onload = function () {
+    if (ti.naturalWidth !== TILE_SHEET_W || ti.naturalHeight !== TILE_SHEET_H) return;
+    tileSheet = ti;
+    for (var i = 0; i < spaceRebakers.length; i++) spaceRebakers[i]();
+    forceRedraw = true;
+  };
+  ti.src = TILE_SHEET_URL;
+
+  var si = new Image();
+  si.onload = function () {
+    if (si.naturalWidth !== SPRITE_W * 8 || si.naturalHeight !== SPRITE_H) return;
+    spriteAtlasCtx.clearRect(0, 0, spriteAtlas.width, spriteAtlas.height);
+    spriteAtlasCtx.drawImage(si, 0, 0);
+    forceRedraw = true;
+  };
+  si.src = SPRITE_SHEET_URL;
+})();
 
 function updateFacingAnim(actor, dx, dy, dt, moved) {
   // Facing follows input, not the post-collision result -- bumping a wall
@@ -1724,7 +1795,20 @@ var prevToastActive = false;
 // same bake/blit/collision shape, so the only per-space differences are
 // "is there a passerby" (outdoor only) and what's in `interactables`.
 function drawSpace(camX, camY) {
+  // A room smaller than the viewport (the 16x12 mine, the lab) only covers
+  // part of the canvas; without this the rest keeps whatever the previous
+  // frame -- usually the outdoor world -- left there. Fill it with the page's
+  // own black first. Only when the space really is smaller, so the outdoor
+  // frame (which always covers everything) pays nothing.
+  if (activeSpace.pw < crop.vw || activeSpace.ph < crop.vh) {
+    ctx.fillStyle = "#0c0b09";
+    ctx.fillRect(0, 0, crop.vw, crop.vh);
+  }
   ctx.drawImage(activeSpace.baked, camX, camY, crop.vw, crop.vh, 0, 0, crop.vw, crop.vh);
+  // The hint and toast sit at the bottom of the viewport. In a room shorter
+  // than the viewport that is the black margin, where ink would vanish, so
+  // they switch to paper there.
+  var hintInk = (activeSpace.ph - camY) < crop.vh - 30 ? "#f7f1e4" : INK;
 
   // V2 stretch: the placed lab item, drawn over the baked wall-slot tile
   // itself -- a flat color square + label, not a sprite (this game has
@@ -1865,7 +1949,7 @@ function drawSpace(camX, camY) {
     // outside" stub text would leave keyboard users with no on-screen cue
     // that Enter still leaves (the interact button covers touch). Drawn
     // higher than the toast line so a lab-station toast can't overlap it.
-    ctx.fillStyle = INK;
+    ctx.fillStyle = hintInk;
     ctx.font = "8px monospace";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
@@ -1873,7 +1957,7 @@ function drawSpace(camX, camY) {
   }
 
   if (performance.now() < toast.until) {
-    ctx.fillStyle = INK;
+    ctx.fillStyle = hintInk;
     ctx.font = "8px monospace";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";

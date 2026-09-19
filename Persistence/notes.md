@@ -18,6 +18,11 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-19 — connection badge live.** `GROK_STATUS_LIVE.md`. Served
+  page has `#connStatus`, 8 scripts, civic 200, internals 404. Machine
+  accepted: 4s / 6 *move* failures (polls not counted — a tick has 1–4
+  polls and would flash on a 1s restart). CI on `bd50119` green. No
+  daemon restart. No next BUILD.
 - **2026-09-19 — connection status: A.** `GROK_STATUS_ANSWER.md`. DOM
   badge outside the canvas, one line "Reconnecting…", 4s / 6 failures,
   hide on the next success. Observe only. No extra clear-delay. Machine

@@ -94,3 +94,40 @@ open and see a stranger's lots light it (and stay dark for someone you blocked).
 
 **4b orphans** (its own BUILD: `user-exists`, log-only first, two passes, cap 3,
 backup). Enter-by-name and a public blocked route are explicitly out.
+
+## Deployed (2026-09-19, Brandon: "deploy"; Grok accepted in `GROK_REST_4A_REVIEW.md`)
+
+Civic first, then daemon, then client, in that order. nginx untouched.
+
+1. **Civic drift check first:** the droplet's `http_server.cpp` md5
+   (`81eb0e5e...`) **equals** the version before this round (`d9a36e5~1`), so
+   nothing had been hand-edited live; the sync's dry-run sent exactly that one civic
+   file. Daemon dry-run: `schema.sql` (comment only), `civic.cpp/.hpp`,
+   `house.cpp/.hpp`, `main.cpp`; client: `index.html`. The droplet's client was still
+   `9a8ac18c...`.
+2. **Online game-DB backup:** `/var/lib/commons/backups/commons.sqlite.pre-open-20260919T093423Z`,
+   `integrity_check` ok (items 3, recipes 3, maps 14, map_instances 6, players 5,
+   placed 3, inventory 4). Left on the box.
+3. **Civic:** synced with `deploy/sync-to-droplet.sh` (data exclusions hardcoded),
+   `-j1` build on the droplet (1m20s), `systemctl restart liquidgov`. Public `/` and
+   `/commons/` 200. **Public `/internal/blocked/alice` is 404** (as are
+   `/internal/friends` and `/internal/session-user`). On the box: same-box, no session
+   answers `{"blocked":true}` 200; with `X-Forwarded-For` it is a 404;
+   `/internal/session-user` still works. The accounts store's mtime is from before
+   the deploy (untouched).
+4. **Daemon:** synced, `-j1` build, no reconfigure, restart. Live DB read-only:
+   integrity ok, every count identical to the baseline, all 5 players still
+   `friends`. Through nginx: lots / `1,1` / house `/placed/` 200; a guest's lots
+   `{"lots":[]}`; `house-policy` with no cookie `403 not_bound`.
+5. **Client:** droplet = served = local `index.html` `95f997e7...` (was `9a8ac18c...`;
+   tiles/sprites unchanged); served page carries `HOUSE_POLICY_NEXT`. A guest walk on
+   production: loads, joins, console clean.
+6. Journal: no failures; `NRestarts=0` for both services.
+
+**Not seen on production:** an owner actually flipping a house to `open` and a
+stranger's door lighting (needs two real logged-in accounts; I don't sign in to
+production). The check for you (two accounts, or you plus someone): set your door to
+`open` at the latch (Enter cycles friends -> open -> locked); on the other account,
+who is **not** your friend, go to Homestead Row: your house should appear as a lit
+door; walk in. Block that account from LiquidGov and, within about 15 seconds of
+their next move, they should be walked out and the door should vanish for them.

@@ -1728,6 +1728,18 @@ Not bug classes. Not “what is live on the droplet.”
   with the request stubbed. See `open-built.md`. Deploy: **civic first** (drift-check
   the droplet's `http_server.cpp`), then daemon, then client, after Grok's review and
   Brandon's `deploy`. 4b orphans is its own BUILD (log-only first).
+- **2026-09-19 -- `open` houses (rest slice 4a) deployed (civic, then daemon, then
+  client).** Grok accepted (`GROK_REST_4A_REVIEW.md`); Brandon said `deploy`. Civic
+  drift check first: the droplet's `http_server.cpp` equalled the previous git version
+  (`81eb0e5e...`), only that file differed. Online game-DB backup
+  (`commons.sqlite.pre-open-20260919T093423Z`, left on the box), civic `-j1` build +
+  `liquidgov` restart (public `/internal/blocked/...` is 404; on-box it answers and
+  refuses X-Forwarded-For; accounts store untouched), daemon `-j1` + restart (DB
+  integrity ok, counts unchanged, all houses still `friends`), then the client
+  (droplet = served = local `95f997e7...`). No failures, no restarts. An owner flipping
+  a real house to `open` and a stranger's door lighting is unproven on prod (needs two
+  real accounts). **4a is live.** Parked: 4b orphans (own BUILD: `user-exists`,
+  log-only first, two passes, cap 3, backup).
 
 ## Split: civic site vs game
 

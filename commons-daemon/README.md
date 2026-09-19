@@ -13,6 +13,8 @@ in this directory.
   `players`, `inventory`, `placed`). Seeded once from `seed.sql` with the
   locked V1 data — three lab recipes (chalk-only, no lime), the twelve
   outdoor regions, and the demo house / lab interior templates.
+  Later lookups are `catalog.sql` via `ensure_catalog()` on every start
+  (INSERT OR IGNORE), because seed.sql never re-runs on a live database.
 - **Presence** (`src/presence.*`): RAM only, never a SQLite table, keyed
   by region (`"<col>,<row>"` outdoor, `"instance:<id>"` interior). Join,
   move, rekey (crossing a region without leaving a ghost in the old

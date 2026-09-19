@@ -124,4 +124,8 @@ void Database::ensure_visit_policy() {
     if (!has_column) exec("ALTER TABLE players ADD COLUMN visit_policy TEXT NOT NULL DEFAULT 'friends';");
 }
 
+void Database::ensure_catalog(const std::string& catalog_path) {
+    exec_file(catalog_path);
+}
+
 } // namespace commons

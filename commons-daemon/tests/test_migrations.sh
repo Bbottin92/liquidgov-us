@@ -39,6 +39,14 @@ for fixture in schema.pre-visit-policy schema.pre-inventory-recency; do
   assert_eq "the existing inventory row is intact" 3 "$(dbq "select quantity from inventory where player_id=1")"
   assert_eq "the existing house instance is intact" 1 "$(dbq "select count(*) from map_instances where owner_player_id=1")"
   assert_eq "the database passes integrity_check" ok "$(dbq "pragma integrity_check")"
+  assert_eq "catalog grew to 8 items (3 seed + 5 ensure_catalog)" 8 "$(dbq "select count(*) from items")"
+  assert_eq "and 8 recipes" 8 "$(dbq "select count(*) from recipes")"
+  assert_eq "no lime (pushback.md)" 0 "$(dbq "select count(*) from items where slug like '%lime%'" )"
+  assert_eq "vinegar_jar is present" 1 "$(dbq "select count(*) from items where slug='vinegar_jar'")"
+  assert_eq "oak_gall_tannin is present" 1 "$(dbq "select count(*) from items where slug='oak_gall_tannin'")"
+  assert_eq "lampblack_ink is present" 1 "$(dbq "select count(*) from items where slug='lampblack_ink'")"
+  assert_eq "alum_crystal is present" 1 "$(dbq "select count(*) from items where slug='alum_crystal'")"
+  assert_eq "gum_arabic is present" 1 "$(dbq "select count(*) from items where slug='gum_arabic'")"
   get "$D/health"; assert_code "and the daemon serves" 200
   stop_daemon; start_daemon
   assert_eq "a second start is a no-op (idempotent), rows unchanged" 2 "$(dbq "select count(*) from players")"
@@ -51,4 +59,6 @@ echo "-- a brand-new database is created at the current shape"
 rm -rf "$WORK/run"; start_daemon
 assert_contains "fresh DB has visit_policy" "$(cols players)" visit_policy
 assert_contains "fresh DB has inventory.updated_at" "$(cols inventory)" updated_at
-assert_eq "fresh DB is seeded (3 catalog items)" 3 "$(dbq "select count(*) from items")"
+assert_eq "fresh DB is seeded (8 catalog items: 3 seed + 5 catalog)" 8 "$(dbq "select count(*) from items")"
+assert_eq "fresh DB has no lime" 0 "$(dbq "select count(*) from items where slug like '%lime%'")"
+assert_eq "fresh DB recipes match items" 8 "$(dbq "select count(*) from recipes")"

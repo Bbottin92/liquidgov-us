@@ -30,6 +30,11 @@ public:
     // Same shape, for players.visit_policy (house friends/locked). Existing
     // rows take the DEFAULT, so every current house stays friends-only.
     void ensure_visit_policy();
+    // Catalog rows added after the first seed. seed.sql only runs when
+    // `items` is empty, so production never sees new lookups without this.
+    // catalog.sql is INSERT OR IGNORE; calling it every start is a no-op
+    // once the five rows exist. No lime (pushback.md).
+    void ensure_catalog(const std::string& catalog_path);
     // A consistent, online copy of the live database (the SQLite backup API,
     // never a file copy, so it is safe in WAL mode with the daemon running) to
     // `dest`, verified with integrity_check. False on any failure; a partial

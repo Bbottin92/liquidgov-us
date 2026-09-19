@@ -69,7 +69,7 @@ start_daemon() {
     echo "FATAL: something is already listening on $D before start_daemon (a leftover daemon)"; exit 1
   fi
   mkdir -p "$WORK/run/data"
-  cp "$DAEMON_DIR/schema.sql" "$DAEMON_DIR/seed.sql" "$WORK/run/"
+  cp "$DAEMON_DIR/schema.sql" "$DAEMON_DIR/seed.sql" "$DAEMON_DIR/catalog.sql" "$WORK/run/"
   # DAEMON_WRAP (optional, e.g. "strace -f -e trace=getrandom -o file") runs the daemon under a tool
   ( cd "$WORK/run" && exec env "$@" ${DAEMON_WRAP:-} "$BIN" data/commons.sqlite ) >> "$WORK/daemon.log" 2>&1 &
   DAEMON_PID=$!

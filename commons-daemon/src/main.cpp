@@ -289,6 +289,7 @@ int main(int argc, char** argv) {
     db.migrate("schema.sql", "seed.sql");
     db.ensure_inventory_recency();
     db.ensure_visit_policy();
+    db.ensure_catalog("catalog.sql");
     std::cerr << "commons-daemon: DB ready at " << db_path << "\n";
 
     commons::PresenceStore presence;

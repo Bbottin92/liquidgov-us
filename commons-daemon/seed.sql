@@ -1,7 +1,8 @@
 -- Catalog seed data, run once (db.cpp only executes this when `items` is
--- still empty). Matches the locked spec exactly:
---   - Three lab lookups, pushback.md's chalk-only fix (no lime).
---   - Twelve outdoor regions + two interior templates, atlas.md's grid.
+-- still empty). The original three lab lookups stay here (pushback.md's
+-- chalk-only fix, no lime). Five more lookups live in catalog.sql and are
+-- applied on every start via ensure_catalog, so a live database that
+-- already has these three rows still grows.
 -- Not the profile-canvas wall slot itself (that's glue-era, fetched from
 -- civic, never a local catalog row) -- but the *slot* an item can occupy
 -- is a placed.is_wall_slot flag, not a special item, so nothing extra is

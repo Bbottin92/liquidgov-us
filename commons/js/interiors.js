@@ -95,31 +95,32 @@ ownHouseSpace.interactables = [
   HOUSE_LATCH
 ];
 
-// Lab -- 20x16. Three lookup stations (pushback.md's chalk-only recipe
-// #3, no lime) plus a workbench visual. Output goes to session RAM only
-// (v1.md) -- there is no SQLite in this preview and no reason to invent
-// one for three toasts. Door is a walk-in trigger both ways, matching
-// its outdoor half (atlas.md), not the demo house's Enter pattern.
+// Lab -- 20x16. Eight lookup stations: the original three (pushback.md's
+// chalk-only recipe, no lime) plus five more (GROK_OBJECTS_ANSWER.md) in
+// a second row. Same loop: look up, +1, never consumed. Door is a walk-in
+// trigger both ways, matching its outdoor half (atlas.md).
 var LAB_ENTRY = { x: 10, y: 14 };
 var LAB_DOOR = { x: 10, y: 15 };
-// item is the real catalog slug (schema.sql/seed.sql's items.slug), not
-// a display string -- V2 lab placeables (below) sends it straight to
-// POST /placed/<instance>, which validates against that same column.
-// Nothing renders `item` as text (the toast uses `name`), so there was
-// no display-string reason for these to ever have been spaced out.
+// item is the real catalog slug (schema.sql/seed.sql/catalog.sql items.slug).
 var LAB_RECIPES = {
-  copper: { name: "Copper + acetic acid → copper acetate", item: "copper_acetate_bottle" },
-  iron:   { name: "Iron + tannin → iron-gall ink", item: "iron_gall_ink_page" },
-  chalk:  { name: "Calcium carbonate, ground and washed → chalk", item: "chalk_block" }
+  copper:    { name: "Copper + acetic acid → copper acetate", item: "copper_acetate_bottle" },
+  iron:      { name: "Iron + tannin → iron-gall ink", item: "iron_gall_ink_page" },
+  chalk:     { name: "Calcium carbonate, ground and washed → chalk", item: "chalk_block" },
+  vinegar:   { name: "Acetic acid from fermented cider", item: "vinegar_jar" },
+  tannin:    { name: "Oak galls, crushed and steeped → tannin", item: "oak_gall_tannin" },
+  lampblack: { name: "Soot + gum arabic → carbon ink", item: "lampblack_ink" },
+  alum:      { name: "Potassium aluminium sulfate, crystallised", item: "alum_crystal" },
+  gum:       { name: "Acacia resin dissolved in water", item: "gum_arabic" }
 };
-// V2 stretch: how a placed slug renders in the wall-slot -- a flat
-// color + short label, matching this game's existing no-sprite-assets
-// look for anything that isn't the player/passerby figure. Keyed by the
-// same real catalog slugs LAB_RECIPES.item now uses.
 var PLACED_ITEM_INFO = {
   chalk_block:            { color: "#e8e2d0", label: "chalk" },
   iron_gall_ink_page:     { color: "#2a2320", label: "ink" },
-  copper_acetate_bottle:  { color: "#4a8a6a", label: "acetate" }
+  copper_acetate_bottle:  { color: "#4a8a6a", label: "acetate" },
+  vinegar_jar:            { color: "#7a5a32", label: "vinegar" },
+  oak_gall_tannin:        { color: "#4a3020", label: "tannin" },
+  lampblack_ink:          { color: "#2a2824", label: "soot" },
+  alum_crystal:           { color: "#c5c8c2", label: "alum" },
+  gum_arabic:             { color: "#a07a48", label: "gum" }
 };
 var labSpace = buildInterior(20, 16, function (t, w) {
   t[idxIn(w, LAB_DOOR.x, LAB_DOOR.y)] = T_IDOOR;
@@ -130,11 +131,21 @@ var labSpace = buildInterior(20, 16, function (t, w) {
   t[idxIn(w, 5, 7)]  = T_STATION_COPPER;
   t[idxIn(w, 10, 7)] = T_STATION_IRON;
   t[idxIn(w, 14, 7)] = T_STATION_CHALK;
+  t[idxIn(w, 3, 10)]  = T_STATION_VINEGAR;
+  t[idxIn(w, 6, 10)]  = T_STATION_TANNIN;
+  t[idxIn(w, 9, 10)]  = T_STATION_LAMPBLACK;
+  t[idxIn(w, 12, 10)] = T_STATION_ALUM;
+  t[idxIn(w, 15, 10)] = T_STATION_GUM;
 });
 labSpace.interactables = [
-  { type: "labStation", recipe: "copper", x: 5, y: 7, prompt: "Look" },
-  { type: "labStation", recipe: "iron", x: 10, y: 7, prompt: "Look" },
-  { type: "labStation", recipe: "chalk", x: 14, y: 7, prompt: "Look" }
+  { type: "labStation", recipe: "copper",    x: 5,  y: 7,  prompt: "Look" },
+  { type: "labStation", recipe: "iron",      x: 10, y: 7,  prompt: "Look" },
+  { type: "labStation", recipe: "chalk",     x: 14, y: 7,  prompt: "Look" },
+  { type: "labStation", recipe: "vinegar",   x: 3,  y: 10, prompt: "Look" },
+  { type: "labStation", recipe: "tannin",    x: 6,  y: 10, prompt: "Look" },
+  { type: "labStation", recipe: "lampblack", x: 9,  y: 10, prompt: "Look" },
+  { type: "labStation", recipe: "alum",      x: 12, y: 10, prompt: "Look" },
+  { type: "labStation", recipe: "gum",       x: 15, y: 10, prompt: "Look" }
 ];
 
 // The mine (BUILD mine A, GROK_MINE_ANSWER.md) -- 16x12, an honest cave: dirt

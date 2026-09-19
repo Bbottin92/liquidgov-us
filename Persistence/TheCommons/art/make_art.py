@@ -7,7 +7,7 @@ byte-identical PNGs. This is the *source* of the art; the PNGs are what ships.
     python3 Persistence/TheCommons/art/make_art.py
 
 tiles.png   256 x 64   16x16 cells, 16 per row, row-major.  Cell N is tile id N
-            (the T_* enum in commons/index.html) for N = 0..35.  Cells 48..51 are
+            (the T_* enum in commons/js/world.js) for N = 0..40.  Cells 48..51 are
             grass variants (A phase 1,2 = 48,49 ; B phase 1,2 = 50,51) so the
             bake can keep breaking up the lattice with a position hash.
 sprites.png 128 x 24   8 cells of 16x24 with alpha: (dir*2 + frame), dir order
@@ -22,7 +22,7 @@ import os, re, struct, zlib, random, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, "..", "..", ".."))
-CLIENT = os.path.join(REPO, "commons", "index.html")
+CLIENT = os.path.join(REPO, "commons", "js", "world.js")
 T = 16
 
 # ---------------------------------------------------------------- pixel helpers
@@ -75,7 +75,7 @@ for m in re.finditer(r'COLOR\[(T_[A-Z_0-9]+)\]\s*=\s*"(#[0-9a-fA-F]{6})"', src):
     COLOR[ids[m.group(1)]] = hexrgb(m.group(2))
 INK = hexrgb(re.search(r'var INK = "(#[0-9a-fA-F]{6})"', src).group(1))
 BODY, SKIN = hexrgb("#3a5a7a"), hexrgb("#c9a97a")   # the existing player colours
-NTILES = 36
+NTILES = 41
 assert len(COLOR) == NTILES and sorted(COLOR) == list(range(NTILES)), sorted(set(range(NTILES)) - set(COLOR))
 
 def C(name): return COLOR[ids[name]]
@@ -357,12 +357,17 @@ DRAW = {
     "T_STATION_COPPER": lambda: station(C("T_STATION_COPPER"), "flask"),
     "T_STATION_IRON": lambda: station(C("T_STATION_IRON"), "block"),
     "T_STATION_CHALK": lambda: station(C("T_STATION_CHALK"), "chalk"),
+    "T_STATION_VINEGAR": lambda: station(C("T_STATION_VINEGAR"), "flask"),
+    "T_STATION_TANNIN": lambda: station(C("T_STATION_TANNIN"), "block"),
+    "T_STATION_LAMPBLACK": lambda: station(C("T_STATION_LAMPBLACK"), "chalk"),
+    "T_STATION_ALUM": lambda: station(C("T_STATION_ALUM"), "block"),
+    "T_STATION_GUM": lambda: station(C("T_STATION_GUM"), "flask"),
     "T_IDOOR": idoor, "T_TREE": tree, "T_RAILING": railing, "T_PLATEAU": plateau,
     "T_FLOWERBED": flowerbed, "T_LOWWALL": lowwall, "T_CRATE": crate, "T_ADIT": adit,
     "T_DOOR_HOUSE": lambda: door(C("T_DOOR_HOUSE"), "plain"),
     "T_MINE_DOOR": mine_door, "T_LAMP": lamp,
 }
-assert {ids[n] for n in DRAW} == set(range(NTILES)), "every tile id 0..35 needs a drawing"
+assert {ids[n] for n in DRAW} == set(range(NTILES)), "every tile id 0..40 needs a drawing"
 
 def build_tiles():
     sheet = Img(16 * T, 4 * T, (0, 0, 0, 255))

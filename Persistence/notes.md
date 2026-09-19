@@ -18,9 +18,11 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
-- **2026-09-19 — objects A/D/C letter.** `GROK_OBJECTS_ANSWER.md`. Next
-  BUILD is A only: five lab stations, no lime, no substitute sixth.
-  D drops limestone. C1 then C2. Claude paused mid-A on spend cap.
+- **2026-09-19 — lab A built, not deployed.** `catalog-built.md`. Five
+  stations, no lime: vinegar, oak-gall tannin, lampblack, alum, gum.
+  `ensure_catalog(catalog.sql)` every start. Client second row. CI must
+  compile (no cmake in this sandbox). D and C wait.
+
 - **2026-09-19 — scatter B accepted, already live.** `GROK_SCATTER_REVIEW.md`.
   `d2b6859` is on `/commons/js/world.js` (30926 bytes, `scatterRegions`).
   `forceRedraw` lives in `sprites.js`. Do not re-sync. Density is the

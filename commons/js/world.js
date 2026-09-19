@@ -90,7 +90,11 @@ var T_GRASS_A = 0, T_GRASS_B = 1, T_PATH = 2, T_WATER = 3, T_DIRT = 4,
     // BUILD mine A (GROK_MINE_ANSWER.md): the adit's one door tile, and the
     // lamp inside. Same flat-colour tileset as everything else -- two more
     // ids, not a new sheet.
-    T_MINE_DOOR = 34, T_LAMP = 35;
+    T_MINE_DOOR = 34, T_LAMP = 35,
+    // BUILD lab A (GROK_OBJECTS_ANSWER.md): five more lookup stations.
+    // Cells 36-47 were free; 48-51 stay grass variants. No lime.
+    T_STATION_VINEGAR = 36, T_STATION_TANNIN = 37, T_STATION_LAMPBLACK = 38,
+    T_STATION_ALUM = 39, T_STATION_GUM = 40;
 
 // Palette, from art.md -- outdoor stays grass/dirt/water, never parchment.
 // Brass stays "sparingly" for the Hall door only, per art.md -- the
@@ -123,6 +127,11 @@ COLOR[T_WORKBENCH]    = "#6b4a32";
 COLOR[T_STATION_COPPER] = "#4a8a6a";
 COLOR[T_STATION_IRON]   = "#2a2a3a";
 COLOR[T_STATION_CHALK]  = "#e8e0d0";
+COLOR[T_STATION_VINEGAR]   = "#7a5a32";
+COLOR[T_STATION_TANNIN]    = "#4a3020";
+COLOR[T_STATION_LAMPBLACK] = "#2a2824";
+COLOR[T_STATION_ALUM]      = "#c5c8c2";
+COLOR[T_STATION_GUM]       = "#a07a48";
 COLOR[T_IDOOR]        = "#b08a5a";
 COLOR[T_TREE]         = "#2f5a3f";
 COLOR[T_RAILING]      = "#9a9488";
@@ -164,7 +173,7 @@ function shadeHex(hex, f) {
 // the world first bakes with paintTile (the fallback) and is re-baked from the
 // sheet the moment it loads; if it never loads (offline, 404, wrong size) the
 // paintTile look simply stays. No runtime packer, no per-frame sheet blits.
-var TILE_SHEET_URL = "tiles.png?v=1", SPRITE_SHEET_URL = "sprites.png?v=1";
+var TILE_SHEET_URL = "tiles.png?v=2", SPRITE_SHEET_URL = "sprites.png?v=1";
 var TILE_SHEET_W = 256, TILE_SHEET_H = 64;
 var tileSheet = null;                  // an <img>, set only once it loaded at the expected size
 var GRASS_VARIANT_CELLS = {};          // grass id -> [phase1 cell, phase2 cell]
@@ -255,6 +264,11 @@ SOLID_TILE[T_WORKBENCH] = 1;
 SOLID_TILE[T_STATION_COPPER] = 1;
 SOLID_TILE[T_STATION_IRON] = 1;
 SOLID_TILE[T_STATION_CHALK] = 1;
+SOLID_TILE[T_STATION_VINEGAR] = 1;
+SOLID_TILE[T_STATION_TANNIN] = 1;
+SOLID_TILE[T_STATION_LAMPBLACK] = 1;
+SOLID_TILE[T_STATION_ALUM] = 1;
+SOLID_TILE[T_STATION_GUM] = 1;
 // P3: T_PLATEAU is walkable ground (raised visual layer only, per
 // atlas.md), not a wall -- everything else here is a real obstacle.
 SOLID_TILE[T_TREE] = 1;

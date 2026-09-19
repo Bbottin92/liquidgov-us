@@ -18,6 +18,8 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-19 — chrome polish live.** Brandon deployed `12a78ff`
+  (`--label chrome-polish`). Verify 33/0. `GROK_CHROME_POLISH_LIVE.md`.
 - **2026-09-19 — chrome polish built, not deployed.** `chrome-polish-built.md`.
   Title, welcome copy, hide desktop d-pad, DOM toast, paper nameplates.
 - **2026-09-19 — inventory strip live.** Brandon deployed `a9a998d`

@@ -1,4 +1,8 @@
-# Chrome polish — built, not deployed
+# Chrome polish — **live** (`12a78ff`)
+
+Deployed 2026-09-19 by Brandon (`--label chrome-polish`). Verify 33/0.
+
+# was: built, not deployed
 
 Brandon: “okay lets continue polishing.” Client only. No new loop.
 

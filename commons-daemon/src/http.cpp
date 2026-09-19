@@ -160,6 +160,23 @@ HttpResponse HttpServer::dispatch(const HttpRequest& req) {
 }
 
 void HttpServer::serve_one(int client_fd) {
+    // The daemon is one thread, so one connection that stops sending (or reading)
+    // would otherwise hold the whole game hostage forever. nginx normally
+    // buffers a request before proxying it, which is why this has not bitten,
+    // but anything else on loopback -- or a proxy setting change -- could. Every
+    // recv/send now gives up after 5s, and the whole request must arrive within
+    // 10s so a trickle of bytes cannot keep the socket alive either. A timed-out
+    // recv returns -1, which the existing `n <= 0` paths already treat as "close
+    // and move on".
+    timeval io_timeout{};
+    io_timeout.tv_sec = 5;
+    setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, &io_timeout, sizeof(io_timeout));
+    setsockopt(client_fd, SOL_SOCKET, SO_SNDTIMEO, &io_timeout, sizeof(io_timeout));
+    const auto request_started = std::chrono::steady_clock::now();
+    auto request_overdue = [&]() {
+        return std::chrono::steady_clock::now() - request_started > std::chrono::seconds(10);
+    };
+
     std::string raw;
     char buf[4096];
     std::size_t header_end = std::string::npos;
@@ -167,7 +184,7 @@ void HttpServer::serve_one(int client_fd) {
     // req.find("\r\n\r\n") split (see http_server.cpp).
     while (header_end == std::string::npos) {
         ssize_t n = recv(client_fd, buf, sizeof(buf), 0);
-        if (n <= 0) { close(client_fd); return; }
+        if (n <= 0 || request_overdue()) { close(client_fd); return; }
         raw.append(buf, static_cast<std::size_t>(n));
         header_end = raw.find("\r\n\r\n");
         if (raw.size() > 1 << 20) { close(client_fd); return; } // 1MB header guard
@@ -199,6 +216,12 @@ void HttpServer::serve_one(int client_fd) {
         ssize_t n = recv(client_fd, buf, sizeof(buf), 0);
         if (n <= 0) break;
         body.append(buf, static_cast<std::size_t>(n));
+        if (request_overdue()) break;
+    }
+    if (static_cast<long>(body.size()) < need) {
+        // Truncated body (the peer stalled or left): do not dispatch half a request.
+        close(client_fd);
+        return;
     }
     // The header split above can already hand back more than `need` bytes
     // even when `need` itself is legal (<=64KiB) -- the 1MB header guard

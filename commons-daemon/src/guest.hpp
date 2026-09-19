@@ -18,7 +18,12 @@ class GuestRegistry {
 public:
     struct Credential { std::string id; std::string secret; };
 
-    // Generates a fresh, unguessable (id, secret) pair and remembers it.
+    // Generates a fresh, unguessable (id, secret) pair and remembers it. Every byte
+    // comes from the OS (getrandom), never a seeded PRNG. The registry is capped
+    // (kMaxEntries): when full it makes room by evicting, and it never refuses --
+    // the client does not check the mint reply, so a refusal would leave a guest
+    // silently half-joined. Throws std::runtime_error only if the OS entropy source
+    // fails, which the HTTP layer turns into a 500.
     Credential mint();
 
     // True iff `id` was minted here and `secret` matches (constant-time
@@ -41,7 +46,18 @@ private:
     // hits it," not a measured number.
     static constexpr long long kIdleMs = 1800000;
 
-    struct Entry { std::string secret; long long last_used_ms; };
+    // Hard cap on remembered credentials (BUILD hardening, GROK_HARDENING.md #2):
+    // POST /presence/guest is world-reachable and used to have no bound at all,
+    // and every mint/verify rescans the map. 256 is well over the 96-occupant
+    // global presence cap.
+    static constexpr std::size_t kMaxEntries = 256;
+    // A credential that was minted but never used to join or move (a probe, a
+    // flood, an abandoned tab) is junk: it expires after two minutes instead of
+    // thirty, and is the first thing evicted when the registry is full. A real
+    // client verifies within a second of minting, so it never sees this.
+    static constexpr long long kUnusedIdleMs = 120000;
+
+    struct Entry { std::string secret; long long last_used_ms; bool used; };
     std::mutex mu_;
     std::unordered_map<std::string, Entry> entries_; // guarded by mu_
 

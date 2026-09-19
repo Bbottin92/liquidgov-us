@@ -220,21 +220,22 @@ std::optional<std::string> resolve_username(const std::string& headers_raw) {
     return username;
 }
 
-std::vector<std::string> resolve_friends(const std::string& headers_raw) {
-    std::vector<std::string> out;
+std::optional<std::vector<std::string>> resolve_friends(const std::string& headers_raw) {
     auto body = fetch_body("/internal/friends", headers_raw);
-    if (!body) return out;
+    if (!body) return std::nullopt; // no cookie, civic unreachable or slow: NO answer
 
+    std::vector<std::string> out;
     // civic emits {"username":"...","friends":["a","b"]} -- usernames are
     // restricted to [A-Za-z0-9._-] (valid_username), so a plain quote-to-
     // quote scan needs no escape handling. Not a JSON parser, same posture
-    // as reqjson.hpp.
+    // as reqjson.hpp. A reply with no "friends" key at all is civic's `{}` for a
+    // session it does not recognise: a real answer, and the answer is "none".
     auto key = body->find("\"friends\"");
     if (key == std::string::npos) return out;
     auto open = body->find('[', key);
-    if (open == std::string::npos) return out;
+    if (open == std::string::npos) return std::nullopt;   // has the key but is not a list: unreadable
     auto close_bracket = body->find(']', open);
-    if (close_bracket == std::string::npos) return out;
+    if (close_bracket == std::string::npos) return std::nullopt;
 
     std::size_t pos = open + 1;
     while (pos < close_bracket) {

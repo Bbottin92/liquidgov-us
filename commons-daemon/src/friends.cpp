@@ -13,11 +13,11 @@ long long now_ms() {
 }
 } // namespace
 
-std::vector<std::string> FriendsCache::get(const std::string& headers_raw) {
+std::optional<std::vector<std::string>> FriendsCache::get(const std::string& headers_raw) {
     // Key on the Cookie value only -- never the whole request head, whose
     // unrelated headers would make the same session miss the cache.
     auto cookie = civic::session_cookie(headers_raw);
-    if (!cookie) return {};
+    if (!cookie) return std::vector<std::string>{}; // a guest: really no friends
 
     const long long now = now_ms();
     auto it = cache_.find(*cookie);
@@ -35,8 +35,11 @@ std::vector<std::string> FriendsCache::get(const std::string& headers_raw) {
         if (cache_.size() >= kCap) cache_.clear();
     }
 
+    auto answer = civic::resolve_friends(headers_raw);
+    if (!answer) return std::nullopt; // no answer: remember nothing, touch nothing
+
     Entry fresh;
-    fresh.friends = civic::resolve_friends(headers_raw);
+    fresh.friends = *answer;
     fresh.fetched_ms = now;
     cache_[*cookie] = fresh;
     return fresh.friends;

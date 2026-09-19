@@ -223,8 +223,14 @@ bool visit_allowed(const std::string& headers_raw, const std::string& owner,
     const std::string policy = house.visit_policy_of(owner);
     if (policy == "locked") return false;
     auto mine = friends.get(headers_raw);
-    const bool is_friend = std::find(mine.begin(), mine.end(), owner) != mine.end();
+    const bool is_friend = mine && std::find(mine->begin(), mine->end(), owner) != mine->end();
     if (!is_friend) {
+        // Civic gave no answer (down or slow), so we do not KNOW they are not a
+        // friend. For a friends house that means: never walk out someone who is
+        // already inside (staying), and do not let anyone new in (entering). An
+        // open house does not need the friends list -- it is decided by the
+        // block check below either way.
+        if (!mine && policy == "friends") return !require_owner_online;
         // Only an `open` house lets in a non-friend (BUILD open A). Civic answers
         // whether either side has blocked the other, and only a real
         // {"blocked":false} opens the door: no session, an unknown owner, civic
@@ -427,7 +433,9 @@ int main(int argc, char** argv) {
         std::vector<std::string> lots;
         auto viewer = commons::civic::resolve_username(req.headers_raw);
         if (viewer) {
-            auto friends = friends_cache.get(req.headers_raw);
+            // No answer from civic: the friend doors stay dark for now (nothing is
+            // cached, so the next poll asks again); open houses are still offered.
+            auto friends = friends_cache.get(req.headers_raw).value_or(std::vector<std::string>{});
             auto online = presence.bound_usernames();
             auto ci_less = [](const std::string& a, const std::string& b) {
                 std::string la = a, lb = b;

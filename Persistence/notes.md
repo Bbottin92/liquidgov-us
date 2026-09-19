@@ -1805,6 +1805,17 @@ Not bug classes. Not “what is live on the droplet.”
   kill switch `COMMONS_ORPHAN_REAP=0`. **Rest slices 1-4 and the reap are all live.**
   Nothing is parked from that list; `backup-strat.md` and `civic-ratelimit.md` are explore
   notes, not builds.
+- **2026-09-19 -- hardening (four daemon fixes) built, local-tested, not deployed.** From
+  Claude's survey, Grok's `GROK_HARDENING.md`. (1) guest secrets from `getrandom`, not a seeded
+  Mersenne Twister; (2) guest registry capped at 256 -- **evicts instead of the spec's 503**
+  (the client doesn't check the mint reply), never-used credentials expire in 2 min and go
+  first; (3) 5s socket timeouts + 10s whole-request deadline, truncated bodies closed not
+  dispatched; (4) `FriendsCache` no longer caches a civic failure (`resolve_friends` returns
+  optional; unknown = never evict a friends-house visitor, never admit a new one, lots dark
+  for that poll only). Tested against real civic incl. frozen-civic timing proofs; my first
+  friends-cache test was wrong (froze civic after both caches had expired) and was redone.
+  See `hardening-built.md` (also notes a possible civic-outage breaker for Grok to decide).
+  nginx `limit_req` on `/guest` stays a later named deploy. Deploy: daemon only.
 
 ## Split: civic site vs game
 

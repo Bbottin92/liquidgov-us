@@ -1,4 +1,5 @@
 #pragma once
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -25,11 +26,18 @@ public:
     static constexpr long long kTtlMs = 15000;
     static constexpr std::size_t kCap = 256;
 
-    // Friends of this cookie's account, from cache if fresh, otherwise
-    // fetched from civic (commons::civic::resolve_friends) and remembered.
-    // Empty for a request with no lg_session cookie -- guests are never
-    // cached, so anonymous traffic can't churn the map.
-    std::vector<std::string> get(const std::string& headers_raw);
+    // Friends of this cookie's account, from cache if fresh, otherwise fetched
+    // from civic (commons::civic::resolve_friends) and remembered. A request with
+    // no lg_session cookie is a guest: an EMPTY list (a real answer, never
+    // cached, so anonymous traffic can't churn the map).
+    //
+    // nullopt = civic gave NO answer (down, slow, unreadable) and there is no
+    // fresh cached list. That is never stored -- not as `{}`, not as anything --
+    // and any expired entry is left exactly as it was. (BUILD hardening: this used
+    // to cache a timeout as "no friends" for the whole TTL, which darkened the
+    // lots and walked friends-policy visitors out on their next move.) Callers
+    // must treat nullopt as "don't know", not as "no friends".
+    std::optional<std::vector<std::string>> get(const std::string& headers_raw);
 
 private:
     struct Entry {

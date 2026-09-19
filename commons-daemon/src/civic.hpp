@@ -55,9 +55,11 @@ Existence user_exists(const std::string& username);
 
 // Friends query (glue.md, GROK_V6_ANSWER.md): the mutual, non-blocked
 // friends of *that cookie's* account, via civic's same-box
-// /internal/friends. Empty on every failure path -- no cookie, civic
-// unreachable, unresolved session -- because a caller can't do anything
-// different for "no friends" vs "couldn't ask".
-std::vector<std::string> resolve_friends(const std::string& headers_raw);
+// /internal/friends. nullopt means NO ANSWER (no lg_session cookie, civic down or
+// slow, an unreadable reply) and is different from an empty list, which is a
+// real answer ("this session has no friends", or civic's `{}` for a session it
+// does not recognise). BUILD hardening: the two used to look the same, so a
+// civic timeout was cached as "you have no friends".
+std::optional<std::vector<std::string>> resolve_friends(const std::string& headers_raw);
 
 } // namespace commons::civic

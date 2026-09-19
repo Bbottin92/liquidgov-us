@@ -1915,6 +1915,12 @@ Not bug classes. Not “what is live on the droplet.”
   injected 429s retried at 0/1.7/6.5s then recovered; a real daemon restart gave 3 simultaneous 403s -> ONE mint -> rejoin. Client deploy
   needs `deploy` (`drift-check.sh --tree client --baseline <live commit>`, then `sync-client-to-droplet.sh`; no daemon restart, no nginx).
   Parked: `index.html` split, `/health` hash.
+- **2026-09-19 ~16:47Z -- netMint check DEPLOYED (client only).** Brandon: `deploy` twice (read-only client drift check, then the
+  sync). No drift; only `index.html` changed (sha256 8a74adbb..., byte-identical to the repo); `.deployed-client-rev` = `b04970e`
+  (outside the served dir); daemon NOT restarted (`ActiveEnterTimestamp` 15:24:54Z, `NRestarts=0` unchanged); `verify.sh --guest-name x`
+  22/22; live page has the `netMint:begin` block. The tree guard first refused on a stray `deploy/__pycache__/*.pyc` made by my
+  retention unit test; deleted it and fixed the cause (`b04970e`: no bytecode written, syncs exclude `__pycache__`/`*.pyc`).
+  Parked: `index.html` split, `/health` hash. `/commons/recipes` 404 left alone.
 
 ## Split: civic site vs game
 

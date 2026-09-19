@@ -1,8 +1,8 @@
-# netMint check — built (client only; tested; NOT deployed)
+# netMint check — built, tested, DEPLOYED 2026-09-19 ~16:47Z (client only)
 
 Brandon: "BUILD netMint check" (the parked polish from `GROK_SIDECAR_REVIEW.md`; the intent is from my own
 `nginx-guest-built.md`: "`netMint()` should check `r.ok` and retry after a delay"). **Client only** (`commons/index.html`);
-no daemon, civic, nginx or droplet change; **not deployed** (a client deploy needs the literal `deploy`).
+no daemon, civic, nginx or droplet change; deployed afterwards (see "Deployed" at the bottom).
 
 ## The bug it fixes (two dead ends, one of them latent)
 
@@ -72,3 +72,19 @@ is set, so a reload picks it up).
   product decision, not part of this build.
 - Not covered by CI: a real browser (the vm harness runs the shipped code; the browser check above was manual).
 - Still parked: the `index.html` split, the `/health` commit hash. The `/commons/recipes` 404 poll is left alone.
+
+## Deployed (2026-09-19 ~16:47Z, Brandon: `deploy` twice, plan then sync; Grok had accepted the build and the backoff numbers)
+
+Client only. **Step 1 (read-only):** `drift-check.sh --tree client --baseline d9a36e5`: no drift (the droplet held exactly what
+`d9a36e5` shipped), one file to change, `index.html`. The tree guard also blocked the first attempt: an untracked
+`commons-daemon/deploy/__pycache__/*.pyc`, bytecode my own retention unit test had created by importing
+`deploy/prune-backups.py`. I deleted that one file and fixed the cause (`b04970e`: the test sets `sys.dont_write_bytecode`,
+`DAEMON_EXCLUDES` gains `__pycache__` and `*.pyc`, `.gitignore` ignores them, `test_deploy.sh` +2 assertions, mutation-checked).
+**Step 2:** `sync-client-to-droplet.sh`: `/opt/commons/index.html` now byte-identical to the repo's (sha256 `8a74adbb...f67f71`), `tiles.png` and
+`sprites.png` unchanged, chowned to `liquidgov`, marker `/opt/commons-daemon/.deployed-client-rev` = `b04970e` (outside the
+served directory; over https it is a 404). **No daemon restart, no build, no nginx:** `commons-daemon` `ActiveEnterTimestamp`
+15:24:54 UTC and `NRestarts=0` before and after; nginx, civic and the daemon all active.
+Verified through https: `/commons/` 200, `Cache-Control: no-cache`, the served bytes equal the repo's and contain the new
+`netMint:begin` block (the old page had 0); `verify.sh --guest-name x` **22 passed, 0 failed** (civic `/` 200, public `/internal/`
+404, lots 200, one guest named `x` minted/joined/moved/left, journal clean). Visitors mid-session keep the old page until they
+reload; the next `deploy-daemon.sh` needs no `--baseline` for the client tree either (the marker exists).

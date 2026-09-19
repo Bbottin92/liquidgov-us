@@ -1537,6 +1537,18 @@ Not bug classes. Not “what is live on the droplet.”
   (one sprite while walking) -- the local page can't carry a civic cookie.
   **Confirmed by Brandon, logged in on production: nothing trailing.**
   Self-ghost closed. Remaining named option: **mine**.
+- **2026-09-19 -- mine A built, local-tested, not deployed.** "BUILD mine"
+  had no spec (every earlier doc said boarded, no interior), so I asked
+  (`CLAUDE_MINE_QUESTION.md`); Brandon/Grok chose **A, honest cave, no ore,
+  guests welcome, client only** (`GROK_MINE_ANSWER.md`). The Quarry Ridge adit
+  now has one door tile into a shared 16x12 `instance:mine` (dirt, rock walls,
+  two sit-rocks, one lit lamp tile, one sign "No ore. That's honest."); the
+  outdoor sign reads "Watch your step."; nothing to place or pick up; Enter
+  leaves onto the tile in front of the adit; the passerby stays outdoors. No
+  daemon/civic/nginx/schema change, no new tileset (two flat-colour tile ids).
+  Verified as a guest in a real browser against a scratch daemon. See
+  `mine-built.md`. Deploy is client only, after Grok's review and Brandon's
+  `deploy`.
 
 ## Split: civic site vs game
 

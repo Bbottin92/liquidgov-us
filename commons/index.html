@@ -204,7 +204,11 @@ var T_GRASS_A = 0, T_GRASS_B = 1, T_PATH = 2, T_WATER = 3, T_DIRT = 4,
     // V4 (GROK_V4_ANSWER.md): the one Homestead door that unboards for
     // the bound self. Its own tile, not a reuse of T_DOOR_DEMO -- a
     // guest and a bound player see the same wall from a different door.
-    T_DOOR_HOUSE = 33;
+    T_DOOR_HOUSE = 33,
+    // BUILD mine A (GROK_MINE_ANSWER.md): the adit's one door tile, and the
+    // lamp inside. Same flat-colour tileset as everything else -- two more
+    // ids, not a new sheet.
+    T_MINE_DOOR = 34, T_LAMP = 35;
 
 // Palette, from art.md -- outdoor stays grass/dirt/water, never parchment.
 // Brass stays "sparingly" for the Hall door only, per art.md -- the
@@ -246,6 +250,8 @@ COLOR[T_LOWWALL]      = "#7a7468";
 COLOR[T_CRATE]        = "#8a6a46";
 COLOR[T_ADIT]         = "#5d564c";
 COLOR[T_DOOR_HOUSE]   = "#5a7a8a";
+COLOR[T_MINE_DOOR]    = "#25211c";
+COLOR[T_LAMP]         = "#e6b957";
 var INK = "#1a1814";
 
 // collision.md: doors are solid -- "stand next to them, press Enter," not
@@ -280,6 +286,8 @@ SOLID_TILE[T_FLOWERBED] = 1;
 SOLID_TILE[T_LOWWALL] = 1;
 SOLID_TILE[T_CRATE] = 1;
 SOLID_TILE[T_ADIT] = 1;
+SOLID_TILE[T_MINE_DOOR] = 1;
+SOLID_TILE[T_LAMP] = 1;
 
 // ---- Build the tile + collision arrays (once) ---------------------------
 var tiles = new Uint8Array(WORLD_W * WORLD_H);
@@ -293,6 +301,9 @@ var interactables = [];
 // by frame()'s outdoor branch since it's a walk-in trigger, not something
 // in `interactables` (which is the Enter-to-confirm family).
 var LAB_DOOR_TILE = null;
+// The adit door. Declared here (not beside the interior) for the same reason as
+// FRIEND_LOT_DOORS: the outdoor world is built during script load.
+var MINE_DOOR_TILE = null;
 
 (function bakeTileIds() {
   var creek = regionAABB(findRegion("Creek"));
@@ -508,17 +519,21 @@ function dressRegions() {
     tiles[idx(glx, garden.y0 + 9)] = T_LOWWALL;
   }
 
-  // Quarry Ridge: boarded mine adit + sit-rock + a small sign. The adit is
-  // decorative -- no ore, no interior, matches the locked pin. Only the
-  // sign is interactable (a look/read prompt, atlas.md), not the adit.
+  // Quarry Ridge: the mine adit + sit-rock + a small sign. BUILD mine A
+  // (GROK_MINE_ANSWER.md): the bottom-centre tile of the adit is a real door
+  // (solid, Enter) into instance:mine -- an honest cave, no ore (that lock
+  // stays). The rest of the face is still rock.
   var quarry = regionAABB(findRegion("Quarry Ridge"));
   for (var qax = quarry.x0 + 8; qax <= quarry.x0 + 12; qax++) {
     for (var qay = quarry.y0 + 4; qay <= quarry.y0 + 7; qay++) tiles[idx(qax, qay)] = T_ADIT;
   }
+  MINE_DOOR_TILE = { x: quarry.x0 + 10, y: quarry.y0 + 7 };
+  tiles[idx(MINE_DOOR_TILE.x, MINE_DOOR_TILE.y)] = T_MINE_DOOR;
+  interactables.push({ type: "mineDoor", x: MINE_DOOR_TILE.x, y: MINE_DOOR_TILE.y, prompt: "Enter" });
   tiles[idx(quarry.x0 + 9, quarry.y0 + 10)] = T_BENCH; // the sit-rock
   var signX = quarry.x0 + 14, signY = quarry.y0 + 8;
   tiles[idx(signX, signY)] = T_SIGN;
-  interactables.push({ type: "sign", x: signX, y: signY, prompt: "Read" });
+  interactables.push({ type: "sign", x: signX, y: signY, prompt: "Read", text: "Watch your step." });
 }
 
 // ---- Bake the world once to an offscreen canvas (tilemap.md: bake once,
@@ -649,6 +664,27 @@ labSpace.interactables = [
   { type: "labStation", recipe: "copper", x: 5, y: 7, prompt: "Look" },
   { type: "labStation", recipe: "iron", x: 10, y: 7, prompt: "Look" },
   { type: "labStation", recipe: "chalk", x: 14, y: 7, prompt: "Look" }
+];
+
+// The mine (BUILD mine A, GROK_MINE_ANSWER.md) -- 16x12, an honest cave: dirt
+// floor, rock walls, two sit-rocks, one lit lamp tile, one sign. No ore, no
+// stations, nothing to place or pick up. Shared instance:mine like demo/lab,
+// so guests and bound players both walk in; Enter leaves (same as the demo
+// house), back onto the tile in front of the adit.
+var MINE_ENTRY = { x: 7, y: 10 };
+var MINE_DOOR = { x: 7, y: 11 };
+var mineSpace = buildInterior(16, 12, function (t, w, h) {
+  for (var my = 0; my < h; my++) for (var mx = 0; mx < w; mx++) t[idxIn(w, mx, my)] = T_DIRT;
+  for (var mx2 = 0; mx2 < w; mx2++) { t[idxIn(w, mx2, 0)] = T_LOWWALL; t[idxIn(w, mx2, h - 1)] = T_LOWWALL; }
+  for (var my2 = 0; my2 < h; my2++) { t[idxIn(w, 0, my2)] = T_LOWWALL; t[idxIn(w, w - 1, my2)] = T_LOWWALL; }
+  t[idxIn(w, MINE_DOOR.x, MINE_DOOR.y)] = T_IDOOR;
+  t[idxIn(w, 7, 0)] = T_LAMP;   // set into the back wall, a lit tile
+  t[idxIn(w, 3, 6)] = T_BENCH;  // the two sit-rocks
+  t[idxIn(w, 12, 6)] = T_BENCH;
+  t[idxIn(w, 10, 2)] = T_SIGN;
+});
+mineSpace.interactables = [
+  { type: "sign", x: 10, y: 2, prompt: "Read", text: "No ore. That's honest." }
 ];
 
 // Pickups. A guest's are session-only (v1.md: RAM, vanish on refresh --
@@ -978,7 +1014,7 @@ var NET_INTERVAL_MS = 500; // presence.md: per-region ~2Hz
 // "if (netReady && instanceKey)" guard already used for demoHouse/lab.
 // "visit" (friends policy) is filled in per door -- whichever friend's house
 // the player just walked into.
-var INTERIOR_INSTANCE_KEY = { demoHouse: "instance:demo", lab: "instance:lab" };
+var INTERIOR_INSTANCE_KEY = { demoHouse: "instance:demo", lab: "instance:lab", mine: "instance:mine" };
 var netId = null, netSecret = null, netReady = false;
 // A bound player has two ids: the guest credential above (what this client
 // authenticates with) and "u:<username>", the id the daemon actually files
@@ -1438,7 +1474,7 @@ function currentDY() {
 // ---- Interact system ----------------------------------------------------
 // One prompt at doors/set pieces, no RPG menu (locked, art.md). Range is
 // "on or next to the tile" -- Chebyshev distance <= 1.
-// mode: "outdoor" | "demoHouse" | "lab" | "house" (V4) | "visit" (a friend's house). The demo house keeps its P1
+// mode: "outdoor" | "demoHouse" | "lab" | "mine" | "house" (V4) | "visit" (a friend's house). The demo house keeps its P1
 // Enter-to-enter/Enter-to-exit pattern unchanged. The Lab is a walk-in
 // trigger both ways (atlas.md is explicit that this door, unlike Hall or
 // the demo house, isn't an Enter-to-confirm interaction) -- Enter also
@@ -1507,6 +1543,8 @@ function tryInteract() {
     if (it.type === "hall") {
       var ok = window.confirm("Open liquidgov.us/proposals in a new tab?");
       if (ok) window.open("https://liquidgov.us/proposals", "_blank", "noopener");
+    } else if (it.type === "mineDoor") {
+      enterInterior("mine", mineSpace, MINE_ENTRY);
     } else if (it.type === "demoDoor") {
       enterInterior("demoHouse", demoHouseSpace, DEMO_ENTRY);
     } else if (it.type === "friendDoor") {
@@ -1537,7 +1575,7 @@ function tryInteract() {
     } else if (it.type === "shutter") {
       showToast("Closed for now.");
     } else if (it.type === "sign") {
-      showToast("Closed.");
+      showToast(it.text || "Closed.");
     } else if (it.type === "wallSlot") {
       if (mode === "visit") {
         // A visitor looks; only the owner places (the daemon enforces it
@@ -1558,6 +1596,7 @@ function tryInteract() {
   // the walk-in trigger uses -- so there's no re-entry oscillation.
   if (mode === "demoHouse" || mode === "house" || mode === "visit") { exitToOutdoor(null); return; }
   if (mode === "lab") { exitToOutdoor({ x: LAB_DOOR_TILE.x, y: LAB_DOOR_TILE.y + 1 }); return; }
+  if (mode === "mine") { exitToOutdoor({ x: MINE_DOOR_TILE.x, y: MINE_DOOR_TILE.y + 1 }); return; }
 }
 
 // ---- Main loop ----------------------------------------------------------
@@ -1799,7 +1838,7 @@ function frame(t) {
       } else if (t - lastNetSendAt > NET_INTERVAL_MS) {
         netMove();
         netPollCurrentRegion();
-        netPollPlaced();
+        if (mode !== "mine") netPollPlaced(); // nothing can be placed in the mine
         lastNetSendAt = t;
       }
     }

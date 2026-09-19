@@ -192,9 +192,53 @@ mineSpace.interactables = [
 // "Do not invent guest persistence"). A bound player's are also saved by the
 // daemon (GROK_V6_ANSWER.md, bound inventory) and restored on load, so
 // `inventory` and `lastPickedItem` survive a refresh or a daemon restart.
-// V2: lastPickedItem is what the wall-slot places -- simplest possible
-// "which item" choice given there's no inventory menu to pick from; the most
-// recent lookup is what a player would expect to be holding.
+// lastPickedItem is what the wall and the floor place. The strip (#invHud)
+// shows counts and lets you tap a chip to change what's in hand -- still
+// not a backpack menu, not a crafting screen.
 var inventory = {};
 var lastPickedItem = null;
+
+function renderInvHud() {
+  var el = document.getElementById("invHud");
+  if (!el) return;
+  var keys = [];
+  for (var k in inventory) if (Object.prototype.hasOwnProperty.call(inventory, k) && inventory[k] > 0) keys.push(k);
+  el.innerHTML = "";
+  if (!keys.length) return;
+  keys.sort(function (a, b) {
+    if (a === lastPickedItem) return -1;
+    if (b === lastPickedItem) return 1;
+    return a < b ? -1 : 1;
+  });
+  for (var i = 0; i < keys.length; i++) {
+    var slug = keys[i];
+    var info = PLACED_ITEM_INFO[slug] || { color: "#888888", label: slug };
+    var b = document.createElement("button");
+    b.type = "button";
+    b.className = "invChip" + (slug === lastPickedItem ? " held" : "");
+    b.setAttribute("data-item", slug);
+    b.setAttribute("title", info.label + " ×" + inventory[slug] + (slug === lastPickedItem ? " (in hand)" : ""));
+    var sw = document.createElement("i");
+    sw.style.background = info.color;
+    var lab = document.createElement("span");
+    lab.textContent = info.label;
+    var qty = document.createElement("em");
+    qty.textContent = String(inventory[slug]);
+    b.appendChild(sw); b.appendChild(lab); b.appendChild(qty);
+    el.appendChild(b);
+  }
+}
+
+(function bindInvHud() {
+  var el = document.getElementById("invHud");
+  if (!el || !el.addEventListener) return;
+  el.addEventListener("click", function (e) {
+    var t = e.target;
+    while (t && t !== el && !(t.getAttribute && t.getAttribute("data-item"))) t = t.parentNode;
+    if (!t || t === el) return;
+    if (e.preventDefault) e.preventDefault();
+    lastPickedItem = t.getAttribute("data-item");
+    renderInvHud();
+  });
+})();
 

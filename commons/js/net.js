@@ -324,6 +324,7 @@ function netLoadInventory() {
       // picked up yet this session -- a lookup made before this answer
       // landed is the more recent one.
       if (items.length && !lastPickedItem) lastPickedItem = items[0].item;
+      renderInvHud();
     })
     .catch(function () { inventoryLoaded = false; });
 }

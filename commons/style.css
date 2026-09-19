@@ -55,6 +55,31 @@
     pointer-events:none; user-select:none; -webkit-user-select:none;
   }
   #connStatus:empty{ display:none; }
+  /* What you hold: a strip of chips, top-left, under the reconnect badge. Empty = hidden.
+     Tap a chip to put that item in hand (wall/floor place the last picked). Not a menu. */
+  #invHud{
+    position:fixed; top:calc(2.4rem + env(safe-area-inset-top,0px)); left:calc(.6rem + env(safe-area-inset-left,0px));
+    z-index:14; max-width:min(16rem, 62vw);
+    display:flex; flex-wrap:wrap; gap:4px;
+    pointer-events:auto; user-select:none; -webkit-user-select:none;
+  }
+  #invHud:empty{ display:none; }
+  #invHud .invChip{
+    display:flex; align-items:center; gap:4px;
+    margin:0; padding:3px 6px 3px 4px;
+    border:1px solid rgba(26,24,20,.45); border-radius:999px;
+    background:rgba(247,241,228,.88); color:var(--ink);
+    font-size:.7rem; line-height:1.2; cursor:pointer;
+  }
+  #invHud .invChip i{
+    display:block; width:10px; height:10px; border-radius:2px;
+    border:1px solid rgba(26,24,20,.35); flex:none;
+  }
+  #invHud .invChip em{ font-style:normal; color:#6b6458; }
+  #invHud .invChip.held{
+    border-color:var(--ink); box-shadow:0 0 0 1px var(--ink);
+    background:var(--paper);
+  }
   #dpad{
     position:fixed; left:0; right:0;
     bottom:calc(.8rem + env(safe-area-inset-bottom,0px));

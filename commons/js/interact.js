@@ -141,6 +141,7 @@ function tryInteract() {
       lastPickedItem = r.item;
       netPickup(r.item);
       showToast(r.name + ".");
+      renderInvHud();
     } else if (it.type === "worldPickup") {
       // D: same loop as a lab station (look up, +1, never consumed). The
       // marker is never removed from the map.
@@ -149,6 +150,7 @@ function tryInteract() {
       lastPickedItem = wp.item;
       netPickup(wp.item);
       showToast(wp.name + ".");
+      renderInvHud();
     } else if (it.type === "shutter") {
       showToast("Closed for now.");
     } else if (it.type === "sign") {
@@ -172,6 +174,7 @@ function tryInteract() {
         netTakeFloor(it.x, it.y);
         lastPickedItem = it.item;
         showToast("Picked up.");
+        renderInvHud();
       }
     }
     return;

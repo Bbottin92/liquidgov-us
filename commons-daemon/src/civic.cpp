@@ -5,6 +5,9 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <chrono>
+#include <unordered_map>
+
 namespace commons::civic {
 namespace {
 
@@ -76,6 +79,38 @@ std::optional<std::string> fetch_body(const std::string& path, const std::string
     return response.substr(sep + 4);
 }
 
+// lg_session -> username, 15s, RAM only (BUILD rest slice 2, GROK_REST_2.md).
+// Every bound request used to cost one loopback round trip to civic; this keeps
+// the answer for a short TTL so a walking player's ~2 Hz moves don't each ask.
+//
+// Keyed on the Cookie *value* (the FriendsCache lesson: not the whole request
+// head, whose unrelated headers would make one session miss the cache). Only a
+// positive answer is remembered: a civic that is down, times out, or says "no
+// such session" is never cached, so a logged-out cookie can't be pinned as
+// "guest" and a civic hiccup isn't remembered for 15s. Guests (no `lg_session=`)
+// never reach civic and never touch this map. Nothing here parses the session
+// id, opens a file, or writes to disk.
+//
+// A revoked or logged-out session can therefore still resolve for at most
+// kSessionTtlMs -- the same order of staleness FriendsCache already accepts.
+// No mutex: the daemon is single-threaded (http.hpp).
+constexpr long long kSessionTtlMs = 15000;
+constexpr std::size_t kSessionCap = 256;
+
+struct SessionEntry {
+    std::string username;
+    long long fetched_ms = 0;
+};
+std::unordered_map<std::string, SessionEntry>& session_cache() {
+    static std::unordered_map<std::string, SessionEntry> cache;
+    return cache;
+}
+long long now_ms() {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+               std::chrono::steady_clock::now().time_since_epoch())
+        .count();
+}
+
 } // namespace
 
 bool has_session_cookie(const std::string& headers_raw) {
@@ -87,9 +122,34 @@ std::optional<std::string> session_cookie(const std::string& headers_raw) {
 }
 
 std::optional<std::string> resolve_username(const std::string& headers_raw) {
+    auto cookie = session_cookie_header(headers_raw);
+    if (!cookie) return std::nullopt; // a guest: no civic call, no cache entry
+
+    auto& cache = session_cache();
+    const long long now = now_ms();
+    auto it = cache.find(*cookie);
+    if (it != cache.end()) {
+        if (now - it->second.fetched_ms < kSessionTtlMs) return it->second.username;
+        cache.erase(it); // expired: ask civic again, and drop it if civic no longer knows the session
+    }
+
     auto body = fetch_body("/internal/session-user", headers_raw);
     if (!body) return std::nullopt;
-    return commons::reqjson::field_str(*body, "username");
+    auto username = commons::reqjson::field_str(*body, "username");
+    if (!username) return std::nullopt;
+
+    // Room for one more: drop expired entries first, and if the map is still
+    // at its cap, clear it -- at Square scale that is a handful of entries and
+    // a reset just costs each session one extra civic call.
+    if (cache.size() >= kSessionCap) {
+        for (auto e = cache.begin(); e != cache.end();) {
+            if (now - e->second.fetched_ms >= kSessionTtlMs) e = cache.erase(e);
+            else ++e;
+        }
+        if (cache.size() >= kSessionCap) cache.clear();
+    }
+    cache[*cookie] = SessionEntry{*username, now};
+    return username;
 }
 
 std::vector<std::string> resolve_friends(const std::string& headers_raw) {

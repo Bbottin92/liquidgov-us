@@ -1662,6 +1662,21 @@ Not bug classes. Not “what is live on the droplet.”
   edit `make_art.py`, re-run, sync, bump `?v=`. Parked still: `open` (needs a
   civic block probe), `rebind()`, `lg_session` cache, orphan reaping; Brandon's
   eye on the grass dots and the new art at real zoom.
+- **2026-09-19 -- daemon janitor (rest slice 2) built, local-tested, not deployed.**
+  Brandon: "BUILD session cache"; Grok's `GROK_REST_2.md` pairs it with the
+  `sqlite3_step` checks, so I built the slice as written. Daemon only. (1)
+  `civic::resolve_username` keeps a positive answer 15s in RAM keyed on the Cookie
+  value (failures and "no such session" are never cached; guests never reach
+  civic; a logged-out session can resolve up to 15s). (2) `sqlx.hpp` wraps every
+  prepare/bind/step/COMMIT: a failure logs the sqlite message and becomes a 500
+  `server_error` for that request, `Tx` rolls multi-row writes back, catalog
+  readers no longer return a silent `[]`; snapshots stay best-effort so a leave
+  can't strand a player. Verified with real civic frozen via SIGSTOP (hit 0.46ms,
+  miss ~1s, failure not pinned, TTL expiry) and failures injected with triggers
+  (wall write rolled back, leave still ok, daemon never died); all prior
+  regressions pass. See `janitor-built.md`. Deploy: daemon only, online SQLite
+  copy first, after Grok's review and Brandon's `deploy`. Parked: `rebind()` (3),
+  `open` + orphans (4).
 
 ## Split: civic site vs game
 

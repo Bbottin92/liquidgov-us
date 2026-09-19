@@ -141,9 +141,14 @@ HttpResponse HttpServer::dispatch(const HttpRequest& req) {
             try {
                 return r.handler(req);
             } catch (const std::exception& e) {
+                // One failed handler (a bad sqlite statement, say) fails that
+                // request and nothing else. The detail goes to the log; the
+                // response is generic, valid JSON in the daemon's own
+                // {"ok":false,"reason":...} shape rather than the raw what().
+                std::cerr << "commons-daemon: " << req.method << " " << req.path << " failed: " << e.what() << "\n";
                 HttpResponse resp;
                 resp.status = 500; resp.status_text = "Internal Server Error";
-                resp.body = std::string("{\"error\":\"") + e.what() + "\"}";
+                resp.body = "{\"ok\":false,\"reason\":\"server_error\"}";
                 return resp;
             }
         }

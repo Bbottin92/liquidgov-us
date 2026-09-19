@@ -19,6 +19,12 @@ namespace commons::civic {
 // must treat nullopt as "this is a guest request," never as an error --
 // cookie-bind.md is explicit that the two auth paths never mix and that a
 // missing/expired/unknown cookie is not a rejection, just a fallback.
+//
+// The answer is remembered for 15s per Cookie value (RAM only; see civic.cpp)
+// so a bound player's frequent requests don't each cost a loopback call to
+// civic. Only a positive answer is cached; failures and "no such session" are
+// asked again, and a guest (no lg_session) never reaches civic at all. A
+// logged-out session can therefore still resolve for up to 15s.
 std::optional<std::string> resolve_username(const std::string& headers_raw);
 
 // True when the raw Cookie header carries lg_session at all -- the same

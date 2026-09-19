@@ -34,6 +34,7 @@
 #include "placed.hpp"
 #include "presence.hpp"
 #include "reqjson.hpp"
+#include "sqlx.hpp"
 
 namespace {
 
@@ -43,51 +44,47 @@ long long now_ms() {
         .count();
 }
 
+// The catalog readers below check every prepare/step result (sqlx.hpp): a
+// failure is logged and becomes a 500 for that request, never an abort.
 std::string items_json(sqlite3* db) {
-    sqlite3_stmt* st = nullptr;
-    sqlite3_prepare_v2(db,
-        "SELECT slug, display_name, category, wall_slot_ok, sprite_ref FROM items ORDER BY item_id;",
-        -1, &st, nullptr);
+    commons::sqlx::Stmt st(db,
+        "SELECT slug, display_name, category, wall_slot_ok, sprite_ref FROM items ORDER BY item_id;");
     std::ostringstream out;
     out << "[";
     bool first = true;
-    while (sqlite3_step(st) == SQLITE_ROW) {
+    while (st.row()) {
         if (!first) out << ",";
         first = false;
-        auto text = [&](int i) { return reinterpret_cast<const char*>(sqlite3_column_text(st, i)); };
-        out << "{\"slug\":" << commons::json::str(text(0))
-            << ",\"display_name\":" << commons::json::str(text(1))
-            << ",\"category\":" << commons::json::str(text(2))
-            << ",\"wall_slot_ok\":" << sqlite3_column_int(st, 3)
-            << ",\"sprite_ref\":" << commons::json::str(text(4)) << "}";
+        out << "{\"slug\":" << commons::json::str(st.column_text(0))
+            << ",\"display_name\":" << commons::json::str(st.column_text(1))
+            << ",\"category\":" << commons::json::str(st.column_text(2))
+            << ",\"wall_slot_ok\":" << st.column_int(3)
+            << ",\"sprite_ref\":" << commons::json::str(st.column_text(4)) << "}";
     }
     out << "]";
-    sqlite3_finalize(st);
     return out.str();
 }
 
 std::string recipes_json(sqlite3* db) {
-    sqlite3_stmt* st = nullptr;
-    sqlite3_prepare_v2(db,
-        "SELECT r.slug, r.display_name, r.station, i.slug, ro.quantity "
-        "FROM recipes r "
-        "LEFT JOIN recipe_outputs ro ON ro.recipe_id = r.recipe_id "
-        "LEFT JOIN items i ON i.item_id = ro.item_id "
-        "ORDER BY r.recipe_id;",
-        -1, &st, nullptr);
-    // Small enough (three V1 recipes, one output each) that grouping by
-    // hand here beats a second query or a real JSON tree builder.
     std::vector<std::string> slugs, names, stations, out_slugs;
     std::vector<int> out_qty;
-    while (sqlite3_step(st) == SQLITE_ROW) {
-        auto text = [&](int i) { return reinterpret_cast<const char*>(sqlite3_column_text(st, i)); };
-        slugs.push_back(text(0));
-        names.push_back(text(1));
-        stations.push_back(text(2));
-        out_slugs.push_back(sqlite3_column_type(st, 3) == SQLITE_NULL ? "" : text(3));
-        out_qty.push_back(sqlite3_column_int(st, 4));
+    {
+        commons::sqlx::Stmt st(db,
+            "SELECT r.slug, r.display_name, r.station, i.slug, ro.quantity "
+            "FROM recipes r "
+            "LEFT JOIN recipe_outputs ro ON ro.recipe_id = r.recipe_id "
+            "LEFT JOIN items i ON i.item_id = ro.item_id "
+            "ORDER BY r.recipe_id;");
+        // Small enough (three V1 recipes, one output each) that grouping by
+        // hand here beats a second query or a real JSON tree builder.
+        while (st.row()) {
+            slugs.push_back(st.column_text(0));
+            names.push_back(st.column_text(1));
+            stations.push_back(st.column_text(2));
+            out_slugs.push_back(st.column_null(3) ? "" : st.column_text(3));
+            out_qty.push_back(st.column_int(4));
+        }
     }
-    sqlite3_finalize(st);
     std::ostringstream out;
     out << "[";
     for (std::size_t i = 0; i < slugs.size(); ++i) {
@@ -103,28 +100,24 @@ std::string recipes_json(sqlite3* db) {
 }
 
 std::string maps_json(sqlite3* db) {
-    sqlite3_stmt* st = nullptr;
-    sqlite3_prepare_v2(db,
-        "SELECT slug, display_name, kind, width_tiles, height_tiles, grid_col, grid_row FROM maps ORDER BY map_id;",
-        -1, &st, nullptr);
+    commons::sqlx::Stmt st(db,
+        "SELECT slug, display_name, kind, width_tiles, height_tiles, grid_col, grid_row FROM maps ORDER BY map_id;");
     std::ostringstream out;
     out << "[";
     bool first = true;
-    while (sqlite3_step(st) == SQLITE_ROW) {
+    while (st.row()) {
         if (!first) out << ",";
         first = false;
-        auto text = [&](int i) { return reinterpret_cast<const char*>(sqlite3_column_text(st, i)); };
-        out << "{\"slug\":" << commons::json::str(text(0))
-            << ",\"display_name\":" << commons::json::str(text(1))
-            << ",\"kind\":" << commons::json::str(text(2))
-            << ",\"width_tiles\":" << sqlite3_column_int(st, 3)
-            << ",\"height_tiles\":" << sqlite3_column_int(st, 4)
-            << ",\"grid_col\":" << (sqlite3_column_type(st, 5) == SQLITE_NULL ? "null" : std::to_string(sqlite3_column_int(st, 5)))
-            << ",\"grid_row\":" << (sqlite3_column_type(st, 6) == SQLITE_NULL ? "null" : std::to_string(sqlite3_column_int(st, 6)))
+        out << "{\"slug\":" << commons::json::str(st.column_text(0))
+            << ",\"display_name\":" << commons::json::str(st.column_text(1))
+            << ",\"kind\":" << commons::json::str(st.column_text(2))
+            << ",\"width_tiles\":" << st.column_int(3)
+            << ",\"height_tiles\":" << st.column_int(4)
+            << ",\"grid_col\":" << (st.column_null(5) ? "null" : std::to_string(st.column_int(5)))
+            << ",\"grid_row\":" << (st.column_null(6) ? "null" : std::to_string(st.column_int(6)))
             << "}";
     }
     out << "]";
-    sqlite3_finalize(st);
     return out.str();
 }
 
@@ -136,12 +129,9 @@ std::string maps_json(sqlite3* db) {
 // (glue.md/canvas-frame.md); this placed slot is explicitly "not a civic
 // PNG" (GROK_V2_ANSWER.md), any catalog item is eligible.
 bool item_exists(sqlite3* db, const std::string& slug) {
-    sqlite3_stmt* st = nullptr;
-    sqlite3_prepare_v2(db, "SELECT 1 FROM items WHERE slug = ? LIMIT 1;", -1, &st, nullptr);
-    sqlite3_bind_text(st, 1, slug.c_str(), -1, SQLITE_TRANSIENT);
-    bool found = sqlite3_step(st) == SQLITE_ROW;
-    sqlite3_finalize(st);
-    return found;
+    commons::sqlx::Stmt st(db, "SELECT 1 FROM items WHERE slug = ? LIMIT 1;");
+    st.text(1, slug);
+    return st.row();
 }
 
 // Cookie-bind.md: "the two auth paths never mix." A resolved cookie always
@@ -233,6 +223,17 @@ bool visit_allowed(const std::string& headers_raw, const std::string& owner,
     if (!require_owner_online) return true;
     auto online = presence.bound_usernames();
     return std::find(online.begin(), online.end(), owner) != online.end();
+}
+
+// A position snapshot is best effort. sqlx has already logged the real sqlite
+// error; a failed write must not fail a leave/rekey (which would strand the
+// player in a room they are trying to walk out of) or stop the periodic pass
+// for everyone else, so it is swallowed here and nowhere else.
+void snapshot_quietly(commons::HouseStore& house, const std::string& user, int x, int y, int facing) {
+    try {
+        house.snapshot_leave(user, x, y, facing);
+    } catch (const commons::sqlx::DbError&) {
+    }
 }
 
 std::string occupants_json(const std::vector<commons::Occupant>& occ) {
@@ -631,7 +632,7 @@ int main(int argc, char** argv) {
             if (is_bound && *leaving_house_user == eff_id->substr(2)) {
                 for (const auto& o : presence.occupants(*from_region)) {
                     if (o.id == *eff_id) {
-                        house.snapshot_leave(*leaving_house_user, static_cast<int>(o.x), static_cast<int>(o.y), o.facing);
+                        snapshot_quietly(house, *leaving_house_user, static_cast<int>(o.x), static_cast<int>(o.y), o.facing);
                         break;
                     }
                 }
@@ -687,7 +688,7 @@ int main(int argc, char** argv) {
             if (eff_id->rfind("u:", 0) == 0 && *house_user == eff_id->substr(2)) {
                 for (const auto& o : presence.occupants(*region)) {
                     if (o.id == *eff_id) {
-                        house.snapshot_leave(*house_user, static_cast<int>(o.x), static_cast<int>(o.y), o.facing);
+                        snapshot_quietly(house, *house_user, static_cast<int>(o.x), static_cast<int>(o.y), o.facing);
                         break;
                     }
                 }
@@ -786,7 +787,7 @@ int main(int argc, char** argv) {
             const std::string bound_id = "u:" + user;
             for (const auto& o : presence.occupants(region)) {
                 if (o.id == bound_id) {
-                    house.snapshot_leave(user, static_cast<int>(o.x), static_cast<int>(o.y), o.facing);
+                    snapshot_quietly(house, user, static_cast<int>(o.x), static_cast<int>(o.y), o.facing);
                     break;
                 }
             }

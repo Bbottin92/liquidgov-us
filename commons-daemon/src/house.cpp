@@ -1,232 +1,174 @@
 #include "house.hpp"
 
+#include "sqlx.hpp"
+
+// Every prepare/bind/step/COMMIT result here is checked (sqlx.hpp): a failed
+// statement logs the sqlite message and throws sqlx::DbError, which
+// HttpServer::dispatch turns into a 500 for that one request. It never aborts
+// the daemon, and a multi-row write is rolled back rather than left half-done.
 namespace commons {
 
 int HouseStore::find_or_create_player(const std::string& username) {
-    sqlite3_stmt* st = nullptr;
-    sqlite3_prepare_v2(db_, "SELECT player_id FROM players WHERE lg_username = ?1;", -1, &st, nullptr);
-    sqlite3_bind_text(st, 1, username.c_str(), -1, SQLITE_TRANSIENT);
-    int player_id = (sqlite3_step(st) == SQLITE_ROW) ? sqlite3_column_int(st, 0) : -1;
-    sqlite3_finalize(st);
-    if (player_id != -1) return player_id;
-
-    sqlite3_prepare_v2(db_,
+    {
+        sqlx::Stmt sel(db_, "SELECT player_id FROM players WHERE lg_username = ?1;");
+        sel.text(1, username);
+        if (sel.row()) return sel.column_int(0);
+    }
+    sqlx::Stmt ins(db_,
         "INSERT INTO players (lg_username, display_name, is_guest, created_at) "
-        "VALUES (?1, ?1, 0, strftime('%s','now'));",
-        -1, &st, nullptr);
-    sqlite3_bind_text(st, 1, username.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_step(st);
-    sqlite3_finalize(st);
+        "VALUES (?1, ?1, 0, strftime('%s','now'));");
+    ins.text(1, username);
+    ins.done();
     return static_cast<int>(sqlite3_last_insert_rowid(db_));
 }
 
 int HouseStore::house_instance_for(const std::string& username) {
     int player_id = find_or_create_player(username);
 
-    sqlite3_stmt* st = nullptr;
-    sqlite3_prepare_v2(db_, "SELECT house_instance_id FROM players WHERE player_id = ?1;", -1, &st, nullptr);
-    sqlite3_bind_int(st, 1, player_id);
-    bool has_row = sqlite3_step(st) == SQLITE_ROW;
-    bool has_instance = has_row && sqlite3_column_type(st, 0) != SQLITE_NULL;
-    int instance_id = has_instance ? sqlite3_column_int(st, 0) : -1;
-    sqlite3_finalize(st);
-    if (has_instance) return instance_id;
+    {
+        sqlx::Stmt sel(db_, "SELECT house_instance_id FROM players WHERE player_id = ?1;");
+        sel.integer(1, player_id);
+        if (sel.row() && !sel.column_null(0)) return sel.column_int(0);
+    }
 
-    sqlite3_prepare_v2(db_, "SELECT map_id FROM maps WHERE slug = 'house';", -1, &st, nullptr);
-    bool got_map = sqlite3_step(st) == SQLITE_ROW;
-    int map_id = got_map ? sqlite3_column_int(st, 0) : 0;
-    sqlite3_finalize(st);
+    int map_id = 0;
+    {
+        sqlx::Stmt sel(db_, "SELECT map_id FROM maps WHERE slug = 'house';");
+        // schema always seeds 'house' before the daemon accepts requests -- this should not happen
+        if (!sel.row()) return -1;
+        map_id = sel.column_int(0);
+    }
 
     // GROK_PERSIST_REVIEW.md must-fix: schema.sql already requires any
-    // multi-row mutation to be BEGIN/COMMIT (set_wall_slot already does
-    // this) -- this INSERT+UPDATE pair was the one place that skipped it.
-    // A crash between the two would otherwise leave an orphan
-    // map_instances row and no players.house_instance_id pointing at it,
-    // so the next entry creates a *second* house instead of reusing the
-    // first (wall slot stranded on the orphan, everything new on the
-    // second).
-    sqlite3_exec(db_, "BEGIN;", nullptr, nullptr, nullptr);
-
-    sqlite3_prepare_v2(db_,
-        "INSERT INTO map_instances (map_id, owner_player_id, created_at) "
-        "VALUES (?1, ?2, strftime('%s','now'));",
-        -1, &st, nullptr);
-    sqlite3_bind_int(st, 1, map_id);
-    sqlite3_bind_int(st, 2, player_id);
-    bool inserted = sqlite3_step(st) == SQLITE_DONE;
-    sqlite3_finalize(st);
-    instance_id = static_cast<int>(sqlite3_last_insert_rowid(db_));
-
-    bool updated = false;
-    if (got_map && inserted) {
-        sqlite3_prepare_v2(db_, "UPDATE players SET house_instance_id = ?1 WHERE player_id = ?2;", -1, &st, nullptr);
-        sqlite3_bind_int(st, 1, instance_id);
-        sqlite3_bind_int(st, 2, player_id);
-        updated = sqlite3_step(st) == SQLITE_DONE;
-        sqlite3_finalize(st);
+    // multi-row mutation to be BEGIN/COMMIT -- this INSERT+UPDATE pair must
+    // not be split, or a crash between the two leaves an orphan
+    // map_instances row and the next entry creates a *second* house. Tx rolls
+    // back on any failure, including a thrown statement error.
+    sqlx::Tx tx(db_);
+    {
+        sqlx::Stmt ins(db_,
+            "INSERT INTO map_instances (map_id, owner_player_id, created_at) "
+            "VALUES (?1, ?2, strftime('%s','now'));");
+        ins.integer(1, map_id).integer(2, player_id);
+        ins.done();
     }
-
-    if (got_map && inserted && updated) {
-        sqlite3_exec(db_, "COMMIT;", nullptr, nullptr, nullptr);
-    } else {
-        sqlite3_exec(db_, "ROLLBACK;", nullptr, nullptr, nullptr);
-        instance_id = -1; // schema always seeds 'house' before the daemon accepts requests -- this should not happen
+    int instance_id = static_cast<int>(sqlite3_last_insert_rowid(db_));
+    {
+        sqlx::Stmt up(db_, "UPDATE players SET house_instance_id = ?1 WHERE player_id = ?2;");
+        up.integer(1, instance_id).integer(2, player_id);
+        up.done();
     }
-
+    tx.commit();
     return instance_id;
 }
 
 std::optional<int> HouseStore::existing_house_instance_for(const std::string& username) {
-    sqlite3_stmt* st = nullptr;
-    sqlite3_prepare_v2(db_,
-        "SELECT house_instance_id FROM players WHERE lg_username = ?1 AND house_instance_id IS NOT NULL;",
-        -1, &st, nullptr);
-    sqlite3_bind_text(st, 1, username.c_str(), -1, SQLITE_TRANSIENT);
-    std::optional<int> instance_id;
-    if (sqlite3_step(st) == SQLITE_ROW) instance_id = sqlite3_column_int(st, 0);
-    sqlite3_finalize(st);
-    return instance_id;
+    sqlx::Stmt sel(db_,
+        "SELECT house_instance_id FROM players WHERE lg_username = ?1 AND house_instance_id IS NOT NULL;");
+    sel.text(1, username);
+    if (sel.row()) return sel.column_int(0);
+    return std::nullopt;
 }
 
 std::optional<HouseStore::Position> HouseStore::last_house_position(const std::string& username) {
-    sqlite3_stmt* st = nullptr;
-    sqlite3_prepare_v2(db_,
+    sqlx::Stmt sel(db_,
         "SELECT last_x, last_y, last_facing FROM players "
         "WHERE lg_username = ?1 AND house_instance_id IS NOT NULL "
         "AND last_instance_id = house_instance_id "
-        "AND last_x IS NOT NULL AND last_y IS NOT NULL;",
-        -1, &st, nullptr);
-    sqlite3_bind_text(st, 1, username.c_str(), -1, SQLITE_TRANSIENT);
-    std::optional<Position> pos;
-    if (sqlite3_step(st) == SQLITE_ROW) {
-        Position p;
-        p.x = sqlite3_column_int(st, 0);
-        p.y = sqlite3_column_int(st, 1);
-        p.facing = sqlite3_column_int(st, 2);
-        pos = p;
-    }
-    sqlite3_finalize(st);
-    return pos;
+        "AND last_x IS NOT NULL AND last_y IS NOT NULL;");
+    sel.text(1, username);
+    if (!sel.row()) return std::nullopt;
+    Position p;
+    p.x = sel.column_int(0);
+    p.y = sel.column_int(1);
+    p.facing = sel.column_int(2);
+    return p;
 }
 
 void HouseStore::snapshot_leave(const std::string& username, int x, int y, int facing) {
-    sqlite3_stmt* st = nullptr;
-    sqlite3_prepare_v2(db_,
+    sqlx::Stmt up(db_,
         "UPDATE players SET last_instance_id = house_instance_id, "
         "last_x = ?1, last_y = ?2, last_facing = ?3, "
         "last_grid_col = NULL, last_grid_row = NULL "
-        "WHERE lg_username = ?4 AND house_instance_id IS NOT NULL;",
-        -1, &st, nullptr);
-    sqlite3_bind_int(st, 1, x);
-    sqlite3_bind_int(st, 2, y);
-    sqlite3_bind_int(st, 3, facing);
-    sqlite3_bind_text(st, 4, username.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_step(st);
-    sqlite3_finalize(st);
+        "WHERE lg_username = ?4 AND house_instance_id IS NOT NULL;");
+    up.integer(1, x).integer(2, y).integer(3, facing).text(4, username);
+    up.done();
 }
 
 std::string HouseStore::visit_policy_of(const std::string& username) {
-    sqlite3_stmt* st = nullptr;
-    sqlite3_prepare_v2(db_, "SELECT visit_policy FROM players WHERE lg_username = ?1;", -1, &st, nullptr);
-    sqlite3_bind_text(st, 1, username.c_str(), -1, SQLITE_TRANSIENT);
-    std::string policy = "friends";
-    if (sqlite3_step(st) == SQLITE_ROW) {
-        const unsigned char* v = sqlite3_column_text(st, 0);
-        if (v && std::string(reinterpret_cast<const char*>(v)) == "locked") policy = "locked";
-    }
-    sqlite3_finalize(st);
-    return policy;
+    sqlx::Stmt sel(db_, "SELECT visit_policy FROM players WHERE lg_username = ?1;");
+    sel.text(1, username);
+    if (sel.row() && sel.column_text(0) == "locked") return "locked";
+    return "friends";
 }
 
 bool HouseStore::set_visit_policy(const std::string& username, const std::string& policy) {
     if (policy != "friends" && policy != "locked") return false;
-    sqlite3_stmt* st = nullptr;
-    sqlite3_prepare_v2(db_, "UPDATE players SET visit_policy = ?1 WHERE lg_username = ?2;", -1, &st, nullptr);
-    sqlite3_bind_text(st, 1, policy.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(st, 2, username.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_step(st);
-    sqlite3_finalize(st);
+    sqlx::Stmt up(db_, "UPDATE players SET visit_policy = ?1 WHERE lg_username = ?2;");
+    up.text(1, policy).text(2, username);
+    up.done();
     return sqlite3_changes(db_) > 0;
 }
 
 bool HouseStore::add_pickup(const std::string& username, const std::string& item_slug, long long now_ms) {
     int player_id = find_or_create_player(username);
-    sqlite3_stmt* st = nullptr;
     // MIN(.., 99): a lookup station can be pressed forever; the count is a
     // souvenir, not a balance worth letting a stuck key grow without bound.
-    sqlite3_prepare_v2(db_,
+    sqlx::Stmt up(db_,
         "INSERT INTO inventory (player_id, item_id, quantity, updated_at) "
         "SELECT ?1, item_id, 1, ?3 FROM items WHERE slug = ?2 "
         "ON CONFLICT(player_id, item_id) DO UPDATE SET "
-        "quantity = MIN(quantity + 1, 99), updated_at = excluded.updated_at;",
-        -1, &st, nullptr);
-    sqlite3_bind_int(st, 1, player_id);
-    sqlite3_bind_text(st, 2, item_slug.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_int64(st, 3, now_ms);
-    sqlite3_step(st);
-    sqlite3_finalize(st);
-    return sqlite3_changes(db_) > 0;
+        "quantity = MIN(quantity + 1, 99), updated_at = excluded.updated_at;");
+    up.integer(1, player_id).text(2, item_slug).integer64(3, now_ms);
+    up.done();
+    return sqlite3_changes(db_) > 0; // 0 = not a real catalog slug
 }
 
 std::vector<HouseStore::InventoryEntry> HouseStore::inventory_of(const std::string& username) {
     std::vector<InventoryEntry> out;
-    sqlite3_stmt* st = nullptr;
-    sqlite3_prepare_v2(db_,
+    sqlx::Stmt sel(db_,
         "SELECT i.slug, inv.quantity FROM inventory inv "
         "JOIN players p ON p.player_id = inv.player_id "
         "JOIN items i ON i.item_id = inv.item_id "
         "WHERE p.lg_username = ?1 AND inv.quantity > 0 "
-        "ORDER BY inv.updated_at DESC, inv.item_id DESC;",
-        -1, &st, nullptr);
-    sqlite3_bind_text(st, 1, username.c_str(), -1, SQLITE_TRANSIENT);
-    while (sqlite3_step(st) == SQLITE_ROW) {
+        "ORDER BY inv.updated_at DESC, inv.item_id DESC;");
+    sel.text(1, username);
+    while (sel.row()) {
         InventoryEntry e;
-        e.slug = reinterpret_cast<const char*>(sqlite3_column_text(st, 0));
-        e.quantity = sqlite3_column_int(st, 1);
+        e.slug = sel.column_text(0);
+        e.quantity = sel.column_int(1);
         out.push_back(e);
     }
-    sqlite3_finalize(st);
     return out;
 }
 
 std::string HouseStore::get_wall_slot(int instance_id) {
-    sqlite3_stmt* st = nullptr;
-    sqlite3_prepare_v2(db_,
+    sqlx::Stmt sel(db_,
         "SELECT i.slug FROM placed p JOIN items i ON i.item_id = p.item_id "
-        "WHERE p.instance_id = ?1 AND p.is_wall_slot = 1 LIMIT 1;",
-        -1, &st, nullptr);
-    sqlite3_bind_int(st, 1, instance_id);
-    std::string slug;
-    if (sqlite3_step(st) == SQLITE_ROW) {
-        slug = reinterpret_cast<const char*>(sqlite3_column_text(st, 0));
-    }
-    sqlite3_finalize(st);
-    return slug;
+        "WHERE p.instance_id = ?1 AND p.is_wall_slot = 1 LIMIT 1;");
+    sel.integer(1, instance_id);
+    if (sel.row()) return sel.column_text(0);
+    return std::string();
 }
 
 void HouseStore::set_wall_slot(int instance_id, const std::string& item_slug) {
-    // schema.sql: "Any multi-row mutation ... must be BEGIN/COMMIT" --
-    // the clear-then-set below is exactly that shape.
-    sqlite3_exec(db_, "BEGIN;", nullptr, nullptr, nullptr);
-
-    sqlite3_stmt* st = nullptr;
-    sqlite3_prepare_v2(db_, "DELETE FROM placed WHERE instance_id = ?1 AND is_wall_slot = 1;", -1, &st, nullptr);
-    sqlite3_bind_int(st, 1, instance_id);
-    sqlite3_step(st);
-    sqlite3_finalize(st);
-
-    if (!item_slug.empty()) {
-        sqlite3_prepare_v2(db_,
-            "INSERT INTO placed (instance_id, item_id, x, y, rot90, is_wall_slot) "
-            "SELECT ?1, item_id, 0, 0, 0, 1 FROM items WHERE slug = ?2;",
-            -1, &st, nullptr);
-        sqlite3_bind_int(st, 1, instance_id);
-        sqlite3_bind_text(st, 2, item_slug.c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_step(st);
-        sqlite3_finalize(st);
+    // schema.sql: "Any multi-row mutation ... must be BEGIN/COMMIT" -- the
+    // clear-then-set below is exactly that shape. Tx rolls the clear back if
+    // the insert fails, so a failed place never leaves the wall emptied.
+    sqlx::Tx tx(db_);
+    {
+        sqlx::Stmt del(db_, "DELETE FROM placed WHERE instance_id = ?1 AND is_wall_slot = 1;");
+        del.integer(1, instance_id);
+        del.done();
     }
-
-    sqlite3_exec(db_, "COMMIT;", nullptr, nullptr, nullptr);
+    if (!item_slug.empty()) {
+        sqlx::Stmt ins(db_,
+            "INSERT INTO placed (instance_id, item_id, x, y, rot90, is_wall_slot) "
+            "SELECT ?1, item_id, 0, 0, 0, 1 FROM items WHERE slug = ?2;");
+        ins.integer(1, instance_id).text(2, item_slug);
+        ins.done();
+    }
+    tx.commit();
 }
 
 } // namespace commons

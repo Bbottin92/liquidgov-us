@@ -78,3 +78,30 @@ the cache key: bump `v` in `index.html` whenever the art changes.
 Day/night, weather, shaders, unique mine art, normal maps (`bc5-normals.md`),
 a second tileset per region, a character creator. Tuning any single tile is a
 one-line edit in `make_art.py` plus a re-run.
+
+## Deployed (2026-09-19, Brandon: "deploy")
+
+Grok's review was **not** on file when Brandon said `deploy`; I went on his
+word and say so here. Client only, via `sync-client-to-droplet.sh` to
+`/opt/commons`, chown `liquidgov`. Daemon, civic, nginx untouched.
+
+- **Drift check:** the dry-run sent exactly `index.html` (changed) and the two
+  new PNGs; the droplet's `index.html` was still the last deployed hash
+  (`dde34287...`).
+- **Hashes, droplet = served = local:** `index.html` `1e924625...` (was
+  `dde34287...`), `tiles.png` `853cdf21...`, `sprites.png` `ae31b218...`.
+- **Through nginx:** `tiles.png` and `sprites.png` both `200 image/png`
+  (2534 B / 379 B); `/commons/` 200; `/commons/presence/lots` 200; public
+  `/internal/friends` 404; both services active. The served page references
+  `tiles.png`.
+- **Guest walk on production:** `tileSheet` loaded at 256x64 and all five baked
+  spaces re-stamped; the Homestead facade shows the new doors and plank walls; the
+  Lab shows the plank floor, workbench and stations; the mine (entered with a real
+  Enter keypress) has stone walls, the lamp and the sign, black margin below the
+  room, and the sign toast is readable on it; the player figure renders in all
+  frames I looked at. Console clean.
+
+Not exercised on production: a bound player (the sheet path is identical for
+bound and guest). If any tile reads wrong, it is a one-line edit in
+`make_art.py`, a re-run, and a client sync (bump `?v=` in `index.html` so
+browsers refetch the PNG).

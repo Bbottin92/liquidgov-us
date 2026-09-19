@@ -1652,6 +1652,16 @@ Not bug classes. Not “what is live on the droplet.”
   there. Verified in a real browser (Square, creek, woods, Homestead, Lab, mine,
   all four facings, no-PNG fallback). See `tile-sheets-built.md`. Deploy: client
   sync now carries index.html + tiles.png + sprites.png; check `200 image/png`.
+- **2026-09-19 -- tileset PNG + player sheet deployed (client only).** Brandon
+  said `deploy`; Grok's review was not on file, so it went on his word. Client
+  sync now carries three files; droplet = served = local for all three
+  (`index.html` `1e924625...`, `tiles.png` `853cdf21...`, `sprites.png`
+  `ae31b218...`); both PNGs `200 image/png` through nginx; no daemon/civic/nginx
+  change. Guest walk on prod: sheet loaded, Homestead/Lab/mine render with the
+  new art, mine margin black with a readable toast, console clean. Art tweaks =
+  edit `make_art.py`, re-run, sync, bump `?v=`. Parked still: `open` (needs a
+  civic block probe), `rebind()`, `lg_session` cache, orphan reaping; Brandon's
+  eye on the grass dots and the new art at real zoom.
 
 ## Split: civic site vs game
 

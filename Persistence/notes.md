@@ -18,6 +18,8 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-19 — behind trees built, not deployed.** `behind-trees-built.md`.
+  Tall tiles Y-sort with actors. Also threads cam into depth-sort (strict-mode bug).
 - **2026-09-19 — pickup markers built, not deployed.** `pickup-markers-built.md`.
   Glyphs on the three outdoor lookups; indoor leftover prompt removed.
 - **2026-09-19 — depth sort built, not deployed.** `depth-sort-built.md`.

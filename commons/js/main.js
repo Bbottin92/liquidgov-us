@@ -22,38 +22,68 @@ function drawNameplate(c, text, x, y) {
   c.fillText(text, x, y);
 }
 
-function drawFootShadow(c, worldX, worldY) {
+function drawFootShadow(c, worldX, worldY, camX, camY) {
   var x = Math.round(worldX - camX);
   var y = Math.round(worldY - camY);
   c.fillStyle = "rgba(26,24,20,0.28)";
   c.fillRect(x - 5, y - 1, 10, 3);
 }
 
-function drawOneActor(c, a) {
-  drawFootShadow(c, a.x, a.y);
+function blitTallTile(c, id, tx, ty, camX, camY) {
+  var dx = Math.round(tx * TILE - camX), dy = Math.round(ty * TILE - camY);
+  if (tileSheet) {
+    c.drawImage(tileSheet, (id % 16) * TILE, Math.floor(id / 16) * TILE, TILE, TILE, dx, dy, TILE, TILE);
+  } else {
+    c.fillStyle = COLOR[id] || "#3a5a28";
+    c.fillRect(dx, dy, TILE, TILE);
+  }
+}
+
+function drawOneActor(c, a, camX, camY) {
+  drawFootShadow(c, a.x, a.y, camX, camY);
   var destY = spriteDestY(a.y - camY, a.half);
   c.drawImage(spriteAtlas, spriteSrcX(a.dir, a.anim), 0, SPRITE_W, SPRITE_H,
     spriteDestX(a.x - camX), destY, SPRITE_W, SPRITE_H);
   if (a.name) drawNameplate(c, a.name, a.x - camX, destY - 4);
 }
 
-function drawSortedActors(c) {
+function drawSortedActors(c, camX, camY) {
   var list = [];
   if (mode === "outdoor" && passerby.visible) {
-    list.push({ x: passerby.x, y: passerby.y, dir: passerby.dir, anim: passerby.animFrame,
+    list.push({ kind: "actor", x: passerby.x, y: passerby.y, dir: passerby.dir, anim: passerby.animFrame,
       name: "passerby", half: passerby.half });
   }
   if (netReady && netRegion) {
     for (var oid in occupantViz) {
       var o = occupantViz[oid];
-      list.push({ x: o.x, y: o.y, dir: o.dir, anim: o.animFrame,
+      list.push({ kind: "actor", x: o.x, y: o.y, dir: o.dir, anim: o.animFrame,
         name: o.display_name || o.id, half: 6 });
     }
   }
-  list.push({ x: player.x, y: player.y, dir: player.dir, anim: player.animFrame,
+  list.push({ kind: "actor", x: player.x, y: player.y, dir: player.dir, anim: player.animFrame,
     name: acceptedDisplayName, half: player.half });
-  list.sort(function (a, b) { return a.y - b.y; });
-  for (var i = 0; i < list.length; i++) drawOneActor(c, list[i]);
+
+  var x0 = Math.max(0, Math.floor(camX / TILE) - 1);
+  var y0 = Math.max(0, Math.floor(camY / TILE) - 1);
+  var x1 = Math.min(activeSpace.w - 1, Math.ceil((camX + crop.vw) / TILE));
+  var y1 = Math.min(activeSpace.h - 1, Math.ceil((camY + crop.vh) / TILE));
+  for (var ty = y0; ty <= y1; ty++) {
+    for (var tx = x0; tx <= x1; tx++) {
+      var id = activeSpace.tiles[idxIn(activeSpace.w, tx, ty)];
+      if (!TALL_TILE[id]) continue;
+      list.push({ kind: "tile", id: id, tx: tx, ty: ty, y: (ty + 1) * TILE });
+    }
+  }
+
+  list.sort(function (a, b) {
+    if (a.y !== b.y) return a.y - b.y;
+    return (a.kind === "tile" ? 0 : 1) - (b.kind === "tile" ? 0 : 1);
+  });
+  for (var i = 0; i < list.length; i++) {
+    var it = list[i];
+    if (it.kind === "tile") blitTallTile(c, it.id, it.tx, it.ty, camX, camY);
+    else drawOneActor(c, it, camX, camY);
+  }
 }
 
 // One draw path for outdoor and both interiors -- they already share the
@@ -158,7 +188,7 @@ function drawSpace(camX, camY) {
     }
   }
 
-  drawSortedActors(ctx);
+  drawSortedActors(ctx, camX, camY);
 
   if (nearestInteractable) {
     var ix = (nearestInteractable.x * TILE + 8) - camX;

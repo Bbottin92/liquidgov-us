@@ -280,6 +280,17 @@ SOLID_TILE[T_ADIT] = 1;
 SOLID_TILE[T_MINE_DOOR] = 1;
 SOLID_TILE[T_LAMP] = 1;
 
+// Tall props redraw in Y-order with actors so a 24px sprite can pass
+// behind a tree/hedge/wall instead of always stamping on top of the bake.
+var TALL_TILE = {};
+TALL_TILE[T_TREE] = 1;
+TALL_TILE[T_HEDGE] = 1;
+TALL_TILE[T_ADIT] = 1;
+TALL_TILE[T_NOTICE_POST] = 1;
+TALL_TILE[T_SIGN] = 1;
+TALL_TILE[T_WALL] = 1;
+TALL_TILE[T_IWALL] = 1;
+
 // ---- Scatter: the extra props (BUILD objects B) ------------------------------
 // Data, not code: [x, y] tile coords per region, drawn with tiles that already exist (tree, sit-log,
 // crate, flower bed, low wall, hedge), so no new art and no new collision rule. scatterRegions() (called

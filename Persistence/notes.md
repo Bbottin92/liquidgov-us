@@ -1826,6 +1826,19 @@ Not bug classes. Not “what is live on the droplet.”
   under a real flood and a real civic hang. Remaining named items from the survey, all
   unbuilt: nginx `limit_req` on `/guest` (deploy), tests-in-CI, deploy scripts, backup
   retention, splitting `index.html`, `/health` hash.
+- **2026-09-19 -- tests in CI built; CI is the last check.** Brandon: "BUILD tests in CI"
+  (`GROK_NEXT.md` #1). `commons-daemon/tests/`: 11 files, ~300 real assertions, `lib.sh`,
+  `run_all.sh`, frozen old-schema fixtures, and `civic_stub.py` (in-memory civic: the public
+  signup/friends/block/delete routes plus the four `/internal/*` routes with civic's semantics).
+  The stub is validated: the whole suite passes against BOTH the stub and the real
+  `liquidgov_http` (~210s each). New workflow step runs it after the daemon build (installs
+  `strace`; per-file and per-step timeouts). Mutation-checked: with the pre-hardening daemon put
+  back the suite fails on the cap, friends-cache and socket-timeout tests -- and that check first
+  showed the guest test would HANG on a daemon without timeouts, fixed (fail-fast probes). My own
+  draft mistakes (invalid usernames earlier, rows created before the daemon was up, a NULL
+  printing as 'None') were caught by asserting preconditions. No daemon/civic/client/nginx change,
+  no droplet, no deploy. See `tests-built.md`. Still unbuilt: deploy scripts, nginx `/guest`
+  limit, backup retention, `index.html` split, `/health` hash.
 
 ## Split: civic site vs game
 

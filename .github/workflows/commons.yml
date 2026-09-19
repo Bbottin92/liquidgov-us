@@ -11,6 +11,7 @@ permissions:
 jobs:
   daemon:
     runs-on: ubuntu-24.04
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v5
         with:
@@ -75,6 +76,17 @@ jobs:
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
           cmake --build build -j2
           test -x build/commons_daemon
+
+      # The daemon's regression suite, against a Python stand-in for civic's routes
+      # (commons-daemon/tests/civic_stub.py) -- civic itself cannot be built here.
+      # No droplet, no secrets, no nginx: it only starts local processes on loopback.
+      - name: daemon regression suite (civic stub)
+        timeout-minutes: 15
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq strace
+          bash commons-daemon/tests/run_all.sh
 
       - name: nginx -t on a wrapped fragment
         run: |

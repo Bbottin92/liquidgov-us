@@ -1,8 +1,8 @@
-# Region scatter (BUILD objects, step B) — built, tested, NOT deployed
+# Region scatter (BUILD objects, step B) — built, tested, DEPLOYED 2026-09-19 (d2b6859, client only)
 
 Brandon asked to "finish populating the game with objects" and answered the question doc (`CLAUDE_OBJECTS_QUESTION.md`) with "all of that";
 Claude proposed the order **B (client-only scatter) -> A (lab lookups) -> C (house furniture) -> D (pick-ups)**, and Brandon's `build` was taken as
-starting step 1. **Client only. Nothing was deployed and the droplet was not contacted.** Held for review.
+starting step 1. **Client only.** Held for review, then deployed on Brandon's `deploy` (d2b6859): served files byte-identical to the repo, drift-check clean, `verify.sh` 23/23, CI green, daemon not restarted. (Later scatter work, e.g. the Creek/Shore banks and pier, is documented separately.)
 
 ## What it is
 

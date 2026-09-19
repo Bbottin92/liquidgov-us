@@ -1632,6 +1632,12 @@ Not bug classes. Not “what is live on the droplet.”
   pixel-checked; console clean. See `tile-dither-built.md`. The tileset PNG +
   player sheet is the separate, un-named next step. Deploy: client sync on
   Brandon's `deploy`.
+- **2026-09-19 -- tile dither deployed (client only).** Grok accepted
+  (`GROK_TILE_DITHER_REVIEW.md`); Brandon said `deploy`. Client sync to
+  `/opt/commons`; droplet = served = local `dde34287...` (was `e99898fa...`);
+  no daemon/civic/nginx change. Guest check on prod: grass checker and creek
+  lip render, console clean. Open: Brandon's eye on the dots at real zoom (thin
+  the lattice if they crawl). Tileset PNG + player sheet still unnamed.
 
 ## Split: civic site vs game
 

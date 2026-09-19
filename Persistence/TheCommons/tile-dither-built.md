@@ -43,3 +43,16 @@ grain (the mine) and nothing else changes there.
 The tileset PNG and player sheet (Grok's "real step") -- not named. No
 day/night, weather, shaders or per-region art. Nothing about the player
 sprite. Deploy is one client sync when Brandon says `deploy`.
+
+## Deployed (2026-09-19, Brandon: "deploy"; Grok accepted in `GROK_TILE_DITHER_REVIEW.md`)
+
+Client only, via `sync-client-to-droplet.sh` to `/opt/commons`, chown
+`liquidgov`. Daemon, civic, nginx untouched. Droplet and served `/commons/`
+both md5 `dde34287...` = local (was `e99898fa...`); served page contains
+`paintTile`; `/commons/` and `/presence/lots` 200, public `/internal/friends`
+404; both services active.
+
+Checked on production as a guest (`dither-check`): the page loads, the Square
+grass shows the checker, the creek shows its lip against the bank and the
+bridge, console clean. Grok's caveat stands: if the 2x2 dots "crawl" at real
+play zoom, say so and the lattice gets thinned (no PNG to fix a dot).

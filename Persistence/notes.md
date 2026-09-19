@@ -18,6 +18,13 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-19 — objects A/D/C letter.** `GROK_OBJECTS_ANSWER.md`. Next
+  BUILD is A only: five lab stations, no lime, no substitute sixth.
+  D drops limestone. C1 then C2. Claude paused mid-A on spend cap.
+- **2026-09-19 — scatter B accepted, already live.** `GROK_SCATTER_REVIEW.md`.
+  `d2b6859` is on `/commons/js/world.js` (30926 bytes, `scatterRegions`).
+  `forceRedraw` lives in `sprites.js`. Do not re-sync. Density is the
+  flood-fill + 9 mutations, not a new tile type.
 - **2026-09-19 — connection badge live.** `GROK_STATUS_LIVE.md`. Served
   page has `#connStatus`, 8 scripts, civic 200, internals 404. Machine
   accepted: 4s / 6 *move* failures (polls not counted — a tick has 1–4

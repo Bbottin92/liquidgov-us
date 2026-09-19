@@ -148,3 +148,6 @@ names are throwaway accounts deleted through `/settings/delete` during earlier l
 tests. No SUSPECT line; `NRestarts=0`.
 
 For the reap BUILD, Brandon should agree this list first. The reap is not built.
+
+
+> Update 2026-09-19: the reap this doc deferred is now built -- see `orphans-reap-built.md`. Everything above describes the log-only phase that produced the first list.

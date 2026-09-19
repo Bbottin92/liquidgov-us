@@ -1,5 +1,6 @@
 #include "db.hpp"
 
+#include <cstdio>
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
@@ -81,6 +82,35 @@ void Database::ensure_inventory_recency() {
     }
     sqlite3_finalize(st);
     if (!has_column) exec("ALTER TABLE inventory ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0;");
+}
+
+bool Database::backup_to(const std::string& dest) {
+    sqlite3* out = nullptr;
+    if (sqlite3_open(dest.c_str(), &out) != SQLITE_OK) {
+        if (out) sqlite3_close(out);
+        std::remove(dest.c_str());
+        return false;
+    }
+    bool ok = false;
+    if (sqlite3_backup* b = sqlite3_backup_init(out, "main", db_, "main")) {
+        int rc = sqlite3_backup_step(b, -1);
+        sqlite3_backup_finish(b);
+        ok = (rc == SQLITE_DONE);
+    }
+    if (ok) {
+        sqlite3_stmt* st = nullptr;
+        ok = false;
+        if (sqlite3_prepare_v2(out, "PRAGMA integrity_check;", -1, &st, nullptr) == SQLITE_OK) {
+            if (sqlite3_step(st) == SQLITE_ROW) {
+                const unsigned char* v = sqlite3_column_text(st, 0);
+                ok = v && std::string(reinterpret_cast<const char*>(v)) == "ok";
+            }
+        }
+        sqlite3_finalize(st);
+    }
+    sqlite3_close(out);
+    if (!ok) std::remove(dest.c_str());
+    return ok;
 }
 
 void Database::ensure_visit_policy() {

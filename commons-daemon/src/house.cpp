@@ -143,6 +143,52 @@ HouseStore::Footprint HouseStore::footprint_of(const std::string& username) {
     return f;
 }
 
+HouseStore::ReapResult HouseStore::reap_orphan(const std::string& username) {
+    ReapResult r;
+    int player_id = -1, house = -1;
+    {
+        sqlx::Stmt sel(db_, "SELECT player_id, house_instance_id FROM players WHERE lg_username = ?1;");
+        sel.text(1, username);
+        if (!sel.row()) return r; // nothing to reap
+        player_id = sel.column_int(0);
+        if (!sel.column_null(1)) house = sel.column_int(1);
+    }
+    sqlx::Tx tx(db_); // rolls everything back unless commit() is reached
+    {
+        sqlx::Stmt del(db_, "DELETE FROM inventory WHERE player_id = ?1;");
+        del.integer(1, player_id);
+        del.done();
+        r.inventory_rows = sqlite3_changes(db_);
+    }
+    if (house >= 0) {
+        {
+            sqlx::Stmt del(db_, "DELETE FROM placed WHERE instance_id = ?1;");
+            del.integer(1, house);
+            del.done();
+            r.placed_rows = sqlite3_changes(db_);
+        }
+        // No other player should point at this house (last_instance_id is only ever
+        // written for one's own house), but never leave a dangling reference.
+        sqlx::Stmt rel(db_, "UPDATE players SET last_instance_id = NULL WHERE last_instance_id = ?1 AND player_id != ?2;");
+        rel.integer(1, house).integer(2, player_id);
+        rel.done();
+    }
+    {
+        sqlx::Stmt del(db_, "DELETE FROM players WHERE player_id = ?1;");
+        del.integer(1, player_id);
+        del.done();
+        r.player_row = sqlite3_changes(db_) > 0;
+    }
+    if (house >= 0) {
+        sqlx::Stmt del(db_, "DELETE FROM map_instances WHERE instance_id = ?1 AND owner_player_id = ?2;");
+        del.integer(1, house).integer(2, player_id);
+        del.done();
+        r.house_row = sqlite3_changes(db_) > 0;
+    }
+    tx.commit();
+    return r;
+}
+
 bool HouseStore::add_pickup(const std::string& username, const std::string& item_slug, long long now_ms) {
     int player_id = find_or_create_player(username);
     // MIN(.., 99): a lookup station can be pressed forever; the count is a

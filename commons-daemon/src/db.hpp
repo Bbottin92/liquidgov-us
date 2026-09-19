@@ -30,6 +30,11 @@ public:
     // Same shape, for players.visit_policy (house friends/locked). Existing
     // rows take the DEFAULT, so every current house stays friends-only.
     void ensure_visit_policy();
+    // A consistent, online copy of the live database (the SQLite backup API,
+    // never a file copy, so it is safe in WAL mode with the daemon running) to
+    // `dest`, verified with integrity_check. False on any failure; a partial
+    // file is removed. Used to take a backup before the orphan reap deletes rows.
+    bool backup_to(const std::string& dest);
     void exec_file(const std::string& path);
     void exec(const std::string& sql);
 

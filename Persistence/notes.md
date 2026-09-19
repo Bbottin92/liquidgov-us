@@ -1771,6 +1771,20 @@ Not bug classes. Not “what is live on the droplet.”
   deferred by the cap, due next pass. `Bbottin` (real) exists and is not listed. All four
   are throwaways deleted via `/settings/delete` in earlier live tests. DB counts unchanged.
   The reap is a later BUILD once Brandon agrees the list.
+- **2026-09-19 -- orphan REAP built, local-tested, not deployed.** Brandon: "BUILD orphans
+  reap" after reading the first log-only list. Daemon only. The ~10-minute pass now deletes
+  a qualifying name's inventory, house `placed` rows, `players` row and owned house
+  `map_instances` row in ONE rolled-back-on-failure transaction. Still needs: explicit
+  civic `exists:false`, two consecutive passes, cap 3 per pass, not online, suspect guard.
+  New: an automatic online SQLite backup per reaping pass (`backups/commons.sqlite.pre-reap-*`;
+  no backup, no reap), one last civic check right before each delete, and a
+  `COMMONS_ORPHAN_REAP=0` kill switch (default ON). Verified with real civic: living accounts
+  untouched, valid pre-reap backups, a new owner of a reaped name gets an empty house and no
+  inventory, frozen civic reaps nothing, failed backup reaps nothing, kill switch works.
+  (My first run used invalid one-letter usernames and exercised nothing; redone.) See
+  `orphans-reap-built.md`. Deploy: daemon only, backup first, after Grok's review and Brandon's
+  `deploy`; expect `persistverify9`, `vtowner`, `invverify1` at ~20 min and `ptvisitor` at ~30.
+  Also noted: Grok's `civic-ratelimit.md` (explore, not a build): no limiter on `/internal/`.
 
 ## Split: civic site vs game
 

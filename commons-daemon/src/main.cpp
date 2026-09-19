@@ -19,6 +19,8 @@
 #include <cctype>
 #include <chrono>
 #include <cstdlib>
+#include <ctime>
+#include <sys/stat.h>
 #include <map>
 #include <iostream>
 #include <sstream>
@@ -863,16 +865,20 @@ int main(int argc, char** argv) {
     // Orphan watch (BUILD orphans log-only, rest slice 4b; GROK_REST_4_ANSWER.md
     // valves). Civic lets a deleted username be registered again, so a deleted
     // player's house, wall item and inventory would be inherited by whoever takes
-    // the name. This pass only FINDS and LOGS such rows; there is deliberately no
-    // DELETE anywhere in this build -- the reap is a separate, later BUILD after
-    // the journal has been read. Rules: only an explicit {"exists":false} from
+    // the name. It ran LOG-ONLY first (the journal was read and the list agreed);
+    // now it reaps (BUILD orphans reap). Rules: only an explicit {"exists":false} from
     // civic counts (anything else, including civic being down, is "don't know" and
     // resets the streak); a name must be gone on TWO CONSECUTIVE passes; at most 3
     // "would reap" per pass; anyone currently in the game is skipped; and if EVERY
     // checked account is reported gone the pass is treated as suspect (a civic
     // store problem, not a mass deletion) and counts nothing. Runs on the existing
     // accept-loop hook, ~every 10 minutes; stops at the first "civic didn't
-    // answer" so a dead civic costs one bounded wait, not one per player.
+    // answer" so a dead civic costs one bounded wait, not one per player. To
+    // REAP a name that survives all of that the pass also: takes an online
+    // backup of the database first (no backup, no reap), asks civic ONE more
+    // time just before deleting, and skips anyone who has since come online;
+    // each reap is one transaction that rolls back whole on any failure.
+    // COMMONS_ORPHAN_REAP=0 is the kill switch: back to log-only.
     // COMMONS_TEST_TICK_MS (tests only) makes the hook and this pass run that often.
     long long tick_ms = kSnapshotIntervalMs;
     long long orphan_pass_ms = 600000;
@@ -884,9 +890,29 @@ int main(int argc, char** argv) {
     constexpr int kOrphanMaxChecks = 50;
     std::map<std::string, int> gone_streak;          // RAM only; a restart starts over
     long long last_orphan_pass_ms = now_ms();        // first pass one interval after start
-    std::cerr << "commons-daemon: orphan watch is LOG-ONLY (every " << orphan_pass_ms / 1000
-              << "s, needs 2 consecutive explicit civic negatives, cap " << kOrphanCap
-              << " per pass); nothing is deleted\n";
+    bool reap_enabled = true;
+    if (const char* r = std::getenv("COMMONS_ORPHAN_REAP")) {
+        std::string v = r;
+        if (v == "0" || v == "off" || v == "false") reap_enabled = false;
+    }
+    std::cerr << "commons-daemon: orphan watch is " << (reap_enabled ? "REAPING" : "LOG-ONLY (kill switch)")
+              << " (every " << orphan_pass_ms / 1000 << "s, needs 2 consecutive explicit civic negatives, cap "
+              << kOrphanCap << " per pass, online backup first)"
+              << (reap_enabled ? "" : "; nothing is deleted") << "\n";
+    // Online backup of the live DB into <db dir>/backups, named for the moment.
+    // Empty string = it failed (and then nothing is reaped).
+    auto orphan_backup = [&]() -> std::string {
+        auto slash = db_path.find_last_of('/');
+        const std::string dir = (slash == std::string::npos ? std::string(".") : db_path.substr(0, slash)) + "/backups";
+        mkdir(dir.c_str(), 0755); // exists already in production
+        std::time_t t = std::time(nullptr);
+        std::tm g{};
+        gmtime_r(&t, &g);
+        char stamp[32];
+        std::strftime(stamp, sizeof(stamp), "%Y%m%dT%H%M%SZ", &g);
+        const std::string dest = dir + "/commons.sqlite.pre-reap-" + stamp;
+        return db.backup_to(dest) ? dest : std::string();
+    };
     auto orphan_pass = [&]() {
         auto online = presence.bound_usernames();
         std::vector<std::string> gone_now;
@@ -917,23 +943,61 @@ int main(int argc, char** argv) {
             if (std::find(gone_now.begin(), gone_now.end(), it->first) == gone_now.end()) it = gone_streak.erase(it);
             else ++it;
         }
-        int would = 0, deferred = 0;
+        std::vector<std::pair<std::string, int>> due; // (name, streak) qualifying this pass
+        int deferred = 0;
         for (const auto& u : gone_now) {
             int streak = ++gone_streak[u];
             if (streak < 2) {
                 std::cerr << "commons-daemon: orphan watch: '" << u << "' is gone from civic (1st pass; needs 2 in a row)\n";
                 continue;
             }
-            if (would >= kOrphanCap) { ++deferred; continue; }
-            ++would;
-            auto f = house.footprint_of(u);
-            std::cerr << "commons-daemon: orphan watch (LOG-ONLY, nothing deleted): would reap '" << u
-                      << "': house instance " << f.house_instance << ", " << f.inventory_rows
-                      << " inventory rows (qty " << f.inventory_qty << "), " << f.placed_rows
-                      << " placed rows, gone for " << streak << " passes\n";
+            if (static_cast<int>(due.size()) >= kOrphanCap) { ++deferred; continue; }
+            due.emplace_back(u, streak);
+        }
+        if (!reap_enabled) {
+            for (const auto& d : due) {
+                auto f = house.footprint_of(d.first);
+                std::cerr << "commons-daemon: orphan watch (LOG-ONLY, nothing deleted): would reap '" << d.first
+                          << "': house instance " << f.house_instance << ", " << f.inventory_rows
+                          << " inventory rows (qty " << f.inventory_qty << "), " << f.placed_rows
+                          << " placed rows, gone for " << d.second << " passes\n";
+            }
+        } else if (!due.empty()) {
+            // No backup, no reap.
+            const std::string backup = orphan_backup();
+            if (backup.empty()) {
+                std::cerr << "commons-daemon: orphan watch: the pre-reap BACKUP FAILED; reaping nothing this pass\n";
+            } else {
+                std::cerr << "commons-daemon: orphan watch: backup taken before reaping: " << backup << "\n";
+                for (const auto& d : due) {
+                    const std::string& u = d.first;
+                    // One more look, right now: civic must STILL say gone and the player
+                    // must not have come online since the pass began.
+                    auto again = commons::civic::user_exists(u);
+                    auto online_now = presence.bound_usernames();
+                    if (again != commons::civic::Existence::Gone ||
+                        std::find(online_now.begin(), online_now.end(), u) != online_now.end()) {
+                        std::cerr << "commons-daemon: orphan watch: NOT reaping '" << u
+                                  << "': civic no longer says gone, or they are online\n";
+                        gone_streak.erase(u);
+                        continue;
+                    }
+                    try {
+                        auto res = house.reap_orphan(u);
+                        std::cerr << "commons-daemon: orphan watch: REAPED '" << u << "': " << res.inventory_rows
+                                  << " inventory rows, " << res.placed_rows << " placed rows, house row "
+                                  << (res.house_row ? "removed" : "none") << ", players row "
+                                  << (res.player_row ? "removed" : "none") << " (gone for " << d.second << " passes)\n";
+                        gone_streak.erase(u);
+                    } catch (const commons::sqlx::DbError&) {
+                        std::cerr << "commons-daemon: orphan watch: reap of '" << u
+                                  << "' FAILED and was rolled back; nothing changed for them\n";
+                    }
+                }
+            }
         }
         if (deferred > 0)
-            std::cerr << "commons-daemon: orphan watch: " << deferred << " more would-reap deferred by the cap of "
+            std::cerr << "commons-daemon: orphan watch: " << deferred << " more deferred by the cap of "
                       << kOrphanCap << " per pass\n";
     };
 

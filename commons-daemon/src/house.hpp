@@ -60,9 +60,9 @@ public:
     // never creates a row).
     bool set_visit_policy(const std::string& username, const std::string& policy);
 
-    // Orphan watch (rest slice 4b, log-only): READ-ONLY. Every username that has
-    // a players row (guests have none), and how much game data hangs off one.
-    // Nothing here writes or deletes.
+    // Orphan watch (rest slice 4b): READ-ONLY. Every username that has a players
+    // row (guests have none), and how much game data hangs off one. These two
+    // never write or delete; reap_orphan() below is the only thing that does.
     std::vector<std::string> all_usernames();
     struct Footprint {
         int house_instance = -1;   // -1 = never entered a house
@@ -71,6 +71,16 @@ public:
         int placed_rows = 0;       // in that house
     };
     Footprint footprint_of(const std::string& username);
+
+    // DESTRUCTIVE (BUILD orphans reap). Removes everything the game holds for one
+    // username whose LiquidGov account is gone, in ONE transaction that rolls back
+    // whole on any failure: their inventory rows, every placed row in their house,
+    // their players row, then their house's map_instances row (only if that row is
+    // owned by them). Nothing else is touched. The caller is responsible for every
+    // safety check (civic said gone, twice in a row, once more just now; not
+    // online; a backup exists) -- this only does the deleting.
+    struct ReapResult { int inventory_rows = 0; int placed_rows = 0; bool player_row = false; bool house_row = false; };
+    ReapResult reap_orphan(const std::string& username);
 
     // Bound inventory (GROK_V6_ANSWER.md: lab pickups "vanish on refresh"
     // for a bound player). schema.sql's `inventory` table, first time it is

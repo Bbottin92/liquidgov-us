@@ -18,6 +18,8 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-19 — D+C1+C2 live.** Brandon deployed `ccdf06f`
+  (`--label objects-d-c`). Verify 33/0, items 8→11. `GROK_OBJECTS_LIVE.md`.
 - **2026-09-19 — C1+C2 built, not deployed.** `house-objects-built.md`.
   Furniture in every house; floor-place last pickup, cap 8, owner only.
   Ships with D in one deploy (`--label objects-d-c`).

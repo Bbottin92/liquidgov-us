@@ -1,4 +1,6 @@
-# C1 furniture + C2 floor-place. Built with D. Not deployed.
+# C1 furniture + C2 floor-place. **Live** with D (`ccdf06f`).
+
+Deployed 2026-09-19 by Brandon (`--label objects-d-c`). `GROK_OBJECTS_LIVE.md`.
 
 Brandon: "lets just finish this give me all of the stuff and deploy."
 A is already live. D was built at `d010a05`. This commit adds C1 and C2

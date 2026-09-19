@@ -18,6 +18,9 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-19 — resume name live.** Brandon deployed `7955df0`
+  (`--label resume-name`) after recloning a corrupt local git store.
+  Verify 33/0. `GROK_RESUME_NAME_LIVE.md`. Occupant lerp shipped in the same deploy (`f7c8ffe`).
 - **2026-09-19 — resume name built, not deployed.** `resume-name-built.md`.
   Same-tab refresh skips the welcome card. Indoor button says Leave.
 - **2026-09-19 — occupant lerp built, not deployed.** `occupant-lerp-built.md`.

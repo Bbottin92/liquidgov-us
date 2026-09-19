@@ -1,4 +1,8 @@
-# Resume name — built, not deployed
+# Resume name — **live** (`7955df0`)
+
+Deployed 2026-09-19 by Brandon (`--label resume-name`) after a fresh clone. Verify 33/0. Occupant lerp (`f7c8ffe`) went out in the same client sync.
+
+# was: built, not deployed
 
 Brandon: continue polishing. Client only.
 

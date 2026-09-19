@@ -38,7 +38,7 @@ client code change, no deploy.** Files: `commons-daemon/tests/` and one workflow
 | `migrations` | startup migrations on databases from two OLDER schemas, frozen from git history (28) |
 | `deploy` | the deploy scripts against a fake droplet: drift, refusals, backup, -j1 build, ordered `--go`, verify (119) |
 | `nginx_guest` | the `/guest` rate limit: config text + a real nginx in front of the daemon (CI) |
-| `retention` | backup retention: 361 unit checks + the script against a fake backups directory (47) |
+| `retention` | backup retention: 378 unit checks + the script against a fake backups directory incl. sidecars (76) |
 | `harness` | the harness itself: no daemon survives `stop_daemon`/`crash_daemon` even under a forking wrapper; `start_daemon` refuses a busy port (8) |
 
 ## Does it actually catch regressions? (mutation check)

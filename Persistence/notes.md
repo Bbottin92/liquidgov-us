@@ -1898,6 +1898,14 @@ Not bug classes. Not “what is live on the droplet.”
   nothing deleted: 12 backups, keep 12, delete 0 (all from the last ~24h; dir 1.4M, disk 57%). **Finding:** every backup
   also has `-wal` (0 B) and `-shm` (32 KB) sidecars (24 of 36 files); the pruner ignores them, so deleting an old backup would
   orphan its sidecars. Proposed, not built: delete a backup's exact `-wal`/`-shm` together with it. Needs Brandon to name it.
+- **2026-09-19 -- `BUILD sidecar pairing` built (files + tests; NO droplet, no `--delete`, nothing deleted anywhere).** Follow-up to the
+  retention dry-run finding: `<backup>-wal`/`<backup>-shm` (EXACT names) now delete WITH their backup (sidecars first, then the
+  backup; each name re-validated, and a sidecar's backup must be in the DELETE set) and are kept with a kept one; they never
+  count in the newest 14 and are never judged by their own age. A sidecar whose backup is gone is an ORPHAN: reported, never
+  deleted. The dry-run list is newest-first with each backup's sidecars right under it. Summary line now counts backups,
+  sidecars, orphans, ignored. Unit checks 361 -> 378, `test_retention.sh` 47 -> 76 (real sidecar files, orphans, look-alikes),
+  mutation-checked (8 more breakages). Today's droplet dry run would read `12 backups: keep 12, delete 0; sidecars: keep 24,
+  delete 0`. Still not scheduled; no `--delete` until something is old enough (~a month). See `backup-retention-built.md`.
 
 ## Split: civic site vs game
 

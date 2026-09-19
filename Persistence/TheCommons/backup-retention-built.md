@@ -86,7 +86,42 @@ anything that opens it (the integrity check inside `backup_to`/`backup-db.sh`, a
 They are tiny (about 0.4 MB in total) and harmless, but the pruner **IGNOREs them by design (not a backup name), so when it
 deletes an old backup its `-wal`/`-shm` would be left behind as orphans and accumulate**, two per deleted backup.
 
-**Proposed follow-up (NOT built, needs Brandon to name it):** treat `<backup>-wal` and `<backup>-shm` as part of that backup:
+**Follow-up (built next: see "Sidecar pairing" below):** treat `<backup>-wal` and `<backup>-shm` as part of that backup:
 delete them together with a DELETE'd backup (exact-name only, never a wildcard), and report (not delete, or delete only when
 older than 30 days) sidecars whose main file is gone. Changing the policy's ignore rule is a decision, so it was not done here.
 Cosmetic: the dry-run list is in directory order, not newest-first; sorting the printout by rank would read better.
+
+## Sidecar pairing (built 2026-09-19, Brandon: "BUILD sidecar pairing"; no droplet, no `--delete`)
+
+The finding above, fixed. A backup's `-wal` and `-shm` files are now part of that backup:
+
+- **Deleted with their backup, and only with it.** `<backup>-wal` and `<backup>-shm` are matched by EXACT name (the backup's full
+  name plus that suffix; no wildcards, no prefixes). When a backup is DELETE they are `SIDE-DELETE`; when it is kept they are
+  `SIDE-KEEP`. A sidecar is never judged by its own age (an ancient sidecar of a kept backup stays; a brand-new sidecar of a
+  doomed backup goes).
+- **They never count in the newest 14** (they are not in the ranking at all).
+- **Orphans are reported, never deleted.** A sidecar whose backup file is gone is listed as `ORPHAN` (also under `--keep 0
+  --days 0`), and the summary counts them: `orphan sidecars (reported, never deleted): N`. A sidecar of a near-miss name (one second
+  different) is an orphan, not paired with a similar backup. A sidecar of an invalid backup name is just IGNOREd.
+- **Exact names only:** `-wal2`, `-wal.bak`, `-journal`, `.wal`, `-WAL`, `-wal-wal`, `-shm~`, and the live-DB-style
+  `commons.sqlite-wal` are other files: IGNOREd, never touched.
+- **Newest first.** The printout lists backups newest-first, each immediately followed by its own sidecars, then orphans, then
+  ignored files.
+- **Deletion order and guards (`prune-backups.sh --delete`):** sidecars first, then the backup, so an interrupted run leaves a
+  valid backup missing its sidecars, never a sidecar stranded by a deleted backup. Before each `rm` the name is re-validated
+  (backup pattern, or sidecar pattern AND its backup must be in the DELETE set). Afterwards it re-lists and checks that every
+  KEEP, SIDE-KEEP and ORPHAN file is still present.
+- The summary line is now `N backups: keep A, delete B; sidecars: keep C, delete D; orphan sidecars (reported, never deleted): E;
+  ignore F other file(s); frees G bytes`. **On today's droplet a dry run would read `12 backups: keep 12, delete 0; sidecars:
+  keep 24, delete 0`.**
+
+**Tests:** `prune_backups_unit.py` now 378 checks (17 new for sidecars: they take no rank, follow their backup both ways,
+orphans under the harshest policy, near-miss and look-alike names, invalid backup names, the clock anomaly, ordering, and the
+random directories now include sidecars and orphans). `test_retention.sh` now 76 assertions with REAL sidecar files: today's
+droplet shape with 20 sidecars all kept; the 34-backup spread with 68 sidecars, 3 orphans, look-alikes and a `commons.sqlite-wal`
+(dry run removes nothing; `--delete` removes exactly 20 backups + 40 sidecars = 60 files, every surviving backup keeps both
+sidecars, nothing is stranded, orphans, look-alikes and other files untouched; a second run is a no-op); newest-first and
+adjacency checks on the real printout; an only-orphans directory deletes nothing. **Mutation-checked, 8 more breakages**
+(sidecars counted as backups, an orphan marked for deletion, non-exact pairing, a kept backup's sidecars deleted, the wrapper
+not deleting sidecars, oldest-first printout, sidecars listed away from their backup, every sidecar marked delete): each fails
+the tests. Nothing was run against the droplet and nothing was deleted anywhere.

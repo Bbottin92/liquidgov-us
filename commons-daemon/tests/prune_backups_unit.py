@@ -137,6 +137,71 @@ check(a is None and any(verb == "DELETE" for verb, _, _ in dec), "30 minutes ahe
 dec, a = prune.decide([], NOW)
 check(dec == [] and a is None, "no files: nothing, no anomaly")
 
+# ---- sidecars: <backup>-wal and <backup>-shm (exact names) follow their backup and never take a rank
+def side(e, suffix, mtime_age_s=None):
+    return (e[0] if mtime_age_s is None else NOW - mtime_age_s, e[1] + suffix)
+
+fresh10 = [entry((i + 1) * 3600, "f%d" % i) for i in range(10)]
+olds = [entry((100 + i) * DAY, "o%d" % i) for i in range(5)]
+sides = [side(e, s) for e in fresh10 + olds for s in ("-wal", "-shm")]
+v, a = verdicts(fresh10 + olds + sides)
+check(sum(1 for x in v.values() if x == "DELETE") == 1, "sidecars do NOT count in the newest 14: exactly one of the five old backups is outside it")
+check(v[olds[4][1]] == "DELETE", "...the oldest one")
+check(v[olds[4][1] + "-wal"] == "SIDE-DELETE" and v[olds[4][1] + "-shm"] == "SIDE-DELETE", "its -wal and -shm are deleted with it")
+check(sum(1 for x in v.values() if x == "SIDE-DELETE") == 2, "and ONLY those two sidecars are deleted")
+check(all(v[e[1] + s] == "SIDE-KEEP" for e in fresh10 + olds[:4] for s in ("-wal", "-shm")), "every kept backup keeps both sidecars")
+
+# a sidecar is never judged by its own age: an ancient sidecar of a fresh backup stays; a fresh sidecar of a doomed backup goes
+v, _ = verdicts(fresh10 + [side(fresh10[0], "-wal", 500 * DAY)])
+check(v[fresh10[0][1] + "-wal"] == "SIDE-KEEP", "an ancient sidecar of a KEPT backup is kept (not judged by its own age)")
+doomed = entry(200 * DAY, "doomed")
+v, _ = verdicts(b + [doomed, side(doomed, "-wal", 1), side(doomed, "-shm", 1)])
+check(v[doomed[1] + "-wal"] == "SIDE-DELETE" and v[doomed[1] + "-shm"] == "SIDE-DELETE", "a brand-new sidecar of a DOOMED backup is deleted with it")
+
+# only one of the two present is fine
+v, _ = verdicts(b + [doomed, side(doomed, "-shm")])
+check(v[doomed[1]] == "DELETE" and v[doomed[1] + "-shm"] == "SIDE-DELETE", "a backup with only a -shm: both go")
+
+# orphans: reported, NEVER deleted, whatever the policy
+gone = "commons.sqlite.pre-gone-20200101T000000Z"
+orph = [(NOW - 500 * DAY, gone + "-wal"), (NOW - 500 * DAY, gone + "-shm")]
+v, _ = verdicts(b + orph)
+check(v[gone + "-wal"] == "ORPHAN" and v[gone + "-shm"] == "ORPHAN", "a sidecar whose backup file is gone is an ORPHAN")
+v, _ = verdicts(b + orph, keep=0, days=0)
+check(v[gone + "-wal"] == "ORPHAN" and v[gone + "-shm"] == "ORPHAN", "an orphan is never deleted, even with --keep 0 --days 0: it stays ORPHAN")
+near = doomed[1].replace("T000000Z", "T000001Z")                                # a main name one second different
+assert near != doomed[1], "test setup: the near-miss name must differ"
+v, _ = verdicts(b + [doomed, side(doomed, "-wal"), (NOW - 500 * DAY, near + "-wal")])
+check(v[near + "-wal"] == "ORPHAN", "a sidecar of a near-miss name is an orphan, not paired with a similar backup")
+check(v[doomed[1] + "-wal"] == "SIDE-DELETE", "...and the real pair is unaffected")
+
+# exact names only: near-miss suffixes are just other files
+x = doomed[1]
+lookalikes = [(NOW - 500 * DAY, x + s) for s in ("-wal2", "-wal.bak", "-journal", ".wal", "-WAL", "-wal-wal", "-shm~", "_wal", "-wal ")]
+v, _ = verdicts(b + [doomed, side(doomed, "-wal")] + lookalikes)
+check(all(v[n] == "IGNORE" for _, n in lookalikes), "-wal2, -wal.bak, -journal, .wal, -WAL, -wal-wal, -shm~ ... are IGNOREd (never deleted)")
+check(v[x] == "DELETE" and v[x + "-wal"] == "SIDE-DELETE", "while the exact pair still goes with its backup")
+
+# a sidecar of a name that is not a valid backup (unparseable stamp) is ignored too
+bad = "commons.sqlite.pre-x-20201340T250000Z"
+v, _ = verdicts(b + [(NOW, bad), (NOW, bad + "-wal")])
+check(v[bad] == "IGNORE" and v[bad + "-wal"] == "IGNORE", "an invalid backup name and its sidecar are both IGNOREd")
+
+# the clock anomaly holds sidecars back too
+fut = [entry(-2 * 3600, "future")] + [entry((100 + i) * DAY, "o%d" % i) for i in range(20)]
+fut += [side(e, s) for e in fut for s in ("-wal", "-shm")]
+dec, a = prune.decide(fut, NOW)
+check(a is not None and all(verb not in ("DELETE", "SIDE-DELETE") for verb, _, _ in dec), "an anomaly deletes no backup and no sidecar")
+
+# order: newest backup first, each backup followed by its own sidecars, then orphans, then ignored files
+o1, o2, o3 = entry(3 * 3600, "c"), entry(1 * 3600, "a"), entry(2 * 3600, "b")
+mix = [o1, side(o1, "-wal"), o2, side(o2, "-shm"), o3, side(o3, "-shm"), side(o3, "-wal"),
+       (NOW, gone + "-shm"), (NOW, "notes.txt"), (NOW, "commons.sqlite")]
+dec, _ = prune.decide(mix, NOW)
+got = [n for _, _, n in dec]
+want = [o2[1], o2[1] + "-shm", o3[1], o3[1] + "-shm", o3[1] + "-wal", o1[1], o1[1] + "-wal", gone + "-shm", "commons.sqlite", "notes.txt"]
+check(got == want, "newest first, sidecars right after their backup, then orphans, then ignored: %s" % got)
+
 # ---- properties over random directories
 rng = random.Random(20260920)
 labels = ["reap", "a56eba3", "hardening", "house-policy", "reap-manual"]
@@ -145,7 +210,10 @@ for trial in range(300):
     es = [entry(rng.randint(60, 200 * DAY), rng.choice(labels) + str(i)) for i in range(n)]   # unique names, like a real directory
     extras = [(NOW - rng.randint(0, 900 * DAY), rng.choice(["x.txt", "commons.sqlite-wal", "commons.sqlite.pre-x-20200101T000000Z.tmp"]))
               for _ in range(rng.randint(0, 4))]
-    dec, a = prune.decide(es + extras, NOW)
+    sc = [side(e, suf) for e in es if rng.random() < 0.5 for suf in ("-wal", "-shm")]
+    oc = [(NOW - rng.randint(0, 900 * DAY), "commons.sqlite.pre-gone%d-20200101T000000Z-%s" % (k, rng.choice(["wal", "shm"])))
+          for k in range(rng.randint(0, 3))]
+    dec, a = prune.decide(es + extras + sc + oc, NOW)
     verb = {name: v for v, _, name in dec}
     rank = sorted(es, key=lambda e: (max(e[0], prune.name_epoch(prune.NAME.match(e[1]).group(2))), e[1]), reverse=True)
     effective = lambda e: max(e[0], prune.name_epoch(prune.NAME.match(e[1]).group(2)))
@@ -158,7 +226,10 @@ for trial in range(300):
             age = NOW - effective(e)
             ok &= age > 30 * DAY and age >= 24 * 3600 and e not in rank[:14]
     ok &= all(verb[n] == "IGNORE" for _, n in extras)
-    survivors = [e for e in es if verb[e[1]] != "DELETE"] + extras
+    ok &= all(verb[n] == ("SIDE-DELETE" if verb[n[:-4]] == "DELETE" else "SIDE-KEEP") for _, n in sc)     # a sidecar follows its backup
+    ok &= all(verb[n] == "ORPHAN" for _, n in oc)                                                          # orphans are only reported
+    ok &= sum(1 for v_ in verb.values() if v_ == "DELETE") == sum(1 for e in es if verb[e[1]] == "DELETE")
+    survivors = [e for e in es if verb[e[1]] != "DELETE"] + extras + [s for s in sc if verb[s[1]] == "SIDE-KEEP"] + oc
     dec2, _ = prune.decide(survivors, NOW)                                     # pruning twice deletes nothing more
     ok &= all(v != "DELETE" for v, _, _ in dec2)
     check(ok, "random directory #%d (%d backups) satisfies every invariant" % (trial, n))

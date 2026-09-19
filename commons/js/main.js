@@ -39,6 +39,19 @@ function blitTallTile(c, id, tx, ty, camX, camY) {
   }
 }
 
+// Second storey of a tree: foliage on the walkable tile north of the trunk.
+// Not baked (would overwrite grass). Sorted with actors so you tuck under it.
+function blitCanopy(c, tx, ty, camX, camY) {
+  var dx = Math.round(tx * TILE - camX), dy = Math.round(ty * TILE - camY);
+  var base = COLOR[T_TREE];
+  c.fillStyle = shadeHex(base, -0.18);
+  c.fillRect(dx + 1, dy + 6, 14, 9);
+  c.fillStyle = base;
+  c.fillRect(dx + 3, dy + 2, 10, 11);
+  c.fillStyle = shadeHex(base, 0.14);
+  c.fillRect(dx + 5, dy + 1, 6, 6);
+}
+
 function drawOneActor(c, a, camX, camY) {
   drawFootShadow(c, a.x, a.y, camX, camY);
   var destY = spriteDestY(a.y - camY, a.half);
@@ -66,22 +79,29 @@ function drawSortedActors(c, camX, camY) {
   var x0 = Math.max(0, Math.floor(camX / TILE) - 1);
   var y0 = Math.max(0, Math.floor(camY / TILE) - 1);
   var x1 = Math.min(activeSpace.w - 1, Math.ceil((camX + crop.vw) / TILE));
-  var y1 = Math.min(activeSpace.h - 1, Math.ceil((camY + crop.vh) / TILE));
+  var y1 = Math.min(activeSpace.h - 1, Math.ceil((camY + crop.vh) / TILE) + 1);
   for (var ty = y0; ty <= y1; ty++) {
     for (var tx = x0; tx <= x1; tx++) {
       var id = activeSpace.tiles[idxIn(activeSpace.w, tx, ty)];
       if (!TALL_TILE[id]) continue;
       list.push({ kind: "tile", id: id, tx: tx, ty: ty, y: (ty + 1) * TILE });
+      if (id === T_TREE && ty > 0) {
+        var nid = activeSpace.tiles[idxIn(activeSpace.w, tx, ty - 1)];
+        if (!TALL_TILE[nid] && nid !== T_WATER) {
+          list.push({ kind: "canopy", tx: tx, ty: ty - 1, y: ty * TILE });
+        }
+      }
     }
   }
 
   list.sort(function (a, b) {
     if (a.y !== b.y) return a.y - b.y;
-    return (a.kind === "tile" ? 0 : 1) - (b.kind === "tile" ? 0 : 1);
+    return (a.kind === "actor" ? 1 : 0) - (b.kind === "actor" ? 1 : 0);
   });
   for (var i = 0; i < list.length; i++) {
     var it = list[i];
     if (it.kind === "tile") blitTallTile(c, it.id, it.tx, it.ty, camX, camY);
+    else if (it.kind === "canopy") blitCanopy(c, it.tx, it.ty, camX, camY);
     else drawOneActor(c, it, camX, camY);
   }
 }

@@ -15,7 +15,9 @@ for t in "${tests[@]}"; do
   echo "################ $t (civic: ${CIVIC_MODE:-stub})"
   t0=$(date +%s)
   # a hard limit per test file: a regression that hangs the daemon must FAIL, not stall the job
-  if timeout "${TEST_TIMEOUT:-420}" bash "./${t%.sh}.sh"; then echo "---- $t OK ($(( $(date +%s) - t0 ))s)"; else echo "---- $t FAILED (exit $?)"; failed+=("$t"); pkill -f commons_daemon 2>/dev/null; pkill -f civic_stub.py 2>/dev/null; fi
+  if timeout "${TEST_TIMEOUT:-420}" bash "./${t%.sh}.sh"; then echo "---- $t OK ($(( $(date +%s) - t0 ))s)"; else echo "---- $t FAILED (exit $?)"; failed+=("$t"); fi
+  # nothing may outlive its test file (fixed ports): sweep leftovers whatever the result
+  pkill -x commons_daemon 2>/dev/null; pkill -f "civic_stub.py --port" 2>/dev/null; sleep 0.3
   echo
 done
 echo "================ ${#tests[@]} test files, ${#failed[@]} failed, $(( $(date +%s) - start ))s total"

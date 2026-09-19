@@ -29,7 +29,7 @@ _on_exit() {
   local rc=$?
   [ -n "$DAEMON_PID" ] && kill -CONT "$DAEMON_PID" 2>/dev/null
   [ -n "$CIVIC_PID" ] && kill -CONT "$CIVIC_PID" 2>/dev/null
-  [ -n "$DAEMON_PID" ] && kill "$DAEMON_PID" 2>/dev/null
+  _kill_daemon TERM
   [ -n "$CIVIC_PID" ] && kill "$CIVIC_PID" 2>/dev/null
   sleep 0.3
   chmod -R u+w "$WORK" 2>/dev/null
@@ -63,19 +63,37 @@ stop_civic() { [ -n "$CIVIC_PID" ] && { kill "$CIVIC_PID" 2>/dev/null; wait "$CI
 
 # start_daemon [VAR=value ...]  -- extra environment for the daemon (e.g. COMMONS_TEST_TICK_MS=1000)
 start_daemon() {
+  # a daemon already answering means a leftover (a previous test, or a wrapper's orphaned child):
+  # our new one would die on bind() while the health check below happily passed against the old one
+  if curl -s -o /dev/null "$D/health" 2>/dev/null; then
+    echo "FATAL: something is already listening on $D before start_daemon (a leftover daemon)"; exit 1
+  fi
   mkdir -p "$WORK/run/data"
   cp "$DAEMON_DIR/schema.sql" "$DAEMON_DIR/seed.sql" "$WORK/run/"
   # DAEMON_WRAP (optional, e.g. "strace -f -e trace=getrandom -o file") runs the daemon under a tool
   ( cd "$WORK/run" && exec env "$@" ${DAEMON_WRAP:-} "$BIN" data/commons.sqlite ) >> "$WORK/daemon.log" 2>&1 &
   DAEMON_PID=$!
   for _ in $(seq 1 50); do
+    if ! kill -0 "$DAEMON_PID" 2>/dev/null; then echo "FATAL: daemon exited during start"; cat "$WORK/daemon.log"; exit 1; fi
     curl -s -o /dev/null "$D/health" 2>/dev/null && return 0
     sleep 0.2
   done
   echo "FATAL: daemon did not come up"; cat "$WORK/daemon.log"; exit 1
 }
-stop_daemon() { [ -n "$DAEMON_PID" ] && { kill "$DAEMON_PID" 2>/dev/null; wait "$DAEMON_PID" 2>/dev/null; }; DAEMON_PID=""; }
-crash_daemon() { [ -n "$DAEMON_PID" ] && { kill -9 "$DAEMON_PID" 2>/dev/null; wait "$DAEMON_PID" 2>/dev/null; }; DAEMON_PID=""; }
+# Kills the daemon AND anything it launched: under DAEMON_WRAP (strace) DAEMON_PID is the wrapper, and
+# killing only the wrapper leaves the traced daemon alive, still holding the port.
+_kill_daemon() { # $1 = signal
+  [ -n "$DAEMON_PID" ] || return 0
+  pkill -"$1" -P "$DAEMON_PID" 2>/dev/null
+  kill -"$1" "$DAEMON_PID" 2>/dev/null
+}
+stop_daemon() {
+  [ -n "$DAEMON_PID" ] || return 0
+  _kill_daemon TERM; wait "$DAEMON_PID" 2>/dev/null; DAEMON_PID=""
+  for _ in $(seq 1 50); do curl -s -o /dev/null "$D/health" 2>/dev/null || return 0; sleep 0.1; done
+  echo "FATAL: a daemon is still answering on $D after stop_daemon"; exit 1
+}
+crash_daemon() { [ -n "$DAEMON_PID" ] && { _kill_daemon 9; wait "$DAEMON_PID" 2>/dev/null; }; DAEMON_PID=""; }
 freeze_civic() { kill -STOP "$CIVIC_PID"; }
 thaw_civic() { kill -CONT "$CIVIC_PID"; sleep 0.3; }
 

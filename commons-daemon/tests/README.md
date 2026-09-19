@@ -38,6 +38,7 @@ change the stub and re-run the suite in both modes.
 | `test_snapshot` | kill -9 crash recovery from the periodic snapshot (with a control that proves the test can tell) |
 | `test_orphans` | the reap and every valve (two passes, cap 3, backup first, last look, SUSPECT, kill switch, online skipped) |
 | `test_migrations` | startup migrations on databases from OLDER schemas (`fixtures/` are frozen from git history) |
+| `test_harness` | the harness itself: `stop_daemon` kills what a wrapper (strace) launched; `start_daemon` refuses when something already answers on the port |
 
 ## Writing a test
 

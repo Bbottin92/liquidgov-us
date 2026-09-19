@@ -6,7 +6,7 @@ client code change, no deploy.** Files: `commons-daemon/tests/` and one workflow
 
 ## What ships
 
-- **`commons-daemon/tests/`**: 11 test files, about **300 real assertions** (pass/fail, not
+- **`commons-daemon/tests/`**: 12 test files, about **310 real assertions** (pass/fail, not
   output to eyeball), a shared harness (`lib.sh`), `run_all.sh`, frozen old-schema fixtures, a
   `README.md`.
 - **`civic_stub.py`**: a stdlib-only in-memory stand-in for civic: signup / friends / accept /
@@ -36,6 +36,7 @@ client code change, no deploy.** Files: `commons-daemon/tests/` and one workflow
 | `snapshot` | kill -9 recovery, with a control (7) |
 | `orphans` | the reap and every valve incl. backup-first, last look, SUSPECT, kill switch (48) |
 | `migrations` | startup migrations on databases from two OLDER schemas, frozen from git history (28) |
+| `harness` | the harness itself: no daemon survives `stop_daemon`/`crash_daemon` even under a forking wrapper; `start_daemon` refuses a busy port (8) |
 
 ## Does it actually catch regressions? (mutation check)
 
@@ -59,11 +60,25 @@ every test file has a hard limit.
   client sends random-hex ids/secrets first and the typed name last, and a body is only ever
   authored by its own sender, so nothing is gained by forging one. Noted, not a bug to fix.
 
+## What the first CI run found (d9d1b51 failed; fixed in the next commit)
+
+10 of 11 files passed on the runner, including the `strace`/`getrandom` check (the branch that could
+not run locally) and every timing bound. `test_house` failed 7 assertions, and the cause was the
+HARNESS, not the daemon: `test_guest` starts the daemon under `strace -f`, `stop_daemon` killed only
+the `strace` wrapper, so the traced daemon survived holding `:8765`. The next file's new daemon died on
+`bind()` while `start_daemon`'s health check passed against the survivor, so `test_house` talked to a
+different daemon with a different (already deleted) database: DB reads came back empty, injected SQL
+triggers never applied. Locally there is no `strace`, so that branch had never run. Fixes:
+`stop_daemon`/`crash_daemon` kill the wrapper's children too and then wait for the port to go silent;
+`start_daemon` FATALs if anything already answers on the port and if the new process exits during
+start; `run_all.sh` sweeps `commons_daemon` and the stub between files whatever the result; and
+`test_harness.sh` pins those rules (mutation-checked against the old `lib.sh`). Same lesson as the
+precondition rule: a health check proves *a* daemon answered, not *your* daemon.
+
 ## Limits, said plainly
 
-- The `getrandom` check needs `strace` (CI installs it); here `strace` is not installed, so that
-  one branch could not be run locally and **runs for the first time in CI**. It skips cleanly if
-  ptrace is denied.
+- The `getrandom` check needs `strace` (CI installs it); here it is not installed, so that branch
+  only ever runs in CI (it did, and passed, on the first run). It skips cleanly if ptrace is denied.
 - Timing assertions (a frozen civic costs its 1s timeout; "instant" means < 0.6s) have margins,
   but shared CI runners are slower than this machine. If one flakes, widen its bounds rather than
   deleting the check.

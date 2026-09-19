@@ -1837,7 +1837,9 @@ Not bug classes. Not “what is live on the droplet.”
   showed the guest test would HANG on a daemon without timeouts, fixed (fail-fast probes). My own
   draft mistakes (invalid usernames earlier, rows created before the daemon was up, a NULL
   printing as 'None') were caught by asserting preconditions. No daemon/civic/client/nginx change,
-  no droplet, no deploy. See `tests-built.md`. Still unbuilt: deploy scripts, nginx `/guest`
+  no droplet, no deploy. First CI run (d9d1b51): 10/11 files green incl. the strace check; `test_house` failed because
+  `test_guest`'s strace wrapper was killed but its traced daemon lived on, holding :8765 (the next file's daemon died on
+  bind(); health passed against the survivor). Harness fixed + `test_harness.sh` added. See `tests-built.md`. Still unbuilt: deploy scripts, nginx `/guest`
   limit, backup retention, `index.html` split, `/health` hash.
 
 ## Split: civic site vs game

@@ -1686,6 +1686,20 @@ Not bug classes. Not “what is live on the droplet.”
   journal, no restarts, DB integrity ok with counts unchanged, loopback bind. A
   real bound cache hit is not observable from outside. Parked: `rebind()` (slice
   3), `open` + orphans (slice 4, the only civic one).
+- **2026-09-19 -- `rebind()` (rest slice 3) built, local-tested, not deployed.**
+  Brandon: "BUILD rebind" (`GROK_THE_REST.md` slice 3; `cookie-bind.md` left the
+  primitive open). A guest who logs in mid-session is now relabelled `u:<name>` IN
+  PLACE on their next move: `PresenceStore::rebind` keeps x/y/facing/last_update,
+  spends no cap slot, supersedes a second tab's older row, disambiguates the name
+  ("alice (2)"); it requires the cookie to resolve AND the guest secret to still
+  verify, and never applies to a house region. The move answer carries
+  `promoted`/`bound`/`username`/`display_name`; the client applies it through the
+  same `netApplyJoinJson` a join answer uses (so the self-ghost filter, nameplate,
+  house key follow). Verified with real civic (one `u:` row, no ghost, guards,
+  second tab, name collision) and in a real browser with the answer stubbed; all
+  prior cookie/visit/policy/persist regressions pass. See `rebind-built.md`.
+  Deploy: daemon, then client, after Grok's review and Brandon's `deploy`. Parked:
+  `open` + orphans (slice 4, the only civic one).
 
 ## Split: civic site vs game
 

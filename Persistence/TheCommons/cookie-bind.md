@@ -1,6 +1,7 @@
 # Cookie bind — presence side of the contract
 
-**2026-09-17: built.** Both blockers named below are closed --
+**2026-09-19: mid-session promotion built** (in-place `rebind()`, see
+`rebind-built.md`). **2026-09-17: built.** Both blockers named below are closed --
 `cookie-resolver-built.md` has the concrete change and what's still
 open (mid-session promotion/rebind was NOT decided or built; see that
 file's own "still NOT here" section). This file stays as the design

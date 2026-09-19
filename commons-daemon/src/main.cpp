@@ -548,6 +548,28 @@ int main(int argc, char** argv) {
             r.body = "{\"ok\":false,\"reason\":\"missing_field\"}";
             return r;
         }
+        // Mid-session login (BUILD rest slice 3, cookie-bind.md "Promotion, not a
+        // disconnect/rejoin"). A guest who logs in on LiquidGov without ever
+        // leaving the game still holds a `g_...` row; their next move now
+        // arrives with a cookie that resolves. If the client can still prove it
+        // owns that guest row (its secret verifies) and the bound id has no row
+        // in this region yet, relabel the row in place -- same position, no gap,
+        // no ghost, no waiting for a door. The proof is the same one
+        // bind_or_promote asks for at a join. Never into a house region (a guest
+        // can't be in one, and promotion must not become a way around the
+        // owner/visitor checks join and rekey make there).
+        std::string promoted_user, promoted_name;
+        if (!house_username_from_region(*region)) {
+            if (auto username = commons::civic::resolve_username(req.headers_raw)) {
+                const std::string bound_id = "u:" + *username;
+                if (!presence.contains(*region, bound_id) && guests.verify(*id, *secret)) {
+                    if (auto name = presence.rebind(*region, *id, bound_id, *username)) {
+                        promoted_user = *username;
+                        promoted_name = *name;
+                    }
+                }
+            }
+        }
         auto eff_id = effective_id_in_region(req.headers_raw, *region, *id, *secret, guests, presence);
         if (!eff_id) {
             r.status = 403; r.status_text = "Forbidden";
@@ -571,7 +593,14 @@ int main(int argc, char** argv) {
         }
         int facing = static_cast<int>(field_num(req.body, "facing").value_or(0));
         bool ok = presence.move(*region, *eff_id, *x, *y, facing);
-        r.body = std::string("{\"ok\":") + (ok ? "true" : "false") + "}";
+        r.body = std::string("{\"ok\":") + (ok ? "true" : "false");
+        // Tell the client it is bound now (same fields a join answer carries),
+        // so it can drop its own new `u:` row from the "other players" it draws.
+        if (!promoted_user.empty()) {
+            r.body += ",\"promoted\":true,\"display_name\":" + commons::json::str(promoted_name) +
+                      ",\"bound\":true,\"username\":" + commons::json::str(promoted_user);
+        }
+        r.body += "}";
         return r;
     });
 

@@ -1381,7 +1381,14 @@ function netHandleJoinResponse(r) {
     }).catch(function () { netHandleAuthFailure(); });
     return;
   }
-  r.json().then(function (j) {
+  r.json().then(netApplyJoinJson).catch(function () {});
+}
+
+// Everything a join/rekey answer teaches the client about itself. Also used for
+// a move answer that says `promoted` (a mid-session login the daemon has
+// relabelled in place), which carries the same bound/username/display_name.
+function netApplyJoinJson(j) {
+  {
     if (j && j.display_name && j.display_name !== acceptedDisplayName) {
       acceptedDisplayName = j.display_name;
       forceRedraw = true; // the name can change (or first appear) with nothing else moving that frame
@@ -1416,7 +1423,7 @@ function netHandleJoinResponse(r) {
         forceRedraw = true;
       }
     }
-  }).catch(function () {});
+  }
 }
 
 function netJoin(region) {
@@ -1459,6 +1466,8 @@ function netMove() {
     // Answered 200 on purpose (a 403 would look like a dead credential): the
     // owner unfriended or blocked me, and the daemon has already removed me.
     if (j && j.reason === "not_welcome") netVisitEnded("You're no longer welcome there.");
+    // Logged in mid-session: the daemon relabelled my row `u:<name>` in place.
+    if (j && j.promoted) netApplyJoinJson(j);
   }).catch(function () {});
 }
 

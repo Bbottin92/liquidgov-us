@@ -160,6 +160,36 @@ void PresenceStore::forget(const std::string& id) {
     erase_id_locked(id);
 }
 
+std::optional<std::string> PresenceStore::rebind(const std::string& region, const std::string& old_id,
+                                                  const std::string& new_id, const std::string& new_display_name) {
+    std::lock_guard<std::mutex> lock(mu_);
+    reap_locked(now_ms());
+    auto has_old = [&]() {
+        auto it = regions_.find(region);
+        if (it == regions_.end()) return false;
+        for (const auto& o : it->second) if (o.id == old_id) return true;
+        return false;
+    };
+    if (!has_old()) return std::nullopt;
+
+    // Supersede any existing row for new_id first. It can be in another region
+    // (or this one); erasing invalidates references, so re-find afterwards.
+    erase_id_locked(new_id);
+    if (!has_old()) return std::nullopt; // cannot happen (old_id != new_id), but never index a stale iterator
+
+    // Name is picked while the row still carries old_id, so it is excluded from
+    // its own collision check.
+    std::string name = disambiguate_name_locked(region, new_display_name, old_id);
+    for (auto& o : regions_[region]) {
+        if (o.id == old_id) {
+            o.id = new_id;
+            o.display_name = name;
+            return name;
+        }
+    }
+    return std::nullopt;
+}
+
 std::vector<std::string> PresenceStore::bound_usernames() {
     std::lock_guard<std::mutex> lock(mu_);
     reap_locked(now_ms());

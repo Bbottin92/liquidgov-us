@@ -1,6 +1,7 @@
 #pragma once
 #include <map>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -61,6 +62,17 @@ public:
     // join_locked's own erase_id_locked never does on its own -- it only
     // ever erases the id it's currently inserting.
     void forget(const std::string& id);
+
+    // Mid-session login (BUILD rest slice 3, cookie-bind.md "Promotion, not a
+    // disconnect/rejoin"): relabel the row `old_id` in `region` as `new_id`
+    // IN PLACE -- id and display_name change; x, y, facing and last_update_ms
+    // are untouched, no cap slot is spent, and no other client ever sees a gap.
+    // If `new_id` already has a row somewhere (a second tab of the same
+    // account), that older row is superseded, as join() does: newer wins, one
+    // id one row. Returns the accepted display name (disambiguated within the
+    // region), or nullopt if `old_id` is not in `region`.
+    std::optional<std::string> rebind(const std::string& region, const std::string& old_id,
+                                      const std::string& new_id, const std::string& new_display_name);
 
     // Every bound username currently present in any region (occupant ids
     // "u:<name>", prefix stripped), for the friends-lot doors: atlas.md

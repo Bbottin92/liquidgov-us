@@ -1403,7 +1403,9 @@ std::string page_wrap(const std::string& title, const std::string& navhtml, cons
            "<main class=\"wrap\">"+body+"</main>"
            +ios_install_hint()+
            "<footer class=\"site\"><a href=\"/\">Genesis</a> · <a href=\"/laws\">Laws</a> · "
-           "<a href=\"/control\">Who holds control</a> · <a href=\"/install\">Install this as an app</a><br>"
+           "<a href=\"/commons/\">The Commons</a> · "
+           "<a href=\"/control\">Who holds control</a> · <a href=\"/install\">Install this as an app</a> · "
+           "<a href=\"/privacy\">Privacy</a><br>"
            "Not a government. A platform account is not a citizen identity. "
            "LiquidGov.US is in Beta — some of what's here is still being built.</footer>"
            "</body></html>";
@@ -1418,6 +1420,7 @@ std::string nav(const std::string& user, int unread) {
     if (user.empty()) {
         std::string burger = "<label class=\"navbtn\" for=\"navc\">Menu</label><input id=\"navc\" type=\"checkbox\">";
         return burger+"<nav><a href=\"/\">Genesis</a><a href=\"/laws\">Laws</a>"
+               "<a href=\"/commons/\">The Commons</a>"
                "<a href=\"/control\">Who holds control</a><a href=\"/apps\">App</a>"
                "<a href=\"/signup\">Sign up</a><a href=\"/login\">Log in</a></nav>";
     }
@@ -5331,7 +5334,7 @@ std::string genesis_body() {
            "<div class=\"clocks\">"
            "<div class=\"card\"><h2>Two clocks</h2><p><strong>Site control</strong> ends when a working election exists among enrolled citizens.</p>"
            "<p><strong>Governmental authority</strong> stays a later landslide — more than half of the eligible citizen population. However long that takes.</p></div>"
-           "<div class=\"card\"><h2>This website is the door</h2><p>Feed, friends, mail, and communities live here. "
+           "<div class=\"card\"><h2>This website is the door</h2><p>The Commons, feed, friends, mail, and communities live here. "
            "Voting weight, offices, land, and judgments live in a separate governance kernel. "
            "A platform account is not a citizen identity. Combined verification for civic acts is not live.</p></div>"
            "</div>" +
@@ -5776,14 +5779,37 @@ std::string control_body() {
            "explicitly not a binding vote. Sign in to see them.</p></div>";
 }
 
-// Not a native app, not a store listing -- this is what turns the site
-// itself into one, using each browser's own install mechanism. iOS Safari
-// never reads a web manifest for this; it works straight off the page
-// through the Share sheet, which is why its steps are spelled out
-// separately from Chrome/Edge's manifest-driven "Install" prompt (see
-// page_wrap()'s <link rel="manifest">). No native wrapper, no App Store,
-// no separate download -- installing just bookmarks a standalone window
-// to this same site.
+// Honest, short, and already true of the live site. Not a lawyer's privacy
+// policy — the same facts /control already names, on their own page so
+// a shared link and a footer have somewhere to land. /about is the
+// operator disclosure; /terms is how the association works.
+std::string privacy_body() {
+    return "<h1>What we keep</h1>"
+           "<p class=\"lede\">Not a government. A platform account is not a citizen identity.</p>"
+           "<div class=\"card\"><h2>Sign-in</h2>"
+           "<p>Username and password. A phone is bound at signup so a deleted account cannot immediately reopen under the same number. "
+           "The number itself is not kept &mdash; only a fingerprint.</p>"
+           "<p>A session cookie (<code>lg_session</code>) keeps you signed in. The Commons uses that same cookie when you are signed in, so your house is yours. Guests can walk the plaza without an account.</p></div>"
+           "<div class=\"card\"><h2>What you put here</h2>"
+           "<p>Posts, mail, drawings, and things you place in your house stay until you delete them, or until an operator removes spam. "
+           "Friends are mutual accept. A block hides you from that person on civic pages and on The Commons wall.</p>"
+           "<p>Sign in to <a href=\"/login?next=/export\">export</a> or delete from <a href=\"/login?next=/settings\">Settings</a>.</p></div>"
+           "<p class=\"muted\">The operator of this copy is named on <a href=\"/control\">who holds control</a>.</p>";
+}
+
+std::string terms_body() {
+    return "<h1>How this association works</h1>"
+           "<p class=\"lede\">LiquidGov.US is a voluntary association. Three rules hold: do not steal, do not damage, do not deprive of liberty.</p>"
+           "<div class=\"card\">"
+           "<p>Nothing here is a government. Nothing here binds you unless you chose it. "
+           "Proposals are an unofficial straw poll, not a binding vote. No election has been held.</p>"
+           "<p>Your account is a platform account, not a citizen identity, not a vote, and not standing.</p>"
+           "<p>The operator can change this software and this store today. That is disclosed on "
+           "<a href=\"/control\">who holds control</a>. It is not an office.</p>"
+           "</div>"
+           "<p class=\"muted\"><a href=\"/laws\">The three laws</a> · <a href=\"/privacy\">What we keep</a></p>";
+}
+
 std::string install_body() {
     return "<h1>Install this as an app</h1>"
            "<p class=\"lede\">Not a download from a store &mdash; your browser turning this site into its "
@@ -6827,7 +6853,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
 
     if(method=="GET"&&path=="/robots.txt")
         return http_raw("200 OK", "text/plain; charset=utf-8",
-            "User-agent: *\nAllow: /\nDisallow: /settings\nDisallow: /mail\nDisallow: /export\n");
+            "User-agent: *\nAllow: /\nDisallow: /settings\nDisallow: /mail\nDisallow: /export\nDisallow: /internal\n");
     if(method=="GET"&&path=="/favicon.ico")
         return http_redir("/favicon.svg");
 
@@ -7377,6 +7403,10 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         return pg("Laws · " + chapters[n-1].title, laws_chapter_body(n));
     }
     if(method=="GET"&&path=="/control") return pg("Who holds control", control_body());
+    if(method=="GET"&&path=="/privacy") return pg("Privacy", privacy_body());
+    if(method=="GET"&&path=="/terms") return pg("How this association works", terms_body());
+    if(method=="GET"&&path=="/about") return http_redir("/control");
+    if(method=="GET"&&path=="/profile") return http_redir(user.empty() ? login_url("/me") : "/me");
     if(method=="GET"&&(path=="/install"||path=="/apps")) {
         std::ifstream in("assets/apps.html"); std::ostringstream body; if(in) body<<in.rdbuf();
         return pg("Get the app", body.str());

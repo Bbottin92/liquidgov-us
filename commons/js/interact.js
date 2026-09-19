@@ -148,7 +148,7 @@ function tryInteract() {
   var it = nearestInteractable;
   if (it) {
     if (it.type === "hall") {
-      var ok = window.confirm("Open liquidgov.us/proposals in a new tab?");
+      var ok = window.confirm("Open proposals on LiquidGov? You'll need an account to vote.");
       if (ok) window.open("https://liquidgov.us/proposals", "_blank", "noopener");
     } else if (it.type === "latch") {
       netSetHousePolicy(HOUSE_POLICY_NEXT[housePolicy]);

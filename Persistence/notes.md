@@ -18,6 +18,9 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-19 — site sense built, not deployed.** `site-sense-built.md`.
+  Guest nav + footer + apps tile for The Commons. /privacy /terms.
+  Hall confirm is honest for guests.
 - **2026-09-19 — share card built, not deployed.** `og-card-built.md`.
   Five stars + Myspace/ballot-box/gameboy quote on og-image-v2.jpg.
 - **2026-09-19 — polish built, not deployed.** `polish-built.md`.

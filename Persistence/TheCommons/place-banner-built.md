@@ -1,4 +1,8 @@
-# Place banner — built, not deployed
+# Place banner — **live** (`cfd1fde`)
+
+Deployed 2026-09-19 by Brandon (`--label place-banner`). Verify 33/0.
+
+# was: built, not deployed
 
 Brandon: continue (polish). Client only.
 

@@ -1841,6 +1841,11 @@ Not bug classes. Not “what is live on the droplet.”
   `test_guest`'s strace wrapper was killed but its traced daemon lived on, holding :8765 (the next file's daemon died on
   bind(); health passed against the survivor). Harness fixed + `test_harness.sh` added. See `tests-built.md`. Still unbuilt: deploy scripts, nginx `/guest`
   limit, backup retention, `index.html` split, `/health` hash.
+- **2026-09-19 -- `reqjson` corrected: latent bug, not harmless.** Grok's review of `c6a7a4f` (CI green,
+  accepted) caught that I called the naive `find("\"key\"")` scanner harmless. Reproduced: name-before-fields
+  bodies make a guest named `x`/`y` 400, `secret` 403, `id`/`facing` get a wrong "(2)" rename. The shipped client
+  sends `display_name` last, so it does not bite today (all seven colliding names joined) -- luck of key order.
+  Awaiting Brandon's `BUILD reqjson` (daemon only; parse `"key":` as a real key walk + `test_reqjson.sh`).
 
 ## Split: civic site vs game
 

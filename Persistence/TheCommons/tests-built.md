@@ -49,16 +49,18 @@ against a daemon with no timeouts the guest test *hung* (the stalled client bloc
 forever and my probe never returned). Probes now use `curl --max-time`, so it fails in ~90s, and
 every test file has a hard limit.
 
-## Findings while writing it (all logged, none needing a code change)
+## Findings while writing it (one, `reqjson`, is a real latent bug: see below)
 
 - Three of my own test drafts were wrong and were caught by their preconditions, not trusted:
   a forged-id test used a secret value (`x`) equal to a JSON key name; a `dbq` helper printed
   `None` for SQL NULL; and two orphan sections created their rows *before* the daemon was up (so
   "row is gone" meant "never created"). The suite now asserts each section's precondition.
-- `reqjson.hpp` is a naive key scan: a hand-forged body whose *value* equals a later key name
-  (e.g. `"secret":"x"` then the `x` coordinate) is read wrongly and answers 400. Harmless: the real
-  client sends random-hex ids/secrets first and the typed name last, and a body is only ever
-  authored by its own sender, so nothing is gained by forging one. Noted, not a bug to fix.
+- `reqjson.hpp` is a naive key scan (`body.find("\"key\"")`), so a *value* equal to a field name matches
+  first. I first called that harmless; **Grok was right that it is a latent bug**. Reproduced live: with
+  `display_name` placed BEFORE the fields, a guest named `x`/`y` gets 400 `missing_field`, `secret` gets 403,
+  `id`/`facing` join under a wrong "(2)" name. The shipped client sends `display_name` LAST
+  (`region,x,y,facing,display_name`), so all seven names joined fine today -- but that is luck of JS
+  object-key order, not a guarantee. Not built yet; named as `BUILD reqjson` (see `GROK_TESTS_REVIEW.md`).
 
 ## What the first CI run found (d9d1b51 failed; fixed in the next commit)
 

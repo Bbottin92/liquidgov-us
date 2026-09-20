@@ -79,3 +79,10 @@ No packages installed/removed/upgraded. pywebpush unaffected (still imports cryp
   certbot needs the drop-in again). Backups: `/var/backups/webpush-venv-20260920/` (webpush.py.orig, pip freezes before/after).
 - Note: a non-interactive `certbot renew --dry-run` run by hand sleeps a random ~6 min first; the timer unit passes
   `--no-random-sleep-on-renew`. Use that flag for quick manual checks.
+
+## Follow-up 2 (same day): workaround removed
+
+Removed the redundant `/etc/systemd/system/certbot.service.d/pythonpath.conf` (+ dir) and `/usr/local/bin/certbot`, then
+`systemctl daemon-reload`. Copies kept in `/var/backups/certbot-fix-20260920/`. Verified: `which certbot` -> `/usr/bin/certbot`,
+`certbot --version` -> 2.9.0, unit has no drop-ins/Environment, `systemctl start certbot.service` -> exit 0, `Result=success`.
+The "Rollback" section above no longer applies (nothing left to roll back); the box is stock again apart from the venv.

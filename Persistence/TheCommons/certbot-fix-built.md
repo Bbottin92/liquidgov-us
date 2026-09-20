@@ -57,3 +57,25 @@ No packages installed/removed/upgraded. pywebpush unaffected (still imports cryp
   system-wide copies — not done here (touches live push feature; not the minimum).
 - If certbot is ever upgraded (apt) to a version that needs a newer pyOpenSSL/cryptography, the wrapper/drop-in
   can simply be removed.
+
+## Follow-up (same day): webpush.py moved to its own venv; root cause removed
+
+- New venv `/opt/lg-webpush-venv` (root-owned, no system site-packages, built `--without-pip` then
+  `pip3 --python /opt/lg-webpush-venv/bin/python install pywebpush==2.5.0`; `python3-venv` is not installed, no apt change).
+  Deliberately outside `/opt/liquidgov` so deploy rsyncs cannot touch it. Pinned set: `deploy/webpush-requirements.txt`.
+- Run it as `/opt/lg-webpush-venv/bin/python /opt/liquidgov/deploy/webpush.py <cmd>` (file is mode 644; shebang points at the venv
+  but is not executable). Nothing on the droplet calls it (http_server.cpp handles subscribe itself); `send` is manual.
+  `webpush.py` is now tracked in `deploy/` (it previously existed only on the droplet).
+- Uninstalled the 20 pip packages from `/usr/local/lib/python3.12/dist-packages` (one pip run, 2026-09-16 08:56): pywebpush,
+  py_vapid, http_ece, cryptography, cffi, pycparser, aiohttp, aiohappyeyeballs, aiosignal, attrs, certifi, charset_normalizer,
+  frozenlist, idna, multidict, propcache, requests, typing_extensions, urllib3, yarl. `/usr/local/.../dist-packages` is now empty;
+  `python3` imports apt cryptography 41.0.7 again.
+- Verified: bare `/usr/bin/certbot --version` -> 2.9.0 (no PYTHONPATH workaround); `webpush.py public`/`list` via the venv as
+  user `liquidgov` (6 subscriptions; md5 of `push_subs.txt`/`vapid.*` unchanged before/after); VAPID key loads and signs in the venv.
+  liquidgov, commons-daemon, nginx never restarted, all active.
+- The PYTHONPATH drop-in and `/usr/local/bin/certbot` wrapper from above are now redundant (harmless). Remove with the rollback
+  commands above if you want the box back to stock.
+- Undo the venv move: `pip3 install --break-system-packages -r deploy/webpush-requirements.txt` (recreates the shadowing, and then
+  certbot needs the drop-in again). Backups: `/var/backups/webpush-venv-20260920/` (webpush.py.orig, pip freezes before/after).
+- Note: a non-interactive `certbot renew --dry-run` run by hand sleeps a random ~6 min first; the timer unit passes
+  `--no-random-sleep-on-renew`. Use that flag for quick manual checks.

@@ -1,8 +1,7 @@
-# PWA: Social, Civic and The Commons get their own home-screen apps — built, tested, NOT deployed
+# PWA: Social, Civic and The Commons get their own home-screen apps — DEPLOYED 2026-09-20 (9e4611a); one nginx follow-up open
 
 Brandon: `BUILD pwa` (Grok's paste: "Social and Civic get their own webmanifests ... same pattern as Mail. The Commons gets a small manifest +
-apple-touch-icon on /commons/ ... Do not touch nginx unless a new file 404s. Hold for Grok before deploy."). **Nothing was deployed and the droplet
-was not contacted.** `www` -> apex is deliberately not mixed in.
+apple-touch-icon on /commons/ ... Do not touch nginx unless a new file 404s. Hold for Grok before deploy."). **Deployed on Brandon's `deploy`** (client first, then civic; see "Live" below). `www` -> apex is deliberately not mixed in.
 
 ## What was wrong
 
@@ -55,3 +54,28 @@ the maskable entry dropped, the /apps tile back to the Genesis icon, and the cli
 2. Civic: drift-check (the droplet's `http_server.cpp` must equal the last deployed commit), back up the binary, `sync-to-droplet.sh`, **`chown` immediately**, build `-j1`, restart only if rebuilt, read the journal for a crash loop.
 3. Confirm live: the three manifests 200, `/apps` Commons tile icon 200, `/commons/` links its manifest, `/` 200, public `/internal/*` 404, `commons-daemon` untouched.
 Rollback: re-sync the previous client revision and restore the `.prev-<time>` civic binary.
+
+## Live (2026-09-20, from 9e4611a)
+
+- **Client** (first): only `index.html` + the four new files changed; served files byte-identical to the repo, `verify.sh` 23/23, `commons-daemon` untouched.
+- **Civic** (second): the droplet's `http_server.cpp` was verified to be the last-deployed (ce13954) version first; the dry run's content changes were exactly `http_server.cpp` + `apps.html`; binary backed up (`liquidgov_http.prev-20260920T025817Z`); **chown immediately after the sync**
+  (0 crash lines during the build, unlike the 2026-09-19 outage); restarted only after the binary rebuilt; 0 crash lines since. The accounts store checksum was identical before and after the sync. (The first attempt of this civic step died before doing anything when a session ended; the droplet was inspected read-only, found still at ce13954 with the old binary serving, and the step was re-run from its pre-checks.)
+- Live: `/manifest-social.webmanifest` (`/feed`), `/manifest-civic.webmanifest` (`/proposals`), `/manifest-mail.webmanifest`, all `200 application/manifest+json`; `/app/social`, `/app/civic`, `/app/mail` each link their own manifest and touch icon; `/`, `/apps`, `/laws` still link the Genesis one; all six icons 200 `image/png`;
+  the `/apps` Commons tile loads `/commons/apple-touch-icon.png` (200); `/` 200, `/world` 303 to `/commons/`, `/privacy` and `/terms` 200, public `/internal/*` 404.
+
+## Open: `/commons/manifest.webmanifest` is served as `application/octet-stream` (nginx)
+
+The file is a static alias (`location /commons/ { alias /opt/commons/; }`), and nginx 1.24's stock `mime.types` has no `webmanifest` entry, so it falls back to `default_type application/octet-stream`. Civic's own manifests are `application/manifest+json`.
+Chrome/Android generally still read a manifest whatever its type; stricter clients may not. It is a 200, not a 404, so nginx was not touched (Grok's rule).
+
+**Do not apply `types { application/manifest+json webmanifest; }` inside `location /commons/`.** nginx inherits `types` from the parent level only if the current level defines none, so a `types` block in that location REPLACES the http-level table for everything under `/commons/`: html, css, js and png would fall back to `application/octet-stream` and the game would break.
+The safe fix touches only that one file, via `default_type` (used exactly when the extension has no mapping): add, next to the `/commons/` location,
+```
+location = /commons/manifest.webmanifest {
+    alias /opt/commons/manifest.webmanifest;
+    default_type application/manifest+json;
+    add_header Cache-Control "no-cache" always;   # add_header does not inherit once a location sets its own; keep the parent's
+}
+```
+then `nginx -t && systemctl reload nginx`, and confirm `/commons/manifest.webmanifest` is `application/manifest+json` AND that `/commons/`, `style.css`, `js/main.js` and `tiles.png` keep `text/html`, `text/css`, `application/javascript`/`text/javascript` and `image/png`. Rollback: remove the block and reload. Also mirror it in `commons-daemon/deploy/nginx-commons.conf`.
+Needs Brandon's own word (a live nginx change); not applied.

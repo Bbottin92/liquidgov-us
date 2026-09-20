@@ -361,6 +361,8 @@ var LAB_DOOR_TILE = null;
 // The adit door. Declared here (not beside the interior) for the same reason as
 // FRIEND_LOT_DOORS: the outdoor world is built during script load.
 var MINE_DOOR_TILE = null;
+// The Workshop Lane door (BUILD workshop A). Same reason.
+var WORKSHOP_DOOR_TILE = null;
 
 (function bakeTileIds() {
   var creek = regionAABB(findRegion("Creek"));
@@ -587,17 +589,19 @@ function dressRegions() {
   tiles[idx(56, 10)] = T_FLOWERBED;
   interactables.push({ type: "worldPickup", pickup: "cider_apple", x: 56, y: 10, prompt: "Look" });
 
-  // Workshop Lane: closed-shutter facade (decorative -- interacting says
-  // it's closed, nothing else, same honesty as the boarded doors) + a
-  // bench + light street scatter. No interior, ever, this phase or later
-  // without Brandon reopening the pin.
+  // Workshop Lane: the facade + a bench + light street scatter. The shutter
+  // was a closed board through P3-V6 ("no interior without Brandon reopening
+  // the pin"); he reopened it 2026-09-20 (BUILD workshop, option A: thin,
+  // like the Hall). The same tile is now a real door into instance:workshop
+  // -- a plain room with a bench, no crafting and nothing to pick up.
   var wsFacadeX0 = 8, wsFacadeX1 = 14, wsFacadeY0 = 24, wsFacadeY1 = 27;
   for (var wsx = wsFacadeX0; wsx <= wsFacadeX1; wsx++) {
     for (var wsy = wsFacadeY0; wsy <= wsFacadeY1; wsy++) tiles[idx(wsx, wsy)] = T_WALL;
   }
   var shutterX = 11, shutterY = wsFacadeY1;
-  tiles[idx(shutterX, shutterY)] = T_DOOR_BOARDED; // same "closed" look, different message
-  interactables.push({ type: "shutter", x: shutterX, y: shutterY, prompt: "Try" });
+  tiles[idx(shutterX, shutterY)] = T_DOOR_DEMO; // existing solid Enter door, no new art
+  WORKSHOP_DOOR_TILE = { x: shutterX, y: shutterY };
+  interactables.push({ type: "workshopDoor", x: shutterX, y: shutterY, prompt: "Enter" });
   tiles[idx(9, 29)] = T_BENCH;
   tiles[idx(16, 28)] = T_CRATE;
   tiles[idx(17, 30)] = T_CRATE;

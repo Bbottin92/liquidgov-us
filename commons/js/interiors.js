@@ -188,6 +188,36 @@ mineSpace.interactables = [
   { type: "sign", x: 10, y: 2, prompt: "Read", text: "No ore. That's honest." }
 ];
 
+// The Workshop (BUILD workshop A) -- 14x10, thin like the Hall: a plain room
+// behind the Workshop Lane door. Two benches along the back wall, a lamp, a
+// worktable with two stools, crates, a rug, one sign. All existing tiles. No
+// crafting, no stations, nothing to place or pick up (V1's "no crafting"
+// stands). Shared instance:workshop like demo/lab/mine: guests and bound
+// players both walk in, no rows, no snapshot. Enter with nothing in range
+// leaves, onto the tile in front of the door (no re-entry oscillation).
+var WORKSHOP_ENTRY = { x: 7, y: 8 };
+var WORKSHOP_DOOR = { x: 7, y: 9 };
+var workshopSpace = buildInterior(14, 10, function (t, w) {
+  t[idxIn(w, WORKSHOP_DOOR.x, WORKSHOP_DOOR.y)] = T_IDOOR;
+  t[idxIn(w, 7, 0)] = T_LAMP;   // set into the back wall, a lit tile
+  for (var bx = 2; bx <= 4; bx++) t[idxIn(w, bx, 1)] = T_WORKBENCH;
+  for (var bx2 = 9; bx2 <= 11; bx2++) t[idxIn(w, bx2, 1)] = T_WORKBENCH;
+  t[idxIn(w, 6, 4)] = T_TABLE;  // the worktable and its two stools
+  t[idxIn(w, 7, 4)] = T_TABLE;
+  t[idxIn(w, 5, 4)] = T_CHAIR;
+  t[idxIn(w, 8, 4)] = T_CHAIR;
+  t[idxIn(w, 1, 3)] = T_CRATE;
+  t[idxIn(w, 1, 4)] = T_CRATE;
+  t[idxIn(w, 12, 6)] = T_CRATE;
+  t[idxIn(w, 12, 7)] = T_CRATE;
+  t[idxIn(w, 6, 6)] = T_RUG;
+  t[idxIn(w, 7, 6)] = T_RUG;
+  t[idxIn(w, 12, 3)] = T_SIGN;
+});
+workshopSpace.interactables = [
+  { type: "sign", x: 12, y: 3, prompt: "Read", text: "Sawdust and a bench. Nothing to make here yet." }
+];
+
 // Pickups. A guest's are session-only (v1.md: RAM, vanish on refresh --
 // "Do not invent guest persistence"). A bound player's are also saved by the
 // daemon (GROK_V6_ANSWER.md, bound inventory) and restored on load, so

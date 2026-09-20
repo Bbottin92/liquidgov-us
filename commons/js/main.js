@@ -282,7 +282,7 @@ function frame(t) {
       } else if (t - lastNetSendAt > NET_INTERVAL_MS) {
         netMove();
         netPollCurrentRegion();
-        if (mode !== "mine") netPollPlaced(); // nothing can be placed in the mine
+        if (mode !== "mine" && mode !== "workshop") netPollPlaced(); // nothing can be placed in the mine or the workshop
         lastNetSendAt = t;
       }
     }

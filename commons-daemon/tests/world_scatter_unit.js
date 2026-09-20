@@ -106,6 +106,36 @@ for (const it of JSON.parse(ev("JSON.stringify(interactables)"))) {
 check(noStand.length === 0, "every door, sign and interactable can be reached from a walkable neighbour: " + noStand.join(", "));
 check(seenW[(lab.y + 1) * W + lab.x] === 1 && seenW[lab.y * W + lab.x] === 1, "the lab door is walkable and reachable");
 check(seenW[(mine.y + 1) * W + mine.x] === 1, "the mine door's front tile is reachable");
+
+// ---- the Workshop (BUILD workshop A): the Workshop Lane door is real, and the room behind it is sound
+const ws = JSON.parse(ev("JSON.stringify(WORKSHOP_DOOR_TILE)"));
+const wsIts = JSON.parse(ev("JSON.stringify(interactables)")).filter((i) => i.x === ws.x && i.y === ws.y);
+check(wsIts.length === 1 && wsIts[0].type === "workshopDoor" && wsIts[0].prompt === "Enter", "the Workshop Lane door tile carries exactly one interactable, a workshopDoor with the Enter prompt");
+check(ev("interactables.some(function (i) { return i.type === 'shutter'; })") === false, "no closed-shutter interactable is left on Workshop Lane");
+check(ev("tiles[" + (ws.y * W + ws.x) + "]") === ev("T_DOOR_DEMO") && solid[ws.y * W + ws.x] === 1, "the workshop door is the existing solid door tile (no new art), so it is Enter, not walk-in");
+check(seenW[(ws.y + 1) * W + ws.x] === 1, "the workshop door's front tile is reachable from the spawn");
+check(ws.x >= 8 && ws.x <= 14 && ws.y >= 24 && ws.y <= 27, "the door is on the Workshop Lane facade");
+
+// interiors.js runs on top of world.js in the same page scope, exactly as the browser loads it
+vm.runInContext(fs.readFileSync(path.join(dir, "js/interiors.js"), "utf8"), g, { filename: "js/interiors.js" });
+const wsp = JSON.parse(ev("JSON.stringify({ w: workshopSpace.w, h: workshopSpace.h, solid: Array.from(workshopSpace.solid), tiles: Array.from(workshopSpace.tiles), its: workshopSpace.interactables, entry: WORKSHOP_ENTRY, door: WORKSHOP_DOOR })"));
+const wOpen = (x, y) => x >= 0 && y >= 0 && x < wsp.w && y < wsp.h && !wsp.solid[y * wsp.w + x];
+let wsFloor = 0; for (let i = 0; i < wsp.solid.length; i++) if (!wsp.solid[i]) wsFloor++;
+check(wsp.w === 14 && wsp.h === 10 && wsFloor > 60, "the workshop is 14x10 with real floor to walk (" + wsFloor + " open tiles) -- a room of nothing would pass every check below vacuously");
+check(wOpen(wsp.entry.x, wsp.entry.y) && wOpen(wsp.door.x, wsp.door.y) && wsp.door.y === wsp.h - 1 && wsp.entry.y === wsp.door.y - 1, "the entry tile and the door tile are open, the door on the bottom wall with the entry right above it");
+check(wsp.tiles[wsp.door.y * wsp.w + wsp.door.x] === ev("T_IDOOR"), "the interior door is the walk-through doorway tile");
+{
+  const seenI = new Uint8Array(wsp.w * wsp.h), qi = [[wsp.entry.x, wsp.entry.y]]; seenI[wsp.entry.y * wsp.w + wsp.entry.x] = 1; let reachedI = 0;
+  while (qi.length) {
+    const [x, y] = qi.pop(); reachedI++;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = x + dx, ny = y + dy; if (wOpen(nx, ny) && !seenI[ny * wsp.w + nx]) { seenI[ny * wsp.w + nx] = 1; qi.push([nx, ny]); } }
+  }
+  check(reachedI === wsFloor, "every open tile in the workshop is reachable from the entry (" + reachedI + " of " + wsFloor + ")");
+  check(seenI[wsp.door.y * wsp.w + wsp.door.x] === 1, "the doorway can be walked onto from inside");
+  check(wsp.its.length === 1 && wsp.its[0].type === "sign" && wsp.its[0].text.length > 10, "the workshop has exactly one interactable, a sign with text (nothing to pick up or place)");
+  check(wsp.its.every((it) => [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => seenI[(it.y + dy) * wsp.w + it.x + dx])), "the sign can be read from a reachable neighbour");
+}
+check(/INTERIOR_INSTANCE_KEY\s*=\s*\{[^}]*workshop:\s*"instance:workshop"/.test(fs.readFileSync(path.join(dir, "js/net.js"), "utf8")), "net.js maps the workshop mode to the shared instance:workshop key");
 // each region has walkable ground on every side it should connect to (the seams stay open)
 const seams = [];
 for (const r of regions) {

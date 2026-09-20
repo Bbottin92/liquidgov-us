@@ -2,7 +2,7 @@
 // ---- Interact system ----------------------------------------------------
 // One prompt at doors/set pieces, no RPG menu (locked, art.md). Range is
 // "on or next to the tile" -- Chebyshev distance <= 1.
-// mode: "outdoor" | "demoHouse" | "lab" | "mine" | "house" (V4) | "visit" (a friend's house). The demo house keeps its P1
+// mode: "outdoor" | "demoHouse" | "lab" | "mine" | "workshop" | "house" (V4) | "visit" (a friend's house). The demo house keeps its P1
 // Enter-to-enter/Enter-to-exit pattern unchanged. The Lab is a walk-in
 // trigger both ways (atlas.md is explicit that this door, unlike Hall or
 // the demo house, isn't an Enter-to-confirm interaction) -- Enter also
@@ -33,6 +33,7 @@ var placeUntil = 0;
 function interiorPlaceName() {
   if (mode === "lab") return "the Lab";
   if (mode === "mine") return "the mine";
+  if (mode === "workshop") return "the Workshop";
   if (mode === "demoHouse") return "the demo house";
   if (mode === "house") return "your house";
   if (mode === "visit") return visitingOwner ? (visitingOwner + "'s house") : "a house";
@@ -154,6 +155,8 @@ function tryInteract() {
       netSetHousePolicy(HOUSE_POLICY_NEXT[housePolicy]);
     } else if (it.type === "mineDoor") {
       enterInterior("mine", mineSpace, MINE_ENTRY);
+    } else if (it.type === "workshopDoor") {
+      enterInterior("workshop", workshopSpace, WORKSHOP_ENTRY);
     } else if (it.type === "demoDoor") {
       enterInterior("demoHouse", demoHouseSpace, DEMO_ENTRY);
     } else if (it.type === "friendDoor") {
@@ -191,8 +194,6 @@ function tryInteract() {
       netPickup(wp.item);
       showToast(wp.name + ".");
       renderInvHud();
-    } else if (it.type === "shutter") {
-      showToast("Closed for now.");
     } else if (it.type === "sign") {
       showToast(it.text || "Closed.");
     } else if (it.type === "wallSlot") {
@@ -231,5 +232,6 @@ function tryInteract() {
   if (mode === "demoHouse" || mode === "house" || mode === "visit") { exitToOutdoor(null); return; }
   if (mode === "lab") { exitToOutdoor({ x: LAB_DOOR_TILE.x, y: LAB_DOOR_TILE.y + 1 }); return; }
   if (mode === "mine") { exitToOutdoor({ x: MINE_DOOR_TILE.x, y: MINE_DOOR_TILE.y + 1 }); return; }
+  if (mode === "workshop") { exitToOutdoor({ x: WORKSHOP_DOOR_TILE.x, y: WORKSHOP_DOOR_TILE.y + 1 }); return; }
 }
 

@@ -18,6 +18,10 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-20 — Studio v2 deviations accepted, table still unsigned.** `GROK_STUDIO_V2.md`.
+  Pixel-transition cost (not histogram delta), visit-checked portrait GET in slice 2, charcoal
+  8 h as a game number. Reference check next; Brandon signs; then `BUILD studio 1`.
+
 - **2026-09-20 — Studio spec reviewed, nothing built.** `GROK_STUDIO_ANSWER.md`.
   Loop holds at a handful of players (batch-on-the-clock is the return). Free-form
   combine would dump the table — discovery is "you hold the inputs." Cut homemade

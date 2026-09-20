@@ -1,4 +1,4 @@
-# The Workshop interior (A: thin, like the Hall) — built, local-tested, not deployed
+# The Workshop interior (A: thin, like the Hall) — built, tested, DEPLOYED 2026-09-20
 
 Brandon: "A, E" (2026-09-20), answering my question on the parked list: **A** = a thin
 Workshop (open the shutter, one plain room; no crafting, no items, nothing new in the daemon
@@ -66,3 +66,27 @@ shared-instance path demo/lab/mine already use (`instance:` keys are opaque to t
   a version for a lawyer to mark up if asked.
 - **Stale parked list corrected:** `rebind()` and orphan reaping were already built and
   deployed 2026-09-19 (`rebind-built.md`, `orphans-reap-built.md`); they were not open.
+
+## Deployed (2026-09-20, Brandon: "deploy")
+
+Client only, via `commons-daemon/deploy/sync-client-to-droplet.sh` (two phases, `index.html` last),
+then `chown -R liquidgov:liquidgov /opt/commons`. Commit `e6bd485` (pushed first; the script refuses
+unpushed/dirty trees). Before syncing I diffed md5s droplet vs local: exactly the five changed files
+(`interact.js`, `interiors.js`, `main.js`, `net.js`, `world.js`) differed and nothing else had drifted
+(droplet was at `9e4611a`, the PWA deploy). After: all client files md5-equal to local,
+`.deployed-client-rev` = `e6bd485`, `/commons/`, `/js/world.js`, `/js/interiors.js`, `/presence/lots`
+all 200 over HTTPS, served files contain `workshopSpace`/`workshopDoor`, public `/internal/friends`
+404. Daemon, civic, nginx, schema untouched and never restarted; liquidgov, commons-daemon, nginx
+active throughout.
+
+Live check on production, two guest tabs (`shopA`, `shopB`): both walked into `instance:workshop`
+(`GET /commons/presence/instance:workshop` listed both, and **each tab drew the other**, the
+two-clients case that was untested locally); sign toast "Sawdust and a bench. Nothing to make here
+yet."; Enter away from the sign put each back on Workshop Lane at (11,28) with the workshop presence
+empty again. No console errors. Not exercised on production: a bound player in the workshop (same
+generic path as demo/lab/mine).
+
+Full-suite note: in one full local `run_all.sh`, `test_client_files` (node exited 5 with no output)
+and one `test_visiting` assertion failed; both passed on an immediate solo rerun (23/23 and 22/22).
+Every other file passed. Treated as load flakes on this WSL box (not a code regression: the change is
+client-only and both files were green before and after); CI is the second opinion.

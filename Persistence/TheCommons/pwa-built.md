@@ -1,4 +1,4 @@
-# PWA: Social, Civic and The Commons get their own home-screen apps — DEPLOYED 2026-09-20 (9e4611a); one nginx follow-up open
+# PWA: Social, Civic and The Commons get their own home-screen apps — DEPLOYED 2026-09-20 (9e4611a); nginx manifest content-type fixed the same day
 
 Brandon: `BUILD pwa` (Grok's paste: "Social and Civic get their own webmanifests ... same pattern as Mail. The Commons gets a small manifest +
 apple-touch-icon on /commons/ ... Do not touch nginx unless a new file 404s. Hold for Grok before deploy."). **Deployed on Brandon's `deploy`** (client first, then civic; see "Live" below). `www` -> apex is deliberately not mixed in.
@@ -63,7 +63,7 @@ Rollback: re-sync the previous client revision and restore the `.prev-<time>` ci
 - Live: `/manifest-social.webmanifest` (`/feed`), `/manifest-civic.webmanifest` (`/proposals`), `/manifest-mail.webmanifest`, all `200 application/manifest+json`; `/app/social`, `/app/civic`, `/app/mail` each link their own manifest and touch icon; `/`, `/apps`, `/laws` still link the Genesis one; all six icons 200 `image/png`;
   the `/apps` Commons tile loads `/commons/apple-touch-icon.png` (200); `/` 200, `/world` 303 to `/commons/`, `/privacy` and `/terms` 200, public `/internal/*` 404.
 
-## Open: `/commons/manifest.webmanifest` is served as `application/octet-stream` (nginx)
+## Fixed: `/commons/manifest.webmanifest` was served as `application/octet-stream` (nginx)
 
 The file is a static alias (`location /commons/ { alias /opt/commons/; }`), and nginx 1.24's stock `mime.types` has no `webmanifest` entry, so it falls back to `default_type application/octet-stream`. Civic's own manifests are `application/manifest+json`.
 Chrome/Android generally still read a manifest whatever its type; stricter clients may not. It is a 200, not a 404, so nginx was not touched (Grok's rule).
@@ -78,4 +78,7 @@ location = /commons/manifest.webmanifest {
 }
 ```
 then `nginx -t && systemctl reload nginx`, and confirm `/commons/manifest.webmanifest` is `application/manifest+json` AND that `/commons/`, `style.css`, `js/main.js` and `tiles.png` keep `text/html`, `text/css`, `application/javascript`/`text/javascript` and `image/png`. Rollback: remove the block and reload. Also mirror it in `commons-daemon/deploy/nginx-commons.conf`.
-Needs Brandon's own word (a live nginx change); not applied.
+**Applied 2026-09-20 on Brandon's `deploy nginx`**: the config that nginx actually loads (`nginx -T` names it: `/etc/nginx/sites-available/liquidgov`, via sites-enabled) was backed up to `/var/backups/nginx-pwa-20260920T031725Z/liquidgov`, the block inserted just before `location /commons/ {`, `nginx -t` OK, graceful reload.
+Verified live: the manifest is `200 application/manifest+json` with `Cache-Control: no-cache` and a body byte-identical to the repo's; `/commons/`, `style.css`, `js/main.js`, `js/world.js`, `tiles.png`, `sprites.png`, `icon-192.png` and `apple-touch-icon.png` kept exactly their previous types (compared before and after; the script rolls back automatically on any change);
+`/` 200, `/world` 303, `/commons/` 200, public `/internal/*` 404, `commons-daemon` and `liquidgov` not restarted, `verify.sh` 23/23, no nginx error-log lines. Mirrored in `commons-daemon/deploy/nginx-commons.conf`.
+(My first attempt at this refused to run: its recursive grep also matched two old `.bak-...` copies in `sites-available`, so it aborted on "expected exactly one file" without changing anything; it now asks `nginx -T` which LOADED file owns the location. Another start died before doing anything and was confirmed unapplied first.)

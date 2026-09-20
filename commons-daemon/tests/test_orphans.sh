@@ -48,7 +48,7 @@ PY
 echo "-- the inheritance hole: a NEW owner registers a reaped name"
 su usera
 bjoin usera "$(house usera)" >/dev/null
-get "$D/placed/$(house usera)";   assert_eq "the new owner's wall is empty" '{"item":""}' "$BODY"
+get "$D/placed/$(house usera)";   assert_eq "the new owner's wall is empty, and so is the floor (nothing inherited from the reaped name)" '{"item":"","floor":[]}' "$BODY"
 get "$D/presence/inventory" "$(jar usera)"; assert_eq "and inventory is empty" '{"items":[]}' "$BODY"
 bleave usera "$(house usera)" >/dev/null
 

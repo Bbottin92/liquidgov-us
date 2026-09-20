@@ -18,6 +18,14 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-20 — Studio spec reviewed, nothing built.** `GROK_STUDIO_ANSWER.md`.
+  Loop holds at a handful of players (batch-on-the-clock is the return). Free-form
+  combine would dump the table — discovery is "you hold the inputs." Cut homemade
+  vinegar; gather a keg. Rename whiting → shell white. Drop alum-from-alum.
+  Rewrite woad as a lake (needs shell white). Charge painting increases only, never
+  refund. Charcoal easel before lab conversion. Frozen table + Brandon sign-off
+  before `BUILD studio 1`.
+
 - **2026-09-19 — site sense built, not deployed.** `site-sense-built.md`.
   Guest nav + footer + apps tile for The Commons. /privacy /terms.
   Hall confirm is honest for guests. Communities keeps next=. Intro has Skip.

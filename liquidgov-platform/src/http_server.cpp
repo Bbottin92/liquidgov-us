@@ -1379,7 +1379,7 @@ std::string page_wrap(const std::string& title, const std::string& navhtml, cons
            // its own "Add to Home Screen" (Share sheet) works from nothing
            // more than the page itself, which is why /install still needs
            // to spell that path out separately.
-           "<link rel=\"manifest\" href=\""+(title=="Messages"?"/manifest-mail.webmanifest":"/manifest.webmanifest")+"\">"
+           "<link rel=\"manifest\" href=\""+(title=="Messages"?"/manifest-mail.webmanifest":title=="Social"?"/manifest-social.webmanifest":title=="Civic"?"/manifest-civic.webmanifest":"/manifest.webmanifest")+"\">"
            "<meta name=\"apple-mobile-web-app-capable\" content=\"yes\">"
            "<meta name=\"mobile-web-app-capable\" content=\"yes\">"
            "<meta name=\"apple-mobile-web-app-title\" content=\""+html_escape(title)+"\">"
@@ -7251,6 +7251,38 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             "\"background_color\":\"#f7f1e4\","
             "\"theme_color\":\"#d1a85c\","
             "\"icons\":[{\"src\":\"/icon-mail-192.png\",\"sizes\":\"192x192\",\"type\":\"image/png\",\"purpose\":\"any\"},{\"src\":\"/icon-mail-512.png\",\"sizes\":\"512x512\",\"type\":\"image/png\",\"purpose\":\"any maskable\"}]"
+            "}");
+    }
+
+    // Same pattern as /manifest-mail.webmanifest, linked only from a page rendered with title "Social" or "Civic"
+    // (the /app/social and /app/civic install shells, which /apps sends people to). start_url is the real app page,
+    // exactly where each shell already sends a standalone launch (see assets/app-social.html / app-civic.html), so an
+    // installed Social opens the feed and an installed Civic opens proposals instead of the Genesis landing page.
+    // Icons and theme colours are the ones page_wrap already uses for those titles. (iOS ignores manifests.)
+    if(method=="GET"&&path=="/manifest-social.webmanifest") {
+        return http_raw("200 OK", "application/manifest+json",
+            "{"
+            "\"name\":\"Social\","
+            "\"short_name\":\"Social\","
+            "\"description\":\"LiquidGov.US feed, people, and groups.\","
+            "\"start_url\":\"/feed\","
+            "\"display\":\"standalone\","
+            "\"background_color\":\"#f7f1e4\","
+            "\"theme_color\":\"#c17a4a\","
+            "\"icons\":[{\"src\":\"/icon-social-192.png\",\"sizes\":\"192x192\",\"type\":\"image/png\",\"purpose\":\"any\"},{\"src\":\"/icon-social-512.png\",\"sizes\":\"512x512\",\"type\":\"image/png\",\"purpose\":\"any maskable\"}]"
+            "}");
+    }
+    if(method=="GET"&&path=="/manifest-civic.webmanifest") {
+        return http_raw("200 OK", "application/manifest+json",
+            "{"
+            "\"name\":\"Civic\","
+            "\"short_name\":\"Civic\","
+            "\"description\":\"LiquidGov.US proposals, laws, and who holds control.\","
+            "\"start_url\":\"/proposals\","
+            "\"display\":\"standalone\","
+            "\"background_color\":\"#f7f1e4\","
+            "\"theme_color\":\"#6b7d5a\","
+            "\"icons\":[{\"src\":\"/icon-civic-192.png\",\"sizes\":\"192x192\",\"type\":\"image/png\",\"purpose\":\"any\"},{\"src\":\"/icon-civic-512.png\",\"sizes\":\"512x512\",\"type\":\"image/png\",\"purpose\":\"any maskable\"}]"
             "}");
     }
 

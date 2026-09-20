@@ -2073,6 +2073,9 @@ Not bug classes. Not “what is live on the droplet.”
   door/sign rings, spawn, waypoints and flood-fills the real collision array so nothing is sealed (14 + 7, 9 mutations; a first sealed-pocket mutation was vacuous and was redone). **Found and fixed a live bug:** `forceRedraw` was declared in
   main.js (last) but assigned by sprites.js image `onload`s, so a cached image firing between two script tags threw a strict-mode ReferenceError (benign in effect; declaration moved to sprites.js; `client_files_unit` now fires image onloads after each
   script, 55 checks). Client-only deploy needs `deploy`. Still to come, one BUILD each: A (lab lookups, daemon migration), C (house furniture), D (pick-ups, needs a question doc). See `scatter-built.md`.
+- **2026-09-20 -- `BUILD pwa` built and tested; NOT deployed (hold for Grok).** Social and Civic get their own webmanifests (`/manifest-social.webmanifest` start_url `/feed`, `/manifest-civic.webmanifest` start_url `/proposals`, the shells' own standalone redirect targets, not the shells),
+  picked by `page_wrap` by title like Mail; The Commons gets `commons/manifest.webmanifest` (start/scope `/commons/`) + generated apple-touch-icon/192/512 (`art/make_icons.py`, the plaza from above, maskable-safe) and the /apps tile shows it. `pwa_check.py` 71 checks, 16 mutations (Mail as a control caught my extractor bug; a first no-op sync-exclude mutation was redone).
+  Real browser (Commons under a /commons/ prefix) and real compiled civic verified locally. Not tested on a device; iOS ignores manifests. **Deploy order: client first (the /apps tile loads the icon from /commons/), then civic with chown BEFORE the build.** See `pwa-built.md`.
 
 ## Split: civic site vs game
 

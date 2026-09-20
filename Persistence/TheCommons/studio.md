@@ -1,33 +1,57 @@
-# The Studio — spec (draft for Brandon's sign-off, 2026-09-20)
+# The Studio — spec v2 (Grok's review folded in; awaiting Brandon's sign-off)
 
-**Status: SPEC ONLY. Nothing here is built.** Each slice at the bottom is its own `BUILD`, and every
-droplet touch needs the literal `deploy` word (daemon deploys: drift-check, online DB backup first).
-Written from Brandon's answers on 2026-09-20 (see "Decisions made" and "Open decisions").
+**Status: SPEC ONLY. Nothing here is built. No code, no catalog rows, no BUILD, no deploy.**
+v1 was `9a5b7c5`; Grok's review is `GROK_STUDIO_ANSWER.md` (`5c45287`); this file is v2, written 2026-09-20.
+Each slice below is its own `BUILD`; every droplet touch needs the literal `deploy` word (daemon deploys:
+drift-check, online DB backup first). **The recipe table is not frozen until Brandon signs it and each
+line has had a reference check (see Recipes).**
 
 ## One paragraph
 
-People need something to **do**. The Commons becomes a place where you **gather real materials from the
-regions, make real pigments at a bench (roughly real recipes, roughly real waiting times), and paint
-with only the colours you have made**, starting with a stub of charcoal. Materials are used up as you
-paint; every source renews, so nothing runs out for good, but you keep doing the loop. Your first
-painting is a **self-portrait** that hangs in your house and grows from black and white into colour
-as you unlock pigments. This is the reason to come back: a batch is ready, a colour is unlocked, a
-portrait can be redrawn, and friends see it when they visit. It is a game-side system: **civic is not
-touched** (its drawing tool already has unlimited colours and image import, so it cannot be gated and
-is not).
+People need something to **do**. The Commons becomes a place where you **draw with charcoal from the first
+minute, and gather real materials from the regions and make real pigments at a bench (real ingredients,
+roughly real waiting times) to earn a wider palette**. Materials are used up as you paint; every source
+renews, so nothing runs out for good, but you keep doing the loop. Your first painting is a **studio
+portrait** that hangs in your house and grows from black and white into colour. The easel is what people
+*do*; the bench is why they *return* (a batch finishes on the server clock, so there is a reason to come
+back even when the Square is empty). Friends see the portrait when they visit. It is a game-side system:
+**civic is not touched** (its drawing tool already has unlimited colours and image import, so it cannot
+be gated and is not).
+
+## What changed after Grok's review
+
+| # | Change | Source |
+|---|---|---|
+| 1 | **Discovery is "you hold every input", not free-form guessing.** The bench lists a recipe when you hold all its inputs; the first successful collect is the discovery. Free-form mixing survives only as a rate-limited side action with a fixed list of real fail texts. | Grok §1, §5 |
+| 2 | **Homemade vinegar is cut** (real cider vinegar is weeks to months; 7 days was not "roughly real"). The Orchard's existing apple spot becomes **a keg** that yields vinegar with a one-day per-player cooldown. | Grok §2 |
+| 3 | **"Whiting" renamed "shell white"** (whiting is chalk; shell white is the shell pigment). **Alum crystals dropped** (purifying alum you gathered is busywork; Quarry **alum stone** is the mordant). **Woad rewritten** as a simplified lake so the ladder has a true blue. | Grok §2 |
+| 4 | **Slice order changed:** the charcoal easel and portrait ship *before* the long ladder; the lab is not converted until the bench can spend the raws. | Grok §1, §7 |
+| 5 | **Painting never refunds material** (rule made exact below). | Grok §5 |
+| 6 | Server rules tightened (transactions, uniqueness, no client timestamps, palette-index bitmaps only, polling, orphan reap, guest path). | Grok §5 |
+| 7 | Phone layout is a slice-2 requirement, the bench carries a "not a recipe to follow at home" line, and the two soft locks Grok found are recorded. | Grok §3, §7, §8 |
+
+**Three places I went a step beyond or differently from Grok** (flagged for Brandon, easy to overrule):
+
+- **Painting cost formula.** Grok's `max(0, new_count[c] - stored_count[c])` lets you erase and repaint the
+  *same number* of pixels for free, i.e. redraw the whole portrait from one stub. I charge **every pixel that
+  becomes colour `c` and was not `c` before** (see Easel). Still no refunds. This is what makes "materials
+  are used up" true.
+- **The portrait is visit-checked from slice 2**, not slice 4, because shipping a public read even briefly is
+  a privacy hole, and owner-only would delay the social payoff. The visit-check helper already exists.
+- **Charcoal is 8 h**, taking Grok's "or bump to 8 h", not "label 3 h". The starter stub covers the first
+  portrait, so the wait does not block the first session. **The real-world figure (Grok says ~10 h in a
+  closed tin; I had 2-4 h) is disputed and must be reference-checked;** the game number stays a tunable.
 
 ## Decisions made (Brandon, 2026-09-20)
 
 1. The point of the game is to **do** things; the profile-page/house idea stays, but needs a purpose.
-2. **Realistic chemistry** experiments: real ingredients, roughly real time to make a batch. No quantities,
-   no stoichiometry.
-3. **Pigments you make are your palette.** Regions become material sources (yes).
-4. The **self-portrait is in the game** (not the civic `/me/portrait` tool), starts with charcoal
-   (black/white/greys) and unlocks colours (yes).
-5. **Materials are consumed with use; sources renew** ("nothing is finite" read as: you never run out
-   permanently) (yes). A **free starter stub of charcoal** so the first minute is drawing (yes).
+2. **Realistic chemistry**: real ingredients, roughly real time to make a batch. No quantities, no stoichiometry.
+3. **Pigments you make are your palette.** Regions become material sources.
+4. The **portrait is in the game** (not the civic `/me/portrait` tool), starts in charcoal, unlocks colours.
+5. **Materials are consumed with use; sources renew** ("nothing is finite" = you never run out for good).
+   A **free starter stub of charcoal** so the first minute is drawing.
 
-## Locks this reopens (recorded, not silently overridden)
+## Locks this reopens, and the two Grok found (recorded, not silently overridden)
 
 | Earlier rule | Where | Now |
 |---|---|---|
@@ -35,192 +59,233 @@ is not).
 | "Real names, not real stoichiometry/safety" | `pushback.md`, `notes.md` | Kept in spirit: real ingredients and times, still no quantities/stoichiometry/hazards |
 | Counts never go down; lookups never consumed | `inventory-strip-built.md`, `bound-inventory-built.md` | Reopened: materials are consumed |
 | "No RPG menu / inventory screen" | `art.md` | Reopened narrowly: a bench screen, an easel screen, a notebook |
-| "Do not invent guest persistence" | `v1.md`, `inventory.md` | **Kept.** Guests stay RAM-only (see guests) |
+| "Do not invent guest persistence" | `v1.md`, `inventory.md` | **Kept.** Guests stay RAM-only |
 | No XP / quests / combat / day-night | `v1.md` | Kept. Progress = unlocked colours + what you have made |
 | Civic frozen except the named `/internal/*` routes | notes | Kept. **No civic change anywhere in this spec** |
+| **Lab A already shipped** vinegar, oak-gall tannin, lampblack, alum and gum as **finished** lookups (`catalog-built.md`) | live | **A live behaviour change, not a green field.** Legacy items stay placeable trophies; converting a station needs a one-line toast the first time you Look ("this is stock now; make it at the Workshop") |
+| **World pickups D already shipped** oak galls, seashells and cider apples (`world-pickups-built.md`) | live | Studio gather **reuses those exact spots**; no second marker on the same tile. Apples become the Orchard keg (vinegar), not a second apple pile |
+| The mine has no ore | `GROK_MINE_ANSWER.md` | Kept. Scrap iron/copper comes from the Workshop Lane crates, never the adit |
 
 ## Guardrails
 
-- **Safety line.** Benign historical/domestic materials only (ink, pigments, dyes, mordants, vinegar,
-  chalk, charcoal). No hazardous chemistry, no toxic-heavy-metal pigments (no lead white, no vermilion),
-  **no procedure text**: a recipe shows ingredients, a rough time and a one-line history, never steps or
-  temperatures. Verdigris carries a one-line "toxic; not for eating" history note.
-- **Accuracy.** Every recipe, time range and history line must be **reviewed against references (or by
-  someone with the knowledge) before the recipe table is built**. The list below is drafted from general
-  knowledge; treat every entry as unverified.
-- No free text anywhere new (recipe names, notes and phrases are all ours). No moderation surface added.
-- Server-authoritative for anything durable. The client is never trusted with inventory, timers or
-  unlocks for a bound player.
-- Guests: RAM only, exactly as today.
+- **Safety line.** Benign historical/domestic materials only (ink, pigments, dyes, mordants, vinegar, chalk,
+  charcoal). No hazardous chemistry; no lead white, vermilion, orpiment, malachite grinding, quicklime or
+  Prussian blue; **no procedure text**: a recipe shows ingredients, a rough time and a one-line history, never
+  steps, temperatures, pH, lye, urine or "closed pot". "Heated" (red ochre) is history, not a how-to.
+  Verdigris carries "toxic; not for eating".
+- **The bench screen carries one line:** "Names and waiting. Not a recipe to follow at home."
+- **Accuracy.** Every recipe, time range and history line is reviewed before the table is built (see Recipes).
+- No free text anywhere new. No moderation surface added.
+- Server-authoritative for anything durable. The client is never trusted with inventory, timers or unlocks
+  for a bound player. Guests: RAM only, and never call these endpoints.
 
 ## The loop
 
-    Regions (gather, cooldown)  ->  raw materials in your inventory
-        Lab (stock room: lookups of prepared raws: gum, alum, copper, iron, soot)  ->  more raws
-              |
-              v
-    Workshop BENCH (combine ingredients -> starts a timed batch; up to 3 at once)
-              |  (come back later; batches finish on the server clock, even while you are away)
-              v
-    Collect  ->  pigment / ink / material in inventory  +  DISCOVERY recorded (the notebook, and the unlock)
-              |
-              v
-    Workshop EASEL (paint with the colours you have unlocked, spending material as you paint)
-              |
-              v
-    Your house: the SELF-PORTRAIT frame (+ one painting frame), seen by whoever the door policy lets in
+    Easel (from minute one): draw with the starter charcoal stub  ->  studio portrait hangs in your house
+                                  |
+    Regions (gather, per-player cooldown; existing spots reused)  ->  raw materials
+        Lab (stock room, later)  ->  prepared raws (gum arabic, soot)
+                                  |
+                                  v
+    Workshop BENCH: a recipe lights up when you hold every input; start a timed batch (3 slots)
+        (the batch finishes on the server clock, even while you are away)
+                                  |
+                                  v
+    Collect  ->  pigment / ink / material  +  DISCOVERY (notebook line + palette unlock)
+                                  |
+                                  v
+    Easel: a wider palette, costing material as you paint  ->  redraw or add a second painting
 
 ## Where things live
 
-- **Workshop (already built, 14x10):** gets the **Bench** (interactable on an existing workbench tile) and the
-  **Easel** (interactable on an existing tile). No new art needed; the screens are DOM overlays.
-- **Lab:** stays. Its eight stations stop handing out finished products and become the **stock room**
-  (raw, prepared materials). Products already in bound inventories stay valid (legacy items, still placeable).
-- **Regions become sources** (new lookup spots, same interactable as `worldPickup`, plus a cooldown):
+- **Workshop (built, 14x10):** gets the **Bench** and the **Easel** (interactables on existing tiles; screens
+  are DOM overlays, no new art).
+- **Lab:** unchanged until the bench can spend the raws (slice 3). Then its stations become stock-room raws;
+  the exact station-by-station table is frozen with the slice-3 BUILD, not here.
+- **Regions as sources** (reusing today's spots where one exists; each gets a per-player cooldown):
 
-| Region | Gives |
-|---|---|
-| North Woods | oak galls; willow twigs (charcoal wood) |
-| Orchard | cider apples |
-| Shore | seashells |
-| Quarry Ridge | yellow ochre earth; alum stone |
-| Garden | madder root, weld, woad leaves |
-| Workshop Lane | scrap: iron nails, copper sheet (from the crates) |
-| Lab | gum arabic, prepared soot (lamp), water is implicit everywhere |
+| Region | Gives | Note |
+|---|---|---|
+| North Woods | oak galls (existing spot); willow twigs (new) | |
+| Orchard | **vinegar keg** (the existing apple spot, converted); 1-day cooldown | "the keg behind the trees" |
+| Shore | seashells (existing spot) | |
+| Quarry Ridge | ochre earth; **alum stone** | new spots; not the adit |
+| Garden | madder root, weld, woad leaves | new spots |
+| Workshop Lane | scrap iron (nails), copper sheet | the crates |
+| Lab | gum arabic, soot | stock room, slice 3 |
 
-The other regions (Square, Homestead, Hall Lawn, Lookout, Creek, Lab Yard) keep their current role; they
-are places to meet and walk, not sources.
+  Water is implicit everywhere. The Square, Homestead, Hall Lawn, Lookout, Creek and Lab Yard stay places to
+  meet and walk.
 
 ## Materials, use and renewal
 
 - Inventory counts are abstract **units** (not grams). Existing cap 99 per item stays.
-- **Gathering:** each spot gives a small pile per visit (default **3 units**) then a per-player **cooldown**
-  (default **10 minutes** per spot, server-side for bound players, RAM for guests). Sources never run out.
-  Numbers are placeholders to tune in play (slice 5).
-- **Painting consumes:** painting is charged **per pixel by colour on Save**: **1 unit of a pigment ≈ 200
-  pixels** (charcoal stub ≈ 400). The server computes the cost from the submitted bitmap vs the stored one.
-- **Failed experiments cost nothing** (default): combining something that does nothing consumes no
-  materials and tells you what really happens. Only a started batch consumes its inputs.
-- **Unlocks are permanent.** Discovering a recipe once (collecting its first batch) unlocks that pigment
-  as a palette colour forever; you still need *material* to paint with it.
+- **Gathering:** a small pile per visit (default **3 units**), then a **per-player** cooldown per spot (default
+  **10 minutes**; the keg 1 day), server-side for bound players. No global pile, so three people cannot starve
+  a region. Sources never run out. Numbers are tunable (slice 5).
+- **Painting consumes** (exact rule below). **1 unit ≈ 200 pixels** (the charcoal stub ≈ 400).
+- **Failed side-mix experiments cost nothing** (they only ever return a fixed fail text). Only a started batch
+  consumes its inputs.
+- **Unlocks are permanent.** The first collected batch of a recipe unlocks its pigment as a palette colour
+  forever; you still need material to paint with it.
 
-## Recipes (v1 draft; UNVERIFIED, needs review before build)
+## Recipes (v2, freeze candidate)
 
-Times are **typical real ranges**, the game time in the last column follows the rule in Open decision 1
-(real time up to ~3 days; longer processes capped at 7 days and labelled honestly). All output "units" are
-small fixed numbers set in the catalog (default 3).
+Every line below is **Grok's review mark, which is itself unverified**. **Before `catalog.sql`, I check each
+line against at least one reference and Brandon signs the frozen table.** Times are typical real ranges; the
+game time follows the rule in Open decision 1 (real time up to ~3 days; only verdigris capped at 7 days).
 
-| Recipe | Ingredients | Real range | Game time | Yields | Tier |
-|---|---|---|---|---|---|
-| Charcoal | willow twigs | ~2-4 h | 3 h | charcoal (black, greys) | 1 |
-| Whiting | seashells | ~1-3 d (grind, wash, settle, dry) | 1 d | white pigment | 2 |
-| Yellow ochre | ochre earth | ~1 d (wash, settle) | 1 d | yellow ochre | 3 |
-| Red ochre | yellow ochre (heated) | hours | 4 h | red ochre | 3 |
-| Gum solution | gum arabic + water | overnight | 8 h | gum solution (binder) | 3 |
-| Oak-gall tannin | oak galls + water | ~1-2 d | 1 d | tannin | 3 |
-| Vinegar | cider apples | ~4-10 wk total (cider, then acetic) | 7 d cap | vinegar | 3 |
-| Iron acetate | iron + vinegar | days to ~2 wk | 3 d | iron acetate | 4 |
-| Iron-gall ink | tannin + iron acetate + gum | mixes at once; darkens over ~a day | 12 h | blue-black ink | 4 |
-| Carbon ink | soot + gum solution | under an hour | 30 min | black ink | 3 |
-| Verdigris | copper + vinegar (closed pot) | ~1-3 wk | 7 d cap | green pigment | 5 |
-| Alum crystals | alum + water | ~1-3 d | 1 d | alum (mordant) | 4 |
-| Madder lake | madder + alum + whiting | days | 2 d | red pigment | 6 |
-| Weld lake | weld + alum + whiting | ~1-2 d | 1 d | yellow pigment | 6 |
-| Woad blue | woad leaves + ash + water | days | 3 d | blue pigment | 6 |
+| Recipe | Ingredients | Real range (to verify) | Game | Yields | Tier | Note |
+|---|---|---|---|---|---|---|
+| Charcoal | willow twigs | hours, plus cooling (Grok: ~10 h; disputed) | 8 h | charcoal (black + 3 greys) + **ash x2** | 1 | label the shortening |
+| Shell white | seashells | historically weathered months to years, then crushed | 1 d | white | 2 | not "calcining"; label |
+| Yellow ochre | ochre earth | ~1 d (wash, settle) | 1 d | yellow ochre | 3 | |
+| Red ochre | yellow ochre ("heated") | hours | 4 h | red ochre | 3 | no temperature |
+| Gum solution | gum arabic + water | overnight | 8 h | binder | 3 | |
+| Oak-gall tannin | oak galls + water | 1-2 d | 1 d | tannin | 3 | |
+| Carbon ink | soot + gum solution | minutes | 30 min | black ink | 3 | bench is the slow path; legacy bottles stay |
+| Iron acetate | iron + vinegar | days to ~2 wk | 3 d | iron acetate | 4 | **folk method**; history line says manuscript inks used copperas (ferrous sulfate) |
+| Iron-gall ink | tannin + iron acetate + gum solution | darkens over hours | 12 h | blue-black ink (ages to brown) | 4 | |
+| Verdigris | copper + vinegar | ~1-3 wk | **7 d cap** | green | 5 | label "typically 1-3 weeks; here 7 days"; toxic note; **no "closed pot"** |
+| Madder lake | madder + alum stone + shell white | days | 2 d | red | 6 | no procedure |
+| Weld lake | weld + alum stone + shell white | ~1-2 d | 1 d | yellow | 6 | |
+| Woad blue (simplified lake) | woad + ash + water + shell white | real vats ferment for weeks | 3 d | blue | 6 | history: "a vat, simplified"; **no lye, no pH, no urine** |
 
-Note: **ash** is a by-product of Charcoal (2 units), which gives a real reason to make charcoal again.
+**Cut:** homemade vinegar from apples; alum crystals. **Not added:** Prussian blue, lime, malachite.
 
-**Wrong-combination results (must be real, checked):** chalk/whiting + vinegar fizzes and dissolves
-(calcium acetate); iron + vinegar without tannin gives a rust-brown solution, not ink; tannin alone gives
-a weak brown stain; anything else: "Nothing useful comes of it." Add more only when verified.
+**Wrong-combination texts (side mix only, fixed list):** shell white or chalk + vinegar fizzes and dissolves
+(calcium acetate); iron + vinegar without tannin gives a rust-brown solution, not ink; tannin alone gives a
+weak brown stain; everything else: "Nothing useful comes of it." More only when verified.
 
-**Palette ladder (what the easel offers):** Tier 1 charcoal = black + three greys; Tier 2 whiting = white;
-Tier 3 ochres/inks = yellow, red-brown, brown, black ink; Tier 4 iron-gall = blue-black (ages to brown);
-Tier 5 verdigris = green; Tier 6 lakes/woad = red, yellow, blue. Each rung takes longer than the last.
+**Palette ladder (what the easel offers):** T1 charcoal = black + three greys; T2 shell white; T3 ochres, gum,
+tannin, carbon ink = yellow, red-brown, brown, black ink; T4 iron-gall = blue-black; T5 verdigris = green;
+T6 lakes and woad = red, yellow, blue. Ochres do not wait on vinegar, so colour is possible on day one;
+green is the slow, expensive one, as it was historically.
 
 **The notebook:** one line per discovered recipe (name, real time range, one-line history). Undiscovered
-entries show as "?". No free text.
+recipes show as "?". No free text.
 
-## The self-portrait and the easel
+## Discovery and the bench (rule 1, exact)
 
-- **Canvas:** **32x32** pixels, palette-indexed (1 byte/pixel = 1 KB). Tools: pen (1 px), soft smudge (charcoal
-  greys by dithering), eraser, small undo stack. No layers, no import, no text, no colour picker: the palette
-  is exactly your unlocked pigments with material left.
-- **A new player** gets a **starter charcoal stub** (≈400 pixels, once, free) so the first minute is drawing.
-  The portrait exists from then on and can be redrawn; recolouring later costs material.
-- **Two frames in your house:** the **portrait frame** and one **painting frame**, at fixed spots (no
-  placement UI). The existing civic wall slot is unchanged.
-- **Who sees it:** the owner, plus whoever the house policy admits. **Stricter than `/placed`** (which is
-  public read): paintings are served only after the same visit check the daemon already uses, and **never
-  to `open`-policy strangers** until there is a way to report or hide (Open decision 4).
-- **Server-authoritative save:** the client submits the whole bitmap; the server (a) rejects any pixel using
-  a colour the player has not unlocked, (b) computes the material cost vs the stored version, (c) deducts and
-  stores in **one transaction**, (d) rejects on insufficient material. Size and rate capped.
+- **Primary path:** the bench lists every recipe whose inputs you all hold; you start one; the first
+  successful **collect** records the discovery.
+- **Side mix** (free-form): up to **4** ingredient slugs, **rate-limited to 1 per 5 s**, matched by the server
+  on a **canonical sorted multiset**; it can only return one of the fixed fail texts or "Nothing useful". The
+  client **never** sends a `recipe_id` for an experiment. It cannot start a batch or discover anything, so a
+  script cannot fill the notebook by guessing.
+
+## The easel and the portrait
+
+- **Canvas:** **32x32**, palette-indexed, 1 byte/pixel (1 KB). Shown **nearest-neighbour** on the wall and
+  labelled **"a small portrait"** so it never reads as a broken canvas. Tools: pen (1 px), smudge (charcoal
+  greys by dithering), eraser, small undo stack. No layers, no import, no text, no colour picker: the
+  palette is exactly your unlocked pigments that you still have material for.
+- **Starter:** a new bound player gets a **charcoal stub** (≈400 pixels, once, free). The portrait exists
+  from then on and can be redrawn.
+- **Cost rule (never refunds):** on Save the server charges, for each colour `c`, the number of pixels whose
+  **new value is `c` and whose stored value was not `c`**. Erasing to blank refunds nothing and costs
+  nothing; recolouring costs the *new* colour only; painting over a pixel with the colour it already has
+  costs nothing. Charged in the same transaction that stores the bitmap; rejected if you lack material.
+- **In your house:** the **studio portrait** frame (named so it is never confused with the civic *profile
+  drawing* in the wall slot), plus one **painting frame** later (slice 4). A 32x32 image is exactly **2x2
+  tiles** at 16 px. **Exact tiles are pinned by a house-layout check at the start of slice 2**, because the
+  house already has furniture, floor items, the wall slot and the latch (candidate: 2x2 on the top wall at
+  x 10-11 and, later, x 4-5; the civic frame occupies x 6-8, shelves x 2-3, lamp x 14; **unverified**).
+- **Who sees it:** the owner, plus whoever the house policy admits, checked **in the daemon's visit helper**
+  (never the public `/placed` read). **Never shown to `open`-policy strangers** until there is a way to
+  report or hide. A visitor already inside still sees the portrait if the owner walks out (same as today;
+  not special-cased).
+- **Server save:** the client submits **palette indices only** (never a PNG). Reject: wrong length, any index
+  not in that player's unlocks, over-rate saves. One transaction: verify, compute cost, deduct, store.
 
 ## Guests
 
-Guests can **gather, keep a starter charcoal stub, and draw a portrait in charcoal for the session**.
-Nothing persists: no batches, no unlocks, no saved painting (RAM, as today). **Making and keeping
-needs an account.** (This corrects my earlier "hours-long recipes for guests": a batch that outlives the
-tab would be guest persistence, which stays ruled out.) The bench shows guests what they would make, with
+Guests can **gather (local RAM only), keep a starter charcoal stub for the session, and draw a portrait in
+charcoal for the session**. No batches, no unlocks, no saved painting (a batch that outlives the tab *is*
+guest persistence, which stays ruled out). Guest gather and cooldowns are **local code that never calls the
+new endpoints**: do not "helpfully" persist them. The bench shows guests what they would make, with
 "Sign in on LiquidGov to start a batch."
 
 ## Data model (all additive; nothing dropped)
 
-Existing DBs get changes from `ensure_*` functions at startup (as `ensure_inventory_recency`/`ensure_visit_policy`
-do); `schema.sql` is updated for new DBs; the catalog is `INSERT OR IGNORE` from `catalog.sql`.
+Existing DBs get changes from `ensure_*` functions at startup (as `ensure_inventory_recency` /
+`ensure_visit_policy` do); `schema.sql` is updated for new DBs; the catalog is `INSERT OR IGNORE` from
+`catalog.sql`.
 
-- `items`: new rows (raws, intermediates, pigments); category stays `'material'` (the CHECK cannot be altered in
-  SQLite), pigments identified by `sprite_ref`/a `pigment_hex` column (ADD COLUMN, nullable).
-- `recipes`: ADD `duration_s`, `tier`, `real_range_note` (short text, ours), `history_note` (short text, ours).
+- `items`: new rows; category stays `'material'` (the CHECK cannot be altered in SQLite); pigments carry a nullable
+  `pigment_hex` (ADD COLUMN).
+- `recipes`: ADD `duration_s`, `tier`, `real_range_note`, `history_note` (short text, ours).
   `recipe_inputs` / `recipe_outputs` already exist and are used as designed.
-- New: `batches(batch_id, player_id, recipe_id, started_ms, ready_ms, collected)`; `discoveries(player_id,
-  recipe_id, first_ms)` (the notebook and the unlock); `gather_cooldowns(player_id, spot, next_ms)`;
-  `paintings(painting_id, player_id, kind CHECK IN ('portrait','painting'), w, h, pixels BLOB, updated_ms)`,
-  unique `(player_id, kind)`.
-- Server clock is the only clock. A test seam (env-overridable clock) exists for tests only.
+- New: `batches(batch_id, player_id, recipe_id, started_ms, ready_ms, collected)`;
+  `discoveries(player_id, recipe_id, first_ms)`; `gather_cooldowns(player_id, spot, next_ms, UNIQUE(player_id, spot))`;
+  `paintings(painting_id, player_id, kind CHECK IN ('portrait','painting'), w, h, pixels BLOB, updated_ms,
+  UNIQUE(player_id, kind))`.
+- **Server clock only**; the client never sends `started_ms` or `ready_ms`. A test-only clock seam exists.
+- **The orphan reap learns the new tables** (`batches`, `discoveries`, `gather_cooldowns`, `paintings`) in
+  slice 1, so civic account-deletion cannot leak them the way house rows once did.
 
 ## Daemon API (all under `/presence/`, cookie identity only, no guest fallback, so **no nginx change**)
 
-`POST /presence/gather {spot}`, `GET /presence/studio` (inventory, batches with `ready_ms`, discoveries,
-cooldowns, unlocked palette), `POST /presence/combine {ingredients:[slug,...]}` (an experiment: starts a batch
-or returns the real "no reaction" text), `POST /presence/collect {batch_id}` (idempotent),
-`GET/POST /presence/painting/<kind>` (own) and `GET /presence/painting/<owner>/<kind>` (visit-checked).
-Batch slots: max **3** concurrent. Bound only; unbound is `403 not_bound`. The existing dormant client poll of
-`/commons/recipes` (404) is left alone until slice 3 decides its fate.
+`POST /presence/gather {spot}`; `GET /presence/studio` (inventory, batches with `ready_ms`, discoveries,
+cooldowns, unlocked palette, makeable-now recipes); `POST /presence/bench {recipe}` (start a batch);
+`POST /presence/mix {slugs}` (side mix, rate-limited); `POST /presence/collect {batch_id}` (idempotent);
+`GET/POST /presence/painting/portrait` (own) and `GET /presence/painting/<owner>/portrait` (visit-checked).
+Unbound is `403 not_bound`.
+
+Rules: **gather, bench and collect are each one transaction**. Gather: `UNIQUE(player_id, spot)`, the cooldown
+row and the grant in the same transaction so two racing POSTs cannot both pass. Bench: slot cap (**3**),
+counts checked, inputs deducted, batch inserted. Collect: `collected 0 -> 1` idempotently, then outputs and
+discovery. `collect` is a pull against `now_ms >= ready_ms`; the client may count down from the server's
+`ready_ms` but collect stays authoritative. **No thread or push for "batch finished".** **Do not poll
+`/presence/studio` at presence's 2 Hz**: fetch on Workshop enter and at most every ~30 s while at the bench.
+The dormant client poll of `/commons/recipes` (404) is left alone until slice 3.
 
 ## Client
 
-Bench, easel and notebook are DOM overlays (keyboard and touch, portrait-phone friendly). A HUD line shows
-"batch ready" on arrival. The inventory strip now shows counts that go down. Region spots are new
-`worldPickup`-style interactables with the cooldown shown as "Nothing more to gather here yet."
+Bench, easel and notebook are **full-screen DOM overlays** (a 160x240 portrait crop cannot host a 32x32
+editor plus a palette in a canvas HUD), keyboard and touch. **A portrait-phone layout is part of slice 2:
+without it slice 2 is unusable on a phone, and that, not SQLite, is the real ship-blocker.** A HUD line shows
+"batch ready" on arrival. The inventory strip now shows counts that go down.
 
 ## Tests (each slice)
 
 Recipe-table validation (every input/output exists, durations in bounds, **no cycle that gains material**);
-server-authoritative gather/combine/collect (no materials, not ready, double-collect, slot cap, unbound 403);
-painting save (locked colour rejected, cost charged atomically, insufficient material rejected, size caps);
-migration on an **old-shape DB** (`test_migrations`); visibility (friends yes, stranger no, `open` no); the
-world flood-fill test extended for every new spot; a real-browser run per slice. CI as usual.
+server-authoritative gather/bench/collect (no materials, not ready, double-collect, slot cap, racing gathers,
+unbound 403, client-sent times ignored); side mix (rate limit, cap of 4, fixed texts only, cannot discover);
+painting save (locked index rejected, wrong length rejected, cost charged atomically and never refunded, the
+"erase and repaint" case costs material, insufficient material rejected); migration on an **old-shape DB**
+(`test_migrations`); the orphan reap removes the new rows; visibility (owner and friends yes, stranger no,
+`open` no); the world flood-fill test extended for every new spot; a real-browser run per slice, including a
+phone-portrait viewport for the easel. CI as usual.
 
 ## Slices (each its own BUILD; deploys need the `deploy` word)
 
-1. **Daemon core:** tables, catalog, recipes with durations, gather/cooldown, combine/collect, discoveries,
-   consumption, tests, migration. Daemon deploy (DB backup first).
-2. **World sources + lab conversion (client):** region spots, lab stations become raws, legacy items kept.
-3. **Bench + notebook (client):** the Workshop bench screen, batch-ready HUD, notebook.
-4. **Easel + portrait (daemon + client):** paintings table/endpoints, easel screen, two house frames, visit-checked read.
-5. **Tuning pass:** cooldowns, yields, pixel cost, with real play on the live site.
+1. **Daemon core:** tables, frozen catalog, gather/cooldown, bench/mix/collect, discoveries, consumption,
+   migration, **orphan-reap extension**, tests. **No client. No droplet until `deploy`.**
+2. **Charcoal easel + studio portrait + starter stub:** daemon painting endpoints (`portrait` only,
+   visit-checked read), the easel overlay **including the portrait-phone layout**, the house portrait frame
+   (exact tiles pinned first). Palette = charcoal until later recipes exist. This is the "do".
+3. **World sources + bench + notebook + lab conversion, one deploy:** the lab does not lose its finished
+   products until the bench can spend the raws; Orchard keg instead of a vinegar recipe; first-Look toast on
+   converted stations; the frozen station-by-station table.
+4. **Rest of the ladder + second painting frame.**
+5. **Tuning** on the live site (cooldowns, yields, pixels per unit, charcoal time).
 
-## Open decisions (recommended defaults marked)
+## Open decisions (recommended default marked)
 
-1. **Time scale.** Real time up to ~3 days; processes longer than that capped at **7 days** and labelled
-   ("typically 4-10 weeks; here 7 days"). *(default; needs your yes)*
-2. **Guests** as above: gather + charcoal drawing in-session; making/keeping needs an account. *(default)*
-3. **Failed experiments consume nothing.** *(default)*
-4. **Painting visibility:** friends and owner only, never `open`-policy strangers, until report/hide exists. *(default)*
-5. **Canvas size:** 32x32 (48x48 is possible later). *(default)*
-6. **Recipe review:** who checks the chemistry and history (you, Grok, a reference pass by me)? *(needs an owner)*
-7. **Legacy items** (the eleven old items) stay placeable trophies; new stations give raws. *(default)*
-8. **Moderation:** none needed while there is no free text and paintings are friends-only; revisit before any
-   "open" visibility. *(default)*
+1. **Time scale:** real time up to ~3 days; only verdigris capped at 7 days, labelled. *(default; Grok agrees)*
+2. **Guests:** gather + session charcoal, no batches. *(default; Grok agrees)*
+3. **Side mix costs nothing but cannot discover.** *(default; Grok agrees)*
+4. **Portrait visibility:** owner and friends only, never `open` strangers. *(default; Grok agrees)*
+5. **Canvas:** 32x32, nearest-neighbour, "a small portrait". *(default; Grok agrees)*
+6. **Recipe review:** Grok's pass is the first; **I check each line against a reference before `catalog.sql`**;
+   Brandon signs the frozen table. *(needs your yes)*
+7. **Legacy items** stay placeable trophies. *(default; Grok agrees)*
+8. **No moderation while friends-only.** *(default; Grok agrees)*
+9. **My three deviations** (pixel-level cost, visit-checked portrait in slice 2, 8 h charcoal). *(needs your yes or override)*
+10. **Charcoal real-world time** (2-4 h vs ~10 h) is disputed between Grok's review and my draft; resolved by the reference check.
+
+## Not started
+
+Nothing in this file authorises code. Slice 1 starts only when Brandon signs the frozen table and says
+`BUILD studio 1`.

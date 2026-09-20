@@ -3,8 +3,8 @@
 **Status: SPEC ONLY. Nothing here is built. No code, no catalog rows, no BUILD, no deploy.**
 v1 was `9a5b7c5`; Grok's review is `GROK_STUDIO_ANSWER.md` (`5c45287`); this file is v2, written 2026-09-20.
 Each slice below is its own `BUILD`; every droplet touch needs the literal `deploy` word (daemon deploys:
-drift-check, online DB backup first). **The recipe table is not frozen until Brandon signs it and each
-line has had a reference check (see Recipes).**
+drift-check, online DB backup first). **The reference pass is done (`studio-refs.md`, 2026-09-20); the recipe table is not frozen until Brandon
+signs it, with or without the six proposed corrections C1-C6 below.**
 
 ## One paragraph
 
@@ -177,7 +177,8 @@ recipes show as "?". No free text.
 ## The easel and the portrait
 
 - **Canvas:** **32x32**, palette-indexed, 1 byte/pixel (1 KB). Shown **nearest-neighbour** on the wall and
-  labelled **"a small portrait"** so it never reads as a broken canvas. Tools: pen (1 px), smudge (charcoal
+  labelled **"a small portrait"** so it never reads as a broken canvas. **Pixel index 0 = empty** (blank is
+  not a pigment: it needs no unlock, costs nothing and refunds nothing). Tools: pen (1 px), smudge (charcoal
   greys by dithering), eraser, small undo stack. No layers, no import, no text, no colour picker: the
   palette is exactly your unlocked pigments that you still have material for.
 - **Starter:** a new bound player gets a **charcoal stub** (≈400 pixels, once, free). The portrait exists
@@ -284,6 +285,25 @@ phone-portrait viewport for the easel. CI as usual.
 8. **No moderation while friends-only.** *(default; Grok agrees)*
 9. **My three deviations** (pixel-level cost, visit-checked portrait in slice 2, 8 h charcoal). *(needs your yes or override)*
 10. **Charcoal real-world time** (2-4 h vs ~10 h) is disputed between Grok's review and my draft; resolved by the reference check.
+
+## Reference check (2026-09-20): see `studio-refs.md`
+
+One period or conservation source per line, verbatim and greppable (Cennini/Herringham, Merrifield incl. the
+Bolognese MS., Theophilus/Hendrie, Pliny). Result: **charcoal, red ochre, carbon ink, verdigris, weld lake
+confirmed; shell white, gum, tannin, iron-gall, madder, woad confirmed with corrections; iron acetate,
+yellow-ochre wash/settle and several game times are unsourced.** Headline findings: Cennini ch. 33 leaves the
+charcoal "till morning" (overnight), which supports **8 h** and corrects the "no clock" note; Theophilus scrapes
+verdigris after **two weeks**; the Bolognese weld recipe uses **weld + ground calcium carbonate + alum**; a
+period azure uses **woad froth on shell lime** but has **no ash**.
+
+**Proposed corrections (each needs Brandon's yes; the table above is unchanged until then):**
+C1 remove "ash" from woad blue and drop the charcoal ash by-product; C2 madder history line says painters'
+madder lakes are later and northern; C3 iron acetate stays as an explicitly folk, unsourced step (or is cut);
+C4 unsourced times show "here: N" in the notebook, and a real range only where a source gives one; C5 drop the
+"weathered for years" shell-white claim; C6 charcoal's history line says "left overnight in Cennino Cennini's
+manual (c. 1400); here 8 hours", not "closed pot" (which the safety rule bans in the notebook).
+Not checked by me: Coates' ~10 h kiln figure and the shell-white weathering claim (no text found); CAMEO was
+unreachable (403).
 
 ## Not started
 

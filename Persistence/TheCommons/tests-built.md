@@ -45,6 +45,7 @@ client code change, no deploy.** Files: `commons-daemon/tests/` and one workflow
 | `netstatus` | the connection badge: the shipped state machine (fake clock, 31 checks) + its wiring, markup and CSS (29) |
 | `world_scatter` | the extra region props: refused if not plain ground, none on the spine / seams / doors / labels / spawn, flood fill leaves nothing sealed (14 + 7 wiring, 9 mutations) |
 | `pwa` | Commons manifest + icons, Social/Civic manifests (Mail control), start_url = the shells' redirect targets, the picker, sync excludes (71 checks, 16 mutations) |
+| `nginx_www` | www -> apex: the transform on the live config copy (34, 9 mutations) + a real nginx's redirects with a control (17) |
 | `harness` | the harness itself: no daemon survives `stop_daemon`/`crash_daemon` even under a forking wrapper; `start_daemon` refuses a busy port (8) |
 
 ## Does it actually catch regressions? (mutation check)

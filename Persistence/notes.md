@@ -18,6 +18,17 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-27 -- `BUILD control disclosure` built and tested; NOT deployed.** Grok relay (laws/1): the chapter-audio button
+  was already live, done differently (real narration, not speechSynthesis) -- nothing to do there. "Who holds control" came
+  out of the shared footer and the guest nav (both universal via page_wrap/nav()) and now sits behind a closed
+  `<details><summary>Disclaimer</summary>...</details>`, same pattern as the file's existing "Delete..." disclosures.
+  /control unchanged and still reachable. The /laws overview page's own differently-worded mention ("...of this site") was
+  left alone on purpose. Verified against the real compiled binary locally (throwaway store): exactly one occurrence each in
+  nav and footer, both closed, the audio button and /control untouched, a signed-in page too. civic has no CI; this is the
+  repo's usual local-build-then-live-check pattern. **Found and set aside, not part of this build:** an uncommitted,
+  undocumented iOS Low Power Mode autoplay fix on http_server.cpp (real bug trace, iPhone Safari 2026-09-21) -- stashed, not
+  shipped; needs its own decision. See `control-disclosure-built.md`.
+
 - **2026-09-20 — Studio v2 deviations accepted, table still unsigned.** `GROK_STUDIO_V2.md`.
   Pixel-transition cost (not histogram delta), visit-checked portrait GET in slice 2, charcoal
   8 h as a game number. Reference check next; Brandon signs; then `BUILD studio 1`.

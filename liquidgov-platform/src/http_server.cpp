@@ -1413,10 +1413,16 @@ std::string page_wrap(const std::string& title, const std::string& navhtml, cons
        }()+"</div></header>"
            "<main class=\"wrap\">"+body+"</main>"
            +ios_install_hint()+
+           // "Who holds control" used to sit in this row as a plain link, reading like just another page (Laws, Privacy).
+           // It stays reachable everywhere (/control is unchanged) but tucked behind a closed disclosure, same
+           // <details><summary> pattern this file already uses for "Delete…" (see e.g. the post-menu one above) --
+           // closed by default, one click to reveal, not a routine nav item.
            "<footer class=\"site\"><a href=\"/\">Genesis</a> · <a href=\"/laws\">Laws</a> · "
            "<a href=\"/commons/\">The Commons</a> · "
-           "<a href=\"/control\">Who holds control</a> · <a href=\"/install\">Install this as an app</a> · "
-           "<a href=\"/privacy\">Privacy</a><br>"
+           "<a href=\"/install\">Install this as an app</a> · "
+           "<a href=\"/privacy\">Privacy</a> · "
+           "<details style=\"display:inline-block\"><summary class=\"muted\" style=\"cursor:pointer;display:inline\">Disclaimer</summary> "
+           "<a href=\"/control\">Who holds control</a></details><br>"
            "Not a government. A platform account is not a citizen identity. "
            "LiquidGov.US is in Beta — some of what's here is still being built.</footer>"
            "</body></html>";
@@ -1430,9 +1436,13 @@ std::string flash_error(const std::map<std::string,std::string>& qs); // defined
 std::string nav(const std::string& user, int unread) {
     if (user.empty()) {
         std::string burger = "<label class=\"navbtn\" for=\"navc\">Menu</label><input id=\"navc\" type=\"checkbox\">";
+        // "Who holds control" is reachable from here too, but as a closed disclosure, not a top-level nav item --
+        // same reasoning and the same <details><summary> pattern as the footer's, just below.
         return burger+"<nav><a href=\"/\">Genesis</a><a href=\"/laws\">Laws</a>"
                "<a href=\"/commons/\">The Commons</a>"
-               "<a href=\"/control\">Who holds control</a><a href=\"/apps\">App</a>"
+               "<details style=\"display:inline-block\"><summary class=\"muted\" style=\"cursor:pointer;display:inline;min-height:44px;align-items:center\">Disclaimer</summary>"
+               "<a href=\"/control\">Who holds control</a></details>"
+               "<a href=\"/apps\">App</a>"
                "<a href=\"/signup\">Sign up</a><a href=\"/login\">Log in</a></nav>";
     }
     // Notifications and Messages are their own always-visible icon buttons

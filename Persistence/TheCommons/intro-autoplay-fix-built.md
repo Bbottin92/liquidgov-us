@@ -1,8 +1,11 @@
-# iOS Low Power Mode: intro video autoplay fix — built, tested, NOT deployed
+# iOS Low Power Mode: intro video autoplay fix — built, tested, DEPLOYED (civic only, verified live)
 
 Brandon: "finish the iOS fix and commit it," after this was found sitting uncommitted and undocumented in the working tree
 (stashed on 2026-09-27, no test or doc trail). **civic only** (`liquidgov-platform/src/http_server.cpp`, `intro_overlay_html()`).
-Not deployed; `deploy` is its own separate word.
+**Corrected 2026-09-27**: this notes bullet and status line previously said "NOT deployed"; that was wrong. Fetched live on
+2026-09-27 ~16:31 UTC: `https://liquidgov.us/`'s served page contains `vid.play()`, a `.catch(...)` handler, the `vid.paused`
+watchdog check and the literal `1500` timeout, confirming this fix is live at commit `aee9a3d`. See the notes.md correction
+bullet for the full reconciliation (it also covers a separate, correct bullet about the control-disclosure toggle).
 
 ## The bug (real device trace, iPhone Safari, 2026-09-21)
 
@@ -64,10 +67,8 @@ civic has no CI; this repo's convention for it is local build + verification, wh
 JS specifically, this fake-clock harness — go further than a curl check for a change like this, since the whole point is
 timing behavior a simple render diff can't see).
 
-## Deploy (Brandon's own `deploy`, civic only, after review)
+## Deploy — done, verified live 2026-09-27
 
-Standard civic recipe: drift-check (droplet `http_server.cpp` must equal the last deployed commit), back up the running
-binary, sync, chown immediately after the sync, build, restart only if the binary actually rebuilt, read the journal rather
-than trusting `is-active` alone. Nothing here is client-visible except the intro on `/` (and other `show_intro`-eligible
-pages), so there is no separate confirm list beyond "the homepage still loads and the video still plays normally" — the
-regression this fixes is Low-Power-Mode-specific and not reproducible from a normal desktop browser or curl.
+Deployed since this was written (the section above was wrong for a while). Verified by fetching the live homepage and
+confirming the served script contains the fix's own three lines (`vid.play()`, `.catch(finish)`, the `1500`ms `vid.paused`
+watchdog), not by trusting a status line. No further action needed here.

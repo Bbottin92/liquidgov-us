@@ -18,6 +18,19 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-27 -- Deploy-record correction: the iOS intro-autoplay fix IS live, the earlier "NOT deployed" bullet
+  was wrong.** Fetched live 2026-09-27 ~16:31 UTC: `https://liquidgov.us/` serves the `aee9a3d` fix (`vid.play()`,
+  `.catch(finish)`, the 1.5s `vid.paused` watchdog, literal `1500`) -- verified independently, not taken on say-so.
+  Corrected the 2026-09-27 "iOS Low Power Mode intro-autoplay fix... NOT deployed" bullet above and
+  `intro-autoplay-fix-built.md`'s own status line and Deploy section to match. Separately, `laws/1`'s
+  control-disclosure toggle (`3efe548`) was independently re-verified live too (`<details><summary>Disclaimer</summary>`
+  wraps "Who holds control" in both nav and footer) -- the existing "BUILD control disclosure... DEPLOYED" bullet
+  was already correct and needs no change. `deploy-daemon.sh`'s "CIVIC CHANGED since e028ec4" warning compares git
+  history to the *daemon's own* marker, not to what is actually live on the box -- civic through `aee9a3d` is
+  already deployed; that warning does not mean civic needs redeploying, and a later Studio deploy should pass
+  `--civic-done` rather than re-syncing civic on the strength of it. Studio slices 1-4 (master `009571e`) stay
+  built and undeployed; not touched by this correction.
+
 - **2026-09-27 -- `BUILD studio 4` built and tested; NOT deployed (daemon + client, no schema, no
   droplet).** The rest of the palette ladder and the second painting frame, per `CLAUDE_STUDIO_4.md`.
   Indices 1-4 stay exactly the old charcoal table; 5-13 are the other nine pigments in tier order,
@@ -79,7 +92,8 @@ Not bug classes. Not “what is live on the droplet.”
   which slice 1 breaks on purpose by being server-only). Full suite: 25 files, 0 failed. No client, no droplet.
   See `studio-1-built.md`.
 
-- **2026-09-27 -- iOS Low Power Mode intro-autoplay fix, built and tested; NOT deployed.** Brandon: "finish the iOS fix
+- **2026-09-27 -- iOS Low Power Mode intro-autoplay fix, built, tested and DEPLOYED (civic only, verified live; corrected
+  from "NOT deployed" the same day -- see the correction bullet above).** Brandon: "finish the iOS fix
   and commit it," after it was found sitting uncommitted and undocumented (stashed, no test trail). Real live trace (iPhone
   Safari, 2026-09-21): a blocked `autoplay` on the Genesis intro video silently sat on a black frame for the full 12s
   fallback; a rarer shape resolves the play promise then silently stalls. Fix (3 lines, `intro_overlay_html()`): an explicit

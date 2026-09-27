@@ -36,9 +36,64 @@ const W = ev("WORLD_W"), H = ev("WORLD_H"), TILE_ = ev("TILE");
 
 const SCATTER = JSON.parse(ev("JSON.stringify(SCATTER)"));
 const total = SCATTER.reduce((n, grp) => n + grp.at.length, 0);
-check(total >= 150, "there is a real amount of scatter (" + total + " props)");
 check(ev("SCATTER_REFUSED.length") === 0, "no prop was refused (a refused one would have overwritten a door, the path or a wall): " + ev("JSON.stringify(SCATTER_REFUSED)"));
 check(ev("SCATTER_PLACED") === total, "every listed prop was placed (" + ev("SCATTER_PLACED") + " of " + total + ")");
+
+// ---- caps, per region and tile: commons-daemon/tools/scatter_author.js's own RECIPES table, asserted
+// here independently rather than trusted -- the generator caps are what make the Square/Hall Lawn/
+// Orchard NOT double-dressed (they get zero SCATTER entries; dressRegions() already gave each its own
+// set piece) and what stop North Woods, Garden, Quarry Ridge etc. from silently drifting past a sane
+// count if the generator or its seed ever changes. Deliberately includes the zeros.
+const T_ = (n) => ev(n);
+function countOf(region, tile) {
+  return SCATTER.filter((g) => g.region === region && g.tile === T_(tile)).reduce((n, g) => n + g.at.length, 0);
+}
+function inRange(n, lo, hi) { return n >= lo && n <= hi; }
+const CAPS = [
+  ["North Woods", "T_TREE", 4, 8], ["North Woods", "T_BENCH", 0, 0], ["North Woods", "T_FLOWERBED", 0, 0], ["North Woods", "T_CRATE", 0, 0], ["North Woods", "T_LOWWALL", 0, 0],
+  ["Lookout", "T_TREE", 2, 2], ["Lookout", "T_BENCH", 0, 0], ["Lookout", "T_FLOWERBED", 0, 0], ["Lookout", "T_CRATE", 0, 0], ["Lookout", "T_LOWWALL", 0, 0],
+  ["Orchard", "T_TREE", 0, 0], ["Orchard", "T_BENCH", 0, 0], ["Orchard", "T_FLOWERBED", 0, 0], ["Orchard", "T_CRATE", 0, 0], ["Orchard", "T_LOWWALL", 0, 0],
+  ["the Square", "T_TREE", 0, 0], ["the Square", "T_BENCH", 0, 0], ["the Square", "T_FLOWERBED", 0, 0], ["the Square", "T_CRATE", 0, 0], ["the Square", "T_LOWWALL", 0, 0],
+  ["Hall Lawn", "T_TREE", 0, 0], ["Hall Lawn", "T_BENCH", 0, 0], ["Hall Lawn", "T_FLOWERBED", 0, 0], ["Hall Lawn", "T_CRATE", 0, 0], ["Hall Lawn", "T_LOWWALL", 0, 0], ["Hall Lawn", "T_HEDGE", 0, 0],
+  ["Workshop Lane", "T_CRATE", 0, 4], ["Workshop Lane", "T_TREE", 0, 2], ["Workshop Lane", "T_BENCH", 0, 0], ["Workshop Lane", "T_FLOWERBED", 0, 0], ["Workshop Lane", "T_LOWWALL", 0, 0],
+  ["Lab Yard", "T_CRATE", 0, 3], ["Lab Yard", "T_BENCH", 0, 1], ["Lab Yard", "T_TREE", 0, 2], ["Lab Yard", "T_FLOWERBED", 0, 0],
+  ["Homestead Row", "T_TREE", 0, 4], ["Homestead Row", "T_BENCH", 0, 2], ["Homestead Row", "T_FLOWERBED", 0, 0],
+  ["Garden", "T_FLOWERBED", 4, 8], ["Garden", "T_TREE", 0, 2], ["Garden", "T_BENCH", 0, 2], ["Garden", "T_LOWWALL", 0, 0],
+  ["Quarry Ridge", "T_LOWWALL", 4, 8], ["Quarry Ridge", "T_CRATE", 0, 2], ["Quarry Ridge", "T_TREE", 0, 2], ["Quarry Ridge", "T_FLOWERBED", 0, 0], ["Quarry Ridge", "T_BENCH", 0, 0],
+  ["Creek", "T_TREE", 4, 6], ["Creek", "T_BENCH", 0, 1], ["Creek", "T_FLOWERBED", 0, 0], ["Creek", "T_CRATE", 0, 0], ["Creek", "T_LOWWALL", 0, 0],
+  ["Shore", "T_TREE", 4, 6], ["Shore", "T_BENCH", 0, 1], ["Shore", "T_FLOWERBED", 0, 2], ["Shore", "T_CRATE", 0, 1], ["Shore", "T_LOWWALL", 0, 0],
+];
+const capViolations = [];
+for (const [region_, tile, lo, hi] of CAPS) {
+  const n = countOf(region_, tile);
+  if (!inRange(n, lo, hi)) capViolations.push(region_ + "/" + tile + ": " + n + " not in [" + lo + "," + hi + "]");
+}
+check(capViolations.length === 0, "every region/tile count is within scatter_author.js's own caps: " + capViolations.join("; "));
+
+// ---- lane sentinels: a scatter prop must never land ON a lane tile. The universal legality rule in
+// scatter_author.js already forbids this (a final T_PATH/T_BRIDGE tile fails groundOk outright), so
+// this is a check the OLD hand-list-based test literally could not have -- one sentinel per lane,
+// asserted directly against the tile array rather than trusting the generator's own logic to be right.
+const LANE_SENTINELS = {
+  Workshop: [25, 32], Lab: [25, 48], Hall: [50, 30], mine: [20, 69], Lookout: [35, 18],
+  Orchard: [50, 9], woods: [4, 24], Garden: [45, 48], ochre: [10, 71],
+};
+const T_PATH_ = T_("T_PATH"), T_BRIDGE_ = T_("T_BRIDGE");
+const laneBroken = [];
+for (const [name, [x, y]] of Object.entries(LANE_SENTINELS)) {
+  const t = ev("tiles[" + (y * W + x) + "]");
+  if (t !== T_PATH_ && t !== T_BRIDGE_) laneBroken.push(name + " (" + x + "," + y + ") is tile " + t + ", not a path/bridge");
+}
+check(laneBroken.length === 0, "no scatter prop (or anything else) has paved over a lane sentinel: " + laneBroken.join("; "));
+
+// ---- the generator is the source of truth: a fresh run must reproduce this file's array exactly
+const { execFileSync } = require("child_process");
+try {
+  const out = execFileSync(process.execPath, [path.join(dir, "..", "commons-daemon", "tools", "scatter_author.js"), "--check"], { encoding: "utf8" });
+  check(/^scatter_author --check: ok/.test(out.trim()), "scatter_author.js --check confirms this SCATTER array is exactly what the seed produces: " + out.trim());
+} catch (e) {
+  check(false, "scatter_author.js --check failed (SCATTER has drifted from a fresh generator run): " + (e.stdout || e.message));
+}
 
 // no coordinate is listed twice
 const seen = new Set(); const dups = [];

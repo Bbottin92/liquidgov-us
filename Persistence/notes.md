@@ -18,6 +18,27 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-27 -- `commons-daemon/tools/scatter_author.js` built and tested; NOT deployed (client only).**
+  Grok's spec, Brandon: "build it." The hand-written `SCATTER` array (~202 props) was padded past
+  `world_scatter_unit.js`'s own `total >= 150` floor, which is why the Square/Hall Lawn/Orchard were
+  dressed twice (dressRegions()'s own set piece, then SCATTER again). Replaced with a deterministic
+  generator (mulberry32, seed 20260927): loads `world.js` with `SCATTER` forced to `[]` in a vm (same
+  trick `world_scatter_unit.js` already used) to see the real, fully-paved ground, then shuffles and
+  greedily places props per a fixed caps table (Orchard/Square/Hall Lawn get zero; everywhere else has an
+  explicit min/max per prop type). `--check` fails if `world.js`'s array ever drifts from a fresh run --
+  the intended way to move a prop is a rule or seed change, never a hand-patched coordinate. Straightened
+  the Workshop and Lab branch paths (their old dogleg-around-a-crate is moot: the generator's own
+  path-adjacency rule means a crate can never regenerate onto a lane again). Result this seed: 48 props
+  (from ~202), each region within its own caps. Real bug the generator itself surfaced: Shore came back
+  with zero trees on the first run because the "one line" row landed directly against the water band
+  (water is solid, so the whole row failed the Chebyshev-from-solid rule) -- fixed by keeping the row
+  draw at least 2 tiles clear of the water on every seed, not just this one. `world_scatter_unit.js`
+  dropped the old `>= 150` floor for real per-region/tile cap assertions (incl. the zeros), nine lane
+  sentinel coordinates that must stay paved, and a subprocess call to `--check`. 33 checks, 0 failed.
+  4 mutation checks run (groundOk disabled -- no effect this seed, an honest negative; a hand-inserted
+  coordinate; a recipe under its own spec minimum; a shortened lane) -- the real ones each failed exactly
+  where expected, restored and reconfirmed. See `scatter-author-built.md`.
+
 - **2026-09-27 -- Map still had no edge after the building branches.** `3121a46` put a lane on the Workshop, the Lab, the Hall and the mine, and took the gather glyphs off. Left in place. The grass checker is gone: one field colour, darker green only as the shoulder of a lane. Added lanes, around those branches, to the Lookout, the Orchard keg, the woods (beside the galls and the twigs), the east doors and the Garden, and from the mine lane south to the ochre and the alum. Hall's flowerbeds moved into the Garden; the Square and Hall corner-trees pulled off the region box. Workshop and Lab rugs point at the door. Same tiles. `world_scatter_unit` 31/0, `client_files_unit` 105/0. Not deployed. See `wayfinding-built.md`.
 
 - **2026-09-27 -- Deploy-record correction: the iOS intro-autoplay fix IS live, the earlier "NOT deployed" bullet

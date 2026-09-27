@@ -1165,6 +1165,21 @@ std::string intro_overlay_html(bool always_play) {
            "el.addEventListener('click',finish);"
            "var skip=document.getElementById('lgintroskip');"
            "if(skip)skip.addEventListener('click',function(e){e.stopPropagation();finish();});"
+           // iOS Low Power Mode (and some other autoplay-declining browsers) silently never
+           // starts an attribute-only `autoplay` video: no error event fires and the play
+           // promise this explicit call() gives us is the only signal. Without it, a blocked
+           // autoplay just sits on a black frame (el's own background-color) until the 12s
+           // fallback below finally removes it -- 12 seconds of a stuck black screen is what
+           // "not working" looks like from the outside, found live on iPhone Safari 2026-09-21.
+           // A rejected promise is the fast path; the 1.5s watchdog below also catches the
+           // rarer case actually observed live: the promise resolves and currentTime even
+           // advances a little (0.445s in that trace), then playback silently freezes with
+           // no error and no further events -- checking `paused` alone (not also requiring
+           // currentTime===0) is what catches that case, and 1.5s is ample time for any
+           // browser that is really going to play this to have left the paused state by then.
+           "var playPromise=vid.play();"
+           "if(playPromise&&playPromise.catch)playPromise.catch(finish);"
+           "setTimeout(function(){if(vid.paused)finish();},1500);"
            "setTimeout(finish,12000);"
            "})();</script>";
 }

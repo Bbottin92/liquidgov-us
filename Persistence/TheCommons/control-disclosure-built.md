@@ -1,8 +1,8 @@
-# "Who holds control" tucked behind a disclosure — built, tested, NOT deployed
+# "Who holds control" tucked behind a disclosure — DEPLOYED 2026-09-27 (civic only, verified live)
 
 Brandon: `BUILD control disclosure`, after a relayed Grok request (`/laws/1`: the chapter-audio button was already live and done differently
 — real recorded narration, `speechSynthesis` was superseded — nothing to do there; the "Who holds control" link was still a plain nav/footer item).
-**civic only** (`liquidgov-platform`); the commons client, the daemon and nginx are untouched. Not deployed yet.
+**civic only** (`liquidgov-platform`); the commons client, the daemon and nginx are untouched. Deployed on Brandon's `deploy` the same day.
 
 ## What changed
 
@@ -41,10 +41,13 @@ fallback), with a real bug trace cited from iPhone Safari, 2026-09-21. It predat
 no test or doc trail. **Not touched, not shipped here** — stashed (`git stash`, message "orphaned uncommitted iOS intro-autoplay fix
 (http_server.cpp), found 2026-09-27") so it isn't lost. Brandon has been told; it needs its own decision (finish + verify + commit, or drop).
 
-## Deploy (Brandon's own `deploy`, civic only)
+## Deployed (2026-09-27, from 3efe548)
 
-Standard civic recipe: drift-check (droplet `http_server.cpp` must equal the last deployed commit), back up the running binary, sync, **chown
-immediately after the sync** (before the `-j1` build — the 2026-09-19 lesson), build, restart only if the binary actually rebuilt, read the
-journal for a crash loop rather than trusting `is-active` alone. Confirm live: guest nav and the footer on `/laws/1` each show exactly one
-"Disclaimer" disclosure and no bare "Who holds control" link; `/control` still 200; the chapter audio button unaffected; `commons-daemon` and
-nginx untouched (`NRestarts` unchanged).
+Standard civic recipe: drift-check (droplet matched the last deployed commit, 9e4611a), binary backed up, sync (content
+change was exactly `src/http_server.cpp`), chown immediately after the sync, build, restart only after confirming the
+binary rebuilt. 0 crash lines during the build and 0 since the restart; accounts store checksum unchanged;
+`commons-daemon` and nginx untouched.
+
+Confirmed live on `/laws/1`: exactly one "Who holds control" in the guest nav and one in the footer, both inside a
+closed disclosure, neither a bare nav item; `/control` still 200; the `/laws` overview's differently-worded mention
+untouched; the chapter audio button unaffected.

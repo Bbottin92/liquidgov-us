@@ -18,7 +18,17 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
-- **2026-09-27 -- `BUILD control disclosure` built and tested; NOT deployed.** Grok relay (laws/1): the chapter-audio button
+- **2026-09-27 -- iOS Low Power Mode intro-autoplay fix, built and tested; NOT deployed.** Brandon: "finish the iOS fix
+  and commit it," after it was found sitting uncommitted and undocumented (stashed, no test trail). Real live trace (iPhone
+  Safari, 2026-09-21): a blocked `autoplay` on the Genesis intro video silently sat on a black frame for the full 12s
+  fallback; a rarer shape resolves the play promise then silently stalls. Fix (3 lines, `intro_overlay_html()`): an explicit
+  `vid.play()` promise, `.catch(finish)` for the fast reject path, a 1.5s `vid.paused` watchdog for the silent-stall case.
+  Verified against the REAL compiled binary: extracted the actual served intro script (found and fixed a wrong-script
+  extraction bug first -- the homepage has 4 self-invoking scripts) and ran it in a fake-clock harness, 13 checks, normal
+  playback unaffected, both failure shapes now end in <=1.5s instead of 12s, idempotent. Mutation-checked: the same harness
+  against the pre-fix script correctly fails. See `intro-autoplay-fix-built.md`.
+
+- **2026-09-27 -- `BUILD control disclosure` built, tested and DEPLOYED (civic only, verified live).** Grok relay (laws/1): the chapter-audio button
   was already live, done differently (real narration, not speechSynthesis) -- nothing to do there. "Who holds control" came
   out of the shared footer and the guest nav (both universal via page_wrap/nav()) and now sits behind a closed
   `<details><summary>Disclaimer</summary>...</details>`, same pattern as the file's existing "Delete..." disclosures.

@@ -159,26 +159,31 @@ var PLACED_ITEM_INFO = {
   // and collect all 13 recipes). Colour is the catalog's own pigment_hex where the item has one
   // (catalog.sql); the rest are a plain earth/ink tone. No new bake-time art: these fall through to
   // the generic textured square in sprites.js's paintItemAtlas, same as any slug not special-cased there.
+  // Live-caught bug (2026-09-27, playing on liquidgov.us after deploying slices 1-4): four of these
+  // five real-world substances also exist as an OLD Lab-A trophy (alum_crystal, gum_arabic,
+  // vinegar_jar, lampblack_ink) with the identical color+label already used above -- copying that
+  // exact styling here made the inventory strip show two indistinguishable "alum"/"gum"/"vinegar"/
+  // "soot" chips with only their quantities different. Each gets its own label and color instead.
   willow_twigs:           { color: "#8a7a4a", label: "twigs" },
   ochre_earth:            { color: "#b8823a", label: "ochre" },
-  alum_stone:             { color: "#c5c8c2", label: "alum" },
+  alum_stone:             { color: "#a8ab9e", label: "alum stone" },
   madder_root:            { color: "#7a3a2a", label: "madder" },
   weld:                   { color: "#8a9a3a", label: "weld" },
   woad_leaves:            { color: "#4a6a4a", label: "woad" },
   scrap_iron:             { color: "#6a6a6a", label: "iron" },
   copper_sheet:           { color: "#9a6a3a", label: "copper" },
-  gum_arabic_raw:         { color: "#a07a48", label: "gum" },
-  soot:                   { color: "#2a2824", label: "soot" },
-  vinegar:                { color: "#7a5a32", label: "vinegar" },
+  gum_arabic_raw:         { color: "#c9954f", label: "raw gum" },
+  soot:                   { color: "#454138", label: "raw soot" },
+  vinegar:                { color: "#9c7a42", label: "keg vinegar" },
   charcoal_black:         { color: "#1a1a1a", label: "black" },
   charcoal_grey_1:        { color: "#4d4d4d", label: "grey" },
-  charcoal_grey_2:        { color: "#7a7a7a", label: "grey" },
+  charcoal_grey_2:        { color: "#7a7a7a", label: "light grey" },
   charcoal_grey_3:        { color: "#adadad", label: "pale grey" },
   shell_white:            { color: "#f2ede4", label: "white" },
   yellow_ochre:           { color: "#c9963a", label: "yellow ochre" },
   red_ochre:              { color: "#9c4a2e", label: "red ochre" },
   binder:                 { color: "#c9b06a", label: "binder" },
-  tannin:                 { color: "#4a3020", label: "tannin" },
+  tannin:                 { color: "#5a3a26", label: "bench tannin" }, // same live bug: was identical to oak_gall_tannin's "tannin"
   carbon_ink_black:       { color: "#0d0d0d", label: "carbon ink" },
   iron_acetate:           { color: "#6a4a32", label: "iron acetate" },
   iron_gall_blue_black:   { color: "#1c1c24", label: "iron-gall ink" },

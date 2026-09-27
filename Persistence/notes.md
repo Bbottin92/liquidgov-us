@@ -18,6 +18,8 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-27 -- Studio slice 4 named, not built.** Handoff is `CLAUDE_STUDIO_4.md`. Palette indices stay fixed: charcoal remains 1–4 so stored portraits still mean the same colours; the other nine paintable pigments are 5–13 in tier order and discovery-gated. Cost rule unchanged (`ceil` of pixels that newly become that index, no refund). Second frame pinned at (4,0)–(5,1). It is flush against the shelf and the civic frame; this 16×16 house has no one-tile gap left for another 2×2, and the house is not growing. The second canvas reuses `/presence/painting/<kind>`, gets no stub, and uses the portrait's visit rule (owner and friends, fails closed). The workshop easel stays the portrait; the new frame opens the same overlay on the other bitmap. No deploy.
+
 - **2026-09-27 -- `BUILD studio 3` built and tested; NOT deployed (client + one daemon field, no schema, no
   droplet).** Map/lab wiring, the bench overlay, the notebook. The daemon's `GET /presence/studio` now sends
   a discovery's own `display_name`/`real_range_note`/`history_note` and a fixed `recipe_count` (13), so the

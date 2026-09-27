@@ -18,6 +18,16 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-27 -- Studio slice 5 proposed, not built.** Brandon: "go build slice 5," then, asked how to
+  handle a slice with no named target numbers, "I propose defaults, you approve." Handoff is
+  `CLAUDE_STUDIO_5.md`. Two changes proposed: bench slot cap 3->5 (13 recipes spanning 30 min to 7 days
+  can fill 3 slots with long batches alone and lock out short ones for most of a week); Orchard keg
+  cooldown 1 day->12h (vinegar feeds two separate multi-day chains -- iron acetate, verdigris -- gating
+  the shared input at a full day on top compounds an already-long wait for no reason tied to the
+  ingredient). Charcoal's 8h and verdigris's 7-day cap are explicitly NOT touched -- both were already
+  resolved by slice 1's own reference check, and shortening verdigris specifically would erase the one
+  deliberately slow/expensive tier the spec wants. Awaiting `BUILD studio 5`.
+
 - **2026-09-27 -- `commons-daemon/tools/scatter_author.js` built and tested; NOT deployed (client only).**
   Grok's spec, Brandon: "build it." The hand-written `SCATTER` array (~202 props) was padded past
   `world_scatter_unit.js`'s own `total >= 150` floor, which is why the Square/Hall Lawn/Orchard were

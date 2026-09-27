@@ -647,6 +647,29 @@ function dressRegions() {
   tiles[idx(signX, signY)] = T_SIGN;
   interactables.push({ type: "sign", x: signX, y: signY, prompt: "Read", text: "Watch your step." });
 
+  // Branch paths: the only path in the whole map was the north-south spine through the middle column
+  // (the Square -> Homestead Row -> Creek -> Shore) plus its jog into Shore -- every actual building
+  // (a door into an interior, or the Hall's confirm) sat in open grass with nothing leading to it. One
+  // tile wide (the spine is two, so the hierarchy reads main road vs. side path), routed by hand around
+  // every existing prop rather than through it -- verified against the flood-fill/collision test, not
+  // just eyeballed. T_DIRT under the walk-in Lab door already reads as a threshold; these tie into it.
+  for (var wby = 28; wby <= 32; wby++) tiles[idx(11, wby)] = T_PATH; // Workshop door (11,27) south to the crossbar
+  for (var wbh = 11; wbh <= 18; wbh++) tiles[idx(wbh, 32)] = T_PATH; // crossbar east...
+  tiles[idx(19, 31)] = T_PATH; // ...a one-tile dogleg around the existing scatter crate at (19,32)...
+  for (var wbh2 = 20; wbh2 <= 34; wbh2++) tiles[idx(wbh2, 32)] = T_PATH; // ...back down, into the Square, meeting the spine at x=34
+
+  for (var lbh = 12; lbh <= 15; lbh++) tiles[idx(lbh, 48)] = T_PATH; // Lab door (11,48) east...
+  tiles[idx(16, 49)] = T_PATH; tiles[idx(17, 49)] = T_PATH; // ...a one-row dogleg around the two existing scatter crates at (16,48)/(17,48)...
+  for (var lbh2 = 18; lbh2 <= 34; lbh2++) tiles[idx(lbh2, 48)] = T_PATH; // ...back up, through Homestead Row to the spine
+
+  for (var mbx = 10; mbx <= 10; mbx++) for (var mby = 68; mby <= 69; mby++) tiles[idx(mbx, mby)] = T_PATH; // mine door (10,67) south to the crossbar
+  // Stops at x=33, not 34: (34,69) is already the pre-existing spine, and it sits over water there
+  // (Creek's water band), so bakeTileIds() already recoloured it to a bridge -- painting plain T_PATH
+  // over it here would silently undo that recolour on one tile.
+  for (var mbh = 10; mbh <= 33; mbh++) tiles[idx(mbh, 69)] = T_PATH; // crossbar east through Creek, meeting the existing Shore jog
+
+  for (var hbh = 34; hbh <= 57; hbh++) tiles[idx(hbh, 30)] = T_PATH; // spine, across the Square and Hall Lawn, to just short of the Hall's own flanking hedges at x=58/62
+
   scatterRegions();
 }
 

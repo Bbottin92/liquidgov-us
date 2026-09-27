@@ -198,18 +198,6 @@ function drawSpace(camX, camY) {
     }
   }
 
-  if (mode === "outdoor") {
-    for (var wi = 0; wi < interactables.length; wi++) {
-      var wpi = interactables[wi];
-      if (wpi.type !== "studioGather") continue;
-      var wp = STUDIO_GATHER_SPOTS[wpi.spot];
-      if (!wp) continue;
-      var gx = wpi.x * TILE - camX, gy = wpi.y * TILE - camY;
-      if (gx < -TILE || gx > crop.vw || gy < -TILE || gy > crop.vh) continue;
-      drawItemGlyph(ctx, wp.item, gx, gy + 6);
-    }
-  }
-
   drawSortedActors(ctx, camX, camY);
 }
 

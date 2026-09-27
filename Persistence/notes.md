@@ -18,6 +18,25 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-27 -- `BUILD studio 4` built and tested; NOT deployed (daemon + client, no schema, no
+  droplet).** The rest of the palette ladder and the second painting frame, per `CLAUDE_STUDIO_4.md`.
+  Indices 1-4 stay exactly the old charcoal table; 5-13 are the other nine pigments in tier order,
+  discovery-gated (locked_index with no discovery, insufficient once discovered but out of stock).
+  `save_portrait`'s cost/lock loop became one shared `save_canvas(kind)` function -- `save_painting` is
+  the other one-line wrapper over it. The second canvas (`paintings.kind='painting'`, already allowed
+  since slice 1) gets no stub and no ensure step: own GET never inserts (1024 zeros for "no row yet"),
+  own POST's first ACCEPTED save is what creates the row, a rejected one creates nothing. Same visit rule
+  as the portrait, same shared 5-second save gap (a portrait save blocks a painting save and the
+  reverse). Second frame pinned at (4,0), owner's house only, no tile change. Found and fixed along the
+  way: an unknown-index render fallback that drew black instead of paper, and the smudge tool silently
+  half-erasing any pigment index 5+ instead of stamping solid (neither asked for by the spec directly,
+  both implied by its own wording). Two of my own test assertions assumed alice's charcoal_black was 0
+  when it wasn't (her earlier portrait tests had already spent/restocked it) -- fixed to check against
+  her actual prior balance. The frozen-civic "fails closed" check first passed for the wrong reason (bob's
+  friends-list answer was already hot in the 15s cache from checks moments earlier) -- fixed by using a
+  freshly created account whose first-ever visit check is the frozen one. Full suite: 26 files, 0 failed.
+  See `studio-4-built.md`.
+
 - **2026-09-27 -- Studio slice 4 named, not built.** Handoff is `CLAUDE_STUDIO_4.md`. Palette indices stay fixed: charcoal remains 1–4 so stored portraits still mean the same colours; the other nine paintable pigments are 5–13 in tier order and discovery-gated. Cost rule unchanged (`ceil` of pixels that newly become that index, no refund). Second frame pinned at (4,0)–(5,1). It is flush against the shelf and the civic frame; this 16×16 house has no one-tile gap left for another 2×2, and the house is not growing. The second canvas reuses `/presence/painting/<kind>`, gets no stub, and uses the portrait's visit rule (owner and friends, fails closed). The workshop easel stays the portrait; the new frame opens the same overlay on the other bitmap. No deploy.
 
 - **2026-09-27 -- `BUILD studio 3` built and tested; NOT deployed (client + one daemon field, no schema, no

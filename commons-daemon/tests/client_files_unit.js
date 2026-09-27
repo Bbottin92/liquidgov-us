@@ -168,6 +168,26 @@ if (ok.ok) {
   try { ev(ok, "isBound = false; openBench(); openNotebook(); netGather('north_woods_galls');"); }
   catch (e) { gThrew = e.name + ": " + e.message; }
   check(!gThrew && gFetches === 0, "a guest opening the bench/notebook or gathering never calls the studio endpoints" + (gThrew ? " (" + gThrew + ")" : " (" + gFetches + " fetches)"));
+
+  // ---- BUILD studio 4: the palette ladder and the second frame
+  check(ev(ok, "typeof drawStudioPainting === 'function'"), "drawStudioPainting exists after load");
+  check(ev(ok, "STUDIO_PAINTING.x === 4 && STUDIO_PAINTING.y === 0 && STUDIO_PAINTING.w === 2 && STUDIO_PAINTING.h === 2"), "the second frame is pinned at tile (4, 0)");
+  check(ev(ok, "ownHouseSpace.interactables.some(function (it) { return it.type === 'studioPainting' && it.x === 4 && it.y === 0 && it.prompt === 'Draw'; })"), "the owner's house has the painting frame on that tile");
+  check(ev(ok, "demoHouseSpace.interactables.every(function (it) { return it.type !== 'studioPainting'; })"), "the shared demo house does not grow a second frame");
+  check(ev(ok, "ownHouseSpace.solid[idxIn(16, 4, 1)] === 0 && ownHouseSpace.solid[idxIn(16, 5, 1)] === 0"), "(4,1) and (5,1) stay plain walkable floor -- the frame is an overlay, not a tile change");
+  check(ev(ok, "STUDIO_PIGMENTS.length === 13 && STUDIO_PIGMENTS[0].index === 1 && STUDIO_PIGMENTS[0].hex === '#1a1a1a' && STUDIO_PIGMENTS[12].index === 13 && STUDIO_PIGMENTS[12].hex === '#2e4c72'"), "the client's 13-pigment table starts at charcoal black and ends at woad blue, same numbers as the daemon's");
+  check(ev(ok, "GUEST_PALETTE.length === 4 && GUEST_PALETTE.every(function (p) { return p.index >= 1 && p.index <= 4; })"), "a guest's palette is exactly the four charcoal indices");
+  var pFetches = [];
+  ok.g.fetch = function (url) { pFetches.push(url); return Promise.resolve({ ok: false, json: function () { return Promise.resolve({}); } }); };
+  ev(ok, "isBound = true; mode = 'workshop'; openEasel();");
+  ev(ok, "closeEasel(); mode = 'house'; openEasel('painting');");
+  check(pFetches.length === 2 && /\/painting\/portrait$/.test(pFetches[0]) && /\/painting\/painting$/.test(pFetches[1]),
+    "opening from the workshop table fetches the portrait URL, opening the new frame fetches the painting URL: " + JSON.stringify(pFetches));
+  var pgFetches = 0, pgThrew = "";
+  ok.g.fetch = function () { pgFetches++; return Promise.resolve({ ok: false, json: function () { return Promise.resolve({}); } }); };
+  try { ev(ok, "isBound = false; openEasel('painting');"); }
+  catch (e) { pgThrew = e.name + ": " + e.message; }
+  check(!pgThrew && pgFetches === 0, "a guest never enters painting mode (no fetch even if asked)" + (pgThrew ? " (" + pgThrew + ")" : ""));
 }
 
 // ---- controls: the check must be able to FAIL (a wrong order has to throw a ReferenceError)

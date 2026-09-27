@@ -87,17 +87,27 @@ public:
     static constexpr int PORTRAIT_N = 32 * 32;
     static constexpr int PIXELS_PER_UNIT = 200;  // studio.md: 1 unit ≈ 200 pixels
     static constexpr int STUB_BLACK_UNITS = 2;   // 2 * 200 = 400px charcoal, once
+    // BUILD studio 4 (CLAUDE_STUDIO_4.md decision 1): one fixed index per pigment, same on the daemon
+    // and the client, never a per-player map (a visitor colours the bitmap with no access to the
+    // owner's inventory, so an index has to mean the same hex in every house, and a later discovery
+    // must never renumber an already-stored byte). Indices 1-4 stay CHARCOAL exactly as slice 2 shipped
+    // them; 5-13 are the rest of the ladder, tier order, discovery-gated.
     struct Swatch { int index; std::string item; std::string hex; int qty; };
     struct Portrait {
         bool found = false;
         std::vector<unsigned char> pixels;  // PORTRAIT_N when found
-        std::vector<Swatch> palette;        // the four charcoal colours and what this player holds
+        std::vector<Swatch> palette;        // indices 1-4 always, 5-13 only if discovered, and what this player holds
     };
     // First painting-endpoint touch for a bound player: blank 32x32 plus the free charcoal stub.
-    // A second call does not grant again. Own transaction.
+    // A second call does not grant again. Own transaction. Portrait only -- the second canvas
+    // (BUILD studio 4) gets no stub and is never ensured into existence.
     Portrait ensure_portrait(const std::string& username, long long now_ms);
     // Read without creating. found=false when this player has never touched the easel.
     Portrait portrait_of(const std::string& username);
+    // BUILD studio 4: the second canvas, read-only, never inserts (own GET must not call ensure_portrait
+    // or grant anything -- CLAUDE_STUDIO_4.md decision 3). found=false with no row yet; the caller (main.cpp)
+    // is the one that fills in 1024 zeros for that case, same as it always builds the JSON body.
+    Portrait painting_of(const std::string& username);
     struct SaveResult {
         bool ok = false;
         std::string reason;  // "" | "locked_index" | "insufficient"
@@ -105,8 +115,14 @@ public:
     };
     // Cost rule: for each colour c, charge ceil(n/200) units where n is the number of pixels whose
     // new value is c and whose stored value was not. Index 0 is empty: no unlock, no cost, no refund.
-    // One transaction: verify indices, deduct, store. A failure rolls the deduction back.
+    // One transaction: verify indices, deduct, store. A failure rolls the deduction back. Indices 1-4
+    // are always legal; 5-13 are locked_index unless this player has a discoveries row for that
+    // pigment's own recipe (CLAUDE_STUDIO_4.md decision 1's lock rule).
     SaveResult save_portrait(const std::string& username, const std::vector<unsigned char>& pixels, long long now_ms);
+    // BUILD studio 4: same cost/lock rule, the other kind. Unlike save_portrait, nothing "ensures" this
+    // row first -- the first ACCEPTED save is what inserts it (even an all-zero save, which is free),
+    // and a rejected save inserts nothing.
+    SaveResult save_painting(const std::string& username, const std::vector<unsigned char>& pixels, long long now_ms);
 
     // ---- orphan reap (BUILD orphans reap; extended here so civic account-deletion cannot leak the
     // Studio the way house rows once could) ----------------------------------------------------------
@@ -125,6 +141,10 @@ private:
     // the other one instead: looking at a player's studio state must never conjure a row into existence.
     int find_or_create_player(const std::string& username);
     std::optional<int> find_player_id(const std::string& username);
+    // BUILD studio 4: the one save function CLAUDE_STUDIO_4.md's decision 1 asks for -- save_portrait
+    // and save_painting are both thin wrappers over this, not two copies of the cost/lock loop.
+    SaveResult save_canvas(const std::string& username, const char* kind,
+                            const std::vector<unsigned char>& pixels, long long now_ms);
 };
 
 } // namespace commons

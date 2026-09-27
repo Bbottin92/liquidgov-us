@@ -210,11 +210,16 @@ function tryInteract() {
       openBench();
     } else if (it.type === "notebook") {
       openNotebook();
-    } else if (it.type === "easel" || it.type === "studioPortrait") {
+    } else if (it.type === "easel" || it.type === "studioPortrait" || it.type === "studioPainting") {
+      // BUILD studio 4 (CLAUDE_STUDIO_4.md decision 4): where you opened it is the canvas -- the
+      // workshop table and the portrait frame both edit the portrait; the new frame edits the painting.
+      // A visit still only ever toasts, same split the portrait already had.
       if (it.type === "studioPortrait" && mode === "visit") {
         showToast("A small portrait.");
+      } else if (it.type === "studioPainting" && mode === "visit") {
+        showToast("A small painting.");
       } else if (typeof openEasel === "function") {
-        openEasel();
+        openEasel(it.type === "studioPainting" ? "painting" : "portrait");
       }
     } else if (it.type === "sign") {
       showToast(it.text || "Closed.");

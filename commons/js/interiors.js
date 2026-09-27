@@ -102,7 +102,8 @@ var ownHouseSpace = buildInterior(16, 16, function (t, w) {
 ownHouseSpace.interactables = [
   { type: "wallSlot", x: 7, y: 0, prompt: "Place" },
   HOUSE_LATCH,
-  { type: "studioPortrait", x: 10, y: 0, prompt: "Draw" }
+  { type: "studioPortrait", x: 10, y: 0, prompt: "Draw" },
+  { type: "studioPainting", x: 4, y: 0, prompt: "Draw" }
 ];
 
 // Studio portrait frame (BUILD studio 2). Pinned against this 16x16 house, not the
@@ -116,6 +117,16 @@ ownHouseSpace.interactables = [
 // frame already overlays y=1. Those floor tiles stay walkable. The demo house
 // does not get the interactable; a visit sees the image but does not open the easel.
 var STUDIO_PORTRAIT = { x: 10, y: 0, w: 2, h: 2 };
+
+// Second painting frame (BUILD studio 4, CLAUDE_STUDIO_4.md decision 2). x 4-5 is the old unverified
+// candidate from studio.md before slice 2 -- checked for real against this house now: the shelves end
+// at x=3, the civic frame starts at x=6, so x 4-5 is flush against both, not gapped like the portrait's
+// own one-tile gap at x=9. The only other clear 2-wide slot is x 12-13, but that sits flush against
+// BOTH the portrait and the lamp, which would read as one wide picture -- x 4-5 was preferred. y=0 is
+// still the solid wall (overlay only, same as the portrait); (4,1) and (5,1) stay plain floor, walkable,
+// no tile changed here either. Owner's house only; the demo house does not get this interactable, and a
+// visit draws the image without opening the easel (same split the portrait already has).
+var STUDIO_PAINTING = { x: 4, y: 0, w: 2, h: 2 };
 
 // Lab -- 20x16. Eight lookup stations: the original three (pushback.md's
 // chalk-only recipe, no lime) plus five more (GROK_OBJECTS_ANSWER.md) in

@@ -322,16 +322,32 @@ std::vector<StudioStore::PaletteEntry> StudioStore::unlocked_palette(const std::
 
 namespace {
 
-struct CharcoalSwatch { int index; const char* slug; const char* hex; };
-const CharcoalSwatch CHARCOAL[] = {
-    {1, "charcoal_black",  "#1a1a1a"},
-    {2, "charcoal_grey_1", "#4d4d4d"},
-    {3, "charcoal_grey_2", "#7a7a7a"},
-    {4, "charcoal_grey_3", "#adadad"},
+// BUILD studio 4 (CLAUDE_STUDIO_4.md decision 1): the fixed index table, declared once, same numbers
+// on the daemon and the client. unlock_recipe == nullptr means always legal (charcoal 1-4, never
+// discovery-gated -- the stub has to be paintable before any collect). The recipe slug, not the item
+// slug, is what a discoveries row actually keys on; index 8's recipe is "carbon_ink" (item
+// carbon_ink_black) and index 9's is "iron_gall_ink_studio" (item iron_gall_blue_black) -- the two
+// places the recipe and item names diverge in catalog.sql.
+struct Pigment { int index; const char* slug; const char* hex; const char* unlock_recipe; };
+const Pigment PIGMENTS[] = {
+    {1,  "charcoal_black",         "#1a1a1a", nullptr},
+    {2,  "charcoal_grey_1",        "#4d4d4d", nullptr},
+    {3,  "charcoal_grey_2",        "#7a7a7a", nullptr},
+    {4,  "charcoal_grey_3",        "#adadad", nullptr},
+    {5,  "shell_white",            "#f2ede4", "shell_white"},
+    {6,  "yellow_ochre",           "#c9963a", "yellow_ochre"},
+    {7,  "red_ochre",              "#9c4a2e", "red_ochre"},
+    {8,  "carbon_ink_black",       "#0d0d0d", "carbon_ink"},
+    {9,  "iron_gall_blue_black",   "#1c1c24", "iron_gall_ink_studio"},
+    {10, "verdigris_green",        "#3f8f5f", "verdigris"},
+    {11, "madder_red",             "#a72a2a", "madder_lake"},
+    {12, "weld_yellow",            "#e0c04a", "weld_lake"},
+    {13, "woad_blue",              "#2e4c72", "woad_blue"},
 };
+constexpr int PIGMENT_MAX_INDEX = 13;
 
-const char* charcoal_slug(int index) {
-    for (const auto& c : CHARCOAL) if (c.index == index) return c.slug;
+const Pigment* pigment_by_index(int index) {
+    for (const auto& p : PIGMENTS) if (p.index == index) return &p;
     return nullptr;
 }
 
@@ -345,16 +361,27 @@ int inventory_qty(sqlite3* db, int player_id, const char* slug) {
     return 0;
 }
 
+bool has_discovery(sqlite3* db, int player_id, const char* recipe_slug) {
+    sqlx::Stmt sel(db,
+        "SELECT 1 FROM discoveries d JOIN recipes r ON r.recipe_id = d.recipe_id "
+        "WHERE d.player_id = ?1 AND r.slug = ?2;");
+    sel.integer(1, player_id).text(2, recipe_slug);
+    return sel.row();
+}
+
 } // namespace
 
-std::vector<StudioStore::Swatch> charcoal_held(sqlite3* db, int player_id) {
+// Indices 1-4 always; 5-13 only once this player has discovered that pigment's own recipe
+// (CLAUDE_STUDIO_4.md decision 1: "That is the list. Do not add the undiscovered nine.").
+std::vector<StudioStore::Swatch> palette_held(sqlite3* db, int player_id) {
     std::vector<StudioStore::Swatch> out;
-    for (const auto& c : CHARCOAL) {
+    for (const auto& p : PIGMENTS) {
+        if (p.unlock_recipe && !has_discovery(db, player_id, p.unlock_recipe)) continue;
         StudioStore::Swatch s;
-        s.index = c.index;
-        s.item = c.slug;
-        s.hex = c.hex;
-        s.qty = inventory_qty(db, player_id, c.slug);
+        s.index = p.index;
+        s.item = p.slug;
+        s.hex = p.hex;
+        s.qty = inventory_qty(db, player_id, p.slug);
         out.push_back(s);
     }
     return out;
@@ -364,9 +391,28 @@ StudioStore::Portrait StudioStore::portrait_of(const std::string& username) {
     Portrait p;
     auto player_id = find_player_id(username);
     if (!player_id) return p;
-    p.palette = charcoal_held(db_, *player_id);
+    p.palette = palette_held(db_, *player_id);
     sqlx::Stmt sel(db_,
         "SELECT pixels FROM paintings WHERE player_id = ?1 AND kind = 'portrait';");
+    sel.integer(1, *player_id);
+    if (!sel.row()) return p;
+    auto blob = sel.column_blob(0);
+    if (static_cast<int>(blob.size()) != PORTRAIT_N) return p;
+    p.found = true;
+    p.pixels = std::move(blob);
+    return p;
+}
+
+// BUILD studio 4: find_player_id, not find_or_create -- a mere read of the second canvas must never
+// conjure a players row, exactly the reasoning the class-level comment already gives for every other
+// read-only method here.
+StudioStore::Portrait StudioStore::painting_of(const std::string& username) {
+    Portrait p;
+    auto player_id = find_player_id(username);
+    if (!player_id) return p;
+    p.palette = palette_held(db_, *player_id);
+    sqlx::Stmt sel(db_,
+        "SELECT pixels FROM paintings WHERE player_id = ?1 AND kind = 'painting';");
     sel.integer(1, *player_id);
     if (!sel.row()) return p;
     auto blob = sel.column_blob(0);
@@ -411,62 +457,81 @@ StudioStore::Portrait StudioStore::ensure_portrait(const std::string& username, 
     return portrait_of(username);
 }
 
-StudioStore::SaveResult StudioStore::save_portrait(const std::string& username,
-                                                   const std::vector<unsigned char>& pixels,
-                                                   long long now_ms) {
+// BUILD studio 4: the one save function for either canvas. Portrait keeps its existing shape exactly
+// (main.cpp calls ensure_portrait first, so by the time this runs the row already exists and "existed"
+// is always true for a portrait save). The painting gets no such pre-step -- its "not existed" branch
+// below is the only place a painting row is ever created, and only once a save is actually accepted.
+StudioStore::SaveResult StudioStore::save_canvas(const std::string& username, const char* kind,
+                                                  const std::vector<unsigned char>& pixels,
+                                                  long long now_ms) {
     SaveResult r;
     if (static_cast<int>(pixels.size()) != PORTRAIT_N) { r.reason = "bad_length"; return r; }
     int player_id = find_or_create_player(username);
     std::vector<unsigned char> old(PORTRAIT_N, 0);
     bool existed = false;
     {
-        sqlx::Stmt sel(db_,
-            "SELECT pixels FROM paintings WHERE player_id = ?1 AND kind = 'portrait';");
-        sel.integer(1, player_id);
+        sqlx::Stmt sel(db_, "SELECT pixels FROM paintings WHERE player_id = ?1 AND kind = ?2;");
+        sel.integer(1, player_id).text(2, kind);
         if (sel.row()) {
             auto blob = sel.column_blob(0);
             if (static_cast<int>(blob.size()) == PORTRAIT_N) { old = std::move(blob); existed = true; }
         }
     }
-    int need[5] = {0, 0, 0, 0, 0};
+    // Index 0..PIGMENT_MAX_INDEX; need[0] is never used (index 0 is always `continue`d below).
+    std::vector<int> need(PIGMENT_MAX_INDEX + 1, 0);
     for (int i = 0; i < PORTRAIT_N; ++i) {
         unsigned char neu = pixels[static_cast<std::size_t>(i)];
         unsigned char was = old[static_cast<std::size_t>(i)];
         if (neu == was) continue;
         if (neu == 0) continue;  // erase to blank: free, and never a refund of `was`
-        if (!charcoal_slug(neu)) { r.reason = "locked_index"; return r; }
+        const Pigment* p = pigment_by_index(neu);
+        if (!p) { r.reason = "locked_index"; return r; }  // includes 14 and up
+        // Indices 1-4 are never locked for lack of a discovery (the stub has to be paintable before
+        // any collect); 5-13 need this player's own discoveries row for that pigment's recipe.
+        if (p->unlock_recipe && !has_discovery(db_, player_id, p->unlock_recipe)) {
+            r.reason = "locked_index"; return r;
+        }
         need[neu] += 1;
     }
     sqlx::Tx tx(db_);
-    for (const auto& c : CHARCOAL) {
-        int n = need[c.index];
+    for (const auto& p : PIGMENTS) {
+        int n = need[p.index];
         if (n <= 0) continue;
         int units = (n + PIXELS_PER_UNIT - 1) / PIXELS_PER_UNIT;  // ceil
         sqlx::Stmt up(db_,
             "UPDATE inventory SET quantity = quantity - ?2, updated_at = ?3 "
             "WHERE player_id = ?1 AND item_id = (SELECT item_id FROM items WHERE slug = ?4) "
             "AND quantity >= ?2;");
-        up.integer(1, player_id).integer(2, units).integer64(3, now_ms).text(4, c.slug);
+        up.integer(1, player_id).integer(2, units).integer64(3, now_ms).text(4, p.slug);
         up.done();
         if (sqlite3_changes(db_) == 0) { r.reason = "insufficient"; return r; }  // dtor rolls back
     }
     if (existed) {
-        sqlx::Stmt up(db_,
-            "UPDATE paintings SET pixels = ?2, updated_ms = ?3 "
-            "WHERE player_id = ?1 AND kind = 'portrait';");
-        up.integer(1, player_id).blob(2, pixels.data(), PORTRAIT_N).integer64(3, now_ms);
+        sqlx::Stmt up(db_, "UPDATE paintings SET pixels = ?2, updated_ms = ?3 WHERE player_id = ?1 AND kind = ?4;");
+        up.integer(1, player_id).blob(2, pixels.data(), PORTRAIT_N).integer64(3, now_ms).text(4, kind);
         up.done();
     } else {
         sqlx::Stmt ins(db_,
-            "INSERT INTO paintings (player_id, kind, w, h, pixels, updated_ms) "
-            "VALUES (?1, 'portrait', 32, 32, ?2, ?3);");
-        ins.integer(1, player_id).blob(2, pixels.data(), PORTRAIT_N).integer64(3, now_ms);
+            "INSERT INTO paintings (player_id, kind, w, h, pixels, updated_ms) VALUES (?1, ?2, 32, 32, ?3, ?4);");
+        ins.integer(1, player_id).text(2, kind).blob(3, pixels.data(), PORTRAIT_N).integer64(4, now_ms);
         ins.done();
     }
     tx.commit();
     r.ok = true;
-    r.palette = charcoal_held(db_, player_id);
+    r.palette = palette_held(db_, player_id);
     return r;
+}
+
+StudioStore::SaveResult StudioStore::save_portrait(const std::string& username,
+                                                   const std::vector<unsigned char>& pixels,
+                                                   long long now_ms) {
+    return save_canvas(username, "portrait", pixels, now_ms);
+}
+
+StudioStore::SaveResult StudioStore::save_painting(const std::string& username,
+                                                    const std::vector<unsigned char>& pixels,
+                                                    long long now_ms) {
+    return save_canvas(username, "painting", pixels, now_ms);
 }
 
 StudioStore::Footprint StudioStore::footprint_of(const std::string& username) {

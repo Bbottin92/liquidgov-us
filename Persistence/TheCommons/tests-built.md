@@ -41,14 +41,14 @@ client code change, no deploy.** Files: `commons-daemon/tests/` and one workflow
 | `retention` | backup retention: 378 unit checks + the script against a fake backups directory incl. sidecars (76) |
 | `netmint` | the client's guest-credential mint (the shipped block under node, fake clock + fetch): 88 checks |
 | `health` | `/health`'s commit: the generator's rules, the no-reconfigure refresh on the real build dir, the endpoint (59) |
-| `client_files` | the split client's load order: the real files evaluated in tag order under a stubbed DOM, effects checked, wrong orders must throw; BUILD studio 3: `STUDIO_GATHER_SPOTS`/`LAB_RECIPES` match the catalog, bench/notebook/gather entry points exist, a guest never calls them (96) |
+| `client_files` | the split client's load order: the real files evaluated in tag order under a stubbed DOM, effects checked, wrong orders must throw; BUILD studio 3: `STUDIO_GATHER_SPOTS`/`LAB_RECIPES` match the catalog, bench/notebook/gather entry points exist, a guest never calls them; BUILD studio 4: the second frame at (4,0) owner-only and non-solid, the 13-pigment table, each canvas fetches its own URL, a guest never enters painting mode (105) |
 | `netstatus` | the connection badge: the shipped state machine (fake clock, 31 checks) + its wiring, markup and CSS (29) |
 | `world_scatter` | the extra region props: refused if not plain ground, none on the spine / seams / doors / labels / spawn, flood fill leaves nothing sealed; BUILD studio 3: the thirteen studio-gather markers and the workshop bench/notebook, each clear of every other prop's 1-tile margin (31 + wiring, 9 mutations) |
 | `pwa` | Commons manifest + icons, Social/Civic manifests (Mail control), start_url = the shells' redirect targets, the picker, sync excludes (71 checks, 16 mutations) |
 | `nginx_www` | www -> apex: the transform on the live config copy (34, 9 mutations) + a real nginx's redirects with a control (17) |
 | `studio` | the Studio's frozen catalog (acyclic, no stoichiometry, C1's ash gone), gather/bench/mix/collect server-authoritative incl. a multi-input partial-rollback case, mix's rate limit; BUILD studio 3: a discovery's own display_name/real_range_note/history_note, recipe_count (92 checks, 2 mutations) |
 | `studio_orphans` | the reap extension: a reaped account's batches/discoveries/cooldowns are gone, a kept one's are not (10 checks, 1 mutation: the reap ORDER, studio before house) |
-| `painting` | BUILD studio 2: the portrait stub, visit-checked read, ceil cost with no refund, locked index (60 checks, 2 mutations) |
+| `painting` | BUILD studio 2 + 4: the portrait stub, visit-checked read, ceil cost with no refund, locked index; the second canvas (`painting`): no stub, first-accepted-save-inserts, shares the 5s save gap, the full visit-rule set repeated incl. civic-frozen fails-closed (106 checks, 3 mutations) |
 | `harness` | the harness itself: no daemon survives `stop_daemon`/`crash_daemon` even under a forking wrapper; `start_daemon` refuses a busy port (8) |
 
 ## Does it actually catch regressions? (mutation check)

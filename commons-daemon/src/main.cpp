@@ -802,12 +802,71 @@ int main(int argc, char** argv) {
         return r;
     });
 
+    // BUILD studio 4: the second canvas. No ensure step at all -- own GET never inserts a row (a zero-
+    // filled body stands in for "no row yet" instead), own POST creates one only on the first ACCEPTED
+    // save (CLAUDE_STUDIO_4.md decision 3). Shares last_paint_ms with the portrait on purpose: "a
+    // portrait save blocks a painting save and the reverse."
+    server.route("GET", "/presence/painting/painting", [&](const commons::HttpRequest& req) {
+        commons::HttpResponse r;
+        auto username = commons::civic::resolve_username(req.headers_raw);
+        if (!username) {
+            r.status = 403; r.status_text = "Forbidden";
+            r.body = "{\"ok\":false,\"reason\":\"not_bound\"}";
+            return r;
+        }
+        auto pic = studio.painting_of(*username);
+        auto px = pic.found ? pic.pixels : std::vector<unsigned char>(commons::StudioStore::PORTRAIT_N, 0);
+        r.body = "{\"ok\":true,\"w\":32,\"h\":32,\"pixels\":" + pixels_json(px) +
+                 ",\"palette\":" + palette_json(pic.palette) + "}";
+        return r;
+    });
+
+    server.route("POST", "/presence/painting/painting", [&](const commons::HttpRequest& req) {
+        commons::HttpResponse r;
+        auto username = commons::civic::resolve_username(req.headers_raw);
+        if (!username) {
+            r.status = 403; r.status_text = "Forbidden";
+            r.body = "{\"ok\":false,\"reason\":\"not_bound\"}";
+            return r;
+        }
+        long long t = now_ms();
+        auto prev = last_paint_ms.find(*username);
+        if (prev != last_paint_ms.end() && t - prev->second < 5000) {
+            r.status = 429; r.status_text = "Too Many Requests";
+            r.body = "{\"ok\":false,\"reason\":\"too_fast\"}";
+            return r;
+        }
+        auto pixels = commons::reqjson::field_byte_array(req.body, "pixels", commons::StudioStore::PORTRAIT_N);
+        if (!pixels.ok) {
+            r.status = 400; r.status_text = "Bad Request";
+            r.body = "{\"ok\":false,\"reason\":" + commons::json::str(pixels.reason.empty() ? "bad_length" : pixels.reason) + "}";
+            return r;
+        }
+        last_paint_ms[*username] = t;
+        auto res = studio.save_painting(*username, pixels.bytes, t);
+        if (!res.ok) {
+            int status = res.reason == "insufficient" ? 409 : 400;
+            r.status = status;
+            r.status_text = status == 409 ? "Conflict" : "Bad Request";
+            r.body = "{\"ok\":false,\"reason\":" + commons::json::str(res.reason) + "}";
+            return r;
+        }
+        r.body = "{\"ok\":true,\"palette\":" + palette_json(res.palette) + "}";
+        return r;
+    });
+
     server.route("GET", "/presence/painting/", [&](const commons::HttpRequest& req) {
         commons::HttpResponse r;
         const std::string pfx = "/presence/painting/";
-        const std::string sfx = "/portrait";
-        if (req.path.size() <= pfx.size() + sfx.size() ||
-            req.path.compare(req.path.size() - sfx.size(), sfx.size(), sfx) != 0) {
+        // BUILD studio 4 (CLAUDE_STUDIO_4.md decision 3's visit table): the same function now serves
+        // either canvas. Exact suffix match, nothing else falls through -- "/portrait" and "/painting"
+        // are both 9 characters, so a body that is neither 404s here exactly as it always did.
+        std::string kind, sfx;
+        if (req.path.size() > pfx.size() + 9 && req.path.compare(req.path.size() - 9, 9, "/portrait") == 0) {
+            kind = "portrait"; sfx = "/portrait";
+        } else if (req.path.size() > pfx.size() + 9 && req.path.compare(req.path.size() - 9, 9, "/painting") == 0) {
+            kind = "painting"; sfx = "/painting";
+        } else {
             r.status = 404; r.status_text = "Not Found";
             r.body = "{\"ok\":false,\"reason\":\"not_found\"}";
             return r;
@@ -829,10 +888,11 @@ int main(int argc, char** argv) {
             r.body = "{\"ok\":false,\"reason\":\"not_welcome\"}";
             return r;
         }
-        auto pic = studio.portrait_of(owner);
+        auto pic = kind == "portrait" ? studio.portrait_of(owner) : studio.painting_of(owner);
         if (!pic.found) {
             r.status = 404; r.status_text = "Not Found";
-            r.body = "{\"ok\":false,\"reason\":\"no_portrait\"}";
+            r.body = "{\"ok\":false,\"reason\":" +
+                      commons::json::str(kind == "portrait" ? "no_portrait" : "no_painting") + "}";
             return r;
         }
         r.body = "{\"ok\":true,\"w\":32,\"h\":32,\"pixels\":" + pixels_json(pic.pixels) + "}";

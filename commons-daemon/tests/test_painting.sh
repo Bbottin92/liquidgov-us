@@ -138,3 +138,124 @@ su a.b
 befriend a.b alice
 bsee a.b alice; assert_code "friend a.b can read alice" 200
 assert_contains "pixels" "$BODY" '"pixels":'
+
+# ============================================================================
+# BUILD studio 4 (CLAUDE_STUDIO_4.md): the rest of the ladder + the second canvas.
+# Same accounts as above; alice already has a portrait row, no painting row yet.
+# ============================================================================
+bpaintPainting() { post "$D/presence/painting/painting" "{\"pixels\":$2}" "$(jar $1)"; }
+bgetPainting()   { get "$D/presence/painting/painting" "$(jar $1)"; }
+bseePainting()   { get "$D/presence/painting/$2/painting" "$(jar $1)"; }
+discover() { # discover USERNAME RECIPE_SLUG -- direct DB seed, same style as the inventory patches above
+  python3 -c 'import os,sqlite3,sys
+c=sqlite3.connect(os.environ["DB_PATH"])
+c.execute("insert into discoveries (player_id, recipe_id, first_ms) select p.player_id, r.recipe_id, 0 from players p, recipes r where p.lg_username=? and r.slug=?", (sys.argv[1], sys.argv[2]))
+c.commit()' "$1" "$2"
+}
+setqty() { # setqty USERNAME ITEM_SLUG QTY
+  python3 -c 'import os,sqlite3,sys
+c=sqlite3.connect(os.environ["DB_PATH"])
+c.execute("insert into inventory (player_id, item_id, quantity, updated_at) select player_id, (select item_id from items where slug=?), ?, 0 from players where lg_username=? on conflict(player_id, item_id) do update set quantity=excluded.quantity", (sys.argv[2], sys.argv[3], sys.argv[1]))
+c.commit()' "$1" "$2" "$3"
+}
+paintingCount() { dbq "select count(*) from paintings pa join players p on p.player_id=pa.player_id where p.lg_username='$1' and pa.kind='painting'"; }
+portraitBlob() { dbq "select hex(pixels) from paintings pa join players p on p.player_id=pa.player_id where p.lg_username='$1' and pa.kind='portrait'"; }
+
+echo "-- unbound is 403 on both new painting routes"
+mint
+get "$D/presence/painting/painting"; assert_code "guest GET own painting is 403" 403
+post "$D/presence/painting/painting" "{\"pixels\":$(blank)}"; assert_code "guest POST painting is 403" 403
+
+echo "-- own GET with no row: 1024 zeros and the palette, no insert, no stub, no grant"
+set_clock $((T0 + 100000))
+assert_eq "no painting row yet" 0 "$(paintingCount alice)"
+BLACK_BEFORE="$(qty alice charcoal_black)"  # whatever her portrait spending left it at, above -- not necessarily 0
+bgetPainting alice; assert_code "alice's first painting GET: 200" 200
+assert_contains "1024 zeros" "$BODY" '"pixels":[0,0,0'
+assert_eq "still no row (own GET must not insert)" 0 "$(paintingCount alice)"
+assert_eq "no charcoal_black grant from touching the painting route" "$BLACK_BEFORE" "$(qty alice charcoal_black)"
+
+echo "-- index 14 is locked on either canvas (never in the fixed table)"
+set_clock $((T0 + 106000))
+bpaintPainting alice "$(paint 0 1 14)"; assert_code "index 14 on the painting: 400" 400
+assert_contains "locked_index" "$BODY" locked_index
+assert_eq "a locked POST inserts nothing" 0 "$(paintingCount alice)"
+set_clock $((T0 + 112000))
+bpaint alice "$(paint 0 1 14)"; assert_code "index 14 on the portrait too: 400" 400
+assert_contains "locked_index" "$BODY" locked_index
+
+echo "-- index 5 (shell white) is locked_index with no discovery, even though it is in the table now"
+set_clock $((T0 + 118000))
+bpaintPainting alice "$(paint 0 1 5)"; assert_code "shell white, undiscovered: 400" 400
+assert_contains "locked_index" "$BODY" locked_index
+assert_eq "still no row" 0 "$(paintingCount alice)"
+
+echo "-- after discovering shell_white, it costs shell_white and never touches charcoal"
+discover alice shell_white
+setqty alice shell_white 0
+set_clock $((T0 + 124000))
+bpaintPainting alice "$(paint 0 1 5)"; assert_code "discovered but qty 0: 409 insufficient, not locked" 409
+assert_contains "insufficient" "$BODY" insufficient
+assert_eq "still no row (a rejected save inserts nothing)" 0 "$(paintingCount alice)"
+setqty alice shell_white 1
+set_clock $((T0 + 130000))
+bpaintPainting alice "$(paint 0 200 5)"; assert_code "200 shell-white pixels, now affordable: 200" 200
+assert_eq "the first ACCEPTED save is what inserts the row" 1 "$(paintingCount alice)"
+assert_eq "shell_white spent" 0 "$(qty alice shell_white)"
+assert_eq "charcoal_black untouched by a painting save" "$BLACK_BEFORE" "$(qty alice charcoal_black)"
+
+echo "-- the painting save did not touch the portrait blob, and the reverse"
+BEFORE_PORTRAIT="$(portraitBlob alice)"
+setqty alice shell_white 1
+set_clock $((T0 + 136000))
+bpaintPainting alice "$(paint 200 200 5)"; assert_code "another 200 shell-white pixels: 200" 200
+assert_eq "the portrait blob is unchanged by a painting save" "$BEFORE_PORTRAIT" "$(portraitBlob alice)"
+BEFORE_PAINTING="$(dbq "select hex(pixels) from paintings pa join players p on p.player_id=pa.player_id where p.lg_username='alice' and pa.kind='painting'")"
+setqty alice charcoal_black 1
+set_clock $((T0 + 142000))
+bpaint alice "$(paint 500 1 1)"; assert_code "a portrait save: 200" 200
+assert_eq "the painting blob is unchanged by a portrait save" "$BEFORE_PAINTING" "$(dbq "select hex(pixels) from paintings pa join players p on p.player_id=pa.player_id where p.lg_username='alice' and pa.kind='painting'")"
+
+echo "-- last_paint_ms is shared: a portrait save blocks a painting save within 5s, and the reverse"
+set_clock $((T0 + 142500))
+bpaintPainting alice "$(blank)"; assert_code "painting save right after a portrait save: 429" 429
+assert_contains "too_fast" "$BODY" too_fast
+set_clock $((T0 + 148000))
+setqty alice shell_white 1
+bpaintPainting alice "$(paint 0 1 5)"; assert_code "5s later, painting save: 200" 200
+set_clock $((T0 + 148500))
+setqty alice charcoal_black 1
+bpaint alice "$(paint 999 1 1)"; assert_code "portrait save right after a painting save: 429" 429
+assert_contains "too_fast" "$BODY" too_fast
+
+echo "-- visit: friend yes, stranger no, open-stranger no, open-friend yes, locked-friend no"
+bpolicy alice friends >/dev/null
+bseePainting carol alice; assert_code "stranger refused" 403
+assert_contains "not_welcome" "$BODY" not_welcome
+bseePainting bob alice; assert_code "friend can read the painting" 200
+assert_contains "the friend gets pixels, not the palette" "$BODY" '"pixels":'
+assert_not_contains "no palette on a visit read" "$BODY" palette
+bpolicy alice open; assert_code "policy open" 200
+bseePainting carol alice; assert_code "an open-policy stranger is still refused" 403
+bseePainting bob alice; assert_code "her friend still can, under open" 200
+bpolicy alice locked; assert_code "policy locked" 200
+bseePainting bob alice; assert_code "a friend is refused once it is locked" 403
+bpolicy alice friends >/dev/null
+
+echo "-- a GET is not a stay: civic frozen fails closed, same as the portrait already does"
+# A never-before-queried viewer: bob's own friends-list answer for alice is already hot in the 15s
+# cache from the checks just above, so freezing civic now would prove nothing about him -- the daemon
+# would just reuse the cached "yes". dana is fresh: her first-ever visit check is what actually asks.
+su dana
+befriend dana alice >/dev/null
+freeze_civic
+bseePainting dana alice; assert_code "civic silent, never asked before: refused, not shown" 403
+thaw_civic
+bseePainting dana alice; assert_code "civic back: the friend reads it now" 200
+
+echo "-- a friend who never touched the second canvas: 404, and that GET does not insert"
+su empty_friend
+befriend empty_friend alice >/dev/null
+bseePainting alice empty_friend; assert_code "alice has never painted empty_friend's canvas: 404" 404
+assert_contains "no_painting" "$BODY" no_painting
+assert_eq "the visit GET did not create a row for empty_friend" 0 "$(paintingCount empty_friend)"

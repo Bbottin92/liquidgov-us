@@ -1,10 +1,11 @@
-# The Studio — spec v2 (Grok's review folded in; slices 1, 2 and 3 BUILT 2026-09-27)
+# The Studio — spec v2 (Grok's review folded in; slices 1-4 BUILT 2026-09-27)
 
-**Status: slice 3 built and tested; not deployed (no droplet touch, all three slices deploy together).**
+**Status: slice 4 built and tested; not deployed (no droplet touch, all four slices deploy together).**
 Slice 1 is daemon-only (`studio-1-built.md`). Slice 2 is the charcoal easel, the portrait endpoints, and
 the house frame (`studio-2-built.md`). Slice 3 is the map/lab wiring, the bench, and the notebook
-(`studio-3-built.md`, `CLAUDE_STUDIO_3.md`). Where this file did not already pick a number, the reading
-taken is an open decision below (11–14).
+(`studio-3-built.md`, `CLAUDE_STUDIO_3.md`). Slice 4 is the rest of the palette ladder and the second
+painting frame (`studio-4-built.md`, `CLAUDE_STUDIO_4.md`). Where this file did not already pick a
+number, the reading taken is an open decision below (11–14).
 v1 was `9a5b7c5`; Grok's review is `GROK_STUDIO_ANSWER.md` (`5c45287`); this file is v2, written 2026-09-20.
 Each slice below is its own `BUILD`; every droplet touch needs the literal `deploy` word (daemon deploys:
 drift-check, online DB backup first). The reference pass is done (`studio-refs.md`, 2026-09-20); slice 1's frozen
@@ -356,3 +357,13 @@ gather/bench/mix/collect route (slice 1 already has all four; this slice is what
 client). No civic edit, no nginx edit. Six of CLAUDE_STUDIO_3.md's own literal marker coordinates land inside
 `test_world_scatter.sh`'s 1-tile interactable clearance around a pre-existing P3 scatter prop; each was nudged
 onto the nearest clear ground in the same region, per that file's own fallback rule. See `studio-3-built.md`.
+
+## Slice 4: built 2026-09-27
+
+Brandon: `BUILD studio 4`, the trigger `CLAUDE_STUDIO_4.md` itself names. The rest of the palette ladder
+(indices 5-13, discovery-gated, same fixed table on daemon and client) and the second painting frame at
+(4,0), no stub, sharing the portrait's own visit rule and 5-second save gap. `save_portrait` became one
+shared `save_canvas(kind)` function, per the spec's own instruction not to copy the cost/lock loop. Two
+real client-side bugs found while doing this, beyond what the spec asked for: an unknown-index render
+fallback that used to draw black instead of paper, and the smudge tool's dither silently half-erasing any
+pigment index 5 and up instead of stamping solid. See `studio-4-built.md`.

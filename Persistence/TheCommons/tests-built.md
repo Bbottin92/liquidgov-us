@@ -46,6 +46,8 @@ client code change, no deploy.** Files: `commons-daemon/tests/` and one workflow
 | `world_scatter` | the extra region props: refused if not plain ground, none on the spine / seams / doors / labels / spawn, flood fill leaves nothing sealed (14 + 7 wiring, 9 mutations) |
 | `pwa` | Commons manifest + icons, Social/Civic manifests (Mail control), start_url = the shells' redirect targets, the picker, sync excludes (71 checks, 16 mutations) |
 | `nginx_www` | www -> apex: the transform on the live config copy (34, 9 mutations) + a real nginx's redirects with a control (17) |
+| `studio` | the Studio's frozen catalog (acyclic, no stoichiometry, C1's ash gone), gather/bench/mix/collect server-authoritative incl. a multi-input partial-rollback case, mix's rate limit (88 checks, 2 mutations) |
+| `studio_orphans` | the reap extension: a reaped account's batches/discoveries/cooldowns are gone, a kept one's are not (10 checks, 1 mutation: the reap ORDER, studio before house) |
 | `harness` | the harness itself: no daemon survives `stop_daemon`/`crash_daemon` even under a forking wrapper; `start_daemon` refuses a busy port (8) |
 
 ## Does it actually catch regressions? (mutation check)

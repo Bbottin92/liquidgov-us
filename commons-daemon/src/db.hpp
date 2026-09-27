@@ -30,6 +30,17 @@ public:
     // Same shape, for players.visit_policy (house friends/locked). Existing
     // rows take the DEFAULT, so every current house stays friends-only.
     void ensure_visit_policy();
+    // The Studio (BUILD studio 1): items.pigment_hex, and recipes.duration_s /
+    // .tier / .real_range_note / .history_note. Same shape again -- a fresh
+    // database already has these from schema.sql; this only reaches an
+    // existing one. All nullable, so every existing row (including the five
+    // Lab-A lookups) is unaffected.
+    void ensure_studio_columns();
+    // CREATE TABLE IF NOT EXISTS for batches / discoveries / gather_cooldowns /
+    // paintings -- a whole new table, not a column, reaching an existing
+    // database. A fresh database already has them from schema.sql too, so
+    // this is a no-op there.
+    void ensure_studio_tables();
     // Catalog rows added after the first seed. seed.sql only runs when
     // `items` is empty, so production never sees new lookups without this.
     // catalog.sql is INSERT OR IGNORE; calling it every start is a no-op

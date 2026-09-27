@@ -1,10 +1,11 @@
-# The Studio — spec v2 (Grok's review folded in; awaiting Brandon's sign-off)
+# The Studio — spec v2 (Grok's review folded in; slice 1 BUILT 2026-09-27)
 
-**Status: SPEC ONLY. Nothing here is built. No code, no catalog rows, no BUILD, no deploy.**
+**Status: slice 1 built and tested; not deployed (daemon-only, no droplet touch).** See `studio-1-built.md` for what
+shipped, how it was verified, and exactly which reading of each open item below was taken as signed off.
 v1 was `9a5b7c5`; Grok's review is `GROK_STUDIO_ANSWER.md` (`5c45287`); this file is v2, written 2026-09-20.
 Each slice below is its own `BUILD`; every droplet touch needs the literal `deploy` word (daemon deploys:
-drift-check, online DB backup first). **The reference pass is done (`studio-refs.md`, 2026-09-20); the recipe table is not frozen until Brandon
-signs it, with or without the six proposed corrections C1-C6 below.**
+drift-check, online DB backup first). The reference pass is done (`studio-refs.md`, 2026-09-20); slice 1's frozen
+table applies corrections C1-C6 in full (`studio-1-built.md` has the exact wording).
 
 ## One paragraph
 
@@ -280,11 +281,14 @@ phone-portrait viewport for the easel. CI as usual.
 4. **Portrait visibility:** owner and friends only, never `open` strangers. *(default; Grok agrees)*
 5. **Canvas:** 32x32, nearest-neighbour, "a small portrait". *(default; Grok agrees)*
 6. **Recipe review:** Grok's pass is the first; **I check each line against a reference before `catalog.sql`**;
-   Brandon signs the frozen table. *(needs your yes)*
+   Brandon signs the frozen table. *(taken as signed: `BUILD studio 1` came after the reference pass was already
+   posted here, so slice 1's catalog is the frozen table with C1-C6 applied in full -- see `studio-1-built.md`)*
 7. **Legacy items** stay placeable trophies. *(default; Grok agrees)*
 8. **No moderation while friends-only.** *(default; Grok agrees)*
-9. **My three deviations** (pixel-level cost, visit-checked portrait in slice 2, 8 h charcoal). *(needs your yes or override)*
-10. **Charcoal real-world time** (2-4 h vs ~10 h) is disputed between Grok's review and my draft; resolved by the reference check.
+9. **My three deviations** (pixel-level cost, visit-checked portrait in slice 2, 8 h charcoal). *(taken as signed,
+   same reasoning as #6; slice 1 only actually builds the pixel-cost rule -- the portrait itself is slice 2)*
+10. **Charcoal real-world time** (2-4 h vs ~10 h) is disputed between Grok's review and my draft; resolved by the
+    reference check (Cennini: overnight, supporting 8 h). *(resolved; 8 h shipped)*
 
 ## Reference check (2026-09-20): see `studio-refs.md`
 
@@ -305,7 +309,8 @@ manual (c. 1400); here 8 hours", not "closed pot" (which the safety rule bans in
 Not checked by me: Coates' ~10 h kiln figure and the shell-white weathering claim (no text found); CAMEO was
 unreachable (403).
 
-## Not started
+## Slice 1: built 2026-09-27
 
-Nothing in this file authorises code. Slice 1 starts only when Brandon signs the frozen table and says
-`BUILD studio 1`.
+Brandon: `BUILD studio 1`, after this file's own reference pass had already landed. Daemon core only, exactly the
+slice-1 scope above: schema, the frozen catalog (with C1-C6 applied), gather/bench/mix/collect, discoveries,
+consumption, migration, the orphan-reap extension, tests. No client, no droplet. See `studio-1-built.md`.

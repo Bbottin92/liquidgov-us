@@ -20,6 +20,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <ctime>
+#include <fstream>
 #include <sys/stat.h>
 #include <map>
 #include <iostream>
@@ -39,10 +40,26 @@
 #include "presence.hpp"
 #include "reqjson.hpp"
 #include "sqlx.hpp"
+#include "studio.hpp"
 
 namespace {
 
+// BUILD studio 1's test-only clock seam (studio.md's data model: "a test-only clock seam exists").
+// A batch can take up to 7 real days (verdigris); no test may actually wait one. If
+// COMMONS_TEST_CLOCK_FILE names a file, now_ms() reads a millisecond integer from it on every call
+// instead of the real clock, so a test can move time forward between requests just by overwriting the
+// file's contents -- no daemon restart, no IPC. Never set in production; the env var is read once
+// (its ABSENCE is the common case and costs one getenv), the file itself is read every call only when
+// present, exactly the same shape as COMMONS_TEST_TICK_MS just below.
 long long now_ms() {
+    static const char* clock_file = std::getenv("COMMONS_TEST_CLOCK_FILE");
+    if (clock_file) {
+        std::ifstream f(clock_file);
+        long long ms = 0;
+        if (f && (f >> ms)) return ms;
+        // Missing or unparsable: fall through to the real clock rather than returning 0 (which would
+        // make every batch look instantly ready and every cooldown look expired -- a loud silent bug).
+    }
     return std::chrono::duration_cast<std::chrono::milliseconds>(
                std::chrono::system_clock::now().time_since_epoch())
         .count();
@@ -289,6 +306,8 @@ int main(int argc, char** argv) {
     db.migrate("schema.sql", "seed.sql");
     db.ensure_inventory_recency();
     db.ensure_visit_policy();
+    db.ensure_studio_columns();   // before ensure_catalog: catalog.sql's Studio rows set pigment_hex / duration_s / tier / notes
+    db.ensure_studio_tables();
     db.ensure_catalog("catalog.sql");
     std::cerr << "commons-daemon: DB ready at " << db_path << "\n";
 
@@ -296,6 +315,11 @@ int main(int argc, char** argv) {
     commons::GuestRegistry guests;
     commons::PlacedStore placed;
     commons::HouseStore house(db.handle());
+    commons::StudioStore studio(db.handle());
+    // Mix's own 1-per-5s-per-player rate limit (studio.md, discovery rule 1). RAM, not SQLite: it is
+    // throttling, not durable state, and this daemon is single-threaded and synchronous, so a plain
+    // map needs no mutex (same reasoning as the RAM presence stores).
+    std::map<std::string, long long> last_mix_ms;
     commons::FriendsCache friends_cache;
     commons::HttpServer server(bind_addr, port);
 
@@ -383,6 +407,184 @@ int main(int argc, char** argv) {
             return r;
         }
         r.body = "{\"ok\":true}";
+        return r;
+    });
+
+    // The Studio (BUILD studio 1, TheCommons/studio.md). All five routes: bound identity only, no
+    // guest fallback (a guest's gather/side-mix/portrait-in-charcoal is entirely client-side RAM from
+    // slice 2 on and never reaches here). No client calls any of these yet -- this slice is daemon-only.
+    server.route("POST", "/presence/gather", [&](const commons::HttpRequest& req) {
+        using namespace commons::reqjson;
+        commons::HttpResponse r;
+        auto username = commons::civic::resolve_username(req.headers_raw);
+        if (!username) {
+            r.status = 403; r.status_text = "Forbidden";
+            r.body = "{\"ok\":false,\"reason\":\"not_bound\"}";
+            return r;
+        }
+        auto spot = field_str(req.body, "spot");
+        if (!spot) {
+            r.status = 400; r.status_text = "Bad Request";
+            r.body = "{\"ok\":false,\"reason\":\"missing_field\"}";
+            return r;
+        }
+        auto res = studio.gather(*username, *spot, now_ms());
+        if (!res.ok) {
+            r.status = res.reason == "unknown_spot" ? 400 : 409;
+            r.status_text = r.status == 400 ? "Bad Request" : "Conflict";
+            r.body = "{\"ok\":false,\"reason\":" + commons::json::str(res.reason) +
+                      (res.next_ms ? ",\"next_ms\":" + std::to_string(res.next_ms) : "") + "}";
+            return r;
+        }
+        r.body = "{\"ok\":true,\"item\":" + commons::json::str(res.item) +
+                  ",\"qty\":" + std::to_string(res.qty) + ",\"next_ms\":" + std::to_string(res.next_ms) + "}";
+        return r;
+    });
+
+    server.route("POST", "/presence/bench", [&](const commons::HttpRequest& req) {
+        using namespace commons::reqjson;
+        commons::HttpResponse r;
+        auto username = commons::civic::resolve_username(req.headers_raw);
+        if (!username) {
+            r.status = 403; r.status_text = "Forbidden";
+            r.body = "{\"ok\":false,\"reason\":\"not_bound\"}";
+            return r;
+        }
+        auto recipe = field_str(req.body, "recipe");
+        if (!recipe) {
+            r.status = 400; r.status_text = "Bad Request";
+            r.body = "{\"ok\":false,\"reason\":\"missing_field\"}";
+            return r;
+        }
+        auto res = studio.start_batch(*username, *recipe, now_ms());
+        if (!res.ok) {
+            r.status = res.reason == "unknown_recipe" ? 400 : 409;
+            r.status_text = r.status == 400 ? "Bad Request" : "Conflict";
+            r.body = "{\"ok\":false,\"reason\":" + commons::json::str(res.reason) + "}";
+            return r;
+        }
+        r.body = "{\"ok\":true,\"batch_id\":" + std::to_string(res.batch_id) +
+                  ",\"ready_ms\":" + std::to_string(res.ready_ms) + "}";
+        return r;
+    });
+
+    server.route("POST", "/presence/mix", [&](const commons::HttpRequest& req) {
+        using namespace commons::reqjson;
+        commons::HttpResponse r;
+        auto username = commons::civic::resolve_username(req.headers_raw);
+        if (!username) {
+            r.status = 403; r.status_text = "Forbidden";
+            r.body = "{\"ok\":false,\"reason\":\"not_bound\"}";
+            return r;
+        }
+        auto slugs = field_str_array(req.body, "slugs", 4); // cap of 4 (studio.md); more is a caller error
+        if (!slugs) {
+            r.status = 400; r.status_text = "Bad Request";
+            r.body = "{\"ok\":false,\"reason\":\"missing_field\"}";
+            return r;
+        }
+        long long t = now_ms();
+        auto it = last_mix_ms.find(*username);
+        if (it != last_mix_ms.end() && t - it->second < 5000) {
+            r.status = 429; r.status_text = "Too Many Requests";
+            r.body = "{\"ok\":false,\"reason\":\"too_fast\"}";
+            return r;
+        }
+        last_mix_ms[*username] = t;
+        r.body = "{\"ok\":true,\"result\":" + commons::json::str(studio.mix(*slugs)) + "}";
+        return r;
+    });
+
+    server.route("POST", "/presence/collect", [&](const commons::HttpRequest& req) {
+        using namespace commons::reqjson;
+        commons::HttpResponse r;
+        auto username = commons::civic::resolve_username(req.headers_raw);
+        if (!username) {
+            r.status = 403; r.status_text = "Forbidden";
+            r.body = "{\"ok\":false,\"reason\":\"not_bound\"}";
+            return r;
+        }
+        auto batch_id = field_num(req.body, "batch_id");
+        if (!batch_id) {
+            r.status = 400; r.status_text = "Bad Request";
+            r.body = "{\"ok\":false,\"reason\":\"missing_field\"}";
+            return r;
+        }
+        auto res = studio.collect(*username, static_cast<int>(*batch_id), now_ms());
+        if (!res.ok) {
+            r.status = res.reason == "not_found" ? 404 : res.reason == "not_yours" ? 403 : 409;
+            r.status_text = r.status == 404 ? "Not Found" : r.status == 403 ? "Forbidden" : "Conflict";
+            r.body = "{\"ok\":false,\"reason\":" + commons::json::str(res.reason) + "}";
+            return r;
+        }
+        std::string outs = "[";
+        bool first = true;
+        for (const auto& o : res.outputs) {
+            if (!first) outs += ",";
+            first = false;
+            outs += "{\"item\":" + commons::json::str(o.first) + ",\"qty\":" + std::to_string(o.second) + "}";
+        }
+        outs += "]";
+        r.body = "{\"ok\":true,\"first_discovery\":" + std::string(res.first_discovery ? "true" : "false") +
+                  ",\"outputs\":" + outs + "}";
+        return r;
+    });
+
+    server.route("GET", "/presence/studio", [&](const commons::HttpRequest& req) {
+        commons::HttpResponse r;
+        auto username = commons::civic::resolve_username(req.headers_raw);
+        if (!username) {
+            r.status = 403; r.status_text = "Forbidden";
+            r.body = "{\"ok\":false,\"reason\":\"not_bound\"}";
+            return r;
+        }
+        long long t = now_ms();
+        std::string body = "{\"ok\":true,\"inventory\":[";
+        bool first = true;
+        for (const auto& e : house.inventory_of(*username)) { // the shared inventory table (HouseStore already owns reading it)
+            if (!first) body += ",";
+            first = false;
+            body += "{\"item\":" + commons::json::str(e.slug) + ",\"qty\":" + std::to_string(e.quantity) + "}";
+        }
+        body += "],\"batches\":[";
+        first = true;
+        for (const auto& b : studio.open_batches(*username)) {
+            if (!first) body += ",";
+            first = false;
+            body += "{\"batch_id\":" + std::to_string(b.batch_id) + ",\"recipe\":" + commons::json::str(b.recipe) +
+                     ",\"ready_ms\":" + std::to_string(b.ready_ms) + "}";
+        }
+        body += "],\"discoveries\":[";
+        first = true;
+        for (const auto& d : studio.discoveries_of(*username)) {
+            if (!first) body += ",";
+            first = false;
+            body += "{\"recipe\":" + commons::json::str(d.recipe) + ",\"first_ms\":" + std::to_string(d.first_ms) + "}";
+        }
+        body += "],\"cooldowns\":[";
+        first = true;
+        for (const auto& c : studio.cooldowns_of(*username, t)) {
+            if (!first) body += ",";
+            first = false;
+            body += "{\"spot\":" + commons::json::str(c.spot) + ",\"next_ms\":" + std::to_string(c.next_ms) + "}";
+        }
+        body += "],\"palette\":[";
+        first = true;
+        for (const auto& p : studio.unlocked_palette(*username)) {
+            if (!first) body += ",";
+            first = false;
+            body += "{\"item\":" + commons::json::str(p.item) + ",\"hex\":" + commons::json::str(p.hex) + "}";
+        }
+        body += "],\"makeable\":[";
+        first = true;
+        for (const auto& m : studio.makeable_now(*username)) {
+            if (!first) body += ",";
+            first = false;
+            body += "{\"recipe\":" + commons::json::str(m.slug) + ",\"display_name\":" + commons::json::str(m.display_name) +
+                     ",\"duration_s\":" + std::to_string(m.duration_s) + "}";
+        }
+        body += "]}";
+        r.body = body;
         return r;
     });
 
@@ -1014,10 +1216,12 @@ int main(int argc, char** argv) {
         if (!reap_enabled) {
             for (const auto& d : due) {
                 auto f = house.footprint_of(d.first);
+                auto sf = studio.footprint_of(d.first); // BUILD studio 1: batches/discoveries/cooldowns/paintings
                 std::cerr << "commons-daemon: orphan watch (LOG-ONLY, nothing deleted): would reap '" << d.first
                           << "': house instance " << f.house_instance << ", " << f.inventory_rows
                           << " inventory rows (qty " << f.inventory_qty << "), " << f.placed_rows
-                          << " placed rows, gone for " << d.second << " passes\n";
+                          << " placed rows, " << sf.batches << " batches, " << sf.discoveries << " discoveries, "
+                          << sf.cooldowns << " cooldowns, " << sf.paintings << " paintings, gone for " << d.second << " passes\n";
             }
         } else if (!due.empty()) {
             // No backup, no reap.
@@ -1040,11 +1244,19 @@ int main(int argc, char** argv) {
                         continue;
                     }
                     try {
+                        // Studio FIRST: its reap_orphan resolves player_id by username, and
+                        // house.reap_orphan below is what deletes the players row itself -- reaping in
+                        // the other order throws (players still has FK-referencing batches/discoveries/
+                        // gather_cooldowns rows, and PRAGMA foreign_keys=ON refuses to delete players
+                        // out from under them) and rolls back, stuck retrying that account forever.
+                        auto sres = studio.reap_orphan(u);
                         auto res = house.reap_orphan(u);
                         std::cerr << "commons-daemon: orphan watch: REAPED '" << u << "': " << res.inventory_rows
                                   << " inventory rows, " << res.placed_rows << " placed rows, house row "
                                   << (res.house_row ? "removed" : "none") << ", players row "
-                                  << (res.player_row ? "removed" : "none") << " (gone for " << d.second << " passes)\n";
+                                  << (res.player_row ? "removed" : "none") << ", " << sres.batches << " batches, "
+                                  << sres.discoveries << " discoveries, " << sres.cooldowns << " cooldowns, "
+                                  << sres.paintings << " paintings (gone for " << d.second << " passes)\n";
                         gone_streak.erase(u);
                     } catch (const commons::sqlx::DbError&) {
                         std::cerr << "commons-daemon: orphan watch: reap of '" << u

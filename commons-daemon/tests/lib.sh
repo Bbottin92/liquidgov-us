@@ -143,6 +143,19 @@ bplace() { post "$D/placed/$2" "{\"id\":\"g_x\",\"secret\":\"w\",\"item\":\"$3\"
 bplacefloor() { post "$D/placed/$2" "{\"id\":\"g_x\",\"secret\":\"w\",\"item\":\"$3\",\"x\":$4,\"y\":$5}" "$(jar $1)"; }
 btakefloor() { post "$D/placed/$2" "{\"id\":\"g_x\",\"secret\":\"w\",\"item\":\"\",\"x\":$3,\"y\":$4,\"pick\":1}" "$(jar $1)"; }
 bpolicy() { post "$D/presence/house-policy" "{\"policy\":\"$2\"}" "$(jar $1)"; }
+# The Studio (BUILD studio 1).
+bgather() { post "$D/presence/gather" "{\"spot\":\"$2\"}" "$(jar $1)"; }
+bbench()  { post "$D/presence/bench" "{\"recipe\":\"$2\"}" "$(jar $1)"; }
+bmix()    { post "$D/presence/mix" "{\"slugs\":$2}" "$(jar $1)"; }        # $2 is a JSON array literal, e.g. '["a","b"]'
+bcollect(){ post "$D/presence/collect" "{\"batch_id\":$2}" "$(jar $1)"; }
+bstudio() { get "$D/presence/studio" "$(jar $1)"; }
+# The test clock (COMMONS_TEST_CLOCK_FILE): a fixed path this test run owns. A test that needs
+# controlled time starts the daemon with `start_daemon COMMONS_TEST_CLOCK_FILE=$CLOCK_FILE`, then calls
+# set_clock (any time before its first time-sensitive request -- the daemon falls back to the real
+# clock until the file has a valid number in it). now_ms() re-reads the file on every call, so time can
+# jump forward mid-test with no daemon restart.
+CLOCK_FILE="$WORK/clock.ms"
+set_clock() { echo "$1" > "$CLOCK_FILE"; }
 blots() { get "$D/presence/lots" "$(jar $1)"; }
 occupants() { get "$D/presence/$1"; }
 house() { echo "instance:house:$1"; }

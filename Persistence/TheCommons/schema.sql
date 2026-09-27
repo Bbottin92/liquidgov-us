@@ -22,14 +22,30 @@ CREATE TABLE items (
     display_name TEXT NOT NULL,
     category     TEXT NOT NULL CHECK (category IN ('placeable','wallable','material')),
     wall_slot_ok INTEGER NOT NULL DEFAULT 0,  -- 1 if it may occupy the one profile-canvas wall slot
-    sprite_ref   TEXT NOT NULL                -- key into art.md's V1 drawable set, not a blob
+    sprite_ref   TEXT NOT NULL,               -- key into art.md's V1 drawable set, not a blob
+    -- The Studio (BUILD studio 1): NULL for a raw material or an intermediate
+    -- (tannin, binder, iron acetate -- not directly paintable); set only for
+    -- something the easel can actually put on the canvas. Existing DBs get
+    -- this from Database::ensure_studio_columns().
+    pigment_hex  TEXT
 );
 
 CREATE TABLE recipes (
-    recipe_id    INTEGER PRIMARY KEY,
-    slug         TEXT NOT NULL UNIQUE,        -- e.g. 'copper_acetate'
-    display_name TEXT NOT NULL,
-    station      TEXT NOT NULL DEFAULT 'lab'  -- future-proofing only; V1 has exactly one station
+    recipe_id       INTEGER PRIMARY KEY,
+    slug            TEXT NOT NULL UNIQUE,     -- e.g. 'copper_acetate'
+    display_name    TEXT NOT NULL,
+    station         TEXT NOT NULL DEFAULT 'lab', -- future-proofing only; V1 has exactly one station
+    -- The Studio (BUILD studio 1): NULL on a Lab-A lookup (not a benchable
+    -- batch); set together on a Studio recipe. duration_s is the server-clock
+    -- batch time; tier is the ladder position; the two notes are what the
+    -- notebook will show once a client reads them -- a real time range (or
+    -- NULL/"here: Ns" where the reference pass found no source) and a
+    -- one-line history, never a how-to (studio.md's safety line). Existing
+    -- DBs get these four from Database::ensure_studio_columns().
+    duration_s      INTEGER,
+    tier            INTEGER,
+    real_range_note TEXT,
+    history_note    TEXT
 );
 
 CREATE TABLE recipe_inputs (
@@ -159,6 +175,77 @@ CREATE UNIQUE INDEX placed_wall_slot_unique
 --     created_at   INTEGER NOT NULL
 -- );
 -- Every trade mutation is BEGIN/COMMIT across trades + inventory rows.
+-- ---------------------------------------------------------------------
+
+-- ---------------------------------------------------------------------
+-- The Studio (BUILD studio 1, TheCommons/studio.md) -- gather real materials,
+-- make pigments at a bench on a server-clock timer, paint with what you have
+-- earned. Slice 1 is this schema + the daemon API; no client, no droplet
+-- until `deploy`. Existing DBs get the two new columns and four new tables
+-- from Database::ensure_studio_columns() / ensure_studio_tables() at
+-- startup (migrate() only runs this file on a brand-new DB).
+-- ---------------------------------------------------------------------
+
+-- items.pigment_hex and the four new recipes columns are declared above,
+-- on the CREATE TABLE statements themselves (a fresh database gets them
+-- immediately); Database::ensure_studio_columns() ALTERs them onto an
+-- EXISTING database that predates this build, same shape as
+-- ensure_inventory_recency() / ensure_visit_policy() before it. category
+-- stays 'material' for every Studio item -- the CHECK above cannot be
+-- widened in SQLite, and nothing about "is this a pigment" needs a new
+-- category to be true.
+
+-- A started bench batch. started_ms/ready_ms are the server clock ONLY --
+-- the client is never trusted with either (studio.md's data model). A
+-- batch finishes even while the player is away; collect is a pull, not a
+-- push. Slot cap (3 uncollected at once per player) is enforced in code,
+-- not here, since SQLite has no per-group row-count CHECK.
+CREATE TABLE batches (
+    batch_id     INTEGER PRIMARY KEY,
+    player_id    INTEGER NOT NULL REFERENCES players(player_id),
+    recipe_id    INTEGER NOT NULL REFERENCES recipes(recipe_id),
+    started_ms   INTEGER NOT NULL,
+    ready_ms     INTEGER NOT NULL,
+    collected    INTEGER NOT NULL DEFAULT 0
+);
+
+-- One row the instant a recipe is first ever collected by a player --
+-- existence IS the discovery; the PK makes the first INSERT OR IGNORE
+-- idempotent and second-and-later collects of the same recipe a no-op here.
+CREATE TABLE discoveries (
+    player_id    INTEGER NOT NULL REFERENCES players(player_id),
+    recipe_id    INTEGER NOT NULL REFERENCES recipes(recipe_id),
+    first_ms     INTEGER NOT NULL,
+    PRIMARY KEY (player_id, recipe_id)
+);
+
+-- Per-player, per-spot gather cooldown. `spot` is a fixed slug from the
+-- server's own static table (studio.cpp), not client-authored text -- a
+-- region gathered from today, e.g. 'north_woods_galls', 'orchard_keg'.
+-- The UNIQUE constraint is what makes the gather endpoint's single
+-- INSERT ... ON CONFLICT DO UPDATE ... WHERE race-safe (two racing POSTs
+-- for the same player+spot cannot both pass; see StudioStore::gather).
+CREATE TABLE gather_cooldowns (
+    player_id    INTEGER NOT NULL REFERENCES players(player_id),
+    spot         TEXT NOT NULL,
+    next_ms      INTEGER NOT NULL,
+    UNIQUE(player_id, spot)
+);
+
+-- Slice 2 uses this (the studio portrait); the table exists from slice 1
+-- so the orphan reap already knows it -- civic account-deletion must not
+-- be able to leak a painting the way house rows once could (studio.md).
+-- pixels is a palette-index bitmap (1 byte/pixel), never a PNG.
+CREATE TABLE paintings (
+    painting_id  INTEGER PRIMARY KEY,
+    player_id    INTEGER NOT NULL REFERENCES players(player_id),
+    kind         TEXT NOT NULL CHECK (kind IN ('portrait','painting')),
+    w            INTEGER NOT NULL,
+    h            INTEGER NOT NULL,
+    pixels       BLOB NOT NULL,
+    updated_ms   INTEGER NOT NULL,
+    UNIQUE(player_id, kind)
+);
 -- ---------------------------------------------------------------------
 
 -- Presence (position, who's in the plaza) is explicitly NOT a table here.

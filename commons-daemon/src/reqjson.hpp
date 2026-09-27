@@ -2,6 +2,7 @@
 #include <cctype>
 #include <optional>
 #include <string>
+#include <vector>
 
 // Extraction of a handful of known fields out of a small flat POST body, e.g.
 // {"id":"g1","region":"1,1","x":10,"y":20.5,"facing":0}.
@@ -101,6 +102,59 @@ inline std::optional<std::string> field_str(const std::string& body, const std::
     auto v = detail::find_value(body, key);
     if (!v || !v->is_string) return std::nullopt;
     return v->text;
+}
+
+// BUILD studio 1: the side-mix endpoint's {"slugs":["a","b"]} -- a flat array of strings, nothing
+// nested. nullopt if the key is missing or is not an array at all (a string/number/object there is
+// a caller error, not "zero slugs"); an array containing anything but a string, or more than
+// max_len entries, also yields nullopt (the caller rejects the whole request, never silently drops
+// entries -- a script probing for a discovery must not get a different, "helpfully truncated" list
+// back). An empty array [] is a valid, empty result.
+inline std::optional<std::vector<std::string>> field_str_array(const std::string& body, const std::string& key,
+                                                                 std::size_t max_len) {
+    std::size_t p = 0;
+    detail::skip_ws(body, p);
+    if (p >= body.size() || body[p] != '{') return std::nullopt;
+    ++p;
+    while (true) {
+        detail::skip_ws(body, p);
+        if (p >= body.size() || body[p] != '"') return std::nullopt;
+        std::string k;
+        if (!detail::read_string(body, p, k)) return std::nullopt;
+        detail::skip_ws(body, p);
+        if (p >= body.size() || body[p] != ':') return std::nullopt;
+        ++p;
+        detail::skip_ws(body, p);
+        if (p >= body.size()) return std::nullopt;
+
+        if (k == key) {
+            if (body[p] != '[') return std::nullopt;
+            ++p;
+            std::vector<std::string> out;
+            detail::skip_ws(body, p);
+            if (p < body.size() && body[p] == ']') { ++p; return out; } // []
+            while (true) {
+                detail::skip_ws(body, p);
+                if (p >= body.size() || body[p] != '"') return std::nullopt; // a non-string element
+                std::string s;
+                if (!detail::read_string(body, p, s)) return std::nullopt;
+                if (out.size() >= max_len) return std::nullopt; // too many, whole request rejected
+                out.push_back(std::move(s));
+                detail::skip_ws(body, p);
+                if (p < body.size() && body[p] == ',') { ++p; continue; }
+                if (p < body.size() && body[p] == ']') { ++p; return out; }
+                return std::nullopt;
+            }
+        }
+
+        // Not the key we want: skip this value (string, nested, or a bare token) and move on.
+        if (body[p] == '"') { std::string s; if (!detail::read_string(body, p, s)) return std::nullopt; }
+        else if (body[p] == '{' || body[p] == '[') { if (!detail::skip_composite(body, p)) return std::nullopt; }
+        else { while (p < body.size() && body[p] != ',' && body[p] != '}') ++p; }
+        detail::skip_ws(body, p);
+        if (p < body.size() && body[p] == ',') { ++p; continue; }
+        return std::nullopt; // key not present, or malformed
+    }
 }
 
 inline std::optional<double> field_num(const std::string& body, const std::string& key) {

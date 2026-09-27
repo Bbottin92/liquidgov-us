@@ -39,8 +39,18 @@ for fixture in schema.pre-visit-policy schema.pre-inventory-recency; do
   assert_eq "the existing inventory row is intact" 3 "$(dbq "select quantity from inventory where player_id=1")"
   assert_eq "the existing house instance is intact" 1 "$(dbq "select count(*) from map_instances where owner_player_id=1")"
   assert_eq "the database passes integrity_check" ok "$(dbq "pragma integrity_check")"
-  assert_eq "catalog grew to 11 items (3 seed + 5 lab + 3 world)" 11 "$(dbq "select count(*) from items")"
-  assert_eq "and 8 recipes (world pickups have none)" 8 "$(dbq "select count(*) from recipes")"
+  assert_eq "catalog grew to 38 items (3 seed + 5 lab + 3 world + 27 studio)" 38 "$(dbq "select count(*) from items")"
+  assert_eq "and 21 recipes (8 lookups, world pickups have none + 13 studio)" 21 "$(dbq "select count(*) from recipes")"
+  assert_contains "BUILD studio 1: items gained pigment_hex" "$(cols items)" pigment_hex
+  assert_contains "BUILD studio 1: recipes gained duration_s/tier/notes" "$(cols recipes)" duration_s
+  assert_contains "" "$(cols recipes)" tier
+  assert_contains "" "$(cols recipes)" real_range_note
+  assert_contains "" "$(cols recipes)" history_note
+  for t in batches discoveries gather_cooldowns paintings; do
+    assert_eq "BUILD studio 1: table '$t' exists on the migrated old DB (empty)" 0 "$(dbq "select count(*) from $t")"
+  done
+  assert_eq "the 8 pre-Studio recipes (3 seed + 5 Lab-A) all have NULL duration_s (lookups, not benchable batches)" 8 "$(dbq "select count(*) from recipes where duration_s is null")"
+  assert_eq "charcoal's pigment_hex is set (a real palette colour)" '#1a1a1a' "$(dbq "select pigment_hex from items where slug='charcoal_black'")"
   assert_eq "no lime (pushback.md)" 0 "$(dbq "select count(*) from items where slug like '%lime%'" )"
   assert_eq "no limestone (GROK_OBJECTS_ANSWER.md D)" 0 "$(dbq "select count(*) from items where slug like '%limestone%'" )"
   assert_eq "vinegar_jar is present" 1 "$(dbq "select count(*) from items where slug='vinegar_jar'")"
@@ -63,7 +73,12 @@ echo "-- a brand-new database is created at the current shape"
 rm -rf "$WORK/run"; start_daemon
 assert_contains "fresh DB has visit_policy" "$(cols players)" visit_policy
 assert_contains "fresh DB has inventory.updated_at" "$(cols inventory)" updated_at
-assert_eq "fresh DB is seeded (11 catalog items: 3 seed + 5 lab + 3 world)" 11 "$(dbq "select count(*) from items")"
+assert_eq "fresh DB is seeded (38 catalog items: 3 seed + 5 lab + 3 world + 27 studio)" 38 "$(dbq "select count(*) from items")"
 assert_eq "fresh DB has no lime" 0 "$(dbq "select count(*) from items where slug like '%lime%'")"
 assert_eq "fresh DB has no limestone" 0 "$(dbq "select count(*) from items where slug like '%limestone%'")"
-assert_eq "fresh DB recipes stay at the 8 lab lookups" 8 "$(dbq "select count(*) from recipes")"
+assert_eq "fresh DB recipes: 8 lookups + 13 studio" 21 "$(dbq "select count(*) from recipes")"
+assert_contains "fresh DB already has pigment_hex (declared on the CREATE TABLE, not just ensure_studio_columns())" "$(cols items)" pigment_hex
+assert_contains "fresh DB already has duration_s" "$(cols recipes)" duration_s
+for t in batches discoveries gather_cooldowns paintings; do
+  assert_eq "fresh DB already has table '$t' (empty)" 0 "$(dbq "select count(*) from $t")"
+done

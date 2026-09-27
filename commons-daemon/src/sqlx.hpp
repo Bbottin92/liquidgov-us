@@ -67,6 +67,10 @@ public:
 
     sqlite3_stmt* get() const { return st_; }
     int column_int(int i) const { return sqlite3_column_int(st_, i); }
+    // A unix-ms timestamp already exceeds INT32_MAX (2026 is ~1.77e12): anything stored as
+    // milliseconds (started_ms, ready_ms, next_ms, first_ms, updated_at) must be read with this, not
+    // column_int, or it silently truncates.
+    long long column_int64(int i) const { return sqlite3_column_int64(st_, i); }
     bool column_null(int i) const { return sqlite3_column_type(st_, i) == SQLITE_NULL; }
     std::string column_text(int i) const {
         const unsigned char* v = sqlite3_column_text(st_, i);

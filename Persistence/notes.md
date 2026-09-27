@@ -18,6 +18,23 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-27 -- `BUILD studio 1` (the Studio's daemon core) built and tested; NOT deployed.** Trigger came right
+  after the reference pass posted here, taken as the sign-off `studio.md` itself asks for (C1-C6 applied in full;
+  the three flagged deviations recorded as taken, though only the pixel-cost one is actually built yet -- the
+  easel is slice 2). Schema: `items.pigment_hex`, `recipes.duration_s/tier/real_range_note/history_note`, four new
+  tables (`batches`, `discoveries`, `gather_cooldowns`, `paintings`); fresh and existing DBs converge
+  (`ensure_studio_columns`/`ensure_studio_tables`). Catalog: 27 new items, 13 new bench recipes, every Lab-A item
+  left untouched as a legacy trophy. Five new/extended endpoints under `/presence/` (gather/bench/mix/collect/GET
+  studio), all bound-only, transactional, server-clock-only. A new test-only clock seam
+  (`COMMONS_TEST_CLOCK_FILE`) had to be built (`studio.md` assumed one already existed). 88 + 10 new checks, two
+  real bugs found and fixed by the tests themselves: a multi-input bench must roll back EVERY deduction, not just
+  stop partway (mutation-confirmed); the orphan reap must run Studio's cleanup BEFORE house's (house's own reap
+  deletes the `players` row Studio's still needs to resolve by username -- the wrong order doesn't silently leak,
+  `PRAGMA foreign_keys` throws and rolls back, but the account is then stuck retrying forever). Also fixed two
+  pre-existing tests that hardcoded catalog counts (`test_migrations`, `test_client_files`'s exact-equality check,
+  which slice 1 breaks on purpose by being server-only). Full suite: 25 files, 0 failed. No client, no droplet.
+  See `studio-1-built.md`.
+
 - **2026-09-27 -- iOS Low Power Mode intro-autoplay fix, built and tested; NOT deployed.** Brandon: "finish the iOS fix
   and commit it," after it was found sitting uncommitted and undocumented (stashed, no test trail). Real live trace (iPhone
   Safari, 2026-09-21): a blocked `autoplay` on the Genesis intro video silently sat on a black frame for the full 12s

@@ -90,6 +90,13 @@ assert_contains "" "$BODY" charcoal_grey_3
 assert_contains "first_discovery is true (alice's first ever charcoal collect)" "$BODY" '"first_discovery":true'
 bstudio alice; assert_contains "the discovery is listed" "$BODY" '"recipe":"charcoal"'
 assert_contains "the palette now has the four charcoal pigments" "$BODY" '"item":"charcoal_black","hex":"#1a1a1a"'
+# BUILD studio 3 ("the one daemon change"): a discovery now carries its own display_name, real_range_note
+# and history_note, so the notebook can print a line with no second recipe dump.
+assert_contains "the discovery carries its display_name" "$BODY" '"display_name":"Willow twigs -> charcoal"'
+assert_contains "the discovery carries its real_range_note" "$BODY" '"real_range_note":"Hours, plus cooling'
+assert_contains "the discovery carries its history_note" "$BODY" '"history_note":"Left overnight'
+# recipe_count is the notebook's own length: every bench recipe (duration_s set), not per-player.
+assert_contains "recipe_count is the fixed 13 bench recipes" "$BODY" '"recipe_count":13'
 bcollect alice "$BATCH1"; assert_code "collecting the same batch again: 409" 409
 assert_contains "already_collected" "$BODY" already_collected
 bcollect bob "$BATCH1"; assert_code "bob tries to collect alice's batch: 403 not_yours" 403

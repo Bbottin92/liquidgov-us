@@ -607,9 +607,13 @@ int main(int argc, char** argv) {
         for (const auto& d : studio.discoveries_of(*username)) {
             if (!first) body += ",";
             first = false;
-            body += "{\"recipe\":" + commons::json::str(d.recipe) + ",\"first_ms\":" + std::to_string(d.first_ms) + "}";
+            body += "{\"recipe\":" + commons::json::str(d.recipe) + ",\"first_ms\":" + std::to_string(d.first_ms) +
+                     ",\"display_name\":" + commons::json::str(d.display_name) +
+                     ",\"real_range_note\":" + commons::json::str(d.real_range_note) +
+                     ",\"history_note\":" + commons::json::str(d.history_note) + "}";
         }
-        body += "],\"cooldowns\":[";
+        body += "],\"recipe_count\":" + std::to_string(studio.recipe_count());
+        body += ",\"cooldowns\":[";
         first = true;
         for (const auto& c : studio.cooldowns_of(*username, t)) {
             if (!first) body += ",";

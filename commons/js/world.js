@@ -421,6 +421,7 @@ var WORKSHOP_DOOR_TILE = null;
   }
 
   dressRegions();
+  addStudioGatherMarkers();
 
   // Collision, computed last from the final tile ids.
   for (var i2 = 0; i2 < tiles.length; i2++) {
@@ -514,7 +515,11 @@ function dressRegions() {
   tiles[idx(62, 73)] = T_DIRT;
   tiles[idx(63, 73)] = T_DIRT;
   tiles[idx(62, 73)] = T_CRATE;
-  interactables.push({ type: "worldPickup", pickup: "seashell", x: 62, y: 73, prompt: "Look" });
+  // BUILD studio 3: this tile stops being the old unlimited worldPickup and becomes a studio gather
+  // spot (studio.md: "reuses those exact spots; no second marker on the same tile"). Same item slug,
+  // now on the daemon's per-player 10-minute cooldown for a bound player; a guest still gets a local,
+  // session-only version of the same cooldown (frozen lab table in CLAUDE_STUDIO_3.md).
+  interactables.push({ type: "studioGather", spot: "shore_shells", x: 62, y: 73, prompt: "Look" });
   // Atlas Shore set piece: a short pier into the water, 2 tiles wide,
   // meeting the existing east-west bridge jog so it is not a sealed dock.
   for (var pierY = 67; pierY <= 72; pierY++) {
@@ -558,8 +563,10 @@ function dressRegions() {
   tiles[idx(10, 11)] = T_TREE;
   tiles[idx(11, 11)] = T_BENCH; // the sit-log
   // D: one oak with galls. A solitary tree already in this region, not the
-  // sit-log cluster and not on the name stamp. Look up, never depleted.
-  interactables.push({ type: "worldPickup", pickup: "oak_gall", x: 17, y: 6, prompt: "Look" });
+  // sit-log cluster and not on the name stamp.
+  // BUILD studio 3: same tile, now a studio gather spot (10-minute per-player cooldown), not the old
+  // unlimited worldPickup.
+  interactables.push({ type: "studioGather", spot: "north_woods_galls", x: 17, y: 6, prompt: "Look" });
 
   // Lookout: a raised plateau (walkable, +1 visual layer), a railing along
   // the south edge facing the Square (the sightline the P1 patch fixed --
@@ -586,8 +593,12 @@ function dressRegions() {
   }
   // D: fallen apples on the grass between rows, not a harvest on the trees
   // (atlas.md: no farming). Flowerbed as a coloured pile, existing tile.
+  // BUILD studio 3: the same tile becomes the Orchard keg -- studio.md cut homemade vinegar from
+  // apples in favor of a keg with a 1-day cooldown that yields vinegar directly. No second marker;
+  // cider_apple is no longer granted from here (people who already hold one keep it and can still
+  // place it -- the item row itself is untouched).
   tiles[idx(56, 10)] = T_FLOWERBED;
-  interactables.push({ type: "worldPickup", pickup: "cider_apple", x: 56, y: 10, prompt: "Look" });
+  interactables.push({ type: "studioGather", spot: "orchard_keg", x: 56, y: 10, prompt: "Look" });
 
   // Workshop Lane: the facade + a bench + light street scatter. The shutter
   // was a closed board through P3-V6 ("no interior without Brandon reopening
@@ -605,6 +616,10 @@ function dressRegions() {
   tiles[idx(9, 29)] = T_BENCH;
   tiles[idx(16, 28)] = T_CRATE;
   tiles[idx(17, 30)] = T_CRATE;
+  // BUILD studio 3: the two crates were purely decorative until now. CLAUDE_STUDIO_3.md's frozen map
+  // table turns them into the iron and copper gather spots -- no new tile, no new art, no second marker.
+  interactables.push({ type: "studioGather", spot: "workshop_iron", x: 16, y: 28, prompt: "Look" });
+  interactables.push({ type: "studioGather", spot: "workshop_copper", x: 17, y: 30, prompt: "Look" });
 
   // Garden: flower-bed cluster + a low sitting wall, Homestead's front
   // yard -- calmer than Orchard, still just two props.
@@ -633,6 +648,37 @@ function dressRegions() {
   interactables.push({ type: "sign", x: signX, y: signY, prompt: "Read", text: "Watch your step." });
 
   scatterRegions();
+}
+
+// BUILD studio 3 (CLAUDE_STUDIO_3.md): the rest of the frozen map table. A separate step, called after
+// dressRegions() (below), not folded into it -- test_world_scatter.sh pins scatterRegions() as the last
+// thing dressRegions() itself does, and that invariant is about scatterRegions()'s OWN safety property
+// (it only ever paints plain ground), which this code doesn't touch, so it earns its own name rather
+// than being smuggled onto the end of that function. New outdoor piles use T_FLOWERBED, the same
+// coloured-pile tile the Orchard's apple pile already used (solid, like every other prop tile). Quarry
+// stays on dirt -- studio.md: "do not lay flowerbed on the quarry. The Look is enough" -- so those two
+// add only an interactable, no tile change at all.
+//
+// world_scatter_unit.js keeps a 1-tile clearance around every interactable (so a marker never sits in
+// the middle of decorative clutter). CLAUDE_STUDIO_3.md's own literal coordinates for these six land
+// inside that clearance around several pre-existing P3 scatter props (a flowerbed, a bench, a low
+// wall), so each is nudged a few tiles onto the nearest clear plain ground in the same region, per that
+// file's own fallback rule ("move one tile onto grass or dirt and say so in the writeup") -- noted here
+// and in studio-3-built.md.
+function addStudioGatherMarkers() {
+  tiles[idx(5, 9)] = T_FLOWERBED; // spec: (14,8) -- inside the scatter bench's clearance at (15,7)
+  interactables.push({ type: "studioGather", spot: "north_woods_twigs", x: 5, y: 9, prompt: "Look" });
+  tiles[idx(49, 44)] = T_FLOWERBED; // spec: (52,44) -- that tile IS a scatter flowerbed itself
+  interactables.push({ type: "studioGather", spot: "garden_madder", x: 49, y: 44, prompt: "Look" });
+  tiles[idx(69, 47)] = T_FLOWERBED; // spec: (66,44) -- also a scatter flowerbed tile itself
+  interactables.push({ type: "studioGather", spot: "garden_weld", x: 69, y: 47, prompt: "Look" });
+  tiles[idx(49, 54)] = T_FLOWERBED; // spec: (52,54) -- inside the scatter low-wall's clearance
+  interactables.push({ type: "studioGather", spot: "garden_woad", x: 49, y: 54, prompt: "Look" });
+  // Quarry: no tile change (dirt stays dirt). spec: (4,74)/(18,74) -- both inside the scatter low
+  // walls' clearance that fence the quarry pit; moved a few tiles onto open dirt, ochre west / alum
+  // east same as the frozen table intended.
+  interactables.push({ type: "studioGather", spot: "quarry_ochre", x: 8, y: 72, prompt: "Look" });
+  interactables.push({ type: "studioGather", spot: "quarry_alum", x: 14, y: 72, prompt: "Look" });
 }
 
 // The extra props (SCATTER above), placed after everything else so they can only fill plain ground.

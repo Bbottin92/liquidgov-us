@@ -200,8 +200,8 @@ function drawSpace(camX, camY) {
   if (mode === "outdoor") {
     for (var wi = 0; wi < interactables.length; wi++) {
       var wpi = interactables[wi];
-      if (wpi.type !== "worldPickup") continue;
-      var wp = WORLD_PICKUPS[wpi.pickup];
+      if (wpi.type !== "studioGather") continue;
+      var wp = STUDIO_GATHER_SPOTS[wpi.spot];
       if (!wp) continue;
       var gx = wpi.x * TILE - camX, gy = wpi.y * TILE - camY;
       if (gx < -TILE || gx > crop.vw || gy < -TILE || gy > crop.vh) continue;
@@ -220,6 +220,8 @@ function frame(t) {
   netStatusTick(t);   // the "Reconnecting…" badge: observe-only, every frame (net.js)
   tickToast(t);
   tickPlaceName(t);
+  tickBatchReady();     // "A batch is ready." (studio.js): off the canvas, driven by cached studio state only
+  tickStudioOverlays(t); // re-fetches studio state at most every 30s while the bench overlay is open (studio.js)
 
   var playerMoved = movePlayer(currentDX(), currentDY(), dt);
   var occupantsMoved = stepOccupants(dt);

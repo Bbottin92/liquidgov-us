@@ -1,9 +1,10 @@
-# The Studio — spec v2 (Grok's review folded in; slices 1 and 2 BUILT 2026-09-27)
+# The Studio — spec v2 (Grok's review folded in; slices 1, 2 and 3 BUILT 2026-09-27)
 
-**Status: slice 2 built and tested; not deployed (no droplet touch).** Slice 1 is daemon-only
-(`studio-1-built.md`). Slice 2 is the charcoal easel, the portrait endpoints, and the house frame
-(`studio-2-built.md`). Where this file did not already pick a number, the reading taken is an open
-decision below (11–14).
+**Status: slice 3 built and tested; not deployed (no droplet touch, all three slices deploy together).**
+Slice 1 is daemon-only (`studio-1-built.md`). Slice 2 is the charcoal easel, the portrait endpoints, and
+the house frame (`studio-2-built.md`). Slice 3 is the map/lab wiring, the bench, and the notebook
+(`studio-3-built.md`, `CLAUDE_STUDIO_3.md`). Where this file did not already pick a number, the reading
+taken is an open decision below (11–14).
 v1 was `9a5b7c5`; Grok's review is `GROK_STUDIO_ANSWER.md` (`5c45287`); this file is v2, written 2026-09-20.
 Each slice below is its own `BUILD`; every droplet touch needs the literal `deploy` word (daemon deploys:
 drift-check, online DB backup first). The reference pass is done (`studio-refs.md`, 2026-09-20); slice 1's frozen
@@ -345,3 +346,13 @@ consumption, migration, the orphan-reap extension, tests. No client, no droplet.
 Brandon: `BUILD studio 2`. Charcoal easel, portrait endpoints, starter stub, house frame on the tiles pinned
 above. No bench screen, no world markers, no second frame, no droplet. See `studio-2-built.md`. Open decisions
 11–14 are the readings taken where this file did not already pick a number.
+
+## Slice 3: built 2026-09-27
+
+Brandon: "lets do map sources and bench" (BUILD studio 3), the trigger `CLAUDE_STUDIO_3.md` itself names. The
+map/lab wiring, the bench overlay, the notebook, and the one `GET /presence/studio` field CLAUDE_STUDIO_3.md
+names (a discovery's own display_name/real_range_note/history_note, plus recipe_count). No new schema, no new
+gather/bench/mix/collect route (slice 1 already has all four; this slice is what actually calls them from the
+client). No civic edit, no nginx edit. Six of CLAUDE_STUDIO_3.md's own literal marker coordinates land inside
+`test_world_scatter.sh`'s 1-tile interactable clearance around a pre-existing P3 scatter prop; each was nudged
+onto the nearest clear ground in the same region, per that file's own fallback rule. See `studio-3-built.md`.

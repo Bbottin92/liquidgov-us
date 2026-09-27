@@ -16,17 +16,20 @@ let checks = 0, failed = 0;
 function check(ok, what) { checks++; if (!ok) { failed++; console.log("  FAIL " + what); } }
 
 const html = read("index.html");
-const ORDER = ["js/world.js", "js/interiors.js", "js/sprites.js", "js/actors.js", "js/net.js", "js/input.js", "js/interact.js", "js/main.js", "js/easel.js"];
+const ORDER = ["js/world.js", "js/interiors.js", "js/sprites.js", "js/actors.js", "js/net.js", "js/input.js", "js/interact.js", "js/main.js", "js/easel.js", "js/studio.js"];
 
-// ---- the page is a shell: markup + one stylesheet + the eight tags, in the documented order
+// ---- the page is a shell: markup + one stylesheet + the ten tags, in the documented order
 const scripts = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/g)];
 const srcs = scripts.map((m) => (m[1].match(/\bsrc="([^"]*)"/) || [])[1]);
-check(JSON.stringify(srcs) === JSON.stringify(ORDER), "the <script src> tags are exactly the nine files in the documented order: " + JSON.stringify(srcs));
+check(JSON.stringify(srcs) === JSON.stringify(ORDER), "the <script src> tags are exactly the ten files in the documented order: " + JSON.stringify(srcs));
 check(scripts.every((m) => m[2].trim() === ""), "no inline script is left in index.html");
 check(scripts.every((m) => !/\b(defer|async|type\s*=|nomodule)\b/i.test(m[1])), "no defer / async / type=module on any tag (the order must match the old inline script)");
 check(!/<style\b/i.test(html), "no inline <style> is left in index.html");
 const css = read("style.css");
 check(html.includes('id="easelCanvas" width="32" height="32"') && html.includes('data-tool="smudge"') && html.includes('id="easelUndo"'), "the easel overlay is a 32x32 canvas with smudge and undo");
+check(html.includes('id="bench"') && html.includes('id="benchBatches"') && html.includes('id="benchRecipes"') && html.includes('id="benchMix"'), "the bench overlay has batches, recipes and a mix row");
+check(html.includes('id="notebook"') && html.includes('id="notebookLines"'), "the notebook overlay has a lines container");
+check(/<div id="batchReady"[^>]*role="status"[^>]*><\/div>/.test(html), "index.html has the empty #batchReady line");
 check(css.includes("#easel") && css.includes("min-height:44px") && css.includes("100dvh - 16.5rem") && /@media \(max-width:\s*480px\)/.test(css), "the easel has a portrait-phone layout: 44px targets and a canvas that leaves room for the tools");
 const links = [...html.matchAll(/<link\b([^>]*)>/g)].filter((m) => /rel="stylesheet"/.test(m[1])).map((m) => (m[1].match(/\bhref="([^"]*)"/) || [])[1]);
 check(JSON.stringify(links) === JSON.stringify(["style.css"]), "one stylesheet, style.css: " + JSON.stringify(links));
@@ -35,7 +38,7 @@ check(lastTag > 0 && lastTag < bodyEnd && html.indexOf("<div id=\"nameOverlay\">
 
 // ---- the files
 const jsFiles = fs.readdirSync(path.join(dir, "js")).filter((f) => f.endsWith(".js")).map((f) => "js/" + f).sort();
-check(JSON.stringify(jsFiles) === JSON.stringify([...ORDER].sort()), "js/ holds exactly those nine files, none unreferenced: " + JSON.stringify(jsFiles));
+check(JSON.stringify(jsFiles) === JSON.stringify([...ORDER].sort()), "js/ holds exactly those ten files, none unreferenced: " + JSON.stringify(jsFiles));
 for (const f of ORDER) {
   const t = read(f);
   check(t.startsWith('"use strict";\n'), f + " starts with \"use strict\"; (strict mode is per script: only the first file would get it otherwise)");
@@ -149,6 +152,22 @@ if (ok.ok) {
   try { ev(ok, "isBound = false; mode = 'workshop'; openEasel();"); }
   catch (e) { guestThrew = e.name + ": " + e.message; }
   check(!guestThrew && guestFetches === 0, "a guest opening the easel does not call the painting endpoints" + (guestThrew ? " (" + guestThrew + ")" : " (" + guestFetches + " fetches)"));
+
+  // ---- BUILD studio 3: the bench, the notebook, and the map/lab wiring
+  check(ev(ok, "typeof openBench === 'function' && typeof closeBench === 'function' && typeof openNotebook === 'function' && typeof closeNotebook === 'function' && typeof netGather === 'function' && typeof netFetchStudio === 'function'"), "the studio-3 entry points exist after load");
+  check(ev(ok, "workshopSpace.interactables.some(function (it) { return it.type === 'bench' && it.x === 3 && it.y === 2 && it.prompt === 'Make'; })"), "the workshop has the bench, prompt Make");
+  check(ev(ok, "workshopSpace.interactables.some(function (it) { return it.type === 'notebook' && it.x === 10 && it.y === 2 && it.prompt === 'Read'; })"), "the workshop has the notebook, prompt Read");
+  check(ev(ok, "typeof WORLD_PICKUPS === 'undefined'"), "WORLD_PICKUPS is gone, not left dead");
+  check(ev(ok, "interactables.every(function (it) { return it.type !== 'worldPickup'; })"), "no worldPickup interactable survives in the outdoor world");
+  check(ev(ok, "['north_woods_galls','north_woods_twigs','orchard_keg','shore_shells','quarry_ochre','quarry_alum','garden_madder','garden_weld','garden_woad','workshop_iron','workshop_copper'].every(function (s) { return interactables.some(function (it) { return it.type === 'studioGather' && it.spot === s; }); })"), "all eleven outdoor studioGather spots are present");
+  check(ev(ok, "labSpace.interactables.filter(function (it) { return it.type === 'studioGather'; }).map(function (it) { return it.spot; }).sort().join(',') === 'lab_gum,lab_soot'"), "the lab's gum and soot stations are studio gather spots");
+  check(ev(ok, "labSpace.interactables.filter(function (it) { return it.type === 'labStock'; }).map(function (it) { return it.stock; }).sort().join(',') === 'alum,tannin,vinegar'"), "the lab's vinegar, tannin and alum stations toast instead of granting");
+  check(ev(ok, "labSpace.interactables.filter(function (it) { return it.type === 'labStation'; }).map(function (it) { return it.recipe; }).sort().join(',') === 'chalk,copper,iron'"), "copper, iron and chalk stay unconverted trophy lookups");
+  var gFetches = 0, gThrew = "";
+  ok.g.fetch = function () { gFetches++; return Promise.resolve({ ok: false, json: function () { return Promise.resolve({}); } }); };
+  try { ev(ok, "isBound = false; openBench(); openNotebook(); netGather('north_woods_galls');"); }
+  catch (e) { gThrew = e.name + ": " + e.message; }
+  check(!gThrew && gFetches === 0, "a guest opening the bench/notebook or gathering never calls the studio endpoints" + (gThrew ? " (" + gThrew + ")" : " (" + gFetches + " fetches)"));
 }
 
 // ---- controls: the check must be able to FAIL (a wrong order has to throw a ReferenceError)

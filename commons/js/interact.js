@@ -11,6 +11,10 @@
 var mode = "outdoor";
 var nearestInteractable = null;
 var toast = { msg: "", until: 0 };
+// BUILD studio 3: three lab stations stop granting a jar/crystal (their real ingredient is gathered and
+// benched instead) and just point at where the real thing now lives, once per station per session --
+// a Look every few seconds while standing there shouldn't spam the same line over and over.
+var labStockToasted = {};
 var savedOutdoorX = player.x, savedOutdoorY = player.y;
 
 function showToast(msg, ms) {
@@ -157,6 +161,9 @@ function tryInteract() {
       enterInterior("mine", mineSpace, MINE_ENTRY);
     } else if (it.type === "workshopDoor") {
       enterInterior("workshop", workshopSpace, WORKSHOP_ENTRY);
+      // "Once on entering the workshop" (CLAUDE_STUDIO_3.md "When to fetch"). Guests never call
+      // /presence/studio at all -- netFetchStudio() itself no-ops unless isBound.
+      netFetchStudio();
     } else if (it.type === "demoDoor") {
       enterInterior("demoHouse", demoHouseSpace, DEMO_ENTRY);
     } else if (it.type === "friendDoor") {
@@ -185,15 +192,24 @@ function tryInteract() {
       netPickup(r.item);
       showToast(r.name + ".");
       renderInvHud();
-    } else if (it.type === "worldPickup") {
-      // D: same loop as a lab station (look up, +1, never consumed). The
-      // marker is never removed from the map.
-      var wp = WORLD_PICKUPS[it.pickup];
-      inventory[wp.item] = (inventory[wp.item] || 0) + 1;
-      lastPickedItem = wp.item;
-      netPickup(wp.item);
-      showToast(wp.name + ".");
-      renderInvHud();
+    } else if (it.type === "studioGather") {
+      // BUILD studio 3: a bound player's gather is server-authoritative (cooldown + grant, one
+      // daemon transaction); a guest gets a local, session-only version of the same cooldown and
+      // never reaches the daemon at all (studio.md's "do not invent guest persistence", CLAUDE_STUDIO_3.md
+      // "Let a guest call gather... " under Do not). Neither path sets lastPickedItem: these are
+      // crafting materials, not wall/floor-placeable trophies (catalog.sql: wall_slot_ok = 0).
+      netGather(it.spot);
+    } else if (it.type === "labStock") {
+      // The station's real ingredient moved to a gather spot or the Workshop bench; the station
+      // itself grants nothing anymore, just points at where it went, once per session.
+      if (!labStockToasted[it.stock]) {
+        labStockToasted[it.stock] = true;
+        showToast(it.toast);
+      }
+    } else if (it.type === "bench") {
+      openBench();
+    } else if (it.type === "notebook") {
+      openNotebook();
     } else if (it.type === "easel" || it.type === "studioPortrait") {
       if (it.type === "studioPortrait" && mode === "visit") {
         showToast("A small portrait.");

@@ -254,13 +254,24 @@ std::vector<StudioStore::DiscoveryView> StudioStore::discoveries_of(const std::s
     std::vector<DiscoveryView> out;
     auto player_id = find_player_id(username);
     if (!player_id) return out;
+    // COALESCE is defensive, not load-bearing: every recipe a discovery can point to is a benchable
+    // Studio recipe (duration_s set), and every one of those has both notes filled in catalog.sql. A
+    // Lab-A lookup (NULL notes) can never appear here -- only a collected batch writes a discovery.
     sqlx::Stmt sel(db_,
-        "SELECT r.slug, d.first_ms FROM discoveries d "
-        "JOIN recipes r ON r.recipe_id = d.recipe_id "
+        "SELECT r.slug, d.first_ms, r.display_name, COALESCE(r.real_range_note, ''), COALESCE(r.history_note, '') "
+        "FROM discoveries d JOIN recipes r ON r.recipe_id = d.recipe_id "
         "WHERE d.player_id = ?1 ORDER BY d.first_ms;");
     sel.integer(1, *player_id);
-    while (sel.row()) out.push_back({sel.column_text(0), sel.column_int64(1)});
+    while (sel.row()) {
+        out.push_back({sel.column_text(0), sel.column_int64(1), sel.column_text(2), sel.column_text(3), sel.column_text(4)});
+    }
     return out;
+}
+
+int StudioStore::recipe_count() {
+    sqlx::Stmt sel(db_, "SELECT COUNT(*) FROM recipes WHERE duration_s IS NOT NULL;");
+    if (sel.row()) return sel.column_int(0);
+    return 0;
 }
 
 std::vector<StudioStore::CooldownView> StudioStore::cooldowns_of(const std::string& username, long long now_ms) {

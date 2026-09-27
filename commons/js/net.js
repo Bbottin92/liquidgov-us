@@ -373,6 +373,7 @@ function loadWallPortrait(owner) {
 // is ever sent), most recent pickup first. Failure is silent: the local
 // pickup still works, it just won't be remembered.
 var inventoryLoaded = false;
+var studioLoaded = false;  // BUILD studio 3: mirrors inventoryLoaded, but for GET /presence/studio (studio.js)
 
 function netLoadInventory() {
   fetch(DAEMON + "/presence/inventory")
@@ -462,6 +463,10 @@ function netApplyJoinJson(j) {
       // Bound: pull my saved pickups once per bind. Guests never do.
       if (j.bound && !inventoryLoaded) { inventoryLoaded = true; netLoadInventory(); }
       if (!j.bound) inventoryLoaded = false;
+      // BUILD studio 3 "When to fetch": once after a bound join (studio.js). netFetchStudio() itself
+      // guards on isBound too, so this is never reached for a guest join.
+      if (j.bound && !studioLoaded) { studioLoaded = true; netFetchStudio(); }
+      if (!j.bound) studioLoaded = false;
       // GROK_HOUSE_REVIEW.md must-fix: display_name is the *disambiguated*
       // Square nameplate ("brandon (2)" if a guest already typed
       // "brandon") -- never build the house key from it. "username" is

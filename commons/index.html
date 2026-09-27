@@ -31,6 +31,7 @@
 <div id="invHud" aria-label="What you are holding"></div>
 <div id="toast" role="status" aria-live="polite"></div>
 <div id="placeName"></div>
+<div id="batchReady" role="status" aria-live="polite"></div>
 
 <div id="dpad">
   <button id="dUp" type="button" tabindex="-1" aria-label="Up">&#9650;</button>
@@ -58,6 +59,27 @@
   </div>
 </div>
 
+<div id="bench" role="dialog" aria-modal="true" aria-label="Bench" hidden>
+  <p id="benchTitle">The bench</p>
+  <p id="benchNote">Names and waiting. Not a recipe to follow at home.</p>
+  <p id="benchGuestNote"></p>
+  <div id="benchBatches"></div>
+  <div id="benchRecipes"></div>
+  <div id="benchMix"></div>
+  <div id="benchActions">
+    <button type="button" id="benchClose">Close</button>
+  </div>
+</div>
+
+<div id="notebook" role="dialog" aria-modal="true" aria-label="Notebook" hidden>
+  <p id="notebookTitle">The notebook</p>
+  <p id="notebookGuestNote"></p>
+  <div id="notebookLines"></div>
+  <div id="notebookActions">
+    <button type="button" id="notebookClose">Close</button>
+  </div>
+</div>
+
 <div id="nameOverlay">
   <div id="nameCard">
     <h1>Welcome to the Square</h1>
@@ -80,5 +102,6 @@
 <script src="js/interact.js"></script>
 <script src="js/main.js"></script>
 <script src="js/easel.js"></script>
+<script src="js/studio.js"></script>
 </body>
 </html>

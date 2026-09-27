@@ -14,6 +14,10 @@ function typingInField(e) {
   if (document.getElementById("nameOverlay").style.display !== "none") return true;
   var easel = document.getElementById("easel");
   if (easel && easel.classList.contains("open")) return true;
+  var bench = document.getElementById("bench");
+  if (bench && bench.classList.contains("open")) return true;
+  var notebook = document.getElementById("notebook");
+  if (notebook && notebook.classList.contains("open")) return true;
   var t = e.target;
   return !!(t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA"));
 }

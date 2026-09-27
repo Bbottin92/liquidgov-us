@@ -132,7 +132,15 @@ check(wsp.tiles[wsp.door.y * wsp.w + wsp.door.x] === ev("T_IDOOR"), "the interio
   }
   check(reachedI === wsFloor, "every open tile in the workshop is reachable from the entry (" + reachedI + " of " + wsFloor + ")");
   check(seenI[wsp.door.y * wsp.w + wsp.door.x] === 1, "the doorway can be walked onto from inside");
-  check(wsp.its.length === 1 && wsp.its[0].type === "sign" && wsp.its[0].text.length > 10, "the workshop has exactly one interactable, a sign with text (nothing to pick up or place)");
+  // BUILD studio 3: the workshop grew from a bare sign (P2) to sign + easel (slice 2) + bench + notebook
+  // (slice 3) -- this check was never updated for the easel and has been vacuously wrong since studio 2;
+  // fixed here to name all four instead of asserting a stale count of one.
+  const sign = wsp.its.find((it) => it.type === "sign");
+  check(!!sign && sign.text.length > 10, "the workshop has a sign with real text");
+  check(wsp.its.some((it) => it.type === "easel" && it.x === 7 && it.y === 4), "the workshop has the easel table");
+  check(wsp.its.some((it) => it.type === "bench" && it.x === 3 && it.y === 2 && it.prompt === "Make"), "the workshop has the bench, prompt Make");
+  check(wsp.its.some((it) => it.type === "notebook" && it.x === 10 && it.y === 2 && it.prompt === "Read"), "the workshop has the notebook, prompt Read");
+  check(wsp.its.length === 4, "and nothing else is in the workshop (" + wsp.its.length + " interactables)");
   check(wsp.its.every((it) => [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => seenI[(it.y + dy) * wsp.w + it.x + dx])), "the sign can be read from a reachable neighbour");
 }
 check(/INTERIOR_INSTANCE_KEY\s*=\s*\{[^}]*workshop:\s*"instance:workshop"/.test(fs.readFileSync(path.join(dir, "js/net.js"), "utf8")), "net.js maps the workshop mode to the shared instance:workshop key");

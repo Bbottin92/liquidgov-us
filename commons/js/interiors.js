@@ -123,23 +123,13 @@ var STUDIO_PORTRAIT = { x: 10, y: 0, w: 2, h: 2 };
 // trigger both ways, matching its outdoor half (atlas.md).
 var LAB_ENTRY = { x: 10, y: 14 };
 var LAB_DOOR = { x: 10, y: 15 };
-// item is the real catalog slug (schema.sql/seed.sql/catalog.sql items.slug).
+// item is the real catalog slug (schema.sql/seed.sql/catalog.sql items.slug). Only the three
+// unconverted lookups are left here (BUILD studio 3, CLAUDE_STUDIO_3.md's frozen lab table): vinegar,
+// tannin, lampblack and alum, gum moved to labStock / studioGather below.
 var LAB_RECIPES = {
-  copper:    { name: "Copper + acetic acid → copper acetate", item: "copper_acetate_bottle" },
-  iron:      { name: "Iron + tannin → iron-gall ink", item: "iron_gall_ink_page" },
-  chalk:     { name: "Calcium carbonate, ground and washed → chalk", item: "chalk_block" },
-  vinegar:   { name: "Acetic acid from fermented cider", item: "vinegar_jar" },
-  tannin:    { name: "Oak galls, crushed and steeped → tannin", item: "oak_gall_tannin" },
-  lampblack: { name: "Soot + gum arabic → carbon ink", item: "lampblack_ink" },
-  alum:      { name: "Potassium aluminium sulfate, crystallised", item: "alum_crystal" },
-  gum:       { name: "Acacia resin dissolved in water", item: "gum_arabic" }
-};
-// D (GROK_OBJECTS_ANSWER.md): outdoor lookups, same loop as the lab, never
-// depleted. No limestone. Item slugs must match catalog.sql.
-var WORLD_PICKUPS = {
-  oak_gall:    { name: "Oak galls on this tree", item: "oak_gall" },
-  seashell:    { name: "Seashells, calcium carbonate", item: "seashell" },
-  cider_apple: { name: "Fallen cider apples", item: "cider_apple" }
+  copper: { name: "Copper + acetic acid → copper acetate", item: "copper_acetate_bottle" },
+  iron:   { name: "Iron + tannin → iron-gall ink", item: "iron_gall_ink_page" },
+  chalk:  { name: "Calcium carbonate, ground and washed → chalk", item: "chalk_block" }
 };
 var PLACED_ITEM_INFO = {
   chalk_block:            { color: "#e8e2d0", label: "chalk" },
@@ -152,7 +142,39 @@ var PLACED_ITEM_INFO = {
   gum_arabic:             { color: "#a07a48", label: "gum" },
   oak_gall:               { color: "#4a3020", label: "galls" },
   seashell:               { color: "#c5c0b4", label: "shell" },
-  cider_apple:            { color: "#8a3a32", label: "apple" }
+  cider_apple:            { color: "#8a3a32", label: "apple" },
+  // BUILD studio 3: every Studio item that can now actually reach a bound player's inventory this
+  // slice (gathered raw materials, plus every bench output -- the bench overlay this slice can start
+  // and collect all 13 recipes). Colour is the catalog's own pigment_hex where the item has one
+  // (catalog.sql); the rest are a plain earth/ink tone. No new bake-time art: these fall through to
+  // the generic textured square in sprites.js's paintItemAtlas, same as any slug not special-cased there.
+  willow_twigs:           { color: "#8a7a4a", label: "twigs" },
+  ochre_earth:            { color: "#b8823a", label: "ochre" },
+  alum_stone:             { color: "#c5c8c2", label: "alum" },
+  madder_root:            { color: "#7a3a2a", label: "madder" },
+  weld:                   { color: "#8a9a3a", label: "weld" },
+  woad_leaves:            { color: "#4a6a4a", label: "woad" },
+  scrap_iron:             { color: "#6a6a6a", label: "iron" },
+  copper_sheet:           { color: "#9a6a3a", label: "copper" },
+  gum_arabic_raw:         { color: "#a07a48", label: "gum" },
+  soot:                   { color: "#2a2824", label: "soot" },
+  vinegar:                { color: "#7a5a32", label: "vinegar" },
+  charcoal_black:         { color: "#1a1a1a", label: "black" },
+  charcoal_grey_1:        { color: "#4d4d4d", label: "grey" },
+  charcoal_grey_2:        { color: "#7a7a7a", label: "grey" },
+  charcoal_grey_3:        { color: "#adadad", label: "pale grey" },
+  shell_white:            { color: "#f2ede4", label: "white" },
+  yellow_ochre:           { color: "#c9963a", label: "yellow ochre" },
+  red_ochre:              { color: "#9c4a2e", label: "red ochre" },
+  binder:                 { color: "#c9b06a", label: "binder" },
+  tannin:                 { color: "#4a3020", label: "tannin" },
+  carbon_ink_black:       { color: "#0d0d0d", label: "carbon ink" },
+  iron_acetate:           { color: "#6a4a32", label: "iron acetate" },
+  iron_gall_blue_black:   { color: "#1c1c24", label: "iron-gall ink" },
+  verdigris_green:        { color: "#3f8f5f", label: "verdigris" },
+  madder_red:             { color: "#a72a2a", label: "madder lake" },
+  weld_yellow:            { color: "#e0c04a", label: "weld lake" },
+  woad_blue:              { color: "#2e4c72", label: "woad blue" }
 };
 var labSpace = buildInterior(20, 16, function (t, w) {
   t[idxIn(w, LAB_DOOR.x, LAB_DOOR.y)] = T_IDOOR;
@@ -169,15 +191,24 @@ var labSpace = buildInterior(20, 16, function (t, w) {
   t[idxIn(w, 12, 10)] = T_STATION_ALUM;
   t[idxIn(w, 15, 10)] = T_STATION_GUM;
 });
+// BUILD studio 3 (CLAUDE_STUDIO_3.md's frozen lab table). Prompt stays Look on every one of these --
+// only what happens on Look changes. copper/iron/chalk are untouched trophy lookups. vinegar/tannin/
+// alum grant nothing anymore and just toast once, pointing at where the real thing now lives. lampblack
+// and gum become studio gather spots (spots "lab_soot" / "lab_gum", already in the daemon's fixed
+// table since slice 1) -- a bound Look posts to the daemon like any outdoor gather spot; a guest gets
+// the same local session-only cooldown.
 labSpace.interactables = [
-  { type: "labStation", recipe: "copper",    x: 5,  y: 7,  prompt: "Look" },
-  { type: "labStation", recipe: "iron",      x: 10, y: 7,  prompt: "Look" },
-  { type: "labStation", recipe: "chalk",     x: 14, y: 7,  prompt: "Look" },
-  { type: "labStation", recipe: "vinegar",   x: 3,  y: 10, prompt: "Look" },
-  { type: "labStation", recipe: "tannin",    x: 6,  y: 10, prompt: "Look" },
-  { type: "labStation", recipe: "lampblack", x: 9,  y: 10, prompt: "Look" },
-  { type: "labStation", recipe: "alum",      x: 12, y: 10, prompt: "Look" },
-  { type: "labStation", recipe: "gum",       x: 15, y: 10, prompt: "Look" }
+  { type: "labStation", recipe: "copper", x: 5,  y: 7,  prompt: "Look" },
+  { type: "labStation", recipe: "iron",   x: 10, y: 7,  prompt: "Look" },
+  { type: "labStation", recipe: "chalk",  x: 14, y: 7,  prompt: "Look" },
+  { type: "labStock", stock: "vinegar", x: 3,  y: 10, prompt: "Look",
+    toast: "Stock. Vinegar is the keg in the Orchard." },
+  { type: "labStock", stock: "tannin", x: 6,  y: 10, prompt: "Look",
+    toast: "Stock. Make tannin at the Workshop." },
+  { type: "studioGather", spot: "lab_soot", x: 9, y: 10, prompt: "Look" },
+  { type: "labStock", stock: "alum", x: 12, y: 10, prompt: "Look",
+    toast: "Stock. Alum stone is on Quarry Ridge." },
+  { type: "studioGather", spot: "lab_gum", x: 15, y: 10, prompt: "Look" }
 ];
 
 // The mine (BUILD mine A, GROK_MINE_ANSWER.md) -- 16x12, an honest cave: dirt
@@ -226,10 +257,16 @@ var workshopSpace = buildInterior(14, 10, function (t, w) {
   t[idxIn(w, 6, 6)] = T_RUG;
   t[idxIn(w, 7, 6)] = T_RUG;
   t[idxIn(w, 12, 3)] = T_SIGN;
+  // BUILD studio 3: the bench and the notebook, on the two existing workbench tiles from the P2
+  // set-dressing pass (no new tile, no new art) rather than inventing a crafting-minigame prop.
+  t[idxIn(w, 3, 2)] = T_WORKBENCH;
+  t[idxIn(w, 10, 2)] = T_WORKBENCH;
 });
 workshopSpace.interactables = [
-  { type: "sign", x: 12, y: 3, prompt: "Read", text: "Sawdust and a bench. Nothing to make here yet." },
-  { type: "easel", x: 7, y: 4, prompt: "Draw" }
+  { type: "sign", x: 12, y: 3, prompt: "Read", text: "The bench is on the left. The book is on the right." },
+  { type: "easel", x: 7, y: 4, prompt: "Draw" },
+  { type: "bench", x: 3, y: 2, prompt: "Make" },
+  { type: "notebook", x: 10, y: 2, prompt: "Read" }
 ];
 
 // Pickups. A guest's are session-only (v1.md: RAM, vanish on refresh --

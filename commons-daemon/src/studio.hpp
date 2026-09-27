@@ -68,8 +68,14 @@ public:
     // ---- GET /presence/studio, assembled piece by piece (main.cpp builds the JSON) -------------------
     struct BatchView { int batch_id; std::string recipe; long long ready_ms; };  // uncollected only
     std::vector<BatchView> open_batches(const std::string& username);
-    struct DiscoveryView { std::string recipe; long long first_ms; };
+    struct DiscoveryView {
+        std::string recipe; long long first_ms;
+        std::string display_name, real_range_note, history_note;  // BUILD studio 3: the notebook prints these directly
+    };
     std::vector<DiscoveryView> discoveries_of(const std::string& username);
+    // How many bench recipes exist at all (duration_s IS NOT NULL) -- the notebook's own length, so it
+    // can print a fixed number of undiscovered "?" lines without a route that would leak their names.
+    int recipe_count();
     struct CooldownView { std::string spot; long long next_ms; };
     std::vector<CooldownView> cooldowns_of(const std::string& username, long long now_ms);  // only ones still active
     struct RecipeView { std::string slug; std::string display_name; int duration_s; };

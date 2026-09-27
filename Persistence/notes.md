@@ -18,6 +18,22 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-27 -- `BUILD studio 3` built and tested; NOT deployed (client + one daemon field, no schema, no
+  droplet).** Map/lab wiring, the bench overlay, the notebook. The daemon's `GET /presence/studio` now sends
+  a discovery's own `display_name`/`real_range_note`/`history_note` and a fixed `recipe_count` (13), so the
+  notebook needs no second route. `WORLD_PICKUPS` retired outright: its three spots (oak galls, seashells,
+  the orchard tile) are `studioGather` markers now, same tiles, no second marker; the orchard stops granting
+  `cider_apple` and gives `vinegar` on a 1-day cooldown (people who already hold a cider apple keep it).
+  Lab table: copper/iron/chalk unchanged; vinegar/tannin/alum grant nothing and toast once per session;
+  lampblack/gum became `lab_soot`/`lab_gum` gather spots. Six of the frozen map table's own literal
+  coordinates landed inside `world_scatter_unit.js`'s 1-tile clearance around a pre-existing scatter prop
+  (three of them ARE scatter flowerbed tiles) -- nudged onto clear ground per the spec's own fallback rule,
+  table in `studio-3-built.md`. Also found and fixed: `world_scatter_unit.js`'s workshop check had been
+  silently wrong since slice 2 added the easel (still asserted "exactly one interactable, a sign"); and the
+  new marker code first broke `test_world_scatter.sh`'s own "`scatterRegions()` is the last thing
+  `dressRegions()` does" wiring check, fixed by giving it its own `addStudioGatherMarkers()` function called
+  right after, not folded into that function. Full suite: 26 files, 0 failed, 344s. See `studio-3-built.md`.
+
 - **2026-09-27 -- BUILD studio 3 named, not built.** Brandon: "lets do map sources and bench."
   Handoff is `CLAUDE_STUDIO_3.md`. Client work plus one field on `GET /presence/studio`
   (discovery notes + a recipe count, no undiscovered names). Lab freeze: copper/iron/chalk

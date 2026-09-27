@@ -127,6 +127,20 @@
   #connStatus:not(:empty) ~ #placeName{
     top:calc(2.6rem + env(safe-area-inset-top,0px));
   }
+  /* "A batch is ready.": same pill family as #placeName/#connStatus, its own fixed slot so it never
+     has to juggle the same sibling math those two already share. Empty = hidden. */
+  #batchReady{
+    position:fixed; left:50%; transform:translateX(-50%);
+    top:calc(4.6rem + env(safe-area-inset-top,0px));
+    z-index:14; max-width:calc(100% - 2rem);
+    padding:.28rem .9rem; border:1px solid var(--ink); border-radius:6px;
+    background:var(--paper); color:var(--ink);
+    font-size:.82rem; font-weight:700; letter-spacing:.03em; line-height:1.2;
+    white-space:nowrap;
+    box-shadow:0 1px 4px rgba(26,24,20,.35);
+    pointer-events:none; user-select:none; -webkit-user-select:none;
+  }
+  #batchReady:empty{ display:none; }
   #dpad{
     position:fixed; left:0; right:0;
     bottom:calc(.8rem + env(safe-area-inset-bottom,0px));
@@ -182,7 +196,10 @@
      portrait crop cannot hold a 32x32 editor plus tools. Phone portrait is the
      layout that has to work -- column, 44px targets, canvas scaled nearest-
      neighbour. A short landscape phone puts the tools beside the canvas. */
-  #easel{
+  /* Bench and notebook (BUILD studio 3) share the easel's own full-screen-overlay shell -- same
+     reasoning as studio 2's easel: a 160x240 portrait crop cannot host a scrollable list plus buttons
+     any better than it could a 32x32 editor. */
+  #easel, #bench, #notebook{
     position:fixed; inset:0; z-index:30;
     display:none; flex-direction:column;
     background:#14120f; color:#f2ead8;
@@ -191,8 +208,8 @@
     overflow-y:auto; -webkit-overflow-scrolling:touch;
     font-family:"Segoe UI",system-ui,sans-serif;
   }
-  #easel.open{ display:flex; }
-  #easelTitle{ margin:0; font-size:.95rem; letter-spacing:.04em; }
+  #easel.open, #bench.open, #notebook.open{ display:flex; }
+  #easelTitle, #benchTitle, #notebookTitle{ margin:0; font-size:.95rem; letter-spacing:.04em; }
   #easelStage{
     flex:1 1 auto; min-height:0;
     display:flex; align-items:center; justify-content:center;
@@ -203,25 +220,41 @@
     background:#efe6d4; touch-action:none;
     border:2px solid #c4a574;
   }
-  #easelTools, #easelPalette, #easelActions{
+  #easelTools, #easelPalette, #easelActions,
+  #benchMixChips, #benchActions, #notebookActions{
     display:flex; flex-wrap:wrap; gap:6px; align-items:center;
   }
-  #easel button{
+  #easel button, #bench button, #notebook button{
     min-height:44px; min-width:44px;
     padding:0 .7rem; border-radius:8px;
     border:1px solid #c4a574; background:#1b1813; color:#f2ead8;
     font-size:.9rem;
   }
-  #easel button.on{ background:#c4a574; color:#14120f; }
+  #easel button.on, #bench button.on{ background:#c4a574; color:#14120f; }
   #easel .swatch{ padding:0 .55rem; }
   #easel .swatch i{
     display:inline-block; width:14px; height:14px; margin-right:.35rem;
     vertical-align:-2px; border:1px solid #f2ead8;
   }
-  #easelNote{ margin:0; min-height:1.2em; font-size:.8rem; color:#a89c88; }
+  #easelNote, #benchNote, #benchGuestNote, #notebookGuestNote{ margin:0; min-height:1.2em; font-size:.8rem; color:#a89c88; }
+  /* Bench: an open-batch row (name + countdown, Collect once ready), a makeable-recipe row (name,
+     Start), and the side-mix chip strip -- CLAUDE_STUDIO_3.md's "up to 4 held items, button Try". */
+  #benchBatches, #benchRecipes{ display:flex; flex-direction:column; gap:4px; }
+  .benchRow{
+    display:flex; align-items:center; justify-content:space-between; gap:.6rem;
+    padding:.3rem .5rem; border:1px solid rgba(196,165,116,.4); border-radius:6px;
+    font-size:.85rem;
+  }
+  .benchEmpty{ margin:0; font-size:.8rem; color:#a89c88; }
+  .benchChip{ font-size:.8rem; padding:0 .5rem; }
+  /* The notebook: one line per discovery, then a "?" line per bench recipe not yet collected --
+     CLAUDE_STUDIO_3.md: "No free text." */
+  #notebookLines{ display:flex; flex-direction:column; gap:6px; overflow-y:auto; }
+  .notebookLine{ margin:0; font-size:.85rem; line-height:1.35; }
+  .notebookUnknown{ color:#a89c88; }
   @media (max-width: 480px) {
     #easelCanvas{ width:min(100%, calc(100vw - 1.2rem), calc(100dvh - 16.5rem)); }
-    #easel{ gap:.35rem; }
+    #easel, #bench, #notebook{ gap:.35rem; }
   }
   @media (max-height: 500px) and (orientation: landscape) {
     #easel{ flex-direction:row; flex-wrap:wrap; align-items:stretch; }

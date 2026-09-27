@@ -206,6 +206,15 @@ var labSpace = buildInterior(20, 16, function (t, w) {
   t[idxIn(w, 9, 10)]  = T_STATION_LAMPBLACK;
   t[idxIn(w, 12, 10)] = T_STATION_ALUM;
   t[idxIn(w, 15, 10)] = T_STATION_GUM;
+  // The door and the stations were in the same room and nothing connected
+  // them. A rug down the open column between the stations (iron is x=10,y=7;
+  // the y=10 stations sit at 9 and 12) is the aisle, not a new prop.
+  t[idxIn(w, 10, 8)] = T_RUG;
+  t[idxIn(w, 10, 9)] = T_RUG;
+  t[idxIn(w, 10, 11)] = T_RUG;
+  t[idxIn(w, 10, 12)] = T_RUG;
+  t[idxIn(w, 10, 13)] = T_RUG;
+  t[idxIn(w, 10, 14)] = T_RUG;
 });
 // BUILD studio 3 (CLAUDE_STUDIO_3.md's frozen lab table). Prompt stays Look on every one of these --
 // only what happens on Look changes. copper/iron/chalk are untouched trophy lookups. vinegar/tannin/
@@ -272,6 +281,11 @@ var workshopSpace = buildInterior(14, 10, function (t, w) {
   t[idxIn(w, 12, 7)] = T_CRATE;
   t[idxIn(w, 6, 6)] = T_RUG;
   t[idxIn(w, 7, 6)] = T_RUG;
+  // The rug used to be a patch with no relation to the door or the table.
+  // Same tile, extended one step toward each, so the walk from the door to
+  // the easel is the thing the floor is pointing at. Entry tile stays floor.
+  t[idxIn(w, 7, 5)] = T_RUG;
+  t[idxIn(w, 7, 7)] = T_RUG;
   t[idxIn(w, 12, 3)] = T_SIGN;
   // BUILD studio 3: the bench and the notebook, on the two existing workbench tiles from the P2
   // set-dressing pass (no new tile, no new art) rather than inventing a crafting-minigame prop.

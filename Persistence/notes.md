@@ -18,6 +18,8 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-27 -- Map still had no edge after the building branches.** `3121a46` put a lane on the Workshop, the Lab, the Hall and the mine, and took the gather glyphs off. Left in place. The grass checker is gone: one field colour, darker green only as the shoulder of a lane. Added lanes, around those branches, to the Lookout, the Orchard keg, the woods (beside the galls and the twigs), the east doors and the Garden, and from the mine lane south to the ochre and the alum. Hall's flowerbeds moved into the Garden; the Square and Hall corner-trees pulled off the region box. Workshop and Lab rugs point at the door. Same tiles. `world_scatter_unit` 31/0, `client_files_unit` 105/0. Not deployed. See `wayfinding-built.md`.
+
 - **2026-09-27 -- Deploy-record correction: the iOS intro-autoplay fix IS live, the earlier "NOT deployed" bullet
   was wrong.** Fetched live 2026-09-27 ~16:31 UTC: `https://liquidgov.us/` serves the `aee9a3d` fix (`vid.play()`,
   `.catch(finish)`, the 1.5s `vid.paused` watchdog, literal `1500`) -- verified independently, not taken on say-so.

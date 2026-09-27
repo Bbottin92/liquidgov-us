@@ -314,11 +314,16 @@ var SCATTER = [
   { region: "Workshop Lane", tile: T_TREE, at: [[3,23],[21,23],[3,36],[7,37],[14,35],[19,36]] },
   { region: "Workshop Lane", tile: T_LOWWALL, at: [[5,31],[6,31],[7,31]] },
   { region: "Workshop Lane", tile: T_FLOWERBED, at: [[2,29],[2,30]] },
-  { region: "the Square", tile: T_TREE, at: [[27,23],[44,23],[27,37],[44,37]] },
+  // South pair used to be the other two corners, (27,37) and (44,37), so the
+  // plaza wore the same stamp as every other region. Moved up; the south side,
+  // toward the doors, stays open. The benches stay: they sit one tile north of
+  // the Hall lane.
+  { region: "the Square", tile: T_TREE, at: [[27,23],[44,23],[30,22],[41,22]] },
   { region: "the Square", tile: T_FLOWERBED, at: [[29,26],[30,26],[41,26],[42,26],[29,35],[30,35],[41,35],[42,35]] },
   { region: "the Square", tile: T_BENCH, at: [[28,29],[44,29]] },
-  { region: "Hall Lawn", tile: T_TREE, at: [[52,23],[68,23],[52,36],[68,36]] },
-  { region: "Hall Lawn", tile: T_FLOWERBED, at: [[54,34],[55,34],[65,34],[66,34]] },
+  // Corner stamps, (52,23) and the other three, bracketed the region box rather
+  // than the Hall. They now bracket the axis that comes down from the Orchard.
+  { region: "Hall Lawn", tile: T_TREE, at: [[54,22],[66,22],[54,38],[66,38]] },
   { region: "Hall Lawn", tile: T_BENCH, at: [[57,36],[63,36]] },
   { region: "Hall Lawn", tile: T_HEDGE, at: [[56,27],[64,27],[56,33],[64,33]] },
   { region: "Lab Yard", tile: T_CRATE, at: [[6,49],[7,49],[16,48],[17,47],[17,48]] },
@@ -328,7 +333,9 @@ var SCATTER = [
   { region: "Homestead Row", tile: T_TREE, at: [[27,43],[44,43],[30,42],[41,42],[26,54],[46,54],[29,57],[42,57]] },
   { region: "Homestead Row", tile: T_FLOWERBED, at: [[37,44],[38,44],[31,44],[30,44],[27,51],[28,51],[44,51],[45,51]] },
   { region: "Homestead Row", tile: T_BENCH, at: [[40,45],[28,44],[30,53],[40,53]] },
-  { region: "Garden", tile: T_FLOWERBED, at: [[52,44],[53,44],[54,44],[66,44],[67,44],[65,54],[66,54],[65,55]] },
+  // The four beds that were on Hall Lawn are the row at y=51. A lawn with a
+  // door on it is not a garden; the garden is.
+  { region: "Garden", tile: T_FLOWERBED, at: [[52,44],[53,44],[54,44],[66,44],[67,44],[56,51],[57,51],[58,51],[60,51],[65,54],[66,54],[65,55]] },
   { region: "Garden", tile: T_TREE, at: [[50,42],[69,42],[50,56],[69,56],[60,55],[54,52]] },
   { region: "Garden", tile: T_BENCH, at: [[57,52],[63,52]] },
   { region: "Garden", tile: T_LOWWALL, at: [[52,50],[53,50],[54,50],[67,50],[68,50]] },
@@ -375,7 +382,10 @@ var WORKSHOP_DOOR_TILE = null;
       if (x >= quarry.x0 && x <= quarry.x1 && y >= quarry.y0 && y <= quarry.y1) {
         t = T_DIRT;
       } else {
-        t = ((x + y) % 2 === 0) ? T_GRASS_A : T_GRASS_B;
+        // Was a 1-tile checker of the two greens. At 16px that is a spreadsheet,
+        // and it sat under the lanes so the road had no edge. One field colour;
+        // the darker green is only the shoulder (vergePaths).
+        t = T_GRASS_A;
       }
       tiles[idx(x, y)] = t;
     }
@@ -422,6 +432,11 @@ var WORKSHOP_DOOR_TILE = null;
 
   dressRegions();
   addStudioGatherMarkers();
+  // After the building branches (those stay as routed) and after every prop.
+  // A lane here only takes grass or dirt, so it cannot erase a door, a crate,
+  // or the bridge recolour.
+  layApproachPaths();
+  vergePaths();
 
   // Collision, computed last from the final tile ids.
   for (var i2 = 0; i2 < tiles.length; i2++) {
@@ -702,6 +717,73 @@ function addStudioGatherMarkers() {
   // east same as the frozen table intended.
   interactables.push({ type: "studioGather", spot: "quarry_ochre", x: 8, y: 72, prompt: "Look" });
   interactables.push({ type: "studioGather", spot: "quarry_alum", x: 14, y: 72, prompt: "Look" });
+}
+
+// The building branches (Workshop, Lab, Hall, mine) are already in dressRegions.
+// What they do not reach: the Lookout, the Orchard, the woods, the east doors,
+// the Garden, and the two quarry piles. Same rule as those branches -- one tile,
+// grass or dirt only, stop on the tile you stand on. Their tiles are left alone.
+function pave(x, y) {
+  var t = tiles[idx(x, y)];
+  if (t === T_GRASS_A || t === T_GRASS_B || t === T_DIRT) tiles[idx(x, y)] = T_PATH;
+}
+function paveH(x0, x1, y) { for (var x = x0; x <= x1; x++) pave(x, y); }
+function paveV(x, y0, y1) { for (var y = y0; y <= y1; y++) pave(x, y); }
+
+function layApproachPaths() {
+  // Spine stops at the Square. Continue it to the grass under the Lookout
+  // railing, then east and north to the Orchard lane just above the keg.
+  paveH(34, 35, 17); paveH(34, 35, 18); paveH(34, 35, 19);
+  paveH(36, 42, 17);
+  paveV(42, 9, 16);
+  paveH(43, 65, 9);
+  // Down the middle of Hall Lawn, stopping on the tile above the door. The
+  // existing Hall branch arrives from the west on y=30; this one comes from
+  // the Orchard and does not paint the door.
+  paveV(60, 10, 29);
+
+  // West of the Workshop facade (it owns x=8-14), down to that branch's
+  // crossbar at y=32. The tree at (4,17) stays; the lane steps around it.
+  // y=6 reaches toward the gall oak. The track at x=4 passes beside the twigs.
+  paveH(4, 16, 6);
+  paveV(4, 6, 16);
+  pave(5, 17);
+  paveV(4, 18, 32);
+  paveH(5, 10, 32);
+
+  // The Lab branch already runs along the south side of the west doors and
+  // stops at the spine. Continue that same row to the Garden beds, and step
+  // south to the tile above the woad.
+  paveH(35, 55, 48);
+  paveV(49, 49, 53);
+
+  // The mine branch already reaches the door and runs east at y=69. Ochre and
+  // alum are still bare dirt south of that. One spur, not a second crossing.
+  paveV(10, 70, 71);
+  paveH(8, 14, 71);
+}
+
+// Darker grass only where it touches a lane or the bridge. Copied first so
+// the shoulder does not spread across the field.
+function vergePaths() {
+  var next = new Uint8Array(tiles.length);
+  var i, x, y, d, nx, ny, n, shoulder;
+  var dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  for (i = 0; i < tiles.length; i++) next[i] = tiles[i];
+  for (y = 0; y < WORLD_H; y++) {
+    for (x = 0; x < WORLD_W; x++) {
+      if (tiles[idx(x, y)] !== T_GRASS_A) continue;
+      shoulder = false;
+      for (d = 0; d < 4; d++) {
+        nx = x + dirs[d][0]; ny = y + dirs[d][1];
+        if (nx < 0 || ny < 0 || nx >= WORLD_W || ny >= WORLD_H) continue;
+        n = tiles[idx(nx, ny)];
+        if (n === T_PATH || n === T_BRIDGE) shoulder = true;
+      }
+      if (shoulder) next[idx(x, y)] = T_GRASS_B;
+    }
+  }
+  for (i = 0; i < tiles.length; i++) tiles[i] = next[i];
 }
 
 // The extra props (SCATTER above), placed after everything else so they can only fill plain ground.

@@ -198,6 +198,8 @@ function drawSpace(camX, camY) {
     }
   }
 
+  // Gather glyphs used to hover on every outdoor studio spot, including the
+  // trees. The prop is the mark; Look is the prompt. Removed in 3121a46.
   drawSortedActors(ctx, camX, camY);
 }
 

@@ -194,6 +194,12 @@ function tryInteract() {
       netPickup(wp.item);
       showToast(wp.name + ".");
       renderInvHud();
+    } else if (it.type === "easel" || it.type === "studioPortrait") {
+      if (it.type === "studioPortrait" && mode === "visit") {
+        showToast("A small portrait.");
+      } else if (typeof openEasel === "function") {
+        openEasel();
+      }
     } else if (it.type === "sign") {
       showToast(it.text || "Closed.");
     } else if (it.type === "wallSlot") {

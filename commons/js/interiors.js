@@ -101,8 +101,21 @@ var ownHouseSpace = buildInterior(16, 16, function (t, w) {
 });
 ownHouseSpace.interactables = [
   { type: "wallSlot", x: 7, y: 0, prompt: "Place" },
-  HOUSE_LATCH
+  HOUSE_LATCH,
+  { type: "studioPortrait", x: 10, y: 0, prompt: "Draw" }
 ];
+
+// Studio portrait frame (BUILD studio 2). Pinned against this 16x16 house, not the
+// unverified candidate in studio.md. y=0 is the solid top wall. The civic profile
+// drawing is painted 3 tiles wide and 2 tall, centered on the wall slot at (7,0),
+// so it covers x 6-8 and y 0-1. Shelves are the workbenches at (2,1) and (3,1).
+// The lamp is (14,1). The owner's latch is (0,13). The door is (7,15).
+// x 10-11 are plain wall, one tile clear of the civic frame and three clear of
+// the lamp. The portrait is 32x32, which is exactly 2x2 tiles of 16px: (10,0) and
+// (11,0) on the wall, (10,1) and (11,1) over the floor the same way the civic
+// frame already overlays y=1. Those floor tiles stay walkable. The demo house
+// does not get the interactable; a visit sees the image but does not open the easel.
+var STUDIO_PORTRAIT = { x: 10, y: 0, w: 2, h: 2 };
 
 // Lab -- 20x16. Eight lookup stations: the original three (pushback.md's
 // chalk-only recipe, no lime) plus five more (GROK_OBJECTS_ANSWER.md) in
@@ -215,7 +228,8 @@ var workshopSpace = buildInterior(14, 10, function (t, w) {
   t[idxIn(w, 12, 3)] = T_SIGN;
 });
 workshopSpace.interactables = [
-  { type: "sign", x: 12, y: 3, prompt: "Read", text: "Sawdust and a bench. Nothing to make here yet." }
+  { type: "sign", x: 12, y: 3, prompt: "Read", text: "Sawdust and a bench. Nothing to make here yet." },
+  { type: "easel", x: 7, y: 4, prompt: "Draw" }
 ];
 
 // Pickups. A guest's are session-only (v1.md: RAM, vanish on refresh --

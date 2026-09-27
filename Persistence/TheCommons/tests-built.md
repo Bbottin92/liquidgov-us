@@ -48,6 +48,7 @@ client code change, no deploy.** Files: `commons-daemon/tests/` and one workflow
 | `nginx_www` | www -> apex: the transform on the live config copy (34, 9 mutations) + a real nginx's redirects with a control (17) |
 | `studio` | the Studio's frozen catalog (acyclic, no stoichiometry, C1's ash gone), gather/bench/mix/collect server-authoritative incl. a multi-input partial-rollback case, mix's rate limit (88 checks, 2 mutations) |
 | `studio_orphans` | the reap extension: a reaped account's batches/discoveries/cooldowns are gone, a kept one's are not (10 checks, 1 mutation: the reap ORDER, studio before house) |
+| `painting` | BUILD studio 2: the portrait stub, visit-checked read, ceil cost with no refund, locked index (60 checks, 2 mutations) |
 | `harness` | the harness itself: no daemon survives `stop_daemon`/`crash_daemon` even under a forking wrapper; `start_daemon` refuses a busy port (8) |
 
 ## Does it actually catch regressions? (mutation check)

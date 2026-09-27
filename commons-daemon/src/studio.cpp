@@ -309,6 +309,155 @@ std::vector<StudioStore::PaletteEntry> StudioStore::unlocked_palette(const std::
     return out;
 }
 
+namespace {
+
+struct CharcoalSwatch { int index; const char* slug; const char* hex; };
+const CharcoalSwatch CHARCOAL[] = {
+    {1, "charcoal_black",  "#1a1a1a"},
+    {2, "charcoal_grey_1", "#4d4d4d"},
+    {3, "charcoal_grey_2", "#7a7a7a"},
+    {4, "charcoal_grey_3", "#adadad"},
+};
+
+const char* charcoal_slug(int index) {
+    for (const auto& c : CHARCOAL) if (c.index == index) return c.slug;
+    return nullptr;
+}
+
+int inventory_qty(sqlite3* db, int player_id, const char* slug) {
+    sqlx::Stmt sel(db,
+        "SELECT inv.quantity FROM inventory inv "
+        "JOIN items i ON i.item_id = inv.item_id "
+        "WHERE inv.player_id = ?1 AND i.slug = ?2;");
+    sel.integer(1, player_id).text(2, slug);
+    if (sel.row()) return sel.column_int(0);
+    return 0;
+}
+
+} // namespace
+
+std::vector<StudioStore::Swatch> charcoal_held(sqlite3* db, int player_id) {
+    std::vector<StudioStore::Swatch> out;
+    for (const auto& c : CHARCOAL) {
+        StudioStore::Swatch s;
+        s.index = c.index;
+        s.item = c.slug;
+        s.hex = c.hex;
+        s.qty = inventory_qty(db, player_id, c.slug);
+        out.push_back(s);
+    }
+    return out;
+}
+
+StudioStore::Portrait StudioStore::portrait_of(const std::string& username) {
+    Portrait p;
+    auto player_id = find_player_id(username);
+    if (!player_id) return p;
+    p.palette = charcoal_held(db_, *player_id);
+    sqlx::Stmt sel(db_,
+        "SELECT pixels FROM paintings WHERE player_id = ?1 AND kind = 'portrait';");
+    sel.integer(1, *player_id);
+    if (!sel.row()) return p;
+    auto blob = sel.column_blob(0);
+    if (static_cast<int>(blob.size()) != PORTRAIT_N) return p;
+    p.found = true;
+    p.pixels = std::move(blob);
+    return p;
+}
+
+StudioStore::Portrait StudioStore::ensure_portrait(const std::string& username, long long now_ms) {
+    int player_id = find_or_create_player(username);
+    {
+        sqlx::Stmt sel(db_,
+            "SELECT pixels FROM paintings WHERE player_id = ?1 AND kind = 'portrait';");
+        sel.integer(1, player_id);
+        if (sel.row()) return portrait_of(username);
+    }
+    std::vector<unsigned char> blank(PORTRAIT_N, 0);
+    sqlx::Tx tx(db_);
+    {
+        sqlx::Stmt ins(db_,
+            "INSERT INTO paintings (player_id, kind, w, h, pixels, updated_ms) "
+            "VALUES (?1, 'portrait', 32, 32, ?2, ?3);");
+        ins.integer(1, player_id).blob(2, blank.data(), PORTRAIT_N).integer64(3, now_ms);
+        ins.done();
+    }
+    {
+        // 2 units of black = 400 pixels. Once, because this insert only runs when no portrait row exists.
+        sqlx::Stmt up(db_,
+            "INSERT INTO inventory (player_id, item_id, quantity, updated_at) "
+            "SELECT ?1, item_id, ?2, ?3 FROM items WHERE slug = 'charcoal_black' "
+            "ON CONFLICT(player_id, item_id) DO UPDATE SET "
+            "quantity = MIN(quantity + ?2, 99), updated_at = excluded.updated_at;");
+        up.integer(1, player_id).integer(2, STUB_BLACK_UNITS).integer64(3, now_ms);
+        up.done();
+        if (sqlite3_changes(db_) == 0) {
+            // catalog row missing: roll the blank portrait back rather than hand out a stub-less canvas
+            throw sqlx::DbError("charcoal_black missing");
+        }
+    }
+    tx.commit();
+    return portrait_of(username);
+}
+
+StudioStore::SaveResult StudioStore::save_portrait(const std::string& username,
+                                                   const std::vector<unsigned char>& pixels,
+                                                   long long now_ms) {
+    SaveResult r;
+    if (static_cast<int>(pixels.size()) != PORTRAIT_N) { r.reason = "bad_length"; return r; }
+    int player_id = find_or_create_player(username);
+    std::vector<unsigned char> old(PORTRAIT_N, 0);
+    bool existed = false;
+    {
+        sqlx::Stmt sel(db_,
+            "SELECT pixels FROM paintings WHERE player_id = ?1 AND kind = 'portrait';");
+        sel.integer(1, player_id);
+        if (sel.row()) {
+            auto blob = sel.column_blob(0);
+            if (static_cast<int>(blob.size()) == PORTRAIT_N) { old = std::move(blob); existed = true; }
+        }
+    }
+    int need[5] = {0, 0, 0, 0, 0};
+    for (int i = 0; i < PORTRAIT_N; ++i) {
+        unsigned char neu = pixels[static_cast<std::size_t>(i)];
+        unsigned char was = old[static_cast<std::size_t>(i)];
+        if (neu == was) continue;
+        if (neu == 0) continue;  // erase to blank: free, and never a refund of `was`
+        if (!charcoal_slug(neu)) { r.reason = "locked_index"; return r; }
+        need[neu] += 1;
+    }
+    sqlx::Tx tx(db_);
+    for (const auto& c : CHARCOAL) {
+        int n = need[c.index];
+        if (n <= 0) continue;
+        int units = (n + PIXELS_PER_UNIT - 1) / PIXELS_PER_UNIT;  // ceil
+        sqlx::Stmt up(db_,
+            "UPDATE inventory SET quantity = quantity - ?2, updated_at = ?3 "
+            "WHERE player_id = ?1 AND item_id = (SELECT item_id FROM items WHERE slug = ?4) "
+            "AND quantity >= ?2;");
+        up.integer(1, player_id).integer(2, units).integer64(3, now_ms).text(4, c.slug);
+        up.done();
+        if (sqlite3_changes(db_) == 0) { r.reason = "insufficient"; return r; }  // dtor rolls back
+    }
+    if (existed) {
+        sqlx::Stmt up(db_,
+            "UPDATE paintings SET pixels = ?2, updated_ms = ?3 "
+            "WHERE player_id = ?1 AND kind = 'portrait';");
+        up.integer(1, player_id).blob(2, pixels.data(), PORTRAIT_N).integer64(3, now_ms);
+        up.done();
+    } else {
+        sqlx::Stmt ins(db_,
+            "INSERT INTO paintings (player_id, kind, w, h, pixels, updated_ms) "
+            "VALUES (?1, 'portrait', 32, 32, ?2, ?3);");
+        ins.integer(1, player_id).blob(2, pixels.data(), PORTRAIT_N).integer64(3, now_ms);
+        ins.done();
+    }
+    tx.commit();
+    r.ok = true;
+    r.palette = charcoal_held(db_, player_id);
+    return r;
+}
+
 StudioStore::Footprint StudioStore::footprint_of(const std::string& username) {
     Footprint f;
     auto player_id = find_player_id(username);

@@ -9,8 +9,7 @@
 // The Studio (BUILD studio 1, TheCommons/studio.md): gather, bench, mix, collect -- the daemon-only
 // slice. No client reads any of this yet. Shares the existing `inventory` table with HouseStore's lab
 // pickups (one inventory per player, regardless of source); owns `batches`, `discoveries` and
-// `gather_cooldowns` outright. `paintings` exists from this slice's schema but nothing here reads or
-// writes it -- that is slice 2.
+// `gather_cooldowns` outright. `paintings` is written from slice 2 (portrait only).
 //
 // No mutex, same reasoning as HouseStore: this daemon is single-threaded and synchronous.
 namespace commons {
@@ -77,6 +76,31 @@ public:
     std::vector<RecipeView> makeable_now(const std::string& username);  // every input held in >= its quantity
     struct PaletteEntry { std::string item; std::string hex; };
     std::vector<PaletteEntry> unlocked_palette(const std::string& username);  // discovered AND pigment_hex set
+
+    // ---- portrait (BUILD studio 2) -----------------------------------------------------------------
+    static constexpr int PORTRAIT_N = 32 * 32;
+    static constexpr int PIXELS_PER_UNIT = 200;  // studio.md: 1 unit ≈ 200 pixels
+    static constexpr int STUB_BLACK_UNITS = 2;   // 2 * 200 = 400px charcoal, once
+    struct Swatch { int index; std::string item; std::string hex; int qty; };
+    struct Portrait {
+        bool found = false;
+        std::vector<unsigned char> pixels;  // PORTRAIT_N when found
+        std::vector<Swatch> palette;        // the four charcoal colours and what this player holds
+    };
+    // First painting-endpoint touch for a bound player: blank 32x32 plus the free charcoal stub.
+    // A second call does not grant again. Own transaction.
+    Portrait ensure_portrait(const std::string& username, long long now_ms);
+    // Read without creating. found=false when this player has never touched the easel.
+    Portrait portrait_of(const std::string& username);
+    struct SaveResult {
+        bool ok = false;
+        std::string reason;  // "" | "locked_index" | "insufficient"
+        std::vector<Swatch> palette;
+    };
+    // Cost rule: for each colour c, charge ceil(n/200) units where n is the number of pixels whose
+    // new value is c and whose stored value was not. Index 0 is empty: no unlock, no cost, no refund.
+    // One transaction: verify indices, deduct, store. A failure rolls the deduction back.
+    SaveResult save_portrait(const std::string& username, const std::vector<unsigned char>& pixels, long long now_ms);
 
     // ---- orphan reap (BUILD orphans reap; extended here so civic account-deletion cannot leak the
     // Studio the way house rows once could) ----------------------------------------------------------

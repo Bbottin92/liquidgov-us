@@ -1,7 +1,9 @@
-# The Studio — spec v2 (Grok's review folded in; slice 1 BUILT 2026-09-27)
+# The Studio — spec v2 (Grok's review folded in; slices 1 and 2 BUILT 2026-09-27)
 
-**Status: slice 1 built and tested; not deployed (daemon-only, no droplet touch).** See `studio-1-built.md` for what
-shipped, how it was verified, and exactly which reading of each open item below was taken as signed off.
+**Status: slice 2 built and tested; not deployed (no droplet touch).** Slice 1 is daemon-only
+(`studio-1-built.md`). Slice 2 is the charcoal easel, the portrait endpoints, and the house frame
+(`studio-2-built.md`). Where this file did not already pick a number, the reading taken is an open
+decision below (11–14).
 v1 was `9a5b7c5`; Grok's review is `GROK_STUDIO_ANSWER.md` (`5c45287`); this file is v2, written 2026-09-20.
 Each slice below is its own `BUILD`; every droplet touch needs the literal `deploy` word (daemon deploys:
 drift-check, online DB backup first). The reference pass is done (`studio-refs.md`, 2026-09-20); slice 1's frozen
@@ -190,9 +192,12 @@ recipes show as "?". No free text.
   costs nothing. Charged in the same transaction that stores the bitmap; rejected if you lack material.
 - **In your house:** the **studio portrait** frame (named so it is never confused with the civic *profile
   drawing* in the wall slot), plus one **painting frame** later (slice 4). A 32x32 image is exactly **2x2
-  tiles** at 16 px. **Exact tiles are pinned by a house-layout check at the start of slice 2**, because the
-  house already has furniture, floor items, the wall slot and the latch (candidate: 2x2 on the top wall at
-  x 10-11 and, later, x 4-5; the civic frame occupies x 6-8, shelves x 2-3, lamp x 14; **unverified**).
+  tiles** at 16 px. **Pinned at the start of slice 2** against `fillHouse` (16x16): the frame is tiles
+  (10,0), (11,0), (10,1) and (11,1). y=0 is the top wall. The civic profile drawing is painted 3 tiles wide
+  and 2 tall, centered on the wall slot at (7,0), so it covers x 6–8 and y 0–1. Shelves are the workbenches
+  at (2,1) and (3,1). The lamp is (14,1). The owner's latch is (0,13); the door is (7,15). x 10–11 is one
+  tile clear of the civic frame and three clear of the lamp. (10,1) and (11,1) stay walkable floor, overlaid
+  the same way the civic frame already overlays y=1. The workshop easel is the existing table at (7,4).
 - **Who sees it:** the owner, plus whoever the house policy admits, checked **in the daemon's visit helper**
   (never the public `/placed` read). **Never shown to `open`-policy strangers** until there is a way to
   report or hide. A visitor already inside still sees the portrait if the owner walks out (same as today;
@@ -289,6 +294,26 @@ phone-portrait viewport for the easel. CI as usual.
    same reasoning as #6; slice 1 only actually builds the pixel-cost rule -- the portrait itself is slice 2)*
 10. **Charcoal real-world time** (2-4 h vs ~10 h) is disputed between Grok's review and my draft; resolved by the
     reference check (Cennini: overnight, supporting 8 h). *(resolved; 8 h shipped)*
+11. **A partial unit still costs a unit.** "1 unit ≈ 200 pixels" does not say what happens to the 1st through
+    199th new pixel of a colour. Slice 2 charges `ceil(changed_pixels / 200)` of that colour, so one new pixel
+    spends a whole unit. There is no remainder bank. *(slice 2; the other reading is a stored remainder, which
+    would let 199 pixels be free until they add up)*
+12. **A save is at most one per 5 seconds**, the same number as side-mix, because the spec says "over-rate"
+    and does not give a number. A body that parses as 1024 indices counts, even if it is then rejected
+    (`locked_index`, `insufficient`). A malformed body does not. *(slice 2)*
+13. **The easel's unlock check, this slice, is the four charcoal indices, not `discoveries`.** The stub has to
+    be paintable before any collect, and the bench is not on the client until slice 3. Index 0 is empty.
+    Indices 1–4 are the only legal paint. Anything else is `locked_index`, and one such pixel rejects the
+    whole save before any charge. A grey index with no grey in stock is `insufficient`, not locked: the stub
+    grants black only (2 units, 400 pixels), once, on the first painting-endpoint touch, even if that player
+    already holds black from the bench (the grant is the first portrait row, not a zero balance; the cap of 99
+    still holds). Discovery-gating a non-charcoal pigment waits until one exists. *(slice 2)*
+14. **A portrait GET fails closed when civic returns no friends list.** `visit_allowed` would treat a
+    friends-policy house as a stay and allow the read. A GET is not a stay; failing open would show the
+    portrait to whoever asks while civic is down. The read still goes through the visit helper after that:
+    owner always; locked nobody else; an `open`-policy stranger never (even though `visit_allowed` would let
+    them into the house); a friend under `friends` or `open` yes, including when the owner is not online.
+    *(slice 2)*
 
 ## Reference check (2026-09-20): see `studio-refs.md`
 
@@ -314,3 +339,9 @@ unreachable (403).
 Brandon: `BUILD studio 1`, after this file's own reference pass had already landed. Daemon core only, exactly the
 slice-1 scope above: schema, the frozen catalog (with C1-C6 applied), gather/bench/mix/collect, discoveries,
 consumption, migration, the orphan-reap extension, tests. No client, no droplet. See `studio-1-built.md`.
+
+## Slice 2: built 2026-09-27
+
+Brandon: `BUILD studio 2`. Charcoal easel, portrait endpoints, starter stub, house frame on the tiles pinned
+above. No bench screen, no world markers, no second frame, no droplet. See `studio-2-built.md`. Open decisions
+11–14 are the readings taken where this file did not already pick a number.

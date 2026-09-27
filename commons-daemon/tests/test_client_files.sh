@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The client's split files and their LOAD ORDER (commons/index.html + style.css + js/*.js): the eight scripts are loaded IN TAG
+# The client's split files and their LOAD ORDER (commons/index.html + style.css + js/*.js): the nine scripts are loaded IN TAG
 # ORDER under node with a stubbed DOM, and any ReferenceError fails the build (a missing name would blank the game).
 # See tests/client_files_unit.js for what is checked and why concatenating the sources is not enough.
 # In CI node is installed: a missing node there is a FAILURE, not a skip.
@@ -14,7 +14,7 @@ if [ -z "$NODE" ]; then
 fi
 
 echo "-- the files exist as documented"
-for f in index.html style.css js/world.js js/interiors.js js/sprites.js js/actors.js js/net.js js/input.js js/interact.js js/main.js; do
+for f in index.html style.css js/world.js js/interiors.js js/sprites.js js/actors.js js/net.js js/input.js js/interact.js js/main.js js/easel.js; do
   [ -s "$COMMONS/$f" ] && r=present || r=MISSING; assert_eq "commons/$f" "present" "$r"
 done
 for f in "$COMMONS"/js/*.js; do

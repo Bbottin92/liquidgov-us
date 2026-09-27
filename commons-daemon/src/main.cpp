@@ -264,6 +264,53 @@ bool visit_allowed(const std::string& headers_raw, const std::string& owner,
     return std::find(online.begin(), online.end(), owner) != online.end();
 }
 
+// Studio portrait read (BUILD studio 2). Owner always. A friend, under friends OR open,
+// also -- but an open-policy stranger never, even though visit_allowed would let them
+// into the house. Not the public /placed read. Civic-down does not count as "already
+// inside": a GET is not a stay, so no friends list means no.
+bool portrait_readable(const std::string& headers_raw, const std::string& viewer, const std::string& owner,
+                       commons::FriendsCache& friends, commons::PresenceStore& presence, commons::HouseStore& house) {
+    if (viewer == owner) return true;
+    if (house.visit_policy_of(owner) == "locked") return false;
+    auto mine = friends.get(headers_raw);
+    const bool is_friend = mine && std::find(mine->begin(), mine->end(), owner) != mine->end();
+    if (!is_friend) return false;
+    return visit_allowed(headers_raw, owner, friends, presence, house, false);
+}
+
+std::string pixels_json(const std::vector<unsigned char>& px) {
+    std::string out = "[";
+    for (std::size_t i = 0; i < px.size(); ++i) {
+        if (i) out += ",";
+        out += std::to_string(px[i]);
+    }
+    out += "]";
+    return out;
+}
+
+std::string palette_json(const std::vector<commons::StudioStore::Swatch>& pal) {
+    std::string out = "[";
+    for (std::size_t i = 0; i < pal.size(); ++i) {
+        if (i) out += ",";
+        const auto& s = pal[i];
+        out += "{\"index\":" + std::to_string(s.index) + ",\"item\":" + commons::json::str(s.item) +
+               ",\"hex\":" + commons::json::str(s.hex) + ",\"qty\":" + std::to_string(s.qty) + "}";
+    }
+    out += "]";
+    return out;
+}
+
+bool portrait_owner_token(const std::string& s) {
+    // Civic usernames are [A-Za-z0-9._-] (civic_stub.py USERNAME_RE, and plain_username
+    // in civic.cpp). A dot or a hyphen is a real name, not a path: this string is one
+    // path segment already, and it is only ever used as a player lookup.
+    if (s.empty() || s.size() > 64) return false;
+    for (unsigned char c : s) {
+        if (!(std::isalnum(c) || c == '.' || c == '_' || c == '-')) return false;
+    }
+    return true;
+}
+
 // A position snapshot is best effort. sqlx has already logged the real sqlite
 // error; a failed write must not fail a leave/rekey (which would strand the
 // player in a room they are trying to walk out of) or stop the periodic pass
@@ -320,6 +367,7 @@ int main(int argc, char** argv) {
     // throttling, not durable state, and this daemon is single-threaded and synchronous, so a plain
     // map needs no mutex (same reasoning as the RAM presence stores).
     std::map<std::string, long long> last_mix_ms;
+    std::map<std::string, long long> last_paint_ms;  // BUILD studio 2: 1 save / 5s, same number as mix (flagged)
     commons::FriendsCache friends_cache;
     commons::HttpServer server(bind_addr, port);
 
@@ -697,6 +745,95 @@ int main(int argc, char** argv) {
         r.body += "]}";
         return r;
     });
+
+    // Studio portrait (BUILD studio 2). Exact paths before the /presence/ prefix
+    // route below, or "painting" would be read as a region. Bound only.
+    server.route("GET", "/presence/painting/portrait", [&](const commons::HttpRequest& req) {
+        commons::HttpResponse r;
+        auto username = commons::civic::resolve_username(req.headers_raw);
+        if (!username) {
+            r.status = 403; r.status_text = "Forbidden";
+            r.body = "{\"ok\":false,\"reason\":\"not_bound\"}";
+            return r;
+        }
+        auto pic = studio.ensure_portrait(*username, now_ms());
+        r.body = "{\"ok\":true,\"w\":32,\"h\":32,\"pixels\":" + pixels_json(pic.pixels) +
+                 ",\"palette\":" + palette_json(pic.palette) + "}";
+        return r;
+    });
+
+    server.route("POST", "/presence/painting/portrait", [&](const commons::HttpRequest& req) {
+        commons::HttpResponse r;
+        auto username = commons::civic::resolve_username(req.headers_raw);
+        if (!username) {
+            r.status = 403; r.status_text = "Forbidden";
+            r.body = "{\"ok\":false,\"reason\":\"not_bound\"}";
+            return r;
+        }
+        // First touch grants the stub even if this body is then rejected.
+        studio.ensure_portrait(*username, now_ms());
+        long long t = now_ms();
+        auto prev = last_paint_ms.find(*username);
+        if (prev != last_paint_ms.end() && t - prev->second < 5000) {
+            r.status = 429; r.status_text = "Too Many Requests";
+            r.body = "{\"ok\":false,\"reason\":\"too_fast\"}";
+            return r;
+        }
+        auto pixels = commons::reqjson::field_byte_array(req.body, "pixels", commons::StudioStore::PORTRAIT_N);
+        if (!pixels.ok) {
+            r.status = 400; r.status_text = "Bad Request";
+            r.body = "{\"ok\":false,\"reason\":" + commons::json::str(pixels.reason.empty() ? "bad_length" : pixels.reason) + "}";
+            return r;
+        }
+        last_paint_ms[*username] = t;
+        auto res = studio.save_portrait(*username, pixels.bytes, t);
+        if (!res.ok) {
+            int status = res.reason == "insufficient" ? 409 : 400;
+            r.status = status;
+            r.status_text = status == 409 ? "Conflict" : "Bad Request";
+            r.body = "{\"ok\":false,\"reason\":" + commons::json::str(res.reason) + "}";
+            return r;
+        }
+        r.body = "{\"ok\":true,\"palette\":" + palette_json(res.palette) + "}";
+        return r;
+    });
+
+    server.route("GET", "/presence/painting/", [&](const commons::HttpRequest& req) {
+        commons::HttpResponse r;
+        const std::string pfx = "/presence/painting/";
+        const std::string sfx = "/portrait";
+        if (req.path.size() <= pfx.size() + sfx.size() ||
+            req.path.compare(req.path.size() - sfx.size(), sfx.size(), sfx) != 0) {
+            r.status = 404; r.status_text = "Not Found";
+            r.body = "{\"ok\":false,\"reason\":\"not_found\"}";
+            return r;
+        }
+        std::string owner = req.path.substr(pfx.size(), req.path.size() - pfx.size() - sfx.size());
+        if (!portrait_owner_token(owner)) {
+            r.status = 400; r.status_text = "Bad Request";
+            r.body = "{\"ok\":false,\"reason\":\"bad_owner\"}";
+            return r;
+        }
+        auto viewer = commons::civic::resolve_username(req.headers_raw);
+        if (!viewer) {
+            r.status = 403; r.status_text = "Forbidden";
+            r.body = "{\"ok\":false,\"reason\":\"not_bound\"}";
+            return r;
+        }
+        if (!portrait_readable(req.headers_raw, *viewer, owner, friends_cache, presence, house)) {
+            r.status = 403; r.status_text = "Forbidden";
+            r.body = "{\"ok\":false,\"reason\":\"not_welcome\"}";
+            return r;
+        }
+        auto pic = studio.portrait_of(owner);
+        if (!pic.found) {
+            r.status = 404; r.status_text = "Not Found";
+            r.body = "{\"ok\":false,\"reason\":\"no_portrait\"}";
+            return r;
+        }
+        r.body = "{\"ok\":true,\"w\":32,\"h\":32,\"pixels\":" + pixels_json(pic.pixels) + "}";
+        return r;
+    }, /*prefix=*/true);
 
     // GET /presence/<region> -- region is whatever's after the prefix,
     // e.g. "1,1" for outdoor col=1,row=1, or "instance:3" for an interior.

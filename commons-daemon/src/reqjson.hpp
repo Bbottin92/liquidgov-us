@@ -174,4 +174,77 @@ inline std::optional<double> field_num(const std::string& body, const std::strin
     } catch (...) { return std::nullopt; }
 }
 
+// BUILD studio 2: {"pixels":[0,1,...]} exactly `exact_len` integers, each 0..255.
+// nullopt with reason "missing_field" / "bad_length" / "bad_index". A non-integer
+// (1.5, 1e2, -1, true) is bad_index, not a truncated value. The whole array is
+// rejected; nothing is silently dropped.
+struct ByteArray {
+    bool ok = false;
+    std::string reason;
+    std::vector<unsigned char> bytes;
+};
+
+inline ByteArray field_byte_array(const std::string& body, const std::string& key, std::size_t exact_len) {
+    ByteArray out;
+    std::size_t p = 0;
+    detail::skip_ws(body, p);
+    if (p >= body.size() || body[p] != '{') { out.reason = "missing_field"; return out; }
+    ++p;
+    while (true) {
+        detail::skip_ws(body, p);
+        if (p >= body.size() || body[p] != '"') { out.reason = "missing_field"; return out; }
+        std::string k;
+        if (!detail::read_string(body, p, k)) { out.reason = "missing_field"; return out; }
+        detail::skip_ws(body, p);
+        if (p >= body.size() || body[p] != ':') { out.reason = "missing_field"; return out; }
+        ++p;
+        detail::skip_ws(body, p);
+        if (p >= body.size()) { out.reason = "missing_field"; return out; }
+        if (k != key) {
+            if (body[p] == '"') { std::string s; if (!detail::read_string(body, p, s)) { out.reason = "missing_field"; return out; } }
+            else if (body[p] == '{' || body[p] == '[') { if (!detail::skip_composite(body, p)) { out.reason = "missing_field"; return out; } }
+            else { while (p < body.size() && body[p] != ',' && body[p] != '}') ++p; }
+            detail::skip_ws(body, p);
+            if (p < body.size() && body[p] == ',') { ++p; continue; }
+            out.reason = "missing_field";
+            return out;
+        }
+        if (body[p] != '[') { out.reason = "bad_length"; return out; }
+        ++p;
+        detail::skip_ws(body, p);
+        if (p < body.size() && body[p] == ']') {
+            out.reason = exact_len == 0 ? "" : "bad_length";
+            out.ok = exact_len == 0;
+            return out;
+        }
+        while (true) {
+            detail::skip_ws(body, p);
+            if (p >= body.size() || !std::isdigit(static_cast<unsigned char>(body[p]))) {
+                out.reason = "bad_index";
+                out.bytes.clear();
+                return out;
+            }
+            int v = 0;
+            while (p < body.size() && std::isdigit(static_cast<unsigned char>(body[p]))) {
+                v = v * 10 + (body[p] - '0');
+                if (v > 255) { out.reason = "bad_index"; out.bytes.clear(); return out; }
+                ++p;
+            }
+            out.bytes.push_back(static_cast<unsigned char>(v));
+            if (out.bytes.size() > exact_len) { out.reason = "bad_length"; out.bytes.clear(); return out; }
+            detail::skip_ws(body, p);
+            if (p < body.size() && body[p] == ',') { ++p; continue; }
+            if (p < body.size() && body[p] == ']') {
+                if (out.bytes.size() != exact_len) { out.reason = "bad_length"; out.bytes.clear(); return out; }
+                out.ok = true;
+                out.reason.clear();
+                return out;
+            }
+            out.reason = "bad_index";
+            out.bytes.clear();
+            return out;
+        }
+    }
+}
+
 } // namespace commons::reqjson

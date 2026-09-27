@@ -141,6 +141,7 @@ function drawSpace(camX, camY) {
     var dw = iw * sc, dh = ih * sc;
     ctx.drawImage(wallPortrait.img, pfx + (3 * TILE - dw) / 2, pfy + (2 * TILE - dh) / 2, dw, dh);
   }
+  if (typeof drawStudioPortrait === "function") drawStudioPortrait(camX, camY);
 
   // V2 stretch: the placed lab item. With no portrait it is drawn over the
   // baked wall-slot tile itself as before -- a flat color square + label, not

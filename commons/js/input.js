@@ -12,6 +12,8 @@ var KEY_TO_DIR = {
 // preventDefault, no keys[] tracking. "Brandon" has an a and a d in it.
 function typingInField(e) {
   if (document.getElementById("nameOverlay").style.display !== "none") return true;
+  var easel = document.getElementById("easel");
+  if (easel && easel.classList.contains("open")) return true;
   var t = e.target;
   return !!(t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA"));
 }

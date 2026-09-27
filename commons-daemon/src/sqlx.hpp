@@ -11,6 +11,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 #include "sqlite3.h"
 
@@ -51,6 +52,10 @@ public:
         if (sqlite3_bind_int64(st_, i, v) != SQLITE_OK) fail(db_, "bind");
         return *this;
     }
+    Stmt& blob(int i, const void* p, int n) {
+        if (sqlite3_bind_blob(st_, i, p, n, SQLITE_TRANSIENT) != SQLITE_OK) fail(db_, "bind");
+        return *this;
+    }
 
     // Step a read: true = a row is ready, false = no (more) rows. Any other
     // result (BUSY, IO, CORRUPT, ...) throws.
@@ -71,6 +76,13 @@ public:
     // milliseconds (started_ms, ready_ms, next_ms, first_ms, updated_at) must be read with this, not
     // column_int, or it silently truncates.
     long long column_int64(int i) const { return sqlite3_column_int64(st_, i); }
+    std::vector<unsigned char> column_blob(int i) const {
+        const void* p = sqlite3_column_blob(st_, i);
+        int n = sqlite3_column_bytes(st_, i);
+        if (!p || n <= 0) return {};
+        const auto* b = static_cast<const unsigned char*>(p);
+        return std::vector<unsigned char>(b, b + n);
+    }
     bool column_null(int i) const { return sqlite3_column_type(st_, i) == SQLITE_NULL; }
     std::string column_text(int i) const {
         const unsigned char* v = sqlite3_column_text(st_, i);

@@ -177,3 +177,58 @@
     #interactBtn{ display:none !important; }
     #toast{ bottom:calc(1.2rem + env(safe-area-inset-bottom,0px)); }
   }
+
+  /* Easel (BUILD studio 2). A full-screen overlay, not a canvas HUD: a 160x240
+     portrait crop cannot hold a 32x32 editor plus tools. Phone portrait is the
+     layout that has to work -- column, 44px targets, canvas scaled nearest-
+     neighbour. A short landscape phone puts the tools beside the canvas. */
+  #easel{
+    position:fixed; inset:0; z-index:30;
+    display:none; flex-direction:column;
+    background:#14120f; color:#f2ead8;
+    padding:calc(.6rem + env(safe-area-inset-top,0px)) .6rem calc(.6rem + env(safe-area-inset-bottom,0px));
+    box-sizing:border-box; gap:.45rem;
+    overflow-y:auto; -webkit-overflow-scrolling:touch;
+    font-family:"Segoe UI",system-ui,sans-serif;
+  }
+  #easel.open{ display:flex; }
+  #easelTitle{ margin:0; font-size:.95rem; letter-spacing:.04em; }
+  #easelStage{
+    flex:1 1 auto; min-height:0;
+    display:flex; align-items:center; justify-content:center;
+  }
+  #easelCanvas{
+    width:min(92vw, calc(100dvh - 16.5rem), 32rem); max-width:100%; height:auto; aspect-ratio:1 / 1;
+    image-rendering:pixelated; image-rendering:crisp-edges;
+    background:#efe6d4; touch-action:none;
+    border:2px solid #c4a574;
+  }
+  #easelTools, #easelPalette, #easelActions{
+    display:flex; flex-wrap:wrap; gap:6px; align-items:center;
+  }
+  #easel button{
+    min-height:44px; min-width:44px;
+    padding:0 .7rem; border-radius:8px;
+    border:1px solid #c4a574; background:#1b1813; color:#f2ead8;
+    font-size:.9rem;
+  }
+  #easel button.on{ background:#c4a574; color:#14120f; }
+  #easel .swatch{ padding:0 .55rem; }
+  #easel .swatch i{
+    display:inline-block; width:14px; height:14px; margin-right:.35rem;
+    vertical-align:-2px; border:1px solid #f2ead8;
+  }
+  #easelNote{ margin:0; min-height:1.2em; font-size:.8rem; color:#a89c88; }
+  @media (max-width: 480px) {
+    #easelCanvas{ width:min(100%, calc(100vw - 1.2rem), calc(100dvh - 16.5rem)); }
+    #easel{ gap:.35rem; }
+  }
+  @media (max-height: 500px) and (orientation: landscape) {
+    #easel{ flex-direction:row; flex-wrap:wrap; align-items:stretch; }
+    #easelTitle{ flex:1 1 100%; }
+    #easelStage{ flex:1 1 auto; }
+    #easelCanvas{ width:auto; height:min(92vh, 70vw); }
+    #easelTools, #easelPalette, #easelActions, #easelNote{
+      flex:1 1 8rem; align-content:flex-start;
+    }
+  }

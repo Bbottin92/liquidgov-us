@@ -16,15 +16,18 @@ let checks = 0, failed = 0;
 function check(ok, what) { checks++; if (!ok) { failed++; console.log("  FAIL " + what); } }
 
 const html = read("index.html");
-const ORDER = ["js/world.js", "js/interiors.js", "js/sprites.js", "js/actors.js", "js/net.js", "js/input.js", "js/interact.js", "js/main.js"];
+const ORDER = ["js/world.js", "js/interiors.js", "js/sprites.js", "js/actors.js", "js/net.js", "js/input.js", "js/interact.js", "js/main.js", "js/easel.js"];
 
 // ---- the page is a shell: markup + one stylesheet + the eight tags, in the documented order
 const scripts = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/g)];
 const srcs = scripts.map((m) => (m[1].match(/\bsrc="([^"]*)"/) || [])[1]);
-check(JSON.stringify(srcs) === JSON.stringify(ORDER), "the <script src> tags are exactly the eight files in the documented order: " + JSON.stringify(srcs));
+check(JSON.stringify(srcs) === JSON.stringify(ORDER), "the <script src> tags are exactly the nine files in the documented order: " + JSON.stringify(srcs));
 check(scripts.every((m) => m[2].trim() === ""), "no inline script is left in index.html");
 check(scripts.every((m) => !/\b(defer|async|type\s*=|nomodule)\b/i.test(m[1])), "no defer / async / type=module on any tag (the order must match the old inline script)");
 check(!/<style\b/i.test(html), "no inline <style> is left in index.html");
+const css = read("style.css");
+check(html.includes('id="easelCanvas" width="32" height="32"') && html.includes('data-tool="smudge"') && html.includes('id="easelUndo"'), "the easel overlay is a 32x32 canvas with smudge and undo");
+check(css.includes("#easel") && css.includes("min-height:44px") && css.includes("100dvh - 16.5rem") && /@media \(max-width:\s*480px\)/.test(css), "the easel has a portrait-phone layout: 44px targets and a canvas that leaves room for the tools");
 const links = [...html.matchAll(/<link\b([^>]*)>/g)].filter((m) => /rel="stylesheet"/.test(m[1])).map((m) => (m[1].match(/\bhref="([^"]*)"/) || [])[1]);
 check(JSON.stringify(links) === JSON.stringify(["style.css"]), "one stylesheet, style.css: " + JSON.stringify(links));
 const lastTag = html.lastIndexOf("<script"), bodyEnd = html.indexOf("</body>");
@@ -32,7 +35,7 @@ check(lastTag > 0 && lastTag < bodyEnd && html.indexOf("<div id=\"nameOverlay\">
 
 // ---- the files
 const jsFiles = fs.readdirSync(path.join(dir, "js")).filter((f) => f.endsWith(".js")).map((f) => "js/" + f).sort();
-check(JSON.stringify(jsFiles) === JSON.stringify([...ORDER].sort()), "js/ holds exactly those eight files, none unreferenced: " + JSON.stringify(jsFiles));
+check(JSON.stringify(jsFiles) === JSON.stringify([...ORDER].sort()), "js/ holds exactly those nine files, none unreferenced: " + JSON.stringify(jsFiles));
 for (const f of ORDER) {
   const t = read(f);
   check(t.startsWith('"use strict";\n'), f + " starts with \"use strict\"; (strict mode is per script: only the first file would get it otherwise)");
@@ -118,7 +121,7 @@ function load(order) {
 const ev = (env, expr) => vm.runInContext(expr, env.g);
 
 const ok = load(ORDER);
-check(ok.ok, "all eight files load in tag order" + (ok.ok ? "" : ": " + ok.file + " THREW " + ok.error));
+check(ok.ok, "all nine files load in tag order" + (ok.ok ? "" : ": " + ok.file + " THREW " + ok.error));
 if (ok.ok) {
   // the load-time code must have RUN (a silent skip would look like success), judged by its effects
   check(ev(ok, "typeof spriteAtlasCtx !== 'undefined' && spriteAtlasCtx !== null"), "paintSpriteAtlas ran (the sprite atlas context is set)");
@@ -136,6 +139,16 @@ if (ok.ok) {
   for (const fn of ["netMint", "netHandleAuthFailure", "enter", "tryInteract", "applyCrop", "paintBake", "netStatusTick", "netStatusReport", "renderInvHud", "tickToast", "tickPlaceName", "drawNameplate", "ingestOccupants", "stepOccupants", "drawItemGlyph", "drawSortedActors", "blitTallTile", "blitCanopy"]) check(ev(ok, "typeof " + fn) === "function", fn + " is a function after load");
   check(ev(ok, "netStatusShown") === false && ev(ok, "netStatusFails") === 0, "the badge starts hidden with no failures counted");
   check(ok.rec.errors.length === 0, "nothing was reported through console.error during load: " + JSON.stringify(ok.rec.errors));
+  check(ev(ok, "typeof openEasel === 'function' && typeof closeEasel === 'function' && typeof drawStudioPortrait === 'function'"), "the easel entry points exist after load");
+  check(ev(ok, "STUDIO_PORTRAIT.x === 10 && STUDIO_PORTRAIT.y === 0 && STUDIO_PORTRAIT.w === 2 && STUDIO_PORTRAIT.h === 2"), "the studio portrait is the pinned 2x2 at tile (10, 0)");
+  check(ev(ok, "ownHouseSpace.interactables.some(function (it) { return it.type === 'studioPortrait' && it.x === 10 && it.y === 0; })"), "the owner's house has the portrait frame on that tile");
+  check(ev(ok, "workshopSpace.interactables.some(function (it) { return it.type === 'easel' && it.x === 7 && it.y === 4; })"), "the workshop table is the easel");
+  check(ev(ok, "demoHouseSpace.interactables.every(function (it) { return it.type !== 'studioPortrait' && it.type !== 'easel'; })"), "the shared demo house does not grow an easel or a portrait frame");
+  var guestFetches = 0, guestThrew = "";
+  ok.g.fetch = function () { guestFetches++; return Promise.resolve({ ok: false, json: function () { return Promise.resolve({}); } }); };
+  try { ev(ok, "isBound = false; mode = 'workshop'; openEasel();"); }
+  catch (e) { guestThrew = e.name + ": " + e.message; }
+  check(!guestThrew && guestFetches === 0, "a guest opening the easel does not call the painting endpoints" + (guestThrew ? " (" + guestThrew + ")" : " (" + guestFetches + " fetches)"));
 }
 
 // ---- controls: the check must be able to FAIL (a wrong order has to throw a ReferenceError)

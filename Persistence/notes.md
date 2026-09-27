@@ -18,6 +18,13 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-27 -- BUILD studio 3 named, not built.** Brandon: "lets do map sources and bench."
+  Handoff is `CLAUDE_STUDIO_3.md`. Client work plus one field on `GET /presence/studio`
+  (discovery notes + a recipe count, no undiscovered names). Lab freeze: copper/iron/chalk
+  stay trophies; vinegar, tannin, and alum toast and stop granting; lampblack and gum
+  become soot and raw gum. The orchard apple tile becomes the keg. No second markers.
+  No deploy. Slices 1–3 ship together when he says deploy.
+
 - **2026-09-27 -- `BUILD studio 1` (the Studio's daemon core) built and tested; NOT deployed.** Trigger came right
   after the reference pass posted here, taken as the sign-off `studio.md` itself asks for (C1-C6 applied in full;
   the three flagged deviations recorded as taken, though only the pixel-cost one is actually built yet -- the

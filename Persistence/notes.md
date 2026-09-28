@@ -18,6 +18,18 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-28 -- Backpack proposed, not built.** Brandon: a real backpack for all items (own icon each,
+  hover/tap description bubble), plus a "currency" readout and a much more organized/appealing bench.
+  Asked to clarify currency first: confirmed there is no currency system anywhere in this game and none
+  should be built -- dropped entirely, not part of this pass. Handoff is `CLAUDE_BACKPACK.md`: a
+  persistent "Bag" button + `I` key opens a full grid view of `inventory` (the strip stays as the
+  quick-reference); icons come from a small set of procedural shape categories (twig/leaf/stone/jar/
+  powder/swatch/ink/bundle), not 38 bespoke drawings; descriptions are a new client-side `ITEM_DESC`
+  table (no schema change -- purely client flavour text); one shared `#itemTip` tooltip node handles both
+  mouse hover and touch tap; the bench gets a structural/visual pass (section headers, per-recipe icons,
+  a progress bar alongside the existing countdown text, the mix row visually distinct) with no route or
+  behavior change. Client only. Awaiting `BUILD backpack`.
+
 - **2026-09-27 -- `BUILD studio 5` built and tested; NOT deployed (daemon-only constants, no schema, no
   client change).** The proposal in `CLAUDE_STUDIO_5.md` as written: bench slot cap 3->5, Orchard keg
   cooldown 1 day->12h. Charcoal's 8h and verdigris's 7-day cap left untouched -- both already resolved by

@@ -29,9 +29,11 @@
 <div id="stage"><canvas id="game"></canvas></div>
 <div id="connStatus" role="status" aria-live="polite" title="Can't reach the Square. You can keep walking, but others can't see you until it reconnects."></div>
 <div id="invHud" aria-label="What you are holding"></div>
+<button id="bagBtn" type="button" hidden>Bag</button>
 <div id="toast" role="status" aria-live="polite"></div>
 <div id="placeName"></div>
 <div id="batchReady" role="status" aria-live="polite"></div>
+<div id="itemTip" role="tooltip" hidden></div>
 
 <div id="dpad">
   <button id="dUp" type="button" tabindex="-1" aria-label="Up">&#9650;</button>
@@ -80,6 +82,15 @@
   </div>
 </div>
 
+<div id="backpack" role="dialog" aria-modal="true" aria-label="Backpack" hidden>
+  <p id="backpackTitle">Backpack</p>
+  <p id="backpackEmpty"></p>
+  <div id="backpackGrid"></div>
+  <div id="backpackActions">
+    <button type="button" id="backpackClose">Close</button>
+  </div>
+</div>
+
 <div id="nameOverlay">
   <div id="nameCard">
     <h1>Welcome to the Square</h1>
@@ -103,5 +114,6 @@
 <script src="js/main.js"></script>
 <script src="js/easel.js"></script>
 <script src="js/studio.js"></script>
+<script src="js/backpack.js"></script>
 </body>
 </html>

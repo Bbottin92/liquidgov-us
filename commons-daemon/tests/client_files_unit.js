@@ -16,12 +16,12 @@ let checks = 0, failed = 0;
 function check(ok, what) { checks++; if (!ok) { failed++; console.log("  FAIL " + what); } }
 
 const html = read("index.html");
-const ORDER = ["js/world.js", "js/interiors.js", "js/sprites.js", "js/actors.js", "js/net.js", "js/input.js", "js/interact.js", "js/main.js", "js/easel.js", "js/studio.js"];
+const ORDER = ["js/world.js", "js/interiors.js", "js/sprites.js", "js/actors.js", "js/net.js", "js/input.js", "js/interact.js", "js/main.js", "js/easel.js", "js/studio.js", "js/backpack.js"];
 
-// ---- the page is a shell: markup + one stylesheet + the ten tags, in the documented order
+// ---- the page is a shell: markup + one stylesheet + the eleven tags, in the documented order
 const scripts = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/g)];
 const srcs = scripts.map((m) => (m[1].match(/\bsrc="([^"]*)"/) || [])[1]);
-check(JSON.stringify(srcs) === JSON.stringify(ORDER), "the <script src> tags are exactly the ten files in the documented order: " + JSON.stringify(srcs));
+check(JSON.stringify(srcs) === JSON.stringify(ORDER), "the <script src> tags are exactly the eleven files in the documented order: " + JSON.stringify(srcs));
 check(scripts.every((m) => m[2].trim() === ""), "no inline script is left in index.html");
 check(scripts.every((m) => !/\b(defer|async|type\s*=|nomodule)\b/i.test(m[1])), "no defer / async / type=module on any tag (the order must match the old inline script)");
 check(!/<style\b/i.test(html), "no inline <style> is left in index.html");
@@ -38,7 +38,7 @@ check(lastTag > 0 && lastTag < bodyEnd && html.indexOf("<div id=\"nameOverlay\">
 
 // ---- the files
 const jsFiles = fs.readdirSync(path.join(dir, "js")).filter((f) => f.endsWith(".js")).map((f) => "js/" + f).sort();
-check(JSON.stringify(jsFiles) === JSON.stringify([...ORDER].sort()), "js/ holds exactly those ten files, none unreferenced: " + JSON.stringify(jsFiles));
+check(JSON.stringify(jsFiles) === JSON.stringify([...ORDER].sort()), "js/ holds exactly those eleven files, none unreferenced: " + JSON.stringify(jsFiles));
 for (const f of ORDER) {
   const t = read(f);
   check(t.startsWith('"use strict";\n'), f + " starts with \"use strict\"; (strict mode is per script: only the first file would get it otherwise)");
@@ -124,7 +124,7 @@ function load(order) {
 const ev = (env, expr) => vm.runInContext(expr, env.g);
 
 const ok = load(ORDER);
-check(ok.ok, "all nine files load in tag order" + (ok.ok ? "" : ": " + ok.file + " THREW " + ok.error));
+check(ok.ok, "all eleven files load in tag order" + (ok.ok ? "" : ": " + ok.file + " THREW " + ok.error));
 if (ok.ok) {
   // the load-time code must have RUN (a silent skip would look like success), judged by its effects
   check(ev(ok, "typeof spriteAtlasCtx !== 'undefined' && spriteAtlasCtx !== null"), "paintSpriteAtlas ran (the sprite atlas context is set)");
@@ -188,6 +188,19 @@ if (ok.ok) {
   try { ev(ok, "isBound = false; openEasel('painting');"); }
   catch (e) { pgThrew = e.name + ": " + e.message; }
   check(!pgThrew && pgFetches === 0, "a guest never enters painting mode (no fetch even if asked)" + (pgThrew ? " (" + pgThrew + ")" : ""));
+
+  // ---- BUILD backpack: icons, descriptions, tooltip, the backpack overlay, the bench's icon/duration tables
+  check(ev(ok, "typeof openBackpack === 'function' && typeof closeBackpack === 'function' && typeof renderBackpack === 'function' && typeof backpackOpen === 'function'"), "the backpack entry points exist after load");
+  check(/id="bagBtn"/.test(html) && /id="itemTip"/.test(html) && /id="backpackGrid"/.test(html) && /id="backpackClose"/.test(html), "index.html has the Bag button, the shared tooltip, the backpack grid and its close button");
+  check(ev(ok, "Object.keys(PLACED_ITEM_INFO).every(function (s) { return typeof ITEM_DESC[s] === 'string' && ITEM_DESC[s].length > 0; })"), "every PLACED_ITEM_INFO slug has a non-empty ITEM_DESC entry (no blank tooltip)");
+  var bespokeGlyphSlugs = ["chalk_block", "iron_gall_ink_page", "lampblack_ink", "carbon_ink_black", "iron_gall_blue_black", "copper_acetate_bottle", "vinegar_jar", "vinegar", "cider_apple", "seashell", "alum_crystal", "oak_gall", "oak_gall_tannin", "gum_arabic"];
+  check(ev(ok, "Object.keys(PLACED_ITEM_INFO).every(function (s) { return " + JSON.stringify(bespokeGlyphSlugs) + ".indexOf(s) >= 0 || typeof ITEM_CATEGORY[s] === 'string'; })"), "every PLACED_ITEM_INFO slug either has bespoke atlas art or an ITEM_CATEGORY mapping (nothing silently falls through to the plain generic square)");
+  check(ev(ok, "['charcoal','shell_white','yellow_ochre','red_ochre','gum_solution','oak_gall_tannin_studio','carbon_ink','iron_acetate','iron_gall_ink_studio','verdigris','madder_lake','weld_lake','woad_blue'].every(function (s) { return typeof RECIPE_OUTPUT_ITEM[s] === 'string' && typeof RECIPE_DURATION_MS[s] === 'number'; })"), "all 13 bench recipes have an output-item and a duration entry for the bench's icon/progress bar");
+  var bpFetches = 0, bpThrew = "";
+  ok.g.fetch = function () { bpFetches++; return Promise.resolve({ ok: false, json: function () { return Promise.resolve({}); } }); };
+  try { ev(ok, "isBound = false; openBackpack(); closeBackpack();"); }
+  catch (e) { bpThrew = e.name + ": " + e.message; }
+  check(!bpThrew && bpFetches === 0, "a guest opening/closing the backpack never calls fetch (pure client-side inventory, same as the strip)" + (bpThrew ? " (" + bpThrew + ")" : " (" + bpFetches + " fetches)"));
 }
 
 // ---- controls: the check must be able to FAIL (a wrong order has to throw a ReferenceError)

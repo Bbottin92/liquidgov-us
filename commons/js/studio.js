@@ -126,6 +126,63 @@ function tickBatchReady() {
   el.textContent = ready ? "A batch is ready." : "";
 }
 
+// ---- BUILD backpack decision 6: the bench, visually --------------------------------------------------
+// Two small fixed tables mirroring catalog.sql's own recipes/recipe_outputs rows, the same "client
+// mirrors a daemon-fixed table" shape STUDIO_GATHER_SPOTS above already uses. Neither /presence/studio's
+// batches nor its makeable list carries an output-item slug or a started_ms (main.cpp only sends
+// batch_id/recipe/ready_ms), so a batch's start time is derived here as ready_ms - the recipe's own known
+// duration -- no route change, no new field, just what catalog.sql already fixes for every recipe.
+var RECIPE_OUTPUT_ITEM = {
+  charcoal:                "charcoal_black",
+  shell_white:             "shell_white",
+  yellow_ochre:            "yellow_ochre",
+  red_ochre:               "red_ochre",
+  gum_solution:            "binder",
+  oak_gall_tannin_studio:  "tannin",
+  carbon_ink:              "carbon_ink_black",
+  iron_acetate:            "iron_acetate",
+  iron_gall_ink_studio:    "iron_gall_blue_black",
+  verdigris:               "verdigris_green",
+  madder_lake:             "madder_red",
+  weld_lake:               "weld_yellow",
+  woad_blue:               "woad_blue"
+};
+var RECIPE_DURATION_MS = {
+  charcoal:                28800000,
+  shell_white:             86400000,
+  yellow_ochre:            86400000,
+  red_ochre:               14400000,
+  gum_solution:            28800000,
+  oak_gall_tannin_studio:  86400000,
+  carbon_ink:              1800000,
+  iron_acetate:            259200000,
+  iron_gall_ink_studio:    43200000,
+  verdigris:               604800000,
+  madder_lake:             172800000,
+  weld_lake:               86400000,
+  woad_blue:               259200000
+};
+
+function benchIcon(recipeSlug) {
+  var item = RECIPE_OUTPUT_ITEM[recipeSlug];
+  if (!item) return null;
+  var c = document.createElement("canvas");
+  c.width = 18; c.height = 18;
+  c.className = "bpIcon";
+  var ctx = c.getContext("2d");
+  ctx.imageSmoothingEnabled = false;
+  if (typeof drawItemGlyph !== "function" || !drawItemGlyph(ctx, item, 0, 0, 18)) return null;
+  return c;
+}
+
+function benchProgressPct(b) {
+  var durMs = RECIPE_DURATION_MS[b.recipe];
+  if (!durMs) return 100;
+  var startedMs = b.ready_ms - durMs;
+  var pct = (Date.now() - startedMs) / durMs * 100;
+  return Math.max(0, Math.min(100, Math.round(pct)));
+}
+
 // ---- The bench ------------------------------------------------------------
 function benchOpen() {
   var el = document.getElementById("bench");
@@ -216,6 +273,12 @@ function renderBench() {
   }
 
   var s = studioState;
+
+  var batchesHead = document.createElement("p");
+  batchesHead.className = "benchSection";
+  batchesHead.textContent = "Open batches";
+  batchesEl.appendChild(batchesHead);
+
   var batches = (s && s.batches) || [];
   if (!batches.length) {
     var none = document.createElement("p");
@@ -227,9 +290,20 @@ function renderBench() {
     (function (b) {
       var row = document.createElement("div");
       row.className = "benchRow";
+      var icon = benchIcon(b.recipe);
+      if (icon) row.appendChild(icon);
       var label = document.createElement("span");
-      label.textContent = b.recipe + " -- " + benchCountdown(b.ready_ms);
+      label.textContent = b.recipe;
       row.appendChild(label);
+      var bar = document.createElement("div");
+      bar.className = "benchProgress";
+      var fill = document.createElement("i");
+      fill.style.width = benchProgressPct(b) + "%";
+      bar.appendChild(fill);
+      row.appendChild(bar);
+      var time = document.createElement("span");
+      time.textContent = benchCountdown(b.ready_ms);
+      row.appendChild(time);
       if (b.ready_ms <= Date.now()) {
         var btn = document.createElement("button");
         btn.type = "button";
@@ -240,6 +314,11 @@ function renderBench() {
       batchesEl.appendChild(row);
     })(batches[i]);
   }
+
+  var recipesHead = document.createElement("p");
+  recipesHead.className = "benchSection";
+  recipesHead.textContent = "You can make";
+  recipesEl.appendChild(recipesHead);
 
   var makeable = (s && s.makeable) || [];
   if (!makeable.length) {
@@ -252,6 +331,8 @@ function renderBench() {
     (function (m) {
       var row = document.createElement("div");
       row.className = "benchRow";
+      var icon = benchIcon(m.recipe);
+      if (icon) row.appendChild(icon);
       var label = document.createElement("span");
       label.textContent = m.display_name;
       row.appendChild(label);
@@ -263,6 +344,11 @@ function renderBench() {
       recipesEl.appendChild(row);
     })(makeable[r]);
   }
+
+  var mixHead = document.createElement("p");
+  mixHead.className = "benchSection";
+  mixHead.textContent = "Try something";
+  mixEl.appendChild(mixHead);
 
   var held = (s && s.inventory) || [];
   var chips = document.createElement("div");

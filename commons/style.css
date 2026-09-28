@@ -97,6 +97,28 @@
     border-color:var(--ink); box-shadow:0 0 0 1px var(--ink);
     background:var(--paper);
   }
+  /* BUILD backpack: the Bag button, always on the strip's own row (top-right, so it never has to know
+     the strip's own dynamic width). Follows #invHud's empty/non-empty rule (interiors.js's renderInvHud). */
+  #bagBtn{
+    position:fixed; top:calc(2.4rem + env(safe-area-inset-top,0px)); right:calc(.6rem + env(safe-area-inset-right,0px));
+    z-index:14; padding:.3rem .8rem; border:1px solid var(--ink); border-radius:999px;
+    background:rgba(247,241,228,.88); color:var(--ink);
+    font-size:.75rem; font-weight:700; line-height:1.2; cursor:pointer;
+    user-select:none; -webkit-user-select:none;
+    box-shadow:0 1px 4px rgba(26,24,20,.35);
+  }
+  #bagBtn[hidden]{ display:none; }
+  /* The shared tooltip bubble (decision 4) -- one node, positioned in JS above whichever chip was
+     hovered/tapped, in the strip or the backpack grid. */
+  #itemTip{
+    position:fixed; z-index:40; max-width:min(14rem, 70vw);
+    padding:.3rem .6rem; border:1px solid var(--ink); border-radius:6px;
+    background:var(--paper); color:var(--ink);
+    font-size:.72rem; line-height:1.3;
+    box-shadow:0 1px 4px rgba(26,24,20,.35);
+    pointer-events:none; user-select:none; -webkit-user-select:none;
+  }
+  #itemTip[hidden]{ display:none; }
   /* Toasts used to be 8px canvas text on the grass. Same paper pill as the
      reconnect badge, bottom-centre, above the d-pad. Empty = hidden. */
   #toast{
@@ -199,7 +221,7 @@
   /* Bench and notebook (BUILD studio 3) share the easel's own full-screen-overlay shell -- same
      reasoning as studio 2's easel: a 160x240 portrait crop cannot host a scrollable list plus buttons
      any better than it could a 32x32 editor. */
-  #easel, #bench, #notebook{
+  #easel, #bench, #notebook, #backpack{
     position:fixed; inset:0; z-index:30;
     display:none; flex-direction:column;
     background:#14120f; color:#f2ead8;
@@ -208,8 +230,8 @@
     overflow-y:auto; -webkit-overflow-scrolling:touch;
     font-family:"Segoe UI",system-ui,sans-serif;
   }
-  #easel.open, #bench.open, #notebook.open{ display:flex; }
-  #easelTitle, #benchTitle, #notebookTitle{ margin:0; font-size:.95rem; letter-spacing:.04em; }
+  #easel.open, #bench.open, #notebook.open, #backpack.open{ display:flex; }
+  #easelTitle, #benchTitle, #notebookTitle, #backpackTitle{ margin:0; font-size:.95rem; letter-spacing:.04em; }
   #easelStage{
     flex:1 1 auto; min-height:0;
     display:flex; align-items:center; justify-content:center;
@@ -224,7 +246,7 @@
   #benchMixChips, #benchActions, #notebookActions{
     display:flex; flex-wrap:wrap; gap:6px; align-items:center;
   }
-  #easel button, #bench button, #notebook button{
+  #easel button, #bench button, #notebook button, #backpack button{
     min-height:44px; min-width:44px;
     padding:0 .7rem; border-radius:8px;
     border:1px solid #c4a574; background:#1b1813; color:#f2ead8;
@@ -240,21 +262,57 @@
   /* Bench: an open-batch row (name + countdown, Collect once ready), a makeable-recipe row (name,
      Start), and the side-mix chip strip -- CLAUDE_STUDIO_3.md's "up to 4 held items, button Try". */
   #benchBatches, #benchRecipes{ display:flex; flex-direction:column; gap:4px; }
+  /* BUILD backpack decision 6: section headers so the three lists read as sections, not one run-on block. */
+  .benchSection{
+    margin:.3rem 0 0; font-size:.72rem; font-weight:700; letter-spacing:.06em;
+    text-transform:uppercase; color:#c4a574;
+  }
   .benchRow{
-    display:flex; align-items:center; justify-content:space-between; gap:.6rem;
+    display:flex; align-items:center; justify-content:space-between; gap:.5rem;
     padding:.3rem .5rem; border:1px solid rgba(196,165,116,.4); border-radius:6px;
     font-size:.85rem;
   }
+  .benchRow > span:first-of-type{ flex:none; }
+  .benchRow .bpIcon{ flex:none; display:block; image-rendering:pixelated; border-radius:3px; }
+  /* A batch's countdown keeps its exact minutes/hours text (CLAUDE_STUDIO_3.md: "Names and waiting," not
+     a mystery meter) -- the bar is an addition alongside it, not a replacement. */
+  .benchProgress{
+    flex:1 1 auto; height:6px; min-width:2rem; border-radius:3px;
+    background:rgba(196,165,116,.22); overflow:hidden;
+  }
+  .benchProgress i{ display:block; height:100%; background:#c4a574; }
   .benchEmpty{ margin:0; font-size:.8rem; color:#a89c88; }
   .benchChip{ font-size:.8rem; padding:0 .5rem; }
+  /* Side-mixing reads as "more of the same list" without this -- CLAUDE_STUDIO_3.md was explicit that a
+     mix Try is a different, lesser action than starting a real batch. */
+  #benchMix{
+    padding:.5rem; border-radius:8px; background:rgba(196,165,116,.1);
+    border:1px solid rgba(196,165,116,.25);
+  }
   /* The notebook: one line per discovery, then a "?" line per bench recipe not yet collected --
      CLAUDE_STUDIO_3.md: "No free text." */
   #notebookLines{ display:flex; flex-direction:column; gap:6px; overflow-y:auto; }
   .notebookLine{ margin:0; font-size:.85rem; line-height:1.35; }
   .notebookUnknown{ color:#a89c88; }
+  /* BUILD backpack decision 5: a real grid, not the strip's wrapping row -- icon, label, qty, sorted by
+     category then alphabetically (backpack.js's renderBackpack()). */
+  #backpackEmpty{ margin:0; font-size:.8rem; color:#a89c88; }
+  #backpackGrid{
+    flex:1 1 auto; min-height:0; overflow-y:auto;
+    display:grid; grid-template-columns:repeat(auto-fill, minmax(4.6rem, 1fr)); gap:.5rem;
+    align-content:start;
+  }
+  .bpChip{
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:.25rem;
+    padding:.5rem .3rem; text-align:center;
+  }
+  .bpChip canvas{ image-rendering:pixelated; border-radius:3px; }
+  .bpChip span{ font-size:.72rem; line-height:1.2; }
+  .bpChip em{ font-style:normal; font-size:.7rem; color:#a89c88; }
+  .bpChip.held{ border-color:#c4a574; box-shadow:0 0 0 1px #c4a574; }
   @media (max-width: 480px) {
     #easelCanvas{ width:min(100%, calc(100vw - 1.2rem), calc(100dvh - 16.5rem)); }
-    #easel, #bench, #notebook{ gap:.35rem; }
+    #easel, #bench, #notebook, #backpack{ gap:.35rem; }
   }
   @media (max-height: 500px) and (orientation: landscape) {
     #easel{ flex-direction:row; flex-wrap:wrap; align-items:stretch; }

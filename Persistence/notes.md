@@ -1,6 +1,6 @@
 # Notes — ideas, decisions, parked work
 
-Last updated: 2026-09-16
+Last updated: 2026-09-28
 
 Shared working memory for **ideas and product decisions** (Grok + Claude).
 Repo path: `Persistence/notes.md` on `Bbottin92/liquidgov-us` `master`.
@@ -18,6 +18,16 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-28 -- `BUILD backpack` built and tested; NOT deployed (client only, no schema/route change).**
+  `CLAUDE_BACKPACK.md` as written. `ITEM_CATEGORY`/`ITEM_DESC` tables next to `PLACED_ITEM_INFO`; six new
+  procedural glyph shapes in `sprites.js`'s `paintItemAtlas()`; a new `commons/js/backpack.js` (11th
+  script) for the Bag button/`I` key/`#backpack` grid overlay and the shared `#itemTip` tooltip (hover +
+  tap, click also selects like the strip already does); the bench (`studio.js`) grew section headers, a
+  per-row icon, and a progress bar derived from a new client-side `RECIPE_DURATION_MS` table (the daemon's
+  `/presence/studio` sends no `started_ms`, so it's `ready_ms - the recipe's known duration` -- checked
+  against `main.cpp` directly, no route change). `client_files_unit.js` grew from 105 to 113 checks (three
+  new coverage checks, each mutation-confirmed). Full doc: `backpack-built.md`.
+
 - **2026-09-28 -- Backpack proposed, not built.** Brandon: a real backpack for all items (own icon each,
   hover/tap description bubble), plus a "currency" readout and a much more organized/appealing bench.
   Asked to clarify currency first: confirmed there is no currency system anywhere in this game and none
@@ -30,15 +40,16 @@ Not bug classes. Not “what is live on the droplet.”
   a progress bar alongside the existing countdown text, the mix row visually distinct) with no route or
   behavior change. Client only. Awaiting `BUILD backpack`.
 
-- **2026-09-27 -- `BUILD studio 5` built and tested; NOT deployed (daemon-only constants, no schema, no
-  client change).** The proposal in `CLAUDE_STUDIO_5.md` as written: bench slot cap 3->5, Orchard keg
-  cooldown 1 day->12h. Charcoal's 8h and verdigris's 7-day cap left untouched -- both already resolved by
-  slice 1's own reference check, not guessed. `test_studio.sh` grew from 88 to 105 checks: the slot-cap
-  test now opens 5 batches before `slots_full`; a new section pins the keg's 12h cooldown by number for
-  the first time (it had never been asserted before, only that some cooldown existed); one pre-existing
-  assertion had hardcoded the shared clock's value as a literal and had to be fixed to compute it instead
-  once the new keg test shifted the timeline. Full suite: 26 files, 0 failed. Mutation-checked (both
-  numbers reverted in turn) -- each failed exactly where expected, restored. See `studio-5-built.md`.
+- **2026-09-27 -- `BUILD studio 5` built and tested; DEPLOYED 2026-09-28 (`c8ef0f1`, daemon-only
+  constants, no schema, no client change).** The proposal in `CLAUDE_STUDIO_5.md` as written: bench slot
+  cap 3->5, Orchard keg cooldown 1 day->12h. Charcoal's 8h and verdigris's 7-day cap left untouched -- both
+  already resolved by slice 1's own reference check, not guessed. `test_studio.sh` grew from 88 to 105
+  checks: the slot-cap test now opens 5 batches before `slots_full`; a new section pins the keg's 12h
+  cooldown by number for the first time (it had never been asserted before, only that some cooldown
+  existed); one pre-existing assertion had hardcoded the shared clock's value as a literal and had to be
+  fixed to compute it instead once the new keg test shifted the timeline. Full suite: 26 files, 0 failed.
+  Mutation-checked (both numbers reverted in turn) -- each failed exactly where expected, restored. Deploy
+  verify: 37 checks, 0 failed. See `studio-5-built.md`.
 
 - **2026-09-27 -- Studio slice 5 proposed, not built.** Brandon: "go build slice 5," then, asked how to
   handle a slice with no named target numbers, "I propose defaults, you approve." Handoff is

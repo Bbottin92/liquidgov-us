@@ -18,6 +18,8 @@ function typingInField(e) {
   if (bench && bench.classList.contains("open")) return true;
   var notebook = document.getElementById("notebook");
   if (notebook && notebook.classList.contains("open")) return true;
+  var backpack = document.getElementById("backpack");
+  if (backpack && backpack.classList.contains("open")) return true;
   var t = e.target;
   return !!(t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA"));
 }

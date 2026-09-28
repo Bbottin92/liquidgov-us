@@ -75,12 +75,16 @@ var itemGlyphIndex = {};
       px(ox, 4, 3, 8, 10, col);
       px(ox, 4, 3, 8, 1, "#f4efe4");
       px(ox, 4, 12, 8, 1, "#b8ae94");
-    } else if (slug === "iron_gall_ink_page" || slug === "lampblack_ink") {
+    } else if (slug === "iron_gall_ink_page" || slug === "lampblack_ink" || slug === "carbon_ink_black" || slug === "iron_gall_blue_black") {
+      // BUILD backpack: carbon_ink_black/iron_gall_blue_black are the Studio versions of the same idea
+      // (soot or tannin+iron bound into ink) -- same glyph, "ink" is already bespoke, not a new category.
       px(ox, 3, 2, 10, 12, "#efe6d4");
       px(ox, 5, 4, 6, 1, col);
       px(ox, 5, 7, 6, 1, col);
       px(ox, 5, 10, 4, 1, col);
-    } else if (slug === "copper_acetate_bottle" || slug === "vinegar_jar") {
+    } else if (slug === "copper_acetate_bottle" || slug === "vinegar_jar" || slug === "vinegar") {
+      // BUILD backpack: the keg's vinegar is the same substance as the old Lab-A jar -- same glyph,
+      // "jar/bottle" is already bespoke, not a new category.
       px(ox, 6, 1, 4, 3, col);
       px(ox, 4, 4, 8, 10, col);
       px(ox, 5, 6, 6, 4, "#f4efe4");
@@ -103,6 +107,37 @@ var itemGlyphIndex = {};
       px(ox, 4, 6, 8, 6, col);
       px(ox, 6, 4, 4, 4, col);
       px(ox, 6, 7, 4, 2, "#f4efe4");
+    } else if (ITEM_CATEGORY[slug] === "twig") {
+      // Two crossed diagonal bars, stepped in 2x2 blocks (no diagonal-line primitive here).
+      px(ox, 3, 3, 2, 2, col); px(ox, 5, 5, 2, 2, col); px(ox, 7, 7, 2, 2, col);
+      px(ox, 9, 9, 2, 2, col); px(ox, 11, 11, 2, 2, col);
+      px(ox, 11, 3, 2, 2, col); px(ox, 9, 5, 2, 2, col);
+      px(ox, 5, 9, 2, 2, col); px(ox, 3, 11, 2, 2, col);
+    } else if (ITEM_CATEGORY[slug] === "leaf") {
+      px(ox, 7, 2, 2, 2, col);
+      px(ox, 6, 4, 4, 2, col);
+      px(ox, 5, 6, 6, 2, col);
+      px(ox, 6, 8, 4, 2, col);
+      px(ox, 7, 10, 2, 2, col);
+      px(ox, 7, 5, 1, 6, "#2a3a1a");
+    } else if (ITEM_CATEGORY[slug] === "stone") {
+      px(ox, 5, 3, 6, 2, col);
+      px(ox, 4, 5, 8, 6, col);
+      px(ox, 5, 11, 6, 2, col);
+      px(ox, 6, 4, 3, 1, "#f4efe4");
+    } else if (ITEM_CATEGORY[slug] === "powder") {
+      px(ox, 7, 4, 2, 2, col);
+      px(ox, 6, 6, 4, 2, col);
+      px(ox, 5, 8, 6, 2, col);
+      px(ox, 4, 10, 8, 2, col);
+    } else if (ITEM_CATEGORY[slug] === "swatch") {
+      px(ox, 3, 3, 10, 10, col);
+      px(ox, 4, 4, 3, 3, "rgba(255,255,255,.35)");
+    } else if (ITEM_CATEGORY[slug] === "bundle") {
+      px(ox, 4, 4, 4, 4, col);
+      px(ox, 8, 5, 4, 4, col);
+      px(ox, 6, 8, 4, 3, col);
+      px(ox, 4, 7, 8, 1, "rgba(26,24,20,.55)");
     } else {
       px(ox, 4, 4, 8, 8, col);
       px(ox, 5, 5, 6, 2, "#f4efe4");

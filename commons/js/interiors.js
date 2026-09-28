@@ -192,6 +192,84 @@ var PLACED_ITEM_INFO = {
   weld_yellow:            { color: "#e0c04a", label: "weld lake" },
   woad_blue:              { color: "#2e4c72", label: "woad blue" }
 };
+
+// BUILD backpack (CLAUDE_BACKPACK.md decision 2): a small set of procedural shape categories for the
+// ~24 slugs that otherwise fall through to sprites.js's generic textured square. Lives next to
+// PLACED_ITEM_INFO, not folded into it -- colour/label and shape are two separate concerns. A slug not
+// listed here either has bespoke art already (sprites.js's own slug checks) or is meant to keep the
+// plain square. sprites.js reads this table to pick a shape; backpack.js's categoryOf() reads it too,
+// to group the backpack grid (falling back to the bespoke slugs' own real category there).
+var ITEM_CATEGORY = {
+  willow_twigs:     "twig",
+  ochre_earth:      "stone",
+  alum_stone:       "stone",
+  scrap_iron:       "stone",
+  copper_sheet:     "stone",
+  madder_root:      "leaf",
+  weld:             "leaf",
+  woad_leaves:      "leaf",
+  soot:             "powder",
+  gum_arabic_raw:   "bundle",
+  binder:           "bundle",
+  tannin:           "bundle",
+  iron_acetate:     "bundle",
+  charcoal_black:   "swatch",
+  charcoal_grey_1:  "swatch",
+  charcoal_grey_2:  "swatch",
+  charcoal_grey_3:  "swatch",
+  shell_white:      "swatch",
+  yellow_ochre:     "swatch",
+  red_ochre:        "swatch",
+  verdigris_green:  "swatch",
+  madder_red:       "swatch",
+  weld_yellow:      "swatch",
+  woad_blue:        "swatch"
+};
+
+// BUILD backpack (decision 3): one short sentence per slug, client-side only (no schema/catalog change --
+// this text is never read by the daemon). Several lean on the same real-world grounding the recipe
+// history_notes already use (catalog.sql). A slug missing here falls back to its own PLACED_ITEM_INFO
+// label in backpack.js's itemTipText() -- never a blank tooltip.
+var ITEM_DESC = {
+  chalk_block:            "Calcium carbonate, ground and washed.",
+  iron_gall_ink_page:     "A page already written in iron-gall ink.",
+  copper_acetate_bottle:  "Copper, dissolved in acetic acid.",
+  vinegar_jar:            "Acetic acid from fermented cider. Old stock -- the Orchard keg makes it now.",
+  oak_gall_tannin:        "Oak galls, crushed and steeped. Old stock -- the bench makes it now.",
+  lampblack_ink:          "Soot bound with gum arabic.",
+  alum_crystal:           "Potassium aluminium sulfate, crystallised.",
+  gum_arabic:             "Acacia resin, dissolved in water.",
+  oak_gall:               "A gall from an oak, full of tannin.",
+  seashell:               "Calcium carbonate, from the shore.",
+  cider_apple:            "A fallen apple from the Orchard.",
+  willow_twigs:           "Young willow, left to dry before the charcoal pit.",
+  ochre_earth:            "Iron-rich earth, the source of yellow ochre.",
+  alum_stone:             "The mordant that fixes a lake pigment to its base.",
+  madder_root:            "The root behind madder lake's red.",
+  weld:                   "A dye-plant, the source of weld lake's yellow.",
+  woad_leaves:            "Fermented for a blue dye since antiquity.",
+  scrap_iron:             "Old nails, steeped in vinegar for iron acetate.",
+  copper_sheet:           "Rests in vinegar fumes, then scraped, for verdigris.",
+  gum_arabic_raw:         "Acacia resin, not yet dissolved into a binder.",
+  soot:                   "Lampblack, the base of carbon ink.",
+  vinegar:                "Acetic acid from the Orchard keg.",
+  charcoal_black:         "Willow, burned slow and left overnight.",
+  charcoal_grey_1:        "Charcoal, worn lighter.",
+  charcoal_grey_2:        "Charcoal, lighter still.",
+  charcoal_grey_3:        "The palest charcoal grey.",
+  shell_white:            "Ground shell, an old white pigment.",
+  yellow_ochre:           "Earth pigment, washed and settled.",
+  red_ochre:              "Yellow ochre, heated.",
+  binder:                 "Gum arabic, dissolved in water.",
+  tannin:                 "Oak galls, steeped for the base of iron-gall ink.",
+  carbon_ink_black:       "Soot bound with gum arabic -- the fast path.",
+  iron_acetate:           "Iron steeped in vinegar. Folk method, unsourced.",
+  iron_gall_blue_black:   "Tannin, iron and gum. Ages toward brown.",
+  verdigris_green:        "Copper's green -- the slow, expensive one.",
+  madder_red:             "A lake pigment, later and northern-European.",
+  weld_yellow:            "A lake pigment, from a Bolognese method.",
+  woad_blue:              "A simplified vat, settled onto shell white."
+};
 var labSpace = buildInterior(20, 16, function (t, w) {
   t[idxIn(w, LAB_DOOR.x, LAB_DOOR.y)] = T_IDOOR;
   t[idxIn(w, 8, 1)]  = T_WORKBENCH;
@@ -311,10 +389,14 @@ var lastPickedItem = null;
 
 function renderInvHud() {
   var el = document.getElementById("invHud");
+  var bag = document.getElementById("bagBtn");
   if (!el) return;
   var keys = [];
   for (var k in inventory) if (Object.prototype.hasOwnProperty.call(inventory, k) && inventory[k] > 0) keys.push(k);
   el.innerHTML = "";
+  // BUILD backpack: the Bag button follows the strip's own empty/non-empty rule (CLAUDE_BACKPACK.md
+  // decision 1, "always there once the strip has anything to show") -- same `inventory`, no new state.
+  if (bag) bag.hidden = !keys.length;
   if (!keys.length) return;
   keys.sort(function (a, b) {
     if (a === lastPickedItem) return -1;

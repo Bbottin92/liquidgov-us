@@ -1,4 +1,4 @@
-# The Studio, slice 5: tuning — built, tested, NOT deployed
+# The Studio, slice 5: tuning — built, tested, DEPLOYED
 
 Brandon: `BUILD studio 5`, approving the proposal in `CLAUDE_STUDIO_5.md` as written. Two constants
 changed in `commons-daemon/src/studio.cpp`. No schema, no catalog edit, no client change — neither
@@ -56,7 +56,8 @@ that is real signal slice 5 didn't have, and worth another pass then.
 
 ## Deploy
 
-Not deployed. Both are already-compiled-in daemon constants, so this ships as a normal daemon deploy
-(backup, sync, build, restart) whenever `deploy` is said -- no migration, nothing to backfill, no client
-sync required for either change to take effect (though one will likely ride along anyway once the client
-has other pending changes).
+Deployed 2026-09-28, revision `c8ef0f1` (daemon-only: `src/studio.cpp`, no client sync). `verify.sh`'s
+full pass: daemon active, not self-restarted, running revision confirmed by `/health`, a real guest's
+mint/join/move/leave round-trip through nginx, and the live database's integrity check plus a table-count
+diff against the pre-deploy backup (all 13 tables unchanged in row count, as expected for a
+constants-only change). 37 checks, 0 failed.

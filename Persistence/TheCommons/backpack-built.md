@@ -1,4 +1,4 @@
-# The backpack — built, tested, NOT deployed
+# The backpack — built, tested, DEPLOYED
 
 Brandon: `BUILD backpack`, approving `CLAUDE_BACKPACK.md` as written (currency dropped per the earlier
 AskUserQuestion answer, "Skip it for now" — no economy system exists anywhere in this game and none was
@@ -99,5 +99,9 @@ reachable):
 
 ## Deploy
 
-Client-only. Holds for a literal `deploy`, same as always -- no migration, no daemon rebuild required for
-this change to take effect, though it will likely ride along with whatever else is pending next time.
+Deployed 2026-09-28, revision `9a0896b`. The daemon cycle (backup/sync/build/restart) ran as it always
+does even though nothing in `commons-daemon/` changed -- the drift check confirmed that explicitly ("this
+deploy changes nothing here"). `verify.sh`: 37 checks, 0 failed, database unchanged across all 13 tables.
+The client sync (`commons/` -> `/opt/commons`, `--with-client`) then pushed the seven changed files
+(`index.html`, `js/backpack.js`, `js/input.js`, `js/interiors.js`, `js/sprites.js`, `js/studio.js`,
+`style.css`).

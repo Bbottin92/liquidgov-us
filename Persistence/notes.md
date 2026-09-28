@@ -18,7 +18,8 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
-- **2026-09-28 -- `BUILD backpack` built and tested; NOT deployed (client only, no schema/route change).**
+- **2026-09-28 -- `BUILD backpack` built, tested, and DEPLOYED (`9a0896b`, client only -- the daemon cycle
+  ran but changed nothing, confirmed by its own drift check; 37 verify checks, 0 failed).**
   `CLAUDE_BACKPACK.md` as written. `ITEM_CATEGORY`/`ITEM_DESC` tables next to `PLACED_ITEM_INFO`; six new
   procedural glyph shapes in `sprites.js`'s `paintItemAtlas()`; a new `commons/js/backpack.js` (11th
   script) for the Bag button/`I` key/`#backpack` grid overlay and the shared `#itemTip` tooltip (hover +

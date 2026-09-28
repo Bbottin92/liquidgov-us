@@ -18,6 +18,17 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-28 -- Ideas survey proposed, not built.** Brandon: "pull the best aspects of other relevant
+  popular games and implement them" -- too open to build from directly, so `CLAUDE_IDEAS.md` surveys what
+  actually fits (Animal Crossing's placeable decorations and museum, Stardew's Community Center framed as
+  the Commons's own shared collection, a pigment-recolour "wear what you made" in place of new-art avatar
+  customization) against what the schema already allows (the `placed` table already has x/y/rot90, only
+  ever used for one wall-slot row today) and this game's own hard rules (no currency, no new art files).
+  Recommended order: friend-door wording fix, wear-a-pigment, multi-item house placement, a shared
+  discoveries board. Explicitly rejected: shops/currency, combat, live seasonal events, a second
+  fishing-style minigame (the Studio's gather spots already are that loop), full avatar art. Awaiting a
+  pick or a `BUILD <name>` once one gets its own doc.
+
 - **2026-09-28 -- `BUILD backpack` built, tested, and DEPLOYED (`9a0896b`, client only -- the daemon cycle
   ran but changed nothing, confirmed by its own drift check; 37 verify checks, 0 failed).**
   `CLAUDE_BACKPACK.md` as written. `ITEM_CATEGORY`/`ITEM_DESC` tables next to `PLACED_ITEM_INFO`; six new

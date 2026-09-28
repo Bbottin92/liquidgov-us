@@ -18,6 +18,18 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-28 -- Wear-a-pigment proposed, not built.** Brandon: `BUILD wear a pigment`, the second pick
+  off `CLAUDE_IDEAS.md`'s build order -- but that doc only named the idea, it didn't settle how it's
+  picked, whether other players see it, or where it's stored, and this one touches the daemon (unlike the
+  door wording fix), so it got its own doc first: `CLAUDE_WEAR_PIGMENT.md`. Recommended: reuse the fixed
+  13-pigment table's own unlock rule (charcoal 1-4 always, 5-13 once discovered), bound-only (guests never
+  have discoveries); a new nullable `players.shirt_pigment_index` column (same idempotent migration
+  pattern as `visit_policy`) plus a `shirt_hex` field on the in-RAM `Occupant` struct so a nearby friend
+  actually sees the colour, not just you; rendered as one small `fillRect` over the sprite's existing body
+  rectangle, no new atlas; picked via a new "Wear" button in the easel's own actions row (reuses its
+  already-unlocked palette list) rather than a new picker screen. Awaiting `BUILD wear a pigment` against
+  this doc.
+
 - **2026-09-28 -- Friend-door wording fix built and tested; NOT deployed (client only).** First pick off
   `CLAUDE_IDEAS.md`'s build order. The six Homestead friend-lot doors defaulted to prompt "Closed" and a
   "Closed." toast whether you were a guest, a bound player with no friend currently home, or (mechanically

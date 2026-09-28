@@ -18,6 +18,16 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-27 -- `BUILD studio 5` built and tested; NOT deployed (daemon-only constants, no schema, no
+  client change).** The proposal in `CLAUDE_STUDIO_5.md` as written: bench slot cap 3->5, Orchard keg
+  cooldown 1 day->12h. Charcoal's 8h and verdigris's 7-day cap left untouched -- both already resolved by
+  slice 1's own reference check, not guessed. `test_studio.sh` grew from 88 to 105 checks: the slot-cap
+  test now opens 5 batches before `slots_full`; a new section pins the keg's 12h cooldown by number for
+  the first time (it had never been asserted before, only that some cooldown existed); one pre-existing
+  assertion had hardcoded the shared clock's value as a literal and had to be fixed to compute it instead
+  once the new keg test shifted the timeline. Full suite: 26 files, 0 failed. Mutation-checked (both
+  numbers reverted in turn) -- each failed exactly where expected, restored. See `studio-5-built.md`.
+
 - **2026-09-27 -- Studio slice 5 proposed, not built.** Brandon: "go build slice 5," then, asked how to
   handle a slice with no named target numbers, "I propose defaults, you approve." Handoff is
   `CLAUDE_STUDIO_5.md`. Two changes proposed: bench slot cap 3->5 (13 recipes spanning 30 min to 7 days

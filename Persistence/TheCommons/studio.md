@@ -1,11 +1,13 @@
-# The Studio — spec v2 (Grok's review folded in; slices 1-4 BUILT 2026-09-27)
+# The Studio — spec v2 (Grok's review folded in; slices 1-5 BUILT 2026-09-27)
 
-**Status: slice 4 built and tested; not deployed (no droplet touch, all four slices deploy together).**
-Slice 1 is daemon-only (`studio-1-built.md`). Slice 2 is the charcoal easel, the portrait endpoints, and
-the house frame (`studio-2-built.md`). Slice 3 is the map/lab wiring, the bench, and the notebook
-(`studio-3-built.md`, `CLAUDE_STUDIO_3.md`). Slice 4 is the rest of the palette ladder and the second
-painting frame (`studio-4-built.md`, `CLAUDE_STUDIO_4.md`). Where this file did not already pick a
-number, the reading taken is an open decision below (11–14).
+**Status: slices 1-4 built, tested and DEPLOYED (2026-09-27, verified live). Slice 5 built and tested,
+NOT yet deployed** (daemon-only constants; no schema, no client change needed for it to take effect, but
+it will normally ride along with whatever's next). Slice 1 is daemon-only (`studio-1-built.md`). Slice 2
+is the charcoal easel, the portrait endpoints, and the house frame (`studio-2-built.md`). Slice 3 is the
+map/lab wiring, the bench, and the notebook (`studio-3-built.md`, `CLAUDE_STUDIO_3.md`). Slice 4 is the
+rest of the palette ladder and the second painting frame (`studio-4-built.md`, `CLAUDE_STUDIO_4.md`).
+Slice 5 is tuning: bench slot cap, the Orchard keg cooldown (`studio-5-built.md`, `CLAUDE_STUDIO_5.md`).
+Where this file did not already pick a number, the reading taken is an open decision below (11–14).
 v1 was `9a5b7c5`; Grok's review is `GROK_STUDIO_ANSWER.md` (`5c45287`); this file is v2, written 2026-09-20.
 Each slice below is its own `BUILD`; every droplet touch needs the literal `deploy` word (daemon deploys:
 drift-check, online DB backup first). The reference pass is done (`studio-refs.md`, 2026-09-20); slice 1's frozen
@@ -367,3 +369,11 @@ shared `save_canvas(kind)` function, per the spec's own instruction not to copy 
 real client-side bugs found while doing this, beyond what the spec asked for: an unknown-index render
 fallback that used to draw black instead of paper, and the smudge tool's dither silently half-erasing any
 pigment index 5 and up instead of stamping solid. See `studio-4-built.md`.
+
+## Slice 5: built 2026-09-27
+
+Brandon: `BUILD studio 5`, approving `CLAUDE_STUDIO_5.md`'s proposal as written -- there is no target
+number named anywhere in this file for "tuning," so the proposal itself, not this file, is where the
+reasoning lives. Two daemon constants: bench slot cap 3->5, Orchard keg cooldown 1 day->12h. Charcoal's
+8h and verdigris's 7-day cap are explicitly untouched -- both were already resolved by the reference
+check, not guessed, and verdigris is meant to stay the slow, expensive tier. See `studio-5-built.md`.

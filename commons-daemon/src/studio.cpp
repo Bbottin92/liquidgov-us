@@ -24,7 +24,11 @@ const std::map<std::string, GatherSpot>& gather_spots() {
     static const std::map<std::string, GatherSpot> spots = {
         {"north_woods_galls",  {"oak_gall",       3, 600000}},
         {"north_woods_twigs",  {"willow_twigs",   3, 600000}},
-        {"orchard_keg",        {"vinegar",        3, 86400000}},
+        // BUILD studio 5: 86400000 (1 day) -> 43200000 (12h). Vinegar feeds two separate multi-day
+        // chains (iron acetate, verdigris); gating the shared input at a full day on top of their own
+        // durations compounded an already-long wait for no reason tied to the ingredient itself
+        // (CLAUDE_STUDIO_5.md). Neither recipe's own duration changed.
+        {"orchard_keg",        {"vinegar",        3, 43200000}},
         {"shore_shells",       {"seashell",       3, 600000}},
         {"quarry_ochre",       {"ochre_earth",    3, 600000}},
         {"quarry_alum",        {"alum_stone",     3, 600000}},
@@ -133,7 +137,10 @@ StudioStore::BenchResult StudioStore::start_batch(const std::string& username, c
     {
         sqlx::Stmt n(db_, "SELECT COUNT(*) FROM batches WHERE player_id = ?1 AND collected = 0;");
         n.integer(1, player_id);
-        if (n.row() && n.column_int(0) >= 3) { r.reason = "slots_full"; return r; } // Tx rolls back (never opened a write)
+        // BUILD studio 5: 3 -> 5. 13 recipes span 30 minutes to 7 days; three long batches alone could
+        // fill every slot and lock out even the short ones for most of a week. Pure pacing knob, not
+        // tied to any recipe's own real-world grounding (CLAUDE_STUDIO_5.md).
+        if (n.row() && n.column_int(0) >= 5) { r.reason = "slots_full"; return r; } // Tx rolls back (never opened a write)
     }
     // Every input, in order: fail the whole thing on the first one this player does not hold enough
     // of. A guarded UPDATE (quantity >= needed) re-checks inside THIS transaction, not just the read

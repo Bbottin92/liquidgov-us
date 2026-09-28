@@ -49,6 +49,21 @@ set_clock $((T0 + 600001))                      # 10 minutes + 1ms: the cooldown
 bgather alice north_woods_twigs; assert_code "after the cooldown: 200 again" 200
 bstudio alice; assert_contains "inventory now shows 6 (capped sensibly, not reset)" "$BODY" '"item":"willow_twigs","qty":6'
 
+echo "-- gather: the orchard keg's cooldown is 12h (BUILD studio 5, was 1 day; the recipe durations that consume vinegar are unchanged)"
+su carol
+KEG0=$((T0 + 600001))
+bgather carol orchard_keg; assert_code "carol's first keg visit: 200" 200
+assert_contains "granted vinegar" "$BODY" '"item":"vinegar"'
+assert_contains "qty 3" "$BODY" '"qty":3'
+bgather carol orchard_keg; assert_code "immediately again, same clock: still on cooldown" 409
+assert_contains "on_cooldown" "$BODY" on_cooldown
+set_clock $((KEG0 + 43200000 - 1))              # 1ms short of 12h: still on cooldown
+bgather carol orchard_keg; assert_code "1ms short of 12h: still 409" 409
+assert_contains "on_cooldown" "$BODY" on_cooldown
+set_clock $((KEG0 + 43200001))                  # 12h + 1ms: released
+bgather carol orchard_keg; assert_code "after 12h: 200 again" 200
+bstudio carol; assert_contains "inventory now shows 6 (a second keg visit, not a full day's wait)" "$BODY" '"item":"vinegar","qty":6'
+
 echo "-- bench: unknown recipe, a Lab-A lookup is refused too, missing inputs, then a real start"
 bbench alice not_a_recipe; assert_code "unknown recipe: 400" 400
 assert_contains "unknown_recipe" "$BODY" unknown_recipe
@@ -58,16 +73,18 @@ bbench bob charcoal; assert_code "bob holds no willow_twigs yet: 409 missing_inp
 assert_contains "missing_inputs" "$BODY" missing_inputs
 bbench alice charcoal; assert_code "alice holds 6 willow_twigs: 200" 200
 BATCH1="$(jget batch_id)"; READY1="$(jget ready_ms)"
-assert_eq "ready_ms is start + 28800s (8h, the frozen duration)" "$((T0 + 600001 + 28800000))" "$READY1"
+# The clock is wherever the keg test above left it (KEG0 + 43200001), not T0 + 600001 -- that fixed
+# offset was only ever right before the keg test existed. Compute it, don't hardcode a stale value.
+assert_eq "ready_ms is start + 28800s (8h, the frozen duration)" "$((KEG0 + 43200001 + 28800000))" "$READY1"
 bstudio alice; assert_contains "inventory shows the deduction (6 -> 5)" "$BODY" '"item":"willow_twigs","qty":5'
 assert_contains "the open batch is listed" "$BODY" "\"batch_id\":$BATCH1"
 
-echo "-- bench: the slot cap is 3, enforced independently of material (6 twigs is enough for 4)"
-bbench alice charcoal >/dev/null; bbench alice charcoal >/dev/null   # 2 more: 3 open batches, 3 twigs left
+echo "-- bench: the slot cap is 5 (BUILD studio 5, was 3), enforced independently of material (6 twigs is enough for 6)"
+bbench alice charcoal >/dev/null; bbench alice charcoal >/dev/null; bbench alice charcoal >/dev/null; bbench alice charcoal >/dev/null   # 4 more: 5 open batches, 1 twig left
 bstudio alice
 echo "$BODY" > "$WORK/studio_state.json"
-assert_eq "three open batches" 3 "$(python3 -c "import json; print(len(json.load(open('$WORK/studio_state.json'))['batches']))")"
-bbench alice charcoal; assert_code "a 4th, with material still available: 409 slots_full, not missing_inputs" 409
+assert_eq "five open batches" 5 "$(python3 -c "import json; print(len(json.load(open('$WORK/studio_state.json'))['batches']))")"
+bbench alice charcoal; assert_code "a 6th, with material still available: 409 slots_full, not missing_inputs" 409
 assert_contains "slots_full" "$BODY" slots_full
 
 echo "-- bench: a multi-input recipe, holding the first but not the second, rolls back the first deduction too"
@@ -105,9 +122,9 @@ bcollect alice 999999; assert_code "an unknown batch_id: 404" 404
 assert_contains "not_found" "$BODY" not_found
 
 echo "-- a second batch of the SAME recipe: the outputs still grant, but it is not a NEW discovery"
-bbench alice charcoal >/dev/null   # BATCH1's slot just freed on collect; alice still has 3 twigs left
-# (find its batch id: the open batches list now has exactly two -- the two started earlier that were
-# never collected, plus this new one makes three again; collect all remaining ones to isolate cleanly)
+bbench alice charcoal >/dev/null   # BATCH1's slot just freed on collect; this spends alice's last twig (5 used already, 1 left)
+# (find its batch id: the open batches list now has exactly four -- the four started earlier that were
+# never collected, plus this new one makes five again; collect all remaining ones to isolate cleanly)
 bstudio alice
 echo "$BODY" > "$WORK/studio_state.json"
 python3 -c "
@@ -128,7 +145,7 @@ echo "-- makeable-now: appears once inputs are held, disappears once they are sp
 bstudio bob; assert_not_contains "bob (no willow_twigs) does not see charcoal as makeable" "$BODY" '"recipe":"charcoal"'
 bgather bob north_woods_twigs >/dev/null
 bstudio bob; assert_contains "bob (now holding 3) sees it" "$BODY" '"recipe":"charcoal","display_name"'
-bbench bob charcoal >/dev/null; bbench bob charcoal >/dev/null; bbench bob charcoal >/dev/null   # spends all 3, hits slot cap too
+bbench bob charcoal >/dev/null; bbench bob charcoal >/dev/null; bbench bob charcoal >/dev/null   # spends all 3 (well under the cap of 5)
 bstudio bob; assert_not_contains "bob (spent to 0) no longer sees it as makeable" "$BODY" '"recipe":"charcoal","display_name"'
 
 echo "-- mix: fixed texts, the rate limit, and the cap of 4"

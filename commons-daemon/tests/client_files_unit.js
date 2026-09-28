@@ -201,6 +201,11 @@ if (ok.ok) {
   try { ev(ok, "isBound = false; openBackpack(); closeBackpack();"); }
   catch (e) { bpThrew = e.name + ": " + e.message; }
   check(!bpThrew && bpFetches === 0, "a guest opening/closing the backpack never calls fetch (pure client-side inventory, same as the strip)" + (bpThrew ? " (" + bpThrew + ")" : " (" + bpFetches + " fetches)"));
+  ev(ok, "inventory = { seashell: 3, weld: 1 }; lastPickedItem = 'weld'; renderInvHud();");
+  check(ok.rec.byId.invHud.innerHTML === "", "the holding strip stays empty once items exist; the backpack is the list");
+  check(ok.rec.byId.bagBtn.hidden === false, "the Bag button stays available with an empty or a full pack");
+  check(!/#easel, #bench, #notebook, #backpack\{/.test(css) && css.includes("Corner widget, not a full-screen overlay"), "the backpack is a corner widget, not in the full-screen overlay group");
+  check(ev(ok, "(function () { var h = null, i; for (i = 0; i < interactables.length; i++) if (interactables[i].type === 'hall') h = interactables[i]; if (!h) return false; location.search = '?at=hall'; applyHallReturn(); var tx = Math.floor(player.x / TILE), ty = Math.floor(player.y / TILE); var okAt = tx === h.x && ty === h.y - 1 && player.dir === DIR_DOWN && solid[ty * WORLD_W + tx] === 0 && Math.max(Math.abs(tx - h.x), Math.abs(ty - h.y)) === 1; player.x = ((spawn.x0 + spawn.x1 + 1) / 2) * TILE; player.y = ((spawn.y0 + spawn.y1 + 1) / 2) * TILE; player.dir = DIR_DOWN; location.search = ''; return okAt; })()"), "at=hall stands on the walkable tile north of the Hall door, facing it");
 
   // ---- CLAUDE_IDEAS.md: the friend-lot door wording fix -- "Closed" read as broken on a facade where
   // most lots sit empty most of the time; the prompt and the toast now say so honestly instead.

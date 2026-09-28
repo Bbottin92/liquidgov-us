@@ -70,35 +70,11 @@
     pointer-events:none; user-select:none; -webkit-user-select:none;
   }
   #connStatus:empty{ display:none; }
-  /* What you hold: a strip of chips, top-left, under the reconnect badge. Empty = hidden.
-     Tap a chip to put that item in hand (wall/floor place the last picked). Not a menu. */
-  #invHud{
-    position:fixed; top:calc(2.4rem + env(safe-area-inset-top,0px)); left:calc(.6rem + env(safe-area-inset-left,0px));
-    z-index:14; max-width:min(16rem, 62vw);
-    display:flex; flex-wrap:wrap; gap:4px;
-    pointer-events:auto; user-select:none; -webkit-user-select:none;
-  }
-  #invHud:empty{ display:none; }
-  #invHud .invChip{
-    display:flex; align-items:center; gap:4px;
-    margin:0; padding:3px 6px 3px 4px;
-    border:1px solid rgba(26,24,20,.45); border-radius:999px;
-    background:rgba(247,241,228,.88); color:var(--ink);
-    font-size:.7rem; line-height:1.2; cursor:pointer;
-  }
-  #invHud .invChip i,
-  #invHud .invChip canvas{
-    display:block; width:10px; height:10px; border-radius:2px;
-    border:1px solid rgba(26,24,20,.35); flex:none;
-    image-rendering:pixelated;
-  }
-  #invHud .invChip em{ font-style:normal; color:#6b6458; }
-  #invHud .invChip.held{
-    border-color:var(--ink); box-shadow:0 0 0 1px var(--ink);
-    background:var(--paper);
-  }
-  /* BUILD backpack: the Bag button, always on the strip's own row (top-right, so it never has to know
-     the strip's own dynamic width). Follows #invHud's empty/non-empty rule (interiors.js's renderInvHud). */
+  /* What you hold used to be a strip of chips here. The backpack is that list,
+     so this node stays empty and hidden. The Bag button is the widget toggle. */
+  #invHud{ display:none; }
+  /* BUILD backpack: the Bag button sits under the LiquidGov link, top-right.
+     Always shown -- an empty pack can still be opened. */
   #bagBtn{
     position:fixed; top:calc(2.4rem + env(safe-area-inset-top,0px)); right:calc(.6rem + env(safe-area-inset-right,0px));
     z-index:14; padding:.3rem .8rem; border:1px solid var(--ink); border-radius:999px;
@@ -214,14 +190,10 @@
     #toast{ bottom:calc(1.2rem + env(safe-area-inset-bottom,0px)); }
   }
 
-  /* Easel (BUILD studio 2). A full-screen overlay, not a canvas HUD: a 160x240
-     portrait crop cannot hold a 32x32 editor plus tools. Phone portrait is the
-     layout that has to work -- column, 44px targets, canvas scaled nearest-
-     neighbour. A short landscape phone puts the tools beside the canvas. */
-  /* Bench and notebook (BUILD studio 3) share the easel's own full-screen-overlay shell -- same
-     reasoning as studio 2's easel: a 160x240 portrait crop cannot host a scrollable list plus buttons
-     any better than it could a 32x32 editor. */
-  #easel, #bench, #notebook, #backpack{
+  /* Easel, bench and notebook are full-screen overlays: a 160x240 portrait crop
+     cannot hold those tools. The backpack is not one of them -- it is a corner
+     widget, the same idea as the juketube panel, and the map stays visible. */
+  #easel, #bench, #notebook{
     position:fixed; inset:0; z-index:30;
     display:none; flex-direction:column;
     background:#14120f; color:#f2ead8;
@@ -294,8 +266,27 @@
   #notebookLines{ display:flex; flex-direction:column; gap:6px; overflow-y:auto; }
   .notebookLine{ margin:0; font-size:.85rem; line-height:1.35; }
   .notebookUnknown{ color:#a89c88; }
-  /* BUILD backpack decision 5: a real grid, not the strip's wrapping row -- icon, label, qty, sorted by
-     category then alphabetically (backpack.js's renderBackpack()). */
+  /* Corner widget, not a full-screen overlay. Opens under the Bag button.
+     The grid scrolls inside the panel; the map around it stays on screen. */
+  #backpack{
+    position:fixed;
+    top:calc(4.7rem + env(safe-area-inset-top,0px));
+    right:calc(.6rem + env(safe-area-inset-right,0px));
+    z-index:30;
+    display:none;
+    flex-direction:column;
+    width:min(20rem, calc(100vw - 1.2rem));
+    max-height:min(26rem, calc(100dvh - 6.2rem));
+    overflow:hidden;
+    background:#14120f; color:#f2ead8;
+    border:1px solid #c4a574; border-radius:10px;
+    padding:.55rem .6rem .6rem;
+    box-sizing:border-box; gap:.35rem;
+    box-shadow:0 6px 24px rgba(0,0,0,.45);
+    font-family:"Segoe UI",system-ui,sans-serif;
+  }
+  .bpHead{ display:flex; align-items:center; justify-content:space-between; gap:.4rem; }
+  .bpHead #backpackClose{ min-height:32px; }
   #backpackEmpty{ margin:0; font-size:.8rem; color:#a89c88; }
   #backpackGrid{
     flex:1 1 auto; min-height:0; overflow-y:auto;
@@ -312,7 +303,7 @@
   .bpChip.held{ border-color:#c4a574; box-shadow:0 0 0 1px #c4a574; }
   @media (max-width: 480px) {
     #easelCanvas{ width:min(100%, calc(100vw - 1.2rem), calc(100dvh - 16.5rem)); }
-    #easel, #bench, #notebook, #backpack{ gap:.35rem; }
+    #easel, #bench, #notebook{ gap:.35rem; }
   }
   @media (max-height: 500px) and (orientation: landscape) {
     #easel{ flex-direction:row; flex-wrap:wrap; align-items:stretch; }

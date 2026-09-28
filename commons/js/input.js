@@ -18,8 +18,9 @@ function typingInField(e) {
   if (bench && bench.classList.contains("open")) return true;
   var notebook = document.getElementById("notebook");
   if (notebook && notebook.classList.contains("open")) return true;
-  var backpack = document.getElementById("backpack");
-  if (backpack && backpack.classList.contains("open")) return true;
+  // The backpack is a corner widget, not a full-screen page. Walking stays
+  // available while it is open. The easel, the bench and the notebook still
+  // cover the map, so those still swallow movement.
   var t = e.target;
   return !!(t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA"));
 }

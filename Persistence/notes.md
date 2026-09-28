@@ -18,6 +18,8 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-28 -- Bag is a corner widget, and proposals has a door back. Not deployed.** The grass no longer repeats the backpack's items. Bag opens a panel under the button instead of a full-screen page, and walking continues while it is open. `/proposals` links to `/commons/?at=hall`, which stands you on the path tile north of the Hall door, facing it. `client_files_unit.js` 126/0. See `bag-widget-built.md`.
+
 - **2026-09-28 -- `BUILD wear a pigment` built and tested; NOT deployed (schema + daemon route + client,
   not client-only this time).** `CLAUDE_WEAR_PIGMENT.md` as written: a nullable
   `players.shirt_pigment_index`, a `shirt_hex` field on the in-RAM `Occupant` broadcast to everyone nearby

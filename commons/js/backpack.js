@@ -1,9 +1,8 @@
 "use strict";
-// The backpack (BUILD backpack, CLAUDE_BACKPACK.md): a fuller view of the same `inventory` object the
-// strip (#invHud) already reads -- not a second inventory, no new state, no fetch, no route. The strip
-// stays exactly as it is; this is a second, bigger view over the same data, opened by the Bag button
-// next to it or the `I` key. Also owns the one shared tooltip bubble (#itemTip), used by both the strip
-// and this grid -- one DOM node, not one per item (decision 4).
+// The backpack (BUILD backpack, CLAUDE_BACKPACK.md): the one view of `inventory`. The grass used to
+// repeat the same items as chips. That strip is left empty. This panel is a corner widget, opened by
+// the Bag button or the `I` key, not a second full-screen page. Same object, no new state, no fetch.
+// Also owns the one shared tooltip bubble (#itemTip) -- one DOM node, not one per item (decision 4).
 
 // Sort bucket order for the grid (decision 5: "sorted by category then alphabetically" -- not insertion
 // order, which is what the strip does and reads as random past a handful of items). Every slug lands in
@@ -29,19 +28,21 @@ function backpackOpen() {
 
 function openBackpack() {
   var el = document.getElementById("backpack");
+  var bag = document.getElementById("bagBtn");
   if (!el) return;
   el.hidden = false;
   el.classList.add("open");
-  if (el.tabIndex < 0) el.tabIndex = -1;
-  if (el.focus) el.focus();
+  if (bag) bag.setAttribute("aria-expanded", "true");
   renderBackpack();
 }
 
 function closeBackpack() {
   var el = document.getElementById("backpack");
+  var bag = document.getElementById("bagBtn");
   if (!el) return;
   el.classList.remove("open");
   el.hidden = true;
+  if (bag) bag.setAttribute("aria-expanded", "false");
   hideItemTip();
 }
 
@@ -140,7 +141,6 @@ function wireItemTips(containerId) {
     showItemTip(slug, chip);
   });
 }
-wireItemTips("invHud");
 wireItemTips("backpackGrid");
 
 (function wireBackpack() {
@@ -171,10 +171,21 @@ wireItemTips("backpackGrid");
     if (backpackOpen()) closeBackpack(); else openBackpack();
   });
 
-  // Its own keydown listener, same shape as studio.js's wireStudioOverlays() -- Escape and `I` are not
-  // handled by input.js's movement listener at all, so there is nothing to gate behind typingInField()
-  // here (that function instead gained a #backpack.open check, so IT suppresses movement while this is
-  // up -- see input.js).
+  // A click on the grass closes the panel. A click on the panel or the Bag button does not --
+  // the button's own handler is what toggles it, and this must not immediately undo that.
+  document.addEventListener("click", function (e) {
+    if (!backpackOpen()) return;
+    var t = e.target;
+    var panel = document.getElementById("backpack");
+    var bag = document.getElementById("bagBtn");
+    if (panel && panel.contains && panel.contains(t)) return;
+    if (bag && (t === bag || (bag.contains && bag.contains(t)))) return;
+    closeBackpack();
+  });
+
+  // Its own keydown listener, same shape as studio.js's wireStudioOverlays(). Escape and `I`
+  // are not handled by input.js. The bag does not swallow movement: it is a corner panel,
+  // and the map stays walkable while it is open.
   window.addEventListener("keydown", function (ev) {
     if (ev.key === "Escape" && backpackOpen()) { closeBackpack(); ev.preventDefault(); return; }
     if (ev.key !== "i" && ev.key !== "I") return;

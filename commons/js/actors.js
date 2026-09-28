@@ -49,6 +49,35 @@ var playerName = "";
   }
 })();
 
+// The proposals page's Hall door lands here: /commons/?at=hall. Stand on the
+// path tile directly north of the Hall door, facing it, so Enter still reaches
+// the prompt. One shot -- the query is removed so a later refresh does not
+// drag you back. The Square spawn above is what a normal visit still uses,
+// and assertSpawnIsFree has already checked that tile.
+function applyHallReturn() {
+  var search = "";
+  try { search = (window.location && window.location.search) || ""; } catch (e1) { return; }
+  if (typeof search !== "string" || !/(?:^|[?&])at=hall(?:&|$)/.test(search)) return;
+  var hall = null, i;
+  for (i = 0; i < interactables.length; i++) {
+    if (interactables[i].type === "hall") { hall = interactables[i]; break; }
+  }
+  if (!hall) return;
+  var tx = hall.x, ty = hall.y - 1;
+  if (ty < 0 || solid[ty * WORLD_W + tx]) return;
+  player.x = tx * TILE + 8;
+  player.y = ty * TILE + 8;
+  player.dir = DIR_DOWN;
+  try {
+    if (window.history && window.history.replaceState && window.URL) {
+      var u = new URL(window.location.href);
+      u.searchParams.delete("at");
+      window.history.replaceState(null, "", u.pathname + (u.search || "") + (u.hash || ""));
+    }
+  } catch (e2) {}
+}
+applyHallReturn();
+
 // P2: these three read `activeSpace` instead of the outdoor globals
 // directly, so the exact same collision.md rules (12x12 box, 4 corners,
 // axis split, no tile-snap, no CCD) apply unchanged inside an interior --

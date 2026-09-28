@@ -642,7 +642,7 @@ function netPollLots(regions, t) {
         var door = FRIEND_LOT_DOORS[i], friend = lots[i] || null;
         if (door.friend !== friend) {
           door.friend = friend;
-          door.prompt = friend ? "Visit" : "Closed";
+          door.prompt = friend ? "Visit" : "Away";
           forceRedraw = true;
         }
       }

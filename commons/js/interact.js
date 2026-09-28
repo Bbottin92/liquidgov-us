@@ -176,8 +176,13 @@ function tryInteract() {
         visitingOwner = it.friend;
         INTERIOR_INSTANCE_KEY.visit = "instance:house:" + it.friend;
         enterInterior("visit", demoHouseSpace, DEMO_ENTRY);
+      } else if (!isBound) {
+        // CLAUDE_IDEAS.md's door-wording fix: a guest never gets a friend here (netPollLots() only
+        // runs while isBound), so this was always "Closed." for them too -- same fix the houseDoor
+        // branch above already applies for the same reason.
+        showToast("Log in on LiquidGov to visit friends.");
       } else {
-        showToast("Closed.");
+        showToast("No one's home right now.");
       }
     } else if (it.type === "houseDoor") {
       // Same interior template as the demo house (V4: mechanically just

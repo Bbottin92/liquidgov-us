@@ -463,11 +463,13 @@ function dressRegions() {
     var isDemo = d === 0;
     tiles[idx(doorXs[d], wallY)] = isDemo ? T_DOOR_DEMO : T_DOOR_BOARDED;
     // V6 (GROK_V6_ANSWER.md, friends query): lots 2-7 are dynamic. Same
-    // solid boarded tile, same "Closed" until the daemon reports a mutual
+    // solid boarded tile, same "Away" until the daemon reports a mutual
     // friend who is in the game right now; netPollLots() then fills in
     // `friend` and rewrites `prompt`. A named door is a visit (friends
     // policy): tryInteract() enters mode "visit" and the daemon decides.
-    var lotDoor = isDemo ? null : { type: "friendDoor", slot: d - 1, friend: null, x: doorXs[d], y: wallY, prompt: "Closed" };
+    // CLAUDE_IDEAS.md's door-wording fix: "Closed" read as broken/dead on a facade where most lots sit
+    // empty most of the time (few concurrent players); "Away" says the same thing honestly instead.
+    var lotDoor = isDemo ? null : { type: "friendDoor", slot: d - 1, friend: null, x: doorXs[d], y: wallY, prompt: "Away" };
     if (lotDoor) FRIEND_LOT_DOORS.push(lotDoor);
     interactables.push(isDemo ? { type: "demoDoor", x: doorXs[d], y: wallY, prompt: "Enter" } : lotDoor);
   }
@@ -476,7 +478,7 @@ function dressRegions() {
   // above is untouched. Always physically present (guests see it too,
   // same as they see the demo door), but tryInteract() only ever lets a
   // bound player actually walk through it; a guest gets a toast instead
-  // of a silent wall, same honesty as "Closed." on the six boarded ones.
+  // of a silent wall, same honesty as the six boarded ones' own toast.
   var houseDoorX = homestead.x0 + 1; // x=25, just left of doorXs[0]=26
   tiles[idx(houseDoorX, wallY)] = T_DOOR_HOUSE;
   interactables.push({ type: "houseDoor", x: houseDoorX, y: wallY, prompt: "Enter" });

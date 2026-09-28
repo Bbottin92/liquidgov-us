@@ -18,6 +18,17 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-28 -- Friend-door wording fix built and tested; NOT deployed (client only).** First pick off
+  `CLAUDE_IDEAS.md`'s build order. The six Homestead friend-lot doors defaulted to prompt "Closed" and a
+  "Closed." toast whether you were a guest, a bound player with no friend currently home, or (mechanically
+  identical either way) -- all three read the same, none said why. Now: the on-screen prompt is "Away"
+  (was "Closed") until `netPollLots()` finds a mutual friend actually online; the toast splits into "Log in
+  on LiquidGov to visit friends." for a guest and "No one's home right now." for a bound player with an
+  empty lot, mirroring the houseDoor branch three lines below it that already did this for guests.
+  `client_files_unit.js` grew from 113 to 116 checks (all three new, each mutation-confirmed): the default
+  prompt, and both toast strings via a direct `tryInteract()` call with a synthetic `nearestInteractable`.
+  Full suite: 116 checks, 0 failed.
+
 - **2026-09-28 -- Ideas survey proposed, not built.** Brandon: "pull the best aspects of other relevant
   popular games and implement them" -- too open to build from directly, so `CLAUDE_IDEAS.md` surveys what
   actually fits (Animal Crossing's placeable decorations and museum, Stardew's Community Center framed as

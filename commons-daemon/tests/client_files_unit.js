@@ -201,6 +201,14 @@ if (ok.ok) {
   try { ev(ok, "isBound = false; openBackpack(); closeBackpack();"); }
   catch (e) { bpThrew = e.name + ": " + e.message; }
   check(!bpThrew && bpFetches === 0, "a guest opening/closing the backpack never calls fetch (pure client-side inventory, same as the strip)" + (bpThrew ? " (" + bpThrew + ")" : " (" + bpFetches + " fetches)"));
+
+  // ---- CLAUDE_IDEAS.md: the friend-lot door wording fix -- "Closed" read as broken on a facade where
+  // most lots sit empty most of the time; the prompt and the toast now say so honestly instead.
+  check(ev(ok, "FRIEND_LOT_DOORS.length === 6 && FRIEND_LOT_DOORS.every(function (d) { return d.prompt === 'Away'; })"), "all six friend-lot doors default to prompt 'Away', not 'Closed'");
+  ev(ok, "isBound = false; nearestInteractable = { type: 'friendDoor', friend: null, x: 0, y: 0 }; toast.msg = ''; tryInteract();");
+  check(ev(ok, "toast.msg === 'Log in on LiquidGov to visit friends.'"), "a guest at an unlit friend-lot door is told to log in, not just 'Closed.': " + ev(ok, "toast.msg"));
+  ev(ok, "isBound = true; toast.msg = ''; tryInteract();");
+  check(ev(ok, "toast.msg === \"No one's home right now.\""), "a bound player at an unlit friend-lot door is told no one is home, not just 'Closed.': " + ev(ok, "toast.msg"));
 }
 
 // ---- controls: the check must be able to FAIL (a wrong order has to throw a ReferenceError)

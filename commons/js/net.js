@@ -173,13 +173,17 @@ function ingestOccupants(list) {
         id: o.id, region: o.region, regionKey: key,
         x: wp.x, y: wp.y, tx: wp.x, ty: wp.y,
         dir: face, animFrame: 0, animTimer: 0,
-        display_name: o.display_name
+        display_name: o.display_name,
+        shirt_hex: o.shirt || ""
       };
     } else {
       v.tx = wp.x; v.ty = wp.y;
       v.dir = face;
       v.display_name = o.display_name;
       v.region = o.region;
+      // BUILD wear a pigment: kept live-updated on every poll, not just at first sight, so a nearby
+      // friend's colour change shows up within one 2Hz tick, not only on next region entry.
+      v.shirt_hex = o.shirt || "";
     }
   }
   for (var id in occupantViz) if (!seen[id]) delete occupantViz[id];
@@ -341,6 +345,11 @@ var acceptedDisplayName = null;
 var isBound = false;
 // Whose house I'm standing in while mode === "visit" (friends policy).
 var visitingOwner = null;
+// BUILD wear a pigment: this client's OWN worn colour, "" for the default blue. Set from every
+// join/rekey response (never latched true the way isBound explicitly isn't either) and from a
+// successful /presence/wear call. Read by the actor draw path to recolour my own sprite the same way
+// otherOccupants' own `shirt` field recolours everyone else's.
+var myShirtHex = "";
 
 // The wall-slot portrait: civic's `/canvas-frame/<owner>/latest` (same
 // origin as this page on liquidgov.us; the browser sends the viewer's own
@@ -474,6 +483,9 @@ function netApplyJoinJson(j) {
       // actually bound; that's the one safe to key a house off of.
       if (j.bound && j.username) INTERIOR_INSTANCE_KEY.house = "instance:house:" + j.username;
       if (typeof j.house_policy === "string") setHousePolicy(j.house_policy);
+      // BUILD wear a pigment: absent (guest, or a bound player wearing nothing) means the default blue,
+      // same "missing field = default" rule every other sparse field on this response already follows.
+      myShirtHex = typeof j.shirt === "string" ? j.shirt : "";
       // V5 (GROK_V5_ANSWER.md): "walking back in later resumes there, not
       // the fixed entry tile every time." The daemon only ever sends
       // resume_* when this join/rekey actually landed in the caller's own
@@ -551,7 +563,7 @@ function netPollCurrentRegion() {
     .then(function (list) {
       var region = netRegion;
       ingestOccupants(list.filter(function (o) { return !isSelfId(o.id); }).map(function (o) {
-        return { region: region, id: o.id, display_name: o.display_name, x: o.x, y: o.y, facing: o.facing };
+        return { region: region, id: o.id, display_name: o.display_name, x: o.x, y: o.y, facing: o.facing, shirt: o.shirt };
       }));
     })
     .catch(function () {})
@@ -661,7 +673,7 @@ function netPollRegions(regions) {
         return list
           .filter(function (o) { return !isSelfId(o.id); })
           .map(function (o) {
-            return { region: region, id: o.id, display_name: o.display_name, x: o.x, y: o.y, facing: o.facing };
+            return { region: region, id: o.id, display_name: o.display_name, x: o.x, y: o.y, facing: o.facing, shirt: o.shirt };
           });
       })
       .catch(function () { return []; }); // one region's GET failing shouldn't drop every other region's occupants

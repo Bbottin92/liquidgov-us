@@ -141,6 +141,17 @@ void PresenceStore::leave(const std::string& region, const std::string& id) {
     if (list.empty()) regions_.erase(it);
 }
 
+bool PresenceStore::update_shirt(const std::string& id, const std::string& hex) {
+    std::lock_guard<std::mutex> lock(mu_);
+    reap_locked(now_ms());
+    for (auto& kv : regions_) {
+        for (auto& o : kv.second) {
+            if (o.id == id) { o.shirt_hex = hex; return true; }
+        }
+    }
+    return false;
+}
+
 std::vector<Occupant> PresenceStore::occupants(const std::string& region) {
     std::lock_guard<std::mutex> lock(mu_);
     reap_locked(now_ms());

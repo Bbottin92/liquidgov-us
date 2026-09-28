@@ -180,6 +180,30 @@ function drawStudioPainting(camX, camY) {
   }
 }
 
+// BUILD wear a pigment: index null clears back to the default blue. Bound only (CLAUDE_STUDIO_3.md's own
+// boundary, extended here) -- checked inside this one function, same shape as studio.js's netGather(),
+// rather than in each of the two button handlers that call it. Success updates myShirtHex (net.js)
+// immediately, same as any other locally-applied state change here -- the next draw picks it up, no
+// separate poll needed for the player's own sprite.
+function netWearPigment(index) {
+  if (!easelBound) { showToast("Log in on LiquidGov to wear a color."); return; }
+  var body = index == null ? {} : { index: index };
+  fetch(DAEMON + "/presence/wear", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  }).then(function (res) { return res.json().then(function (j) { return { res: res, j: j }; }); })
+    .then(function (got) {
+      if (!got.res.ok) {
+        var why = got.j && got.j.reason;
+        showToast(why === "not_unlocked" ? "You haven't unlocked that one yet." : "Couldn't wear that.");
+        return;
+      }
+      myShirtHex = got.j.hex || "";
+      showToast(myShirtHex ? "Worn." : "Back to the default.");
+    }).catch(function () { showToast("Couldn't wear that."); });
+}
+
 function easelNote(text) {
   var n = document.getElementById("easelNote");
   if (n) n.textContent = text || "";
@@ -430,6 +454,14 @@ function easelUndoStroke() {
       easelNote("Saved.");
     }).catch(function () { easelNote("Not saved."); });
   });
+  // BUILD wear a pigment (CLAUDE_WEAR_PIGMENT.md decision 4): applies whichever swatch is currently
+  // selected for drawing (easelColour) as the worn shirt colour too -- the easel's own already-unlocked
+  // palette list is the picker, nothing new to build there. Bound only, same boundary CLAUDE_STUDIO_3.md
+  // already drew for gather/bench/mix/collect/studio.
+  var wear = document.getElementById("easelWear");
+  if (wear) wear.addEventListener("click", function () { netWearPigment(easelColour); });
+  var wearDefault = document.getElementById("easelWearDefault");
+  if (wearDefault) wearDefault.addEventListener("click", function () { netWearPigment(null); });
   var close = document.getElementById("easelClose");
   if (close) close.addEventListener("click", closeEasel);
   window.addEventListener("keydown", function (ev) {

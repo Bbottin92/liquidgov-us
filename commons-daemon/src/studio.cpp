@@ -541,6 +541,42 @@ StudioStore::SaveResult StudioStore::save_painting(const std::string& username,
     return save_canvas(username, "painting", pixels, now_ms);
 }
 
+StudioStore::WearResult StudioStore::set_shirt(const std::string& username, std::optional<int> index) {
+    WearResult r;
+    // Wearing charcoal (always legal) can legitimately be a bound player's very first Studio action,
+    // same reasoning as gather/bench's own find_or_create -- a brand-new player row must not make this
+    // a chicken-and-egg 404 before they've ever gathered or benched anything.
+    int player_id = find_or_create_player(username);
+    if (!index) {
+        sqlx::Stmt up(db_, "UPDATE players SET shirt_pigment_index = NULL WHERE player_id = ?1;");
+        up.integer(1, player_id);
+        up.done();
+        r.ok = true;
+        return r;
+    }
+    const Pigment* p = pigment_by_index(*index);
+    if (!p) { r.reason = "unknown_index"; return r; }
+    if (p->unlock_recipe && !has_discovery(db_, player_id, p->unlock_recipe)) { r.reason = "not_unlocked"; return r; }
+    sqlx::Stmt up(db_, "UPDATE players SET shirt_pigment_index = ?1 WHERE player_id = ?2;");
+    up.integer(1, *index).integer(2, player_id);
+    up.done();
+    r.ok = true;
+    r.hex = p->hex;
+    return r;
+}
+
+std::string StudioStore::shirt_hex_of(const std::string& username) {
+    auto player_id = find_player_id(username);
+    if (!player_id) return "";
+    sqlx::Stmt sel(db_, "SELECT shirt_pigment_index FROM players WHERE player_id = ?1;");
+    sel.integer(1, *player_id);
+    // sqlite3_column_int on a NULL column reads back 0, which is never a valid pigment index (they start
+    // at 1) -- no separate null check needed.
+    if (!sel.row()) return "";
+    const Pigment* p = pigment_by_index(sel.column_int(0));
+    return p ? p->hex : "";
+}
+
 StudioStore::Footprint StudioStore::footprint_of(const std::string& username) {
     Footprint f;
     auto player_id = find_player_id(username);

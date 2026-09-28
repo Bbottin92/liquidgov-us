@@ -17,6 +17,10 @@ struct Occupant {
     double y = 0.0;
     int facing = 0;
     long long last_update_ms = 0;
+    // BUILD wear a pigment: "" for the default shirt (everyone starts here, guests always stay here --
+    // the daemon never sets this for a guest id). Set from players.shirt_pigment_index at join/rekey,
+    // and updated in place by update_shirt() so a nearby friend sees a change without a rejoin.
+    std::string shirt_hex;
 };
 
 // RAM only, never a SQLite table (schema.sql says so explicitly). Keyed
@@ -89,6 +93,12 @@ public:
     // their next room change, not have every move rejected because
     // u:<name> isn't here yet.
     bool contains(const std::string& region, const std::string& id);
+
+    // BUILD wear a pigment: updates the live Occupant's shirt_hex in place, wherever they currently are
+    // (a region-agnostic scan, same shape as erase_id_locked -- kGlobalCap is 96, trivial to walk). False
+    // if this id isn't present anywhere right now; the DB write already happened regardless, so their
+    // *next* join/rekey picks it up via shirt_hex_of() even if this call finds nobody to update live.
+    bool update_shirt(const std::string& id, const std::string& hex);
 
 private:
     std::mutex mu_;

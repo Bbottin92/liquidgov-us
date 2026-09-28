@@ -149,6 +149,8 @@ bbench()  { post "$D/presence/bench" "{\"recipe\":\"$2\"}" "$(jar $1)"; }
 bmix()    { post "$D/presence/mix" "{\"slugs\":$2}" "$(jar $1)"; }        # $2 is a JSON array literal, e.g. '["a","b"]'
 bcollect(){ post "$D/presence/collect" "{\"batch_id\":$2}" "$(jar $1)"; }
 bstudio() { get "$D/presence/studio" "$(jar $1)"; }
+# BUILD wear a pigment. $2 is a raw JSON body, e.g. '{"index":1}' or '{}' (clears to default).
+bwear()   { post "$D/presence/wear" "$2" "$(jar $1)"; }
 # The test clock (COMMONS_TEST_CLOCK_FILE): a fixed path this test run owns. A test that needs
 # controlled time starts the daemon with `start_daemon COMMONS_TEST_CLOCK_FILE=$CLOCK_FILE`, then calls
 # set_clock (any time before its first time-sensitive request -- the daemon falls back to the real

@@ -124,6 +124,22 @@ public:
     // and a rejected save inserts nothing.
     SaveResult save_painting(const std::string& username, const std::vector<unsigned char>& pixels, long long now_ms);
 
+    // ---- wear a pigment (BUILD wear a pigment, POST /presence/wear {index}) ------------------------
+    struct WearResult {
+        bool ok = false;
+        std::string reason;  // "" on ok; else "unknown_index" / "not_unlocked"
+        std::string hex;     // the resolved hex on a successful wear; empty when cleared back to default
+    };
+    // Same unlock rule as the palette (1-4 always, 5-13 once discovered) -- one fixed table, not a
+    // second copy of the lock logic. `index` unset clears back to the default blue. Persists to
+    // players.shirt_pigment_index; main.cpp is what pushes the resolved hex onto the live Occupant, if
+    // this player is actually present in a region right now. find-or-creates the player row (like
+    // gather/bench) since wearing charcoal is legal before any other Studio action has ever happened.
+    WearResult set_shirt(const std::string& username, std::optional<int> index);
+    // Read at join/rejoin so a returning bound player's Occupant starts with their own last-worn colour
+    // instead of the default until their next wear call. "" when NULL or never set.
+    std::string shirt_hex_of(const std::string& username);
+
     // ---- orphan reap (BUILD orphans reap; extended here so civic account-deletion cannot leak the
     // Studio the way house rows once could) ----------------------------------------------------------
     struct Footprint { int batches = 0, discoveries = 0, cooldowns = 0, paintings = 0; };

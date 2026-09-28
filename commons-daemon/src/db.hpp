@@ -30,6 +30,9 @@ public:
     // Same shape, for players.visit_policy (house friends/locked). Existing
     // rows take the DEFAULT, so every current house stays friends-only.
     void ensure_visit_policy();
+    // Same shape again, for players.shirt_pigment_index (BUILD wear a pigment). Existing rows take
+    // NULL, so every existing player keeps the default blue until they wear something themselves.
+    void ensure_shirt_pigment();
     // The Studio (BUILD studio 1): items.pigment_hex, and recipes.duration_s /
     // .tier / .real_range_note / .history_note. Same shape again -- a fresh
     // database already has these from schema.sql; this only reaches an

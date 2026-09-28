@@ -178,6 +178,17 @@ void Database::ensure_visit_policy() {
     if (!has_column) exec("ALTER TABLE players ADD COLUMN visit_policy TEXT NOT NULL DEFAULT 'friends';");
 }
 
+void Database::ensure_shirt_pigment() {
+    sqlite3_stmt* st = nullptr;
+    bool has_column = false;
+    if (sqlite3_prepare_v2(db_, "SELECT 1 FROM pragma_table_info('players') WHERE name = 'shirt_pigment_index';",
+                           -1, &st, nullptr) == SQLITE_OK) {
+        has_column = sqlite3_step(st) == SQLITE_ROW;
+    }
+    sqlite3_finalize(st);
+    if (!has_column) exec("ALTER TABLE players ADD COLUMN shirt_pigment_index INTEGER;");
+}
+
 void Database::ensure_catalog(const std::string& catalog_path) {
     exec_file(catalog_path);
 }

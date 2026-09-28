@@ -18,6 +18,22 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-28 -- `BUILD wear a pigment` built and tested; NOT deployed (schema + daemon route + client,
+  not client-only this time).** `CLAUDE_WEAR_PIGMENT.md` as written: a nullable
+  `players.shirt_pigment_index`, a `shirt_hex` field on the in-RAM `Occupant` broadcast to everyone nearby
+  (not just a private preference), `POST /presence/wear`, and a "Wear"/"Default" pair on the easel's own
+  actions row. `client_files_unit.js` grew from 116 to 122 checks; `test_studio.sh` grew from 121 to 129,
+  including a fresh account driven through a real gather->bench->collect chain to actually earn a
+  discovery-gated colour, and a second bound account confirming a nearby friend sees the change live, no
+  rejoin needed. Two real things found while testing, not by inspection: `set_shirt` originally 404'd a
+  brand-new account trying to wear charcoal (fixed to find-or-create, matching gather/bench's own
+  precedent), and the test harness's frozen study-clock vs. presence's real-wall-clock idle-reap nearly
+  wiped freshly-joined test occupants (worked around in the test, not a production bug). The actual sprite
+  recolour could not be visually confirmed in the browser preview -- its cache kept serving a stale
+  `main.js`/`net.js` through several reloads even though a direct fetch proved the served file was
+  correct (same artifact as the door-wording fix) -- so this is tested end-to-end but not yet eyeballed.
+  See `wear-a-pigment-built.md`.
+
 - **2026-09-28 -- Wear-a-pigment proposed, not built.** Brandon: `BUILD wear a pigment`, the second pick
   off `CLAUDE_IDEAS.md`'s build order -- but that doc only named the idea, it didn't settle how it's
   picked, whether other players see it, or where it's stored, and this one touches the daemon (unlike the

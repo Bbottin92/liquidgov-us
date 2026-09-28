@@ -30,7 +30,7 @@ assert_eq "no lime, malachite or prussian anywhere (studio.md: not added)" 0 "$(
 
 echo "-- unbound (guest): every route refuses, none call through"
 mint
-for ep in gather bench mix collect; do
+for ep in gather bench mix collect wear; do
   post "$D/presence/$ep" '{}'; assert_code "guest POST /presence/$ep is 403 (bad_credential: no cookie at all)" 403
 done
 get "$D/presence/studio"; assert_code "guest GET /presence/studio is 403" 403
@@ -171,6 +171,47 @@ bmix alice '["a","b","c","d","e"]'; assert_code "5 slugs, over the cap of 4: 400
 assert_contains "missing_field (the array itself is rejected, not silently truncated to 4)" "$BODY" missing_field
 bmix alice '["a","b","c","d"]'; assert_code "exactly 4 is fine (falls through to the generic text)" 200
 assert_eq "mix never wrote a discoveries row for anyone" 1 "$(dbq "select count(distinct recipe_id) from discoveries")"
+
+echo "-- wear a pigment (BUILD wear a pigment, CLAUDE_WEAR_PIGMENT.md): the unlock rule and a clean refusal shape"
+su dave
+bwear dave '{"index":1}'; assert_code "charcoal black (always legal, never discovery-gated): 200" 200
+assert_contains "resolved hex comes back" "$BODY" '"hex":"#1a1a1a"'
+bwear dave '{"index":14}'; assert_code "past index 13: 400 unknown_index" 400
+assert_contains "unknown_index" "$BODY" unknown_index
+bwear dave '{"index":13}'; assert_code "woad blue, never discovered: 409 not_unlocked" 409
+assert_contains "not_unlocked" "$BODY" not_unlocked
+bwear dave '{}'; assert_code "an empty body clears back to the default: 200" 200
+assert_contains "empty hex on a clear" "$BODY" '"hex":""'
+
+echo "-- wear a pigment: unlocking index 8 (carbon ink) for real, an actual gather->bench->collect chain, not a DB shortcut"
+set_clock $((READY1 + 28800000 + 30000))
+bgather dave lab_gum; assert_code "gather gum: 200" 200
+bgather dave lab_soot; assert_code "gather soot: 200" 200
+bbench dave gum_solution; assert_code "start gum_solution (gum_arabic_raw -> binder): 200" 200
+GS_BATCH="$(jget batch_id)"; GS_READY="$(jget ready_ms)"
+bwear dave '{"index":8}'; assert_code "carbon ink still undiscovered (binder not even made yet): 409" 409
+set_clock $((GS_READY + 1))
+bcollect dave "$GS_BATCH"; assert_code "collect gum_solution: 200" 200
+bbench dave carbon_ink; assert_code "start carbon_ink (soot + binder): 200" 200
+CI_BATCH="$(jget batch_id)"; CI_READY="$(jget ready_ms)"
+set_clock $((CI_READY + 1))
+bcollect dave "$CI_BATCH"; assert_code "collect carbon_ink: 200" 200
+bwear dave '{"index":8}'; assert_code "now discovered, wearable: 200" 200
+assert_contains "carbon ink's own hex" "$BODY" '"hex":"#0d0d0d"'
+
+echo "-- wear a pigment: persists across a rejoin, and a nearby occupant sees a live change with no rejoin at all"
+# presence.cpp's own idle-reap runs on the real wall clock (never the injectable test clock studio.cpp
+# reads) -- the frozen studio clock above is still sitting near T0 (2023), which real reap_locked() would
+# see as a 30s-idle occupant on the very next presence call and remove immediately. Real time only for
+# this section, which is presence-only from here to stop_daemon.
+set_clock "$(python3 -c 'import time; print(int(time.time()*1000))')"
+bjoin dave "1,1"; assert_code "dave joins the Square: 200" 200
+assert_contains "the join response carries dave's own worn colour" "$BODY" '"shirt":"#0d0d0d"'
+su erin
+bjoin erin "1,1"; assert_code "erin joins the same region: 200" 200
+occupants "1,1"; assert_contains "the region GET shows dave wearing carbon ink" "$BODY" '"shirt":"#0d0d0d"'
+bwear dave '{}'; assert_code "dave clears back to default while still standing there: 200" 200
+occupants "1,1"; assert_not_contains "and it's gone from the region GET immediately, no rejoin needed" "$BODY" '"shirt"'
 
 stop_daemon
 echo "== test_studio: done"

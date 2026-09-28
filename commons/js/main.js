@@ -54,9 +54,14 @@ function blitCanopy(c, tx, ty, camX, camY) {
 
 function drawOneActor(c, a, camX, camY) {
   drawFootShadow(c, a.x, a.y, camX, camY);
+  var destX = spriteDestX(a.x - camX);
   var destY = spriteDestY(a.y - camY, a.half);
   c.drawImage(spriteAtlas, spriteSrcX(a.dir, a.anim), 0, SPRITE_W, SPRITE_H,
-    spriteDestX(a.x - camX), destY, SPRITE_W, SPRITE_H);
+    destX, destY, SPRITE_W, SPRITE_H);
+  // BUILD wear a pigment: one flat fillRect over the body's own fixed sub-rect (paintSpriteAtlas's
+  // drawFigure draws the body at local (4, 8, 8, 10) in every direction/frame -- same offsets here, no
+  // second atlas per colour). Every occupant and the local player both carry `shirt` the same way.
+  if (a.shirt) { c.fillStyle = a.shirt; c.fillRect(destX + 4, destY + 8, 8, 10); }
   if (a.name) drawNameplate(c, a.name, a.x - camX, destY - 4);
 }
 
@@ -70,11 +75,11 @@ function drawSortedActors(c, camX, camY) {
     for (var oid in occupantViz) {
       var o = occupantViz[oid];
       list.push({ kind: "actor", x: o.x, y: o.y, dir: o.dir, anim: o.animFrame,
-        name: o.display_name || o.id, half: 6 });
+        name: o.display_name || o.id, half: 6, shirt: o.shirt_hex });
     }
   }
   list.push({ kind: "actor", x: player.x, y: player.y, dir: player.dir, anim: player.animFrame,
-    name: acceptedDisplayName, half: player.half });
+    name: acceptedDisplayName, half: player.half, shirt: myShirtHex });
 
   var x0 = Math.max(0, Math.floor(camX / TILE) - 1);
   var y0 = Math.max(0, Math.floor(camY / TILE) - 1);

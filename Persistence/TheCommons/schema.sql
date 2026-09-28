@@ -126,7 +126,12 @@ CREATE TABLE players (
     -- who is not blocked either way (civic's /internal/blocked answers that,
     -- failing closed) while the owner is in the game. Any other value is read as
     -- 'friends'. Only ever set by the owner.
-    visit_policy       TEXT NOT NULL DEFAULT 'friends'
+    visit_policy       TEXT NOT NULL DEFAULT 'friends',
+    -- BUILD wear a pigment: the pigment index (1-13, studio.cpp's fixed PIGMENTS table) shown as this
+    -- player's shirt colour to everyone nearby, not just themselves. NULL = the default blue every
+    -- player starts as. Only ever set by the player themselves, and only to an index they've unlocked
+    -- (charcoal 1-4 always; 5-13 once that pigment's own recipe is in `discoveries`).
+    shirt_pigment_index INTEGER
 );
 
 CREATE TABLE inventory (

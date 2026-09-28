@@ -209,6 +209,19 @@ if (ok.ok) {
   check(ev(ok, "toast.msg === 'Log in on LiquidGov to visit friends.'"), "a guest at an unlit friend-lot door is told to log in, not just 'Closed.': " + ev(ok, "toast.msg"));
   ev(ok, "isBound = true; toast.msg = ''; tryInteract();");
   check(ev(ok, "toast.msg === \"No one's home right now.\""), "a bound player at an unlit friend-lot door is told no one is home, not just 'Closed.': " + ev(ok, "toast.msg"));
+
+  // ---- CLAUDE_WEAR_PIGMENT.md: the easel's Wear/Default buttons, bound-only, and the body-recolour path
+  check(ev(ok, "typeof netWearPigment === 'function'"), "netWearPigment exists after load");
+  check(/id="easelWear"/.test(html) && /id="easelWearDefault"/.test(html), "index.html has the easel's Wear and Default buttons");
+  var wearFetches = [];
+  ok.g.fetch = function (url) { wearFetches.push(url); return new Promise(function () {}); };
+  ev(ok, "easelBound = false; toast.msg = ''; netWearPigment(1);");
+  check(wearFetches.length === 0 && ev(ok, "toast.msg") === "Log in on LiquidGov to wear a color.", "a guest calling netWearPigment never fetches, and is told to log in: " + JSON.stringify(wearFetches) + " / " + ev(ok, "toast.msg"));
+  ev(ok, "easelBound = true; netWearPigment(1);");
+  check(wearFetches.length === 1 && /\/presence\/wear$/.test(wearFetches[0]), "a bound netWearPigment posts to /presence/wear: " + JSON.stringify(wearFetches));
+  check(ev(ok, "typeof myShirtHex === 'string'"), "myShirtHex exists after load, for the player's own recolour");
+  var mainJsSrc = read("js/main.js");
+  check(/a\.shirt/.test(mainJsSrc) && /shirt:\s*myShirtHex/.test(mainJsSrc) && /shirt:\s*o\.shirt_hex/.test(mainJsSrc), "drawOneActor reads a.shirt, and both the player and other occupants are pushed with a shirt field");
 }
 
 // ---- controls: the check must be able to FAIL (a wrong order has to throw a ReferenceError)

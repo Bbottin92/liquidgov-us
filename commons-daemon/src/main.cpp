@@ -332,7 +332,11 @@ std::string occupants_json(const std::vector<commons::Occupant>& occ) {
             << ",\"display_name\":" << commons::json::str(o.display_name)
             << ",\"x\":" << o.x << ",\"y\":" << o.y
             << ",\"facing\":" << o.facing
-            << ",\"last_update_ms\":" << o.last_update_ms << "}";
+            << ",\"last_update_ms\":" << o.last_update_ms;
+        // BUILD wear a pigment: omitted (not sent as "") when nobody's worn anything -- the client's
+        // default blue is what an absent field already means, same as every other sparse field here.
+        if (!o.shirt_hex.empty()) out << ",\"shirt\":" << commons::json::str(o.shirt_hex);
+        out << "}";
     }
     out << "]";
     return out.str();
@@ -353,6 +357,7 @@ int main(int argc, char** argv) {
     db.migrate("schema.sql", "seed.sql");
     db.ensure_inventory_recency();
     db.ensure_visit_policy();
+    db.ensure_shirt_pigment();
     db.ensure_studio_columns();   // before ensure_catalog: catalog.sql's Studio rows set pigment_hex / duration_s / tier / notes
     db.ensure_studio_tables();
     db.ensure_catalog("catalog.sql");
@@ -637,6 +642,33 @@ int main(int argc, char** argv) {
         }
         body += "]}";
         r.body = body;
+        return r;
+    });
+
+    // Wear a pigment (BUILD wear a pigment, CLAUDE_WEAR_PIGMENT.md): {"index": 1-13} to wear it, {} or
+    // {"index": null} to go back to the default blue. Same unlock rule as the palette (studio.set_shirt),
+    // not a second copy of it. Persists, then pushes the resolved hex onto this id's live Occupant row
+    // (if they're actually present in a region right now) so a nearby friend sees it change immediately.
+    server.route("POST", "/presence/wear", [&](const commons::HttpRequest& req) {
+        using namespace commons::reqjson;
+        commons::HttpResponse r;
+        auto username = commons::civic::resolve_username(req.headers_raw);
+        if (!username) {
+            r.status = 403; r.status_text = "Forbidden";
+            r.body = "{\"ok\":false,\"reason\":\"not_bound\"}";
+            return r;
+        }
+        std::optional<int> index;
+        if (auto idx = field_num(req.body, "index")) index = static_cast<int>(*idx);
+        auto res = studio.set_shirt(*username, index);
+        if (!res.ok) {
+            r.status = res.reason == "unknown_index" ? 400 : 409;
+            r.status_text = r.status == 400 ? "Bad Request" : "Conflict";
+            r.body = "{\"ok\":false,\"reason\":" + commons::json::str(res.reason) + "}";
+            return r;
+        }
+        presence.update_shirt("u:" + *username, res.hex);
+        r.body = "{\"ok\":true,\"hex\":" + commons::json::str(res.hex) + "}";
         return r;
     });
 
@@ -971,6 +1003,8 @@ int main(int argc, char** argv) {
         occ.x = resume_x; occ.y = resume_y;
         occ.facing = resume_facing;
         occ.last_update_ms = now_ms();
+        // BUILD wear a pigment: a guest never has a shirt_pigment_index row to read, so this stays "".
+        if (is_bound) occ.shirt_hex = studio.shirt_hex_of(occ.display_name);
         std::string accepted_name;
         auto result = presence.join(*region, occ, &accepted_name);
         // GROK_NAME_REVIEW.md: echo the *accepted* name (post-disambiguation)
@@ -993,6 +1027,10 @@ int main(int argc, char** argv) {
                   ",\"bound\":" + (is_bound ? "true" : "false") +
                   (is_bound ? ",\"username\":" + commons::json::str(eff_id->substr(2)) : "") +
                   (!house_policy.empty() ? ",\"house_policy\":" + commons::json::str(house_policy) : "") +
+                  // BUILD wear a pigment: so this client can draw its OWN player with its own worn
+                  // colour right away, without a second round-trip -- the same info occupants_json()
+                  // already sends about everyone else.
+                  (!occ.shirt_hex.empty() ? ",\"shirt\":" + commons::json::str(occ.shirt_hex) : "") +
                   (has_resume ? ",\"resume_x\":" + std::to_string(static_cast<int>(resume_x)) +
                                  ",\"resume_y\":" + std::to_string(static_cast<int>(resume_y)) +
                                  ",\"resume_facing\":" + std::to_string(resume_facing) : "")
@@ -1140,6 +1178,7 @@ int main(int argc, char** argv) {
         occ.x = resume_x; occ.y = resume_y;
         occ.facing = resume_facing;
         occ.last_update_ms = now_ms();
+        if (is_bound) occ.shirt_hex = studio.shirt_hex_of(occ.display_name);
         std::string accepted_name;
         auto result = presence.rekey(*from_region, *to_region, occ, &accepted_name);
         r.body = std::string("{\"ok\":") + (result == commons::PresenceStore::JoinResult::Ok ? "true" : "false")

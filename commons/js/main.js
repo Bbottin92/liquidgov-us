@@ -208,6 +208,35 @@ function drawSpace(camX, camY) {
   drawSortedActors(ctx, camX, camY);
 }
 
+// What the prompt says. The data still says Look or Draw; those words were
+// shared by a dozen different things, so the button names the thing.
+var GATHER_WORD = {
+  north_woods_galls: "Galls", north_woods_twigs: "Twigs", orchard_keg: "Keg",
+  shore_shells: "Shells", quarry_ochre: "Ochre", quarry_alum: "Alum",
+  garden_madder: "Madder", garden_weld: "Weld", garden_woad: "Woad",
+  workshop_iron: "Iron", workshop_copper: "Copper", lab_soot: "Soot", lab_gum: "Gum"
+};
+function actionWord(it) {
+  if (!it) return "";
+  if (it.type === "wallSlot" && mode === "visit") return "Look";
+  if (it.type === "studioPortrait") return "Portrait";
+  if (it.type === "studioPainting") return "Painting";
+  if (it.type === "studioGather") return GATHER_WORD[it.spot] || "Look";
+  if (it.type === "labStation") {
+    if (it.recipe === "copper") return "Copper";
+    if (it.recipe === "iron") return "Iron";
+    if (it.recipe === "chalk") return "Chalk";
+  }
+  if (it.type === "labStock") {
+    if (it.stock === "vinegar") return "Vinegar";
+    if (it.stock === "tannin") return "Tannin";
+    if (it.stock === "alum") return "Alum";
+  }
+  if (it.type === "easel") return "Easel";
+  if (it.type === "notebook") return "Notebook";
+  return it.prompt || "";
+}
+
 function frame(t) {
   if (!running) return;
   var dt = Math.min((t - lastT) / 1000, 1 / 20) || 0;
@@ -294,10 +323,13 @@ function frame(t) {
   }
 
   nearestInteractable = findNearestInteractable();
-  interactBtn.classList.toggle("show", !!nearestInteractable || mode !== "outdoor");
-  interactBtn.textContent = nearestInteractable
-    ? (nearestInteractable.type === "wallSlot" && mode === "visit" ? "Look" : nearestInteractable.prompt)
-    : "Leave";
+  // The word on the button is the thing, not the verb. "Look" was every
+  // gather spot, both house frames, and every lab bench, so the prompt
+  // could not tell them apart. The stored prompt stays what the tests lock.
+  var word = nearestInteractable ? actionWord(nearestInteractable) : (besideLabDoor() ? "Lab" : (mode !== "outdoor" ? "Leave" : ""));
+  var finePointer = window.matchMedia && window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+  interactBtn.classList.toggle("show", !!word);
+  interactBtn.textContent = (finePointer && word) ? ("Enter · " + word) : (word || "Enter");
 
   // canvas.md #2: skip the blit entirely if the scene truly hasn't changed
   // -- rAF still runs (vsync), we just don't touch the GPU for nothing.

@@ -201,6 +201,12 @@ if (ok.ok) {
   try { ev(ok, "isBound = false; openBackpack(); closeBackpack();"); }
   catch (e) { bpThrew = e.name + ": " + e.message; }
   check(!bpThrew && bpFetches === 0, "a guest opening/closing the backpack never calls fetch (pure client-side inventory, same as the strip)" + (bpThrew ? " (" + bpThrew + ")" : " (" + bpFetches + " fetches)"));
+  check(ev(ok, "actionWord({type:'studioGather', spot:'garden_weld'}) === 'Weld' && actionWord({type:'studioPortrait'}) === 'Portrait' && actionWord({type:'studioPainting'}) === 'Painting' && actionWord({type:'labStock', stock:'vinegar'}) === 'Vinegar'"), "the prompt names the thing, instead of Look or Draw for all of them");
+  ev(ok, "mode = 'outdoor'; nearestInteractable = null; player.x = LAB_DOOR_TILE.x * TILE + 8; player.y = (LAB_DOOR_TILE.y + 1) * TILE + 8;");
+  check(ev(ok, "besideLabDoor() === true"), "standing on the tile south of the lab door counts as beside it");
+  ev(ok, "tryInteract();");
+  check(ev(ok, "mode") === "lab", "Enter in front of the lab door walks in, same as stepping on the tile");
+  ev(ok, "mode = 'outdoor'; activeSpace = outdoorSpace;");
   ev(ok, "inventory = { seashell: 3, weld: 1 }; lastPickedItem = 'weld'; renderInvHud();");
   check(ok.rec.byId.invHud.innerHTML === "", "the holding strip stays empty once items exist; the backpack is the list");
   check(ok.rec.byId.bagBtn.hidden === false, "the Bag button stays available with an empty or a full pack");

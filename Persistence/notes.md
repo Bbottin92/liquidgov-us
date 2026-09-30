@@ -18,6 +18,8 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-09-30 -- A keyboard could not see what it was standing next to, and four gather spots were off any path. Not deployed.** The Enter button was hidden on a mouse, so nothing on screen named the thing in range. It is now a label (`Enter · Weld`, and so on) and the word is the thing, not Look or Draw for all of them. Enter in front of the lab door walks in. A path runs north off the garden street to the madder, east to the weld, and from the workshop street to the iron and copper crates. `client_files_unit.js` 129/0, `world_scatter_unit.js` 33/0.
+
 - **2026-09-28 -- Bag is a corner widget, and proposals has a door back. Not deployed.** The grass no longer repeats the backpack's items. Bag opens a panel under the button instead of a full-screen page, and walking continues while it is open. `/proposals` links to `/commons/?at=hall`, which stands you on the path tile north of the Hall door, facing it. `client_files_unit.js` 126/0. See `bag-widget-built.md`.
 
 - **2026-09-28 -- `BUILD wear a pigment` built and tested; NOT deployed (schema + daemon route + client,

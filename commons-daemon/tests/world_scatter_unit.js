@@ -77,6 +77,7 @@ check(capViolations.length === 0, "every region/tile count is within scatter_aut
 const LANE_SENTINELS = {
   Workshop: [25, 32], Lab: [25, 48], Hall: [50, 30], mine: [20, 69], Lookout: [35, 18],
   Orchard: [50, 9], woods: [4, 24], Garden: [45, 48], ochre: [10, 71],
+  madder: [49, 45], weld: [60, 46], iron: [14, 28],
 };
 const T_PATH_ = T_("T_PATH"), T_BRIDGE_ = T_("T_BRIDGE");
 const laneBroken = [];

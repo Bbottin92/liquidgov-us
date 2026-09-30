@@ -182,12 +182,25 @@
   }
   #interactBtn.show{ display:flex; }
   #interactBtn:active{ background:rgba(196,165,116,.85); }
-  /* Keyboard has arrows. The on-screen pad is for touch (art.md). Hiding it
-     on a fine pointer uncovers the bottom of the Square. */
+  /* Keyboard has arrows, so the thumb pad stays hidden. The round Enter
+     button was hidden too, which meant a keyboard showed no prompt at all:
+     you had to already know to press Enter. On a fine pointer the same
+     button becomes a label under the map. It does not take clicks. */
   @media (hover: hover) and (pointer: fine) {
     #dpad{ display:none; }
-    #interactBtn{ display:none !important; }
-    #toast{ bottom:calc(1.2rem + env(safe-area-inset-bottom,0px)); }
+    #interactBtn.show{
+      display:block;
+      left:50%; right:auto; transform:translateX(-50%);
+      bottom:calc(1.2rem + env(safe-area-inset-bottom,0px));
+      width:auto; height:auto; min-width:0;
+      padding:.3rem .85rem; border-radius:999px;
+      border:1px solid var(--ink);
+      background:var(--paper); color:var(--ink);
+      font-size:.8rem; font-weight:700;
+      pointer-events:none;
+      box-shadow:0 1px 4px rgba(26,24,20,.35);
+    }
+    #toast{ bottom:calc(3.2rem + env(safe-area-inset-bottom,0px)); }
   }
 
   /* Easel, bench and notebook are full-screen overlays: a 160x240 portrait crop

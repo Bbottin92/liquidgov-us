@@ -327,16 +327,17 @@ var SCATTER = [
   { region: "Lab Yard", tile: T_CRATE, at: [[17,55]] },
   { region: "Lab Yard", tile: T_BENCH, at: [[15,56]] },
   { region: "Lab Yard", tile: T_TREE, at: [[3,49],[16,41]] },
-  { region: "Homestead Row", tile: T_TREE, at: [[25,42],[43,41],[44,43]] },
-  { region: "Garden", tile: T_FLOWERBED, at: [[52,54],[54,54],[57,54],[59,54],[61,54],[68,54],[70,54]] },
-  { region: "Garden", tile: T_TREE, at: [[58,43]] },
-  { region: "Garden", tile: T_BENCH, at: [[63,51]] },
-  { region: "Quarry Ridge", tile: T_LOWWALL, at: [[2,67],[2,72],[2,76],[17,77],[18,64],[21,64],[21,67],[21,72]] },
-  { region: "Quarry Ridge", tile: T_CRATE, at: [[5,76],[12,75]] },
-  { region: "Creek", tile: T_TREE, at: [[28,62],[30,62],[32,62],[42,62]] },
-  { region: "Creek", tile: T_BENCH, at: [[28,64]] },
-  { region: "Shore", tile: T_TREE, at: [[50,63],[53,63],[58,63],[62,63],[64,63],[68,63]] },
-  { region: "Shore", tile: T_BENCH, at: [[50,75]] }
+  { region: "Homestead Row", tile: T_TREE, at: [[26,41],[27,58],[30,50],[31,56],[39,54],[46,50],[46,55]] },
+  { region: "Homestead Row", tile: T_BENCH, at: [[45,47]] },
+  { region: "Garden", tile: T_FLOWERBED, at: [[51,43],[52,50],[54,50],[57,43],[59,43],[64,43],[68,43]] },
+  { region: "Garden", tile: T_TREE, at: [[53,44]] },
+  { region: "Garden", tile: T_BENCH, at: [[61,54]] },
+  { region: "Quarry Ridge", tile: T_LOWWALL, at: [[6,64],[12,77],[20,77],[21,64]] },
+  { region: "Quarry Ridge", tile: T_CRATE, at: [[6,71],[22,61]] },
+  { region: "Quarry Ridge", tile: T_TREE, at: [[4,66],[15,62]] },
+  { region: "Creek", tile: T_TREE, at: [[27,63],[29,63],[32,63],[38,63],[42,63],[45,63]] },
+  { region: "Creek", tile: T_BENCH, at: [[40,77]] },
+  { region: "Shore", tile: T_TREE, at: [[51,63],[54,63],[58,63],[68,63],[70,63]] }
 ];
 var SCATTER_PLACED = 0, SCATTER_REFUSED = [];   // read by tests/world_scatter_unit.js
 

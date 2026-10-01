@@ -18,6 +18,21 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-10-01 -- Walked the map fresh (no account, no tutorial) after `14e1f08`; one real problem, fixed.**
+  The gate, its sign, the lab, the Square/Homestead region-name banner, and the guest-vs-bound gate copy
+  all read clearly and work as `property-coherence-built.md` describes -- verified live, not assumed. The
+  one thing that didn't: Homestead Row, at 24x20 tiles the single widest region on the map, dressed down to
+  a gate, one sign, and three trees, because `scatter_author.js`'s own candidate-space restriction for that
+  region still carved out the old 8-door facade's door-front rows (y=46/48, the torn-down `HOMESTEAD_DOOR_XS`
+  columns) -- a shape that no longer exists post-coherence -- and its 0-4/0-2 tree/bench budget had room to
+  roll nearly empty even where it could legally place something. Fixed both in `scatter_author.js`: dropped
+  the stale restriction (a general pass, like every sibling region, since the one real gate is already kept
+  clear by the generic per-interactable ring rule) and raised the floor to 4-7 trees / 1-2 benches so the
+  region can't come back this bare on a bad roll. Regenerated `commons/js/world.js`'s `SCATTER` table the
+  only correct way (the generator, never by hand); `world_scatter_unit.js`'s own hardcoded caps for that
+  region updated to the new, deliberately-higher floor. `client_files_unit.js` 155/0, `world_scatter_unit.js`
+  33/0. Client-only, not deployed.
+
 - **2026-10-01 -- The gate moved onto Homestead Row.** It had been pasted on the unnamed grass south of Creek, and the homestead wall was a facade with nothing behind it. The wall is gone. The gate is on the west half of the road just south of the Square. The east half stays path, so Creek is not behind your door. The banner says "your plot." Not deployed.
 
 - **2026-10-01 -- `BUILD property coherence` built and tested; not deployed.** The Homestead doors are wall. The spine continues south of Creek to one gate. Enter asks where: Home, then whoever is online. A visit opens the grass plot, not the furnished room. Group is not a line. `client_files_unit.js` 155/0, `world_scatter_unit.js` 33/0. See `CLAUDE_PROPERTY_COHERENCE.md`.

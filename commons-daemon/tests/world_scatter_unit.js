@@ -57,7 +57,11 @@ const CAPS = [
   ["Hall Lawn", "T_TREE", 0, 0], ["Hall Lawn", "T_BENCH", 0, 0], ["Hall Lawn", "T_FLOWERBED", 0, 0], ["Hall Lawn", "T_CRATE", 0, 0], ["Hall Lawn", "T_LOWWALL", 0, 0], ["Hall Lawn", "T_HEDGE", 0, 0],
   ["Workshop Lane", "T_CRATE", 0, 4], ["Workshop Lane", "T_TREE", 0, 2], ["Workshop Lane", "T_BENCH", 0, 0], ["Workshop Lane", "T_FLOWERBED", 0, 0], ["Workshop Lane", "T_LOWWALL", 0, 0],
   ["Lab Yard", "T_CRATE", 0, 3], ["Lab Yard", "T_BENCH", 0, 1], ["Lab Yard", "T_TREE", 0, 2], ["Lab Yard", "T_FLOWERBED", 0, 0],
-  ["Homestead Row", "T_TREE", 0, 4], ["Homestead Row", "T_BENCH", 0, 2], ["Homestead Row", "T_FLOWERBED", 0, 0],
+  // Raised 0-4/0-2 to 4-7/1-2 (BUILD property coherence follow-up): walking the map found Homestead Row
+  // reading as "a gate, one sign, and three trees" -- the old caps let the region's own random roll come
+  // up nearly empty, and its stale candidate-space restriction (from the torn-down 8-door facade) made it
+  // worse. Both fixed in scatter_author.js; this is that fix's new floor, not a loosened ceiling.
+  ["Homestead Row", "T_TREE", 4, 7], ["Homestead Row", "T_BENCH", 1, 2], ["Homestead Row", "T_FLOWERBED", 0, 0],
   ["Garden", "T_FLOWERBED", 4, 8], ["Garden", "T_TREE", 0, 2], ["Garden", "T_BENCH", 0, 2], ["Garden", "T_LOWWALL", 0, 0],
   ["Quarry Ridge", "T_LOWWALL", 4, 8], ["Quarry Ridge", "T_CRATE", 0, 2], ["Quarry Ridge", "T_TREE", 0, 2], ["Quarry Ridge", "T_FLOWERBED", 0, 0], ["Quarry Ridge", "T_BENCH", 0, 0],
   ["Creek", "T_TREE", 4, 6], ["Creek", "T_BENCH", 0, 1], ["Creek", "T_FLOWERBED", 0, 0], ["Creek", "T_CRATE", 0, 0], ["Creek", "T_LOWWALL", 0, 0],

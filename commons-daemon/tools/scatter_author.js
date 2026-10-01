@@ -156,7 +156,17 @@ const RECIPES = {
   "Hall Lawn": [],
   "Workshop Lane": [["T_CRATE", 0, 4], ["T_TREE", 0, 2]], // corner stamp excluded, see restrictWorkshop
   "Lab Yard": [["T_CRATE", 0, 3], ["T_BENCH", 0, 1], ["T_TREE", 0, 2]],
-  "Homestead Row": [["T_TREE", 0, 4], ["T_BENCH", 0, 2]], // door fronts excluded, see restrictHomestead
+  // BUILD property coherence tore down the 8-door facade this candidate space used to dodge (see git
+  // history: restrictHomestead used to confine candidates to y===46/48 at the old HOMESTEAD_DOOR_XS
+  // columns). Only one gate is left (34,43) now, and the generic ring()-around-every-interactable rule
+  // in buildModel() already keeps its approach clear -- there is no facade shape left to restrict around.
+  // Walking the map turned up exactly this: Homestead Row reads as "a gate, one sign, and three trees."
+  // Opening the candidate space back up (below) only changes WHERE a prop can land, not how many get
+  // asked for -- the 0-4/0-2 budget already had room to roll that low on its own, and did. Fixed the
+  // space AND raised the floor so this region cannot come back this bare again: it is the single widest
+  // region on the map (24x20) with nothing else in it but one gate, so it needs more than the minimum
+  // any other general-pass region settles for.
+  "Homestead Row": [["T_TREE", 4, 7], ["T_BENCH", 1, 2]],
   "Garden": [["T_TREE", 0, 2], ["T_BENCH", 0, 2]], // flowerbeds are the row-restricted type, handled separately
   "Quarry Ridge": [["T_CRATE", 0, 2], ["T_TREE", 0, 2]], // low walls are the run-restricted type, handled separately
   "Creek": [["T_BENCH", 0, 1]], // trees are the line-restricted type, handled separately
@@ -165,11 +175,6 @@ const RECIPES = {
 
 function restrictWorkshop(x, y) { return !(x <= 3 || x >= 21 || y >= 36); } // the corner stamp
 function restrictLookout(x, y, aabb) { return x <= 29 && !(x >= 30 && x <= 41 && y >= 10 && y <= 15); } // off the plateau
-const HOMESTEAD_DOOR_XS = [25, 26, 29, 32, 37, 40, 43, 46]; // houseDoorX + the 7 facade doors
-function restrictHomestead(x, y) {
-  if (y !== 46 && y !== 48) return true;
-  return HOMESTEAD_DOOR_XS.indexOf(x) === -1;
-}
 
 function main() {
   const checkOnly = process.argv.includes("--check");
@@ -251,18 +256,9 @@ function main() {
 
   runRegionGeneral("Lab Yard", RECIPES["Lab Yard"]);
 
-  // ---- Homestead Row (restricted: door fronts stay clear) ----
-  {
-    const a = region("Homestead Row");
-    const targets = RECIPES["Homestead Row"].map(([name, min, max]) => ({ name, need: randInt(rng, min, max) }));
-    const candidates = shuffle(rng, allTilesIn(a).filter(([x, y]) => restrictHomestead(x, y)));
-    for (const [x, y] of candidates) {
-      for (const t of targets) {
-        if (t.need <= 0) continue;
-        if (tryPlace("Homestead Row", t.name, x, y, a)) { t.need--; break; }
-      }
-    }
-  }
+  // ---- Homestead Row: general pass, same as Lab Yard/Garden. The gate (34,43) and its sign are kept
+  // clear by the generic ring()-around-every-interactable rule in buildModel(), same as any other door.
+  runRegionGeneral("Homestead Row", RECIPES["Homestead Row"]);
 
   // ---- Garden: flowerbeds in 1-2 horizontal rows (restricted), trees + benches general ----
   {

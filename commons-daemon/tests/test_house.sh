@@ -14,6 +14,9 @@ assert_contains "the owner's join echoes the policy" "$BODY" '"house_policy":"fr
 assert_not_contains "first ever entry has no resume position" "$BODY" 'resume_x'
 bpickup alice chalk_block;        assert_code "pickup ok" 200
 bpickup alice iron_gall_ink_page; assert_code "second pickup ok" 200
+bpickup alice fence_post; assert_code "pickup of a non-lab catalog item is refused (whitelist, not a free mint)" 400
+assert_contains "with the standard unknown_item reason" "$BODY" 'unknown_item'
+assert_eq "no inventory row was created for it" "2" "$(dbq "select count(*) from inventory where player_id=(select player_id from players where lg_username='alice')")"
 bplace alice $H chalk_block;      assert_contains "the owner places chalk" "$BODY" '"ok":true'
 get "$D/placed/$H";               assert_contains "the wall shows chalk" "$BODY" 'chalk_block'
 bmove alice $H 3 9 2

@@ -20,6 +20,17 @@ Not bug classes. Not “what is live on the droplet.”
 
 - **2026-10-01 -- Property phase 5 named, not built.** A shop door in the Square, not a new region. Coins are a `players` column the server writes, not a client-trusted balance and not an item. The counter sells a stool and a lantern. It buys the 10-minute raw gathers and nothing a recipe consumes or produces, so the keg and the long bench waits stay what `CLAUDE_STUDIO_5.md` tuned. Player-to-player trade is not in this doc. See `CLAUDE_PROPERTY_PHASE5.md`.
 
+- **2026-10-01 -- Security fix: `POST /presence/pickup` was an unwhitelisted item mint, now fixed (built
+  and tested, NOT deployed).** `HouseStore::add_pickup` (house.cpp) inserted/incremented ANY slug matching
+  `items.slug`, capped at 99 -- any bound player could POST a crafted, gathered-only, or tool slug
+  (`fence_post`, `hammer`, anything) and mint it for free, bypassing the entire gather/bench economy Phases
+  2-3 just built. The live client only ever sends the three lab trophies (`interiors.js` `LAB_RECIPES`,
+  `interact.js`'s one `netPickup` call site), confirmed by reading the code before touching it. Fixed with
+  a whitelist to exactly those three (`chalk_block`, `iron_gall_ink_page`, `copper_acetate_bottle`), reusing
+  the existing `unknown_item` 400 reason -- no new error path, no position checking, floor-cap/bench-slot
+  patterns untouched. `test_house.sh` grew one assertion (pickup of `fence_post` now 400, inventory row
+  count unchanged), mutation-confirmed by disabling the whitelist and watching exactly those 3 checks fail.
+  Full suite: 26 files, 0 failed. Deliberately not deployed yet.
 - **2026-10-01 -- Property phase 4 built, tested, and DEPLOYED (`a8fd080`; 37 verify checks, 0 failed;
   `maps` correctly recognized as grown 14->15; confirmed live by content -- served `world.js` mentions
   "the Dunes", served `tiles.png` is the exact regenerated 2817-byte file).** `CLAUDE_PROPERTY_PHASE4.md` as

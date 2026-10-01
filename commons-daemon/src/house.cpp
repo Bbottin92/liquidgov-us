@@ -190,6 +190,16 @@ HouseStore::ReapResult HouseStore::reap_orphan(const std::string& username) {
 }
 
 bool HouseStore::add_pickup(const std::string& username, const std::string& item_slug, long long now_ms) {
+    // Whitelist: the lab's three trophies are the only things this route has
+    // ever legitimately granted (interiors.js LAB_RECIPES, interact.js's one
+    // netPickup call site). Without this, any bound player could POST any
+    // catalog slug here -- gathered materials, crafted tools, anything -- and
+    // mint it for free, bypassing gather/bench entirely. Reuses the existing
+    // "not a real catalog slug" false/400 path below rather than a new reason.
+    if (item_slug != "chalk_block" && item_slug != "iron_gall_ink_page" &&
+        item_slug != "copper_acetate_bottle") {
+        return false;
+    }
     int player_id = find_or_create_player(username);
     // MIN(.., 99): a lookup station can be pressed forever; the count is a
     // souvenir, not a balance worth letting a stuck key grow without bound.

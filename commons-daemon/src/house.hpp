@@ -89,7 +89,10 @@ public:
     // it is never consumed: the lab is still real-name flavor, not a
     // crafting economy (pushback.md).
     //
-    // False if `item_slug` isn't a real catalog item.
+    // Whitelisted to the lab's three trophies only (chalk_block,
+    // iron_gall_ink_page, copper_acetate_bottle) -- this is a souvenir
+    // lookup, not a free-mint route for the gather/craft economy.
+    // False if `item_slug` isn't one of those (or isn't a real catalog item).
     bool add_pickup(const std::string& username, const std::string& item_slug, long long now_ms);
 
     struct InventoryEntry { std::string slug; int quantity = 0; };

@@ -18,6 +18,8 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-10-01 -- Property coherence, the entrance changed before any build.** Brandon: a path to the edge, and a gate that asks Home, Friend, or Group. Home and the online-friend list can be that gate, south of Creek on the empty grass. Group cannot yet: the daemon never asks civic which group you are in, and only a house's owner can place. See `CLAUDE_PROPERTY_COHERENCE.md`.
+
 - **2026-10-01 -- Property coherence named, not built.** The demo door is an unlabeled furnished room, and a visit opens that room instead of the friend's grass plot. The six boarded Homestead doors are empty slots drawn as doors. The plot stays an instance: there is still no per-player outdoor tile grid, and this does not add one. Phase 5's shop is unchanged. See `CLAUDE_PROPERTY_COHERENCE.md`.
 
 - **2026-10-01 -- Property phase 5 named, not built.** A shop door in the Square, not a new region. Coins are a `players` column the server writes, not a client-trusted balance and not an item. The counter sells a stool and a lantern. It buys the 10-minute raw gathers and nothing a recipe consumes or produces, so the keg and the long bench waits stay what `CLAUDE_STUDIO_5.md` tuned. Player-to-player trade is not in this doc. See `CLAUDE_PROPERTY_PHASE5.md`.

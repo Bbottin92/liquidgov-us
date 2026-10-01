@@ -18,6 +18,19 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-10-01 -- Property phase 4 proposed, not built.** Brandon wants real new world regions, not a
+  re-skin -- checked the actual risk of expanding the grid rather than asserting it (he pushed back and
+  was right to): `regionAABB`/`regionAt`/camera-polling are parameterized off `GRID_COLS`/`GRID_ROWS`/
+  `REGIONS`, not hardcoded; the real cost is authoring a new region's content, the same amount of work any
+  existing one took, not fragility. Also confirmed the world fills entirely with a default tile first, so
+  an unfilled grid cell is just grass, not a hole -- a new row doesn't need 3 new regions to fill it.
+  `CLAUDE_PROPERTY_PHASE4.md`: `GRID_ROWS` 4->5 (`WORLD_H` 80->100), one new region "the Dunes" at (0,4)
+  south of Quarry Ridge, a new `T_SAND` tile reusing the grass dot-texture technique, a path connecting it
+  in from the start (Brandon's own standing rule). Scope is the world-expansion only -- no desert gather
+  spots/materials/recipes bundled, matching how phase 1 (empty plot) shipped before phase 2 (gather/craft)
+  layered on. Columns 1-2 of the new row stay default grass for now, left for later. Awaiting
+  `BUILD property phase 4` against this doc.
+
 - **2026-10-01 -- Property phase 2+3 built, tested, and DEPLOYED (`dac63fc`; 37 verify checks, 0 failed;
   catalog correctly recognized as grown -- items 38->40, recipes 21->23 -- not flagged as a mismatch;
   confirmed live by content).** `CLAUDE_PROPERTY_PHASE2.md` as

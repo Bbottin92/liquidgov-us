@@ -18,6 +18,23 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-10-01 -- Found and fixed a real bug after phase 1 shipped: `interact.js`'s `tryFloorPlace()` still
+  refused at 8 after `house.cpp`'s own cap moved to 24 -- client-side pre-check missed in the original
+  build, caught while reading nearby code for phase 2, not by phase 1's own tests. Fixed and pushed
+  (`9731e45`); NOT yet deployed.
+
+- **2026-10-01 -- Property phase 2+3 proposed, not built.** Combined per Brandon's own framing ("gather
+  things to make tools, then with those tools build") -- a tool with nothing to unlock would be
+  half-finished alone. `CLAUDE_PROPERTY_PHASE2.md`: two new catalog items reusing existing materials
+  (`hammer` from willow_twigs+scrap_iron, `fence_post` from willow_twigs), both via the existing generic
+  gather->bench->collect loop, no daemon code change. Checked first, not assumed: floor placement already
+  doesn't consume inventory or check what you hold (an existing deliberate "low stakes" design, not a gap)
+  and floor items have zero collision today. Proposes a client-side-only hammer gate (consistent with that
+  existing trust model, not a new security boundary) and a client-side-only collision check
+  (`tileBlockedAtPixel` treats a structural `placedFloor` entry as solid) -- the one genuinely new
+  mechanic. No new rendering pass; a post reads as a fence by blocking you, not by a new sprite. Awaiting
+  `BUILD property phase 2` against this doc.
+
 - **2026-10-01 -- Property phase 1 built, tested, and DEPLOYED (`90ff2ea`; 37 verify checks, 0 failed;
   confirmed live by content, not just status -- the served `interiors.js` has `fillProperty`).** `CLAUDE_PROPERTY.md` as written: the
   owner's own house is now an empty grass-and-hedge plot (`T_GRASS_A`/`T_HEDGE` via a new optional

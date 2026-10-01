@@ -185,32 +185,10 @@ function tryInteract() {
       // "Once on entering the workshop" (CLAUDE_STUDIO_3.md "When to fetch"). Guests never call
       // /presence/studio at all -- netFetchStudio() itself no-ops unless isBound.
       netFetchStudio();
-    } else if (it.type === "demoDoor") {
-      enterInterior("demoHouse", demoHouseSpace, DEMO_ENTRY);
-    } else if (it.type === "friendDoor") {
-      // Visiting (friends policy). A lit door only exists for a mutual
-      // friend who is in the game, but the daemon is what actually decides
-      // -- a refusal comes back through netHandleJoinResponse and walks the
-      // visitor back out. Same interior template as every other house; what
-      // makes it theirs is the instance key.
-      if (it.friend && isBound) {
-        visitingOwner = it.friend;
-        INTERIOR_INSTANCE_KEY.visit = "instance:house:" + it.friend;
-        enterInterior("visit", demoHouseSpace, DEMO_ENTRY);
-      } else if (!isBound) {
-        // CLAUDE_IDEAS.md's door-wording fix: a guest never gets a friend here (netPollLots() only
-        // runs while isBound), so this was always "Closed." for them too -- same fix the houseDoor
-        // branch above already applies for the same reason.
-        showToast("Log in on LiquidGov to visit friends.");
-      } else {
-        showToast("No one's home right now.");
-      }
-    } else if (it.type === "houseDoor") {
-      // Same interior template as the demo house (V4: mechanically just
-      // another shared-shape instance, like lab/demo already are) --
-      // what makes it "yours" is the instance key, not different art.
-      if (isBound) enterInterior("house", ownHouseSpace, DEMO_ENTRY);
-      else showToast("Log in on LiquidGov to open your own house.");
+    } else if (it.type === "whereGate") {
+      // BUILD property coherence: one gate. The list is Home, then whoever /presence/lots
+      // already names. A guest gets the login toast and no list. Group is not a line.
+      openWhere();
     } else if (it.type === "labStation") {
       var r = LAB_RECIPES[it.recipe];
       inventory[r.item] = (inventory[r.item] || 0) + 1;
@@ -290,4 +268,83 @@ function tryInteract() {
   if (mode === "mine") { exitToOutdoor({ x: MINE_DOOR_TILE.x, y: MINE_DOOR_TILE.y + 1 }); return; }
   if (mode === "workshop") { exitToOutdoor({ x: WORKSHOP_DOOR_TILE.x, y: WORKSHOP_DOOR_TILE.y + 1 }); return; }
 }
+
+// BUILD property coherence. Home, then each name the lots route returned. Never a Group line:
+// the daemon cannot see a group, and only an owner can place.
+var whereOpen = false;
+
+function whereChoices(lots) {
+  var out = [{ kind: "home", label: "Home" }];
+  var list = lots || [];
+  for (var i = 0; i < list.length; i++) {
+    if (!list[i]) continue;
+    out.push({ kind: "visit", label: String(list[i]), name: String(list[i]) });
+  }
+  return out;
+}
+
+function closeWhere() {
+  whereOpen = false;
+  var el = document.getElementById("whereList");
+  if (!el) return;
+  el.hidden = true;
+  el.classList.remove("open");
+}
+
+function chooseWhere(choice) {
+  closeWhere();
+  if (!isBound) {
+    showToast("Log in on LiquidGov to go through the gate.");
+    return;
+  }
+  if (!choice || choice.kind === "home") {
+    enterInterior("house", ownHouseSpace, DEMO_ENTRY);
+    return;
+  }
+  if (choice.kind !== "visit" || !choice.name) return;
+  visitingOwner = choice.name;
+  INTERIOR_INSTANCE_KEY.visit = "instance:house:" + choice.name;
+  enterInterior("visit", visitSpace, DEMO_ENTRY);
+}
+
+function renderWhere(lots) {
+  var lines = document.getElementById("whereLines");
+  var el = document.getElementById("whereList");
+  if (!lines || !el) return;
+  var choices = whereChoices(lots);
+  lines._choices = choices;
+  var html = "";
+  for (var i = 0; i < choices.length; i++) {
+    html += "<button type=\"button\" data-where=\"" + i + "\">" + choices[i].label.replace(/&/g, "&").replace(/</g, "<") + "</button>";
+  }
+  lines.innerHTML = html;
+  whereOpen = true;
+  el.hidden = false;
+  el.classList.add("open");
+}
+
+function openWhere() {
+  if (whereOpen) { closeWhere(); return; }
+  if (!isBound) {
+    showToast("Log in on LiquidGov to go through the gate.");
+    return;
+  }
+  fetch(DAEMON + "/presence/lots").then(function (r) { return r.json(); }).then(function (j) {
+    renderWhere((j && j.lots) || []);
+  }).catch(function () { renderWhere([]); });
+}
+
+(function () {
+  var lines = document.getElementById("whereLines");
+  var close = document.getElementById("whereClose");
+  if (lines) lines.addEventListener("click", function (e) {
+    var t = e.target;
+    if (!t || t.getAttribute === undefined) return;
+    var i = t.getAttribute("data-where");
+    if (i === null || !lines._choices) return;
+    chooseWhere(lines._choices[Number(i)]);
+  });
+  if (close) close.addEventListener("click", function () { closeWhere(); });
+})();
+
 

@@ -122,6 +122,18 @@ ownHouseSpace.interactables = [
   { type: "studioPainting", x: 4, y: 0, prompt: "Draw" }
 ];
 
+// BUILD property coherence: a visit used to enter demoHouseSpace, so a friend saw the furnished
+// room with your things drawn on top of it. This is the same grass and hedge as your own plot,
+// without the latch and without an easel. The frames are here so Enter still only toasts
+// (interact.js already refuses to open the easel when mode is "visit"). The drawing itself
+// keys off mode, not off this list.
+var visitSpace = buildInterior(16, 16, fillProperty, T_GRASS_A, T_HEDGE);
+visitSpace.interactables = [
+  { type: "wallSlot", x: 7, y: 0, prompt: "Look" },
+  { type: "studioPortrait", x: 10, y: 0, prompt: "Draw" },
+  { type: "studioPainting", x: 4, y: 0, prompt: "Draw" }
+];
+
 // Studio portrait frame (BUILD studio 2). Pinned against this 16x16 house, not the
 // unverified candidate in studio.md. y=0 is the solid top wall. The civic profile
 // drawing is painted 3 tiles wide and 2 tall, centered on the wall slot at (7,0),

@@ -639,10 +639,17 @@ function netPollPlaced() {
 var LOT_POLL_MS = 5000;
 var lastLotPollAt = -Infinity;
 var netLotsBusy = false;
+var whereLots = [];
 
 function netPollLots(regions, t) {
   if (!netReady || !isBound || netLotsBusy) return;
-  var near = regions.some(function (r) { return r.name === "Homestead Row"; });
+  // The gate is on the unnamed grass south of Creek, so it is not "Homestead Row".
+  // Poll when the player is standing near it. openWhere also fetches on Enter.
+  var near = false;
+  if (typeof player !== "undefined" && typeof WHERE_GATE !== "undefined") {
+    var ptx = Math.floor(player.x / TILE), pty = Math.floor(player.y / TILE);
+    near = Math.max(Math.abs(ptx - WHERE_GATE.x), Math.abs(pty - WHERE_GATE.y)) <= 6;
+  }
   if (!near || t - lastLotPollAt < LOT_POLL_MS) return;
   lastLotPollAt = t;
   netLotsBusy = true;
@@ -650,14 +657,7 @@ function netPollLots(regions, t) {
     .then(function (r) { return r.json(); })
     .then(function (j) {
       var lots = (j && j.lots) || [];
-      for (var i = 0; i < FRIEND_LOT_DOORS.length; i++) {
-        var door = FRIEND_LOT_DOORS[i], friend = lots[i] || null;
-        if (door.friend !== friend) {
-          door.friend = friend;
-          door.prompt = friend ? "Visit" : "Away";
-          forceRedraw = true;
-        }
-      }
+      whereLots = lots;
     })
     .catch(function () {})
     .finally(function () { netLotsBusy = false; });

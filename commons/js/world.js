@@ -67,7 +67,11 @@ function regionAt(tx, ty) {
 // dressRegions(), read by the lot poll and drawSpace(). Declared up here,
 // not beside dressRegions(): the world is built during script load, before
 // a `var` further down would have been assigned.
+// The six friend-lot doors used to live here. BUILD property coherence moved that list to the
+// south gate, so this stays an empty array: the outdoor draw still walks it, and a name in it
+// would be a door again.
 var FRIEND_LOT_DOORS = [];
+var WHERE_GATE = null;
 
 // ---- Tile ids -----------------------------------------------------------
 var T_GRASS_A = 0, T_GRASS_B = 1, T_PATH = 2, T_WATER = 3, T_DIRT = 4,
@@ -431,6 +435,18 @@ var WORKSHOP_DOOR_TILE = null;
     tiles[idx(dunesPathX, dpy)] = T_PATH;
   }
 
+  // BUILD property coherence (CLAUDE_PROPERTY_COHERENCE.md): the spine was pinned at Shore so it would
+  // not run into the empty grass. That grass is the edge the gate sits on. Continue x=34 and x=35
+  // from y=80, four tiles, and stop. The gate itself is one tile south of that, on x=34, so the
+  // tile you stand on (34, 83) is path and in range.
+  for (var gy = shore.y1 + 1; gy <= shore.y1 + 4; gy++) {
+    tiles[idx(px0, gy)] = T_PATH;
+    tiles[idx(px1, gy)] = T_PATH;
+  }
+  tiles[idx(px0, shore.y1 + 5)] = T_DOOR_DEMO;
+  WHERE_GATE = { x: px0, y: shore.y1 + 5 };
+  interactables.push({ type: "whereGate", x: WHERE_GATE.x, y: WHERE_GATE.y, prompt: "Where" });
+
   dressRegions();
   addStudioGatherMarkers();
   // After the building branches (those stay as routed) and after every prop.
@@ -478,39 +494,15 @@ function dressRegions() {
     prompt: "Hall"
   });
 
-  // Homestead Row: a facade at y=47 with 7 door gaps -- door 0 is the
-  // always-live demo house, 1-6 are dynamic online/friend doors (boarded
-  // until the friends query reports a mutual friend in the game).
+  // Homestead Row: a facade, no doors. BUILD property coherence: yours, the demo, and the six
+  // friend slots used to be cut into this wall. They were a directory of places. The directory is
+  // the gate at the south edge now, so every former door tile is wall like the rest of the facade.
+  // The spine (x=34..35) is already path and is left alone.
   var wallY = homestead.y0 + 7; // y=47
-  var doorXs = [26, 29, 32, 37, 40, 43, 46];
   for (var wx = homestead.x0 + 1; wx <= homestead.x1 - 1; wx++) {
-    if (tiles[idx(wx, wallY)] === T_PATH || tiles[idx(wx, wallY)] === T_BRIDGE) continue; // let the spine through
-    if (doorXs.indexOf(wx) !== -1) continue; // carved below
+    if (tiles[idx(wx, wallY)] === T_PATH || tiles[idx(wx, wallY)] === T_BRIDGE) continue;
     tiles[idx(wx, wallY)] = T_WALL;
   }
-  for (var d = 0; d < doorXs.length; d++) {
-    var isDemo = d === 0;
-    tiles[idx(doorXs[d], wallY)] = isDemo ? T_DOOR_DEMO : T_DOOR_BOARDED;
-    // V6 (GROK_V6_ANSWER.md, friends query): lots 2-7 are dynamic. Same
-    // solid boarded tile, same "Away" until the daemon reports a mutual
-    // friend who is in the game right now; netPollLots() then fills in
-    // `friend` and rewrites `prompt`. A named door is a visit (friends
-    // policy): tryInteract() enters mode "visit" and the daemon decides.
-    // CLAUDE_IDEAS.md's door-wording fix: "Closed" read as broken/dead on a facade where most lots sit
-    // empty most of the time (few concurrent players); "Away" says the same thing honestly instead.
-    var lotDoor = isDemo ? null : { type: "friendDoor", slot: d - 1, friend: null, x: doorXs[d], y: wallY, prompt: "Away" };
-    if (lotDoor) FRIEND_LOT_DOORS.push(lotDoor);
-    interactables.push(isDemo ? { type: "demoDoor", x: doorXs[d], y: wallY, prompt: "Enter" } : lotDoor);
-  }
-  // V4 (GROK_V4_ANSWER.md): an 8th door, one tile west of the demo door,
-  // for the bound self only -- "not the six friend lots," so doorXs
-  // above is untouched. Always physically present (guests see it too,
-  // same as they see the demo door), but tryInteract() only ever lets a
-  // bound player actually walk through it; a guest gets a toast instead
-  // of a silent wall, same honesty as the six boarded ones' own toast.
-  var houseDoorX = homestead.x0 + 1; // x=25, just left of doorXs[0]=26
-  tiles[idx(houseDoorX, wallY)] = T_DOOR_HOUSE;
-  interactables.push({ type: "houseDoor", x: houseDoorX, y: wallY, prompt: "Enter" });
 
   // Creek: a bench directly beside the bridge -- collision.md flagged the
   // previous spot as stranded out in flooded water, disconnected from the

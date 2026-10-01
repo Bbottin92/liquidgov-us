@@ -1,4 +1,4 @@
-# Property phase 4: a real new region (the Dunes) — built, tested, NOT deployed
+# Property phase 4: a real new region (the Dunes) — built, tested, DEPLOYED
 
 Brandon: `BUILD property phase 4`, approving `CLAUDE_PROPERTY_PHASE4.md` as written -- itself written after
 he pushed back on an overstated "riskier" claim and asked for specifics, which turned out to matter: the
@@ -65,5 +65,7 @@ this build happened to be the first change in a long time to actually exercise.
 
 ## Deploy
 
-Client-only except the one new `catalog.sql` row (no schema change, no new route). Binary asset change
-(`commons/tiles.png`) included in the client sync. Holds for a literal `deploy`, same as always.
+Deployed 2026-10-01, revision `a8fd080`. `verify.sh`: 37 checks, 0 failed -- `maps` correctly recognized
+as grown (14->15), every other table unchanged. Confirmed live by content: the served `world.js` mentions
+"the Dunes" (6 times) and the served `tiles.png` is exactly the regenerated 2817-byte file, not a cached
+stale copy.

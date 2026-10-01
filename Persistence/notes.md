@@ -18,7 +18,9 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
-- **2026-10-01 -- Property phase 4 built and tested; NOT deployed.** `CLAUDE_PROPERTY_PHASE4.md` as
+- **2026-10-01 -- Property phase 4 built, tested, and DEPLOYED (`a8fd080`; 37 verify checks, 0 failed;
+  `maps` correctly recognized as grown 14->15; confirmed live by content -- served `world.js` mentions
+  "the Dunes", served `tiles.png` is the exact regenerated 2817-byte file).** `CLAUDE_PROPERTY_PHASE4.md` as
   written: `GRID_ROWS` 4->5, a new region "the Dunes" at (0,4) with its own `T_SAND` tile (reusing the
   grass speckle technique) and a path in from Quarry Ridge. Two real bugs found while building, not by
   inspection: the existing spine path's own loop ran to `WORLD_H - 1` and would have silently extended 20

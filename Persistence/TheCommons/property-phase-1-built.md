@@ -1,4 +1,4 @@
-# Your own property, Phase 1: an empty plot — built, tested, NOT deployed
+# Your own property, Phase 1: an empty plot — built, tested, DEPLOYED
 
 Brandon: `BUILD property phase 1`, approving `CLAUDE_PROPERTY.md` as written. First slice of a 5-phase
 roadmap (gather/craft tools, buildable structures, new biomes, and a town economy are explicitly later,
@@ -64,5 +64,6 @@ use them in, nothing more. Phases 2-5 remain an unspecced roadmap entry.
 
 ## Deploy
 
-Client-only except the one daemon constant (the floor-item cap, no schema/migration involved). Holds for
-a literal `deploy`, same as always.
+Deployed 2026-10-01, revision `90ff2ea`. `verify.sh`: 37 checks, 0 failed, all 13 tables unchanged
+against the pre-deploy backup. Confirmed live by content: the served `js/interiors.js` contains
+`fillProperty`/the `T_GRASS_A, T_HEDGE` call, not just a 200 status.

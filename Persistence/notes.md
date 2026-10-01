@@ -18,7 +18,8 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
-- **2026-10-01 -- Property phase 1 built and tested; NOT deployed.** `CLAUDE_PROPERTY.md` as written: the
+- **2026-10-01 -- Property phase 1 built, tested, and DEPLOYED (`90ff2ea`; 37 verify checks, 0 failed;
+  confirmed live by content, not just status -- the served `interiors.js` has `fillProperty`).** `CLAUDE_PROPERTY.md` as written: the
   owner's own house is now an empty grass-and-hedge plot (`T_GRASS_A`/`T_HEDGE` via a new optional
   `baseTile`/`borderTile` pair on `buildInterior`, every other caller unaffected) instead of the old
   furnished room -- table, chairs, rugs, shelves, crates, lamp and flowerbed all removed. Door, latch,

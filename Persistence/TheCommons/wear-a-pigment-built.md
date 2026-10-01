@@ -1,4 +1,4 @@
-# Wear a pigment — built, tested, NOT deployed
+# Wear a pigment — built, tested, DEPLOYED
 
 Brandon: `BUILD wear a pigment`, approving `CLAUDE_WEAR_PIGMENT.md` as written. Unlike the backpack or the
 door wording fix, this one is not client-only: a schema column, an occupant field, and a new daemon route.
@@ -75,6 +75,10 @@ production bug (`COMMONS_TEST_CLOCK_FILE` is never set outside tests, so both cl
 there) -- worked around in the test itself by setting the clock to real time for the presence-touching
 section, with a comment explaining why, rather than touching the reap logic.
 
+**Resolved 2026-09-28**: `PresenceStore` now takes an injectable clock (`PresenceStore::Clock`, constructed in
+`main.cpp` with the test-clock-aware `now_ms()`), so stamping and reaping share one timebase and the workaround
+is gone; `test_studio.sh` now asserts the reap follows the test clock.
+
 **Mutation-checked**, each restored after confirming the right failure:
 1. Client: removed the guest gate from `netWearPigment` -- both the "never fetches" and "posts once"
    checks failed (the second failed by counting two fetches instead of one, since the guest call no
@@ -102,5 +106,11 @@ section, with a comment explaining why, rather than touching the reap logic.
 
 ## Deploy
 
-Not client-only. Needs the daemon cycle (schema migration via `ensure_shirt_pigment()`, the new route,
-the occupant field) AND the client sync. Holds for a literal `deploy`, same as always.
+Deployed 2026-09-28, revision `cdea606` (daemon cycle + `--with-client`). Because it deploys HEAD, it also
+carried the friend-door wording fix (`6f5ade1`), which had been waiting since before this build.
+`verify.sh`: 37 checks, 0 failed, all 13 tables unchanged in row count against the pre-deploy backup.
+`verify.sh` doesn't exercise the new column or route, so two extra read-only checks were run after it:
+`POST /presence/wear` with no cookie answers `403 not_bound` (the route is live), and
+`pragma table_info(players)` on the live database lists `shirt_pigment_index` (the migration applied).
+Still true: nobody has *looked* at a recoloured shirt on screen (see Limits above) -- worth a glance the
+first time a bound player earns a discovery-gated pigment on the live site.

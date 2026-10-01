@@ -2,16 +2,19 @@
 
 #include <algorithm>
 #include <chrono>
+#include <utility>
 
 namespace commons {
 
 namespace {
-long long now_ms() {
+long long real_now_ms() {
     return std::chrono::duration_cast<std::chrono::milliseconds>(
                std::chrono::system_clock::now().time_since_epoch())
         .count();
 }
 } // namespace
+
+PresenceStore::PresenceStore(Clock clock) : clock_(clock ? std::move(clock) : Clock(real_now_ms)) {}
 
 void PresenceStore::reap_locked(long long now) {
     for (auto it = regions_.begin(); it != regions_.end(); ) {
@@ -93,13 +96,13 @@ PresenceStore::JoinResult PresenceStore::join_locked(const std::string& region, 
 PresenceStore::JoinResult PresenceStore::join(const std::string& region, const Occupant& occ,
                                                std::string* out_display_name) {
     std::lock_guard<std::mutex> lock(mu_);
-    reap_locked(now_ms());
+    reap_locked(clock_());
     return join_locked(region, occ, out_display_name);
 }
 
 bool PresenceStore::move(const std::string& region, const std::string& id, double x, double y, int facing) {
     std::lock_guard<std::mutex> lock(mu_);
-    long long now = now_ms();
+    long long now = clock_();
     reap_locked(now);
     auto it = regions_.find(region);
     if (it == regions_.end()) return false;
@@ -118,7 +121,7 @@ PresenceStore::JoinResult PresenceStore::rekey(const std::string& from_region,
                                                 const Occupant& occ,
                                                 std::string* out_display_name) {
     std::lock_guard<std::mutex> lock(mu_);
-    reap_locked(now_ms());
+    reap_locked(clock_());
     // join_locked de-dupes globally and refuses dest-full *before* erase,
     // so a failed walk into a packed region keeps the occupant in from_region.
     // from_region is the caller's claim; the store trusts id uniqueness, not
@@ -129,7 +132,7 @@ PresenceStore::JoinResult PresenceStore::rekey(const std::string& from_region,
 
 void PresenceStore::leave(const std::string& region, const std::string& id) {
     std::lock_guard<std::mutex> lock(mu_);
-    reap_locked(now_ms());
+    reap_locked(clock_());
     auto it = regions_.find(region);
     if (it == regions_.end()) return;
     auto& list = it->second;
@@ -143,7 +146,7 @@ void PresenceStore::leave(const std::string& region, const std::string& id) {
 
 bool PresenceStore::update_shirt(const std::string& id, const std::string& hex) {
     std::lock_guard<std::mutex> lock(mu_);
-    reap_locked(now_ms());
+    reap_locked(clock_());
     for (auto& kv : regions_) {
         for (auto& o : kv.second) {
             if (o.id == id) { o.shirt_hex = hex; return true; }
@@ -154,7 +157,7 @@ bool PresenceStore::update_shirt(const std::string& id, const std::string& hex) 
 
 std::vector<Occupant> PresenceStore::occupants(const std::string& region) {
     std::lock_guard<std::mutex> lock(mu_);
-    reap_locked(now_ms());
+    reap_locked(clock_());
     auto it = regions_.find(region);
     if (it == regions_.end()) return {};
     return it->second; // copy out under the lock, caller works on the snapshot
@@ -162,7 +165,7 @@ std::vector<Occupant> PresenceStore::occupants(const std::string& region) {
 
 std::size_t PresenceStore::global_count() {
     std::lock_guard<std::mutex> lock(mu_);
-    reap_locked(now_ms());
+    reap_locked(clock_());
     return total_;
 }
 
@@ -174,7 +177,7 @@ void PresenceStore::forget(const std::string& id) {
 std::optional<std::string> PresenceStore::rebind(const std::string& region, const std::string& old_id,
                                                   const std::string& new_id, const std::string& new_display_name) {
     std::lock_guard<std::mutex> lock(mu_);
-    reap_locked(now_ms());
+    reap_locked(clock_());
     auto has_old = [&]() {
         auto it = regions_.find(region);
         if (it == regions_.end()) return false;
@@ -203,7 +206,7 @@ std::optional<std::string> PresenceStore::rebind(const std::string& region, cons
 
 std::vector<std::string> PresenceStore::bound_usernames() {
     std::lock_guard<std::mutex> lock(mu_);
-    reap_locked(now_ms());
+    reap_locked(clock_());
     std::vector<std::string> out;
     for (const auto& kv : regions_) {
         for (const auto& o : kv.second) {
@@ -215,7 +218,7 @@ std::vector<std::string> PresenceStore::bound_usernames() {
 
 bool PresenceStore::contains(const std::string& region, const std::string& id) {
     std::lock_guard<std::mutex> lock(mu_);
-    reap_locked(now_ms());
+    reap_locked(clock_());
     auto it = regions_.find(region);
     if (it == regions_.end()) return false;
     for (const auto& o : it->second) {

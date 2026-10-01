@@ -18,8 +18,10 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
-- **2026-09-28 -- `BUILD wear a pigment` built and tested; NOT deployed (schema + daemon route + client,
-  not client-only this time).** `CLAUDE_WEAR_PIGMENT.md` as written: a nullable
+- **2026-09-28 -- `BUILD wear a pigment` built, tested, and DEPLOYED (`cdea606`; also carried the
+  friend-door wording fix, which is therefore live too; 37 verify checks, 0 failed; migration and route
+  confirmed live by a read-only column check and a 403 probe).** Schema + daemon route + client, not
+  client-only. `CLAUDE_WEAR_PIGMENT.md` as written: a nullable
   `players.shirt_pigment_index`, a `shirt_hex` field on the in-RAM `Occupant` broadcast to everyone nearby
   (not just a private preference), `POST /presence/wear`, and a "Wear"/"Default" pair on the easel's own
   actions row. `client_files_unit.js` grew from 116 to 122 checks; `test_studio.sh` grew from 121 to 129,
@@ -46,7 +48,8 @@ Not bug classes. Not “what is live on the droplet.”
   already-unlocked palette list) rather than a new picker screen. Awaiting `BUILD wear a pigment` against
   this doc.
 
-- **2026-09-28 -- Friend-door wording fix built and tested; NOT deployed (client only).** First pick off
+- **2026-09-28 -- Friend-door wording fix built, tested, and DEPLOYED (client only; shipped in `cdea606`
+  alongside wear-a-pigment).** First pick off
   `CLAUDE_IDEAS.md`'s build order. The six Homestead friend-lot doors defaulted to prompt "Closed" and a
   "Closed." toast whether you were a guest, a bound player with no friend currently home, or (mechanically
   identical either way) -- all three read the same, none said why. Now: the on-screen prompt is "Away"
@@ -2311,6 +2314,7 @@ Not bug classes. Not “what is live on the droplet.”
 - **2026-09-20 -- the Studio SPEC written (nothing built; `TheCommons/studio.md`, review request `CLAUDE_STUDIO_QUESTION.md`).** Brandon's direction, in his answers: the point of the game is things to DO; realistic chemistry (real ingredients, roughly real times, no quantities); regions become material sources; pigments you make are your palette; the self-portrait lives in the GAME (not civic's `/me/portrait`) and starts in charcoal, unlocking colours; materials are consumed, sources renew; free starter charcoal stub. Civic is untouched (its drawing tool has unlimited colours + image import, so it cannot be gated). Reopens knowingly: crafting ban, 'no stoichiometry/safety', counts-never-go-down, 'no menu'. Guests stay RAM-only (gather + session charcoal drawing); making/keeping needs an account. Five slices (daemon core, world sources, bench, easel+portrait, tuning), each its own BUILD. Open: time scale (real <=3d, 7d cap), recipe review owner, painting visibility (friends only). Recipe table is UNVERIFIED and must be reviewed before it is built. Waiting on Grok's `GROK_STUDIO_ANSWER.md` and Brandon's sign-off.
 - **2026-09-20 -- Studio spec v2: Grok's review folded in (`TheCommons/studio.md`; nothing built, no catalog rows, no BUILD).** Applied: discovery = you hold every input (free-form side mix is rate-limited, cannot discover); homemade vinegar cut (Orchard keg instead); whiting -> shell white; alum crystals dropped; woad rewritten as a simplified lake; painting never refunds; server rules tightened (transactions, UNIQUE gather, no client timestamps, palette indices only, poll rate, orphan reap extended, guest path local); slice order now 1 daemon core, 2 charcoal easel + portrait + phone layout, 3 world sources + bench + notebook + lab conversion (one deploy), 4 rest of ladder, 5 tuning. My three deviations from Grok, flagged: pixel-level painting cost (his net-count formula allows free repaints), portrait GET visit-checked from slice 2, charcoal 8 h with the real-world figure disputed (2-4 h vs ~10 h). Recipe marks are Grok's and still unverified: I reference-check each line before `catalog.sql`, then Brandon signs the frozen table. Holding for that sign-off.
 - **2026-09-20 -- Studio reference pass done (`TheCommons/studio-refs.md`; nothing built, no catalog rows, no BUILD).** Grok accepted the three v2 deviations and pinned pixel index 0 = empty. Verbatim, greppable sources (Cennini/Herringham, Merrifield + Bolognese MS., Theophilus/Hendrie, Pliny 35.25): charcoal, red ochre, carbon ink, verdigris, weld lake confirmed; shell white, gum, tannin, iron-gall, madder, woad confirmed with corrections; iron acetate and several game times unsourced. Cennini ch. 33 does give a clock ("till morning", overnight), which supports 8 h. Woad source has no ash. Six proposed corrections C1-C6 await Brandon; the notebook shows a real range only where a source gives one. Not verified: Coates 10 h, shell-white weathering; CAMEO was 403. Holding for sign-off.
+- **2026-09-28 -- PresenceStore clock injected (was: reaped on real wall clock while `Occupant.last_update_ms` was stamped by main.cpp's test-clock-aware `now_ms()`).** `PresenceStore(Clock)` in `presence.hpp`; main.cpp passes `now_ms`; default (empty) = real clock. Constraint now documented in the header. `test_studio.sh` workaround removed and a reap-follows-test-clock check added (confirmed it FAILS on the old code, passes on the fix; full 26-file suite green). `guest.cpp` still reads the real clock for its own TTLs, but it stamps and reaps internally so it is self-consistent -- no trap there. Uncommitted.
 
 ## Split: civic site vs game
 

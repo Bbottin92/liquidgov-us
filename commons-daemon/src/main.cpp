@@ -363,7 +363,7 @@ int main(int argc, char** argv) {
     db.ensure_catalog("catalog.sql");
     std::cerr << "commons-daemon: DB ready at " << db_path << "\n";
 
-    commons::PresenceStore presence;
+    commons::PresenceStore presence(now_ms);  // the test-clock-aware now_ms(): occupants are stamped and reaped in one timebase
     commons::GuestRegistry guests;
     commons::PlacedStore placed;
     commons::HouseStore house(db.handle());

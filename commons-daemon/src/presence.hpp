@@ -1,4 +1,5 @@
 #pragma once
+#include <functional>
 #include <map>
 #include <mutex>
 #include <optional>
@@ -35,6 +36,15 @@ struct Occupant {
 // drop the occupant from the source list.
 class PresenceStore {
 public:
+    // Milliseconds since the epoch. The store's ONLY source of "now": the idle reap and the
+    // last_update_ms it stamps in move() both read it. Occupant.last_update_ms is also stamped by the
+    // CALLER at join/rekey, so the clock injected here MUST be the same one the caller uses -- otherwise
+    // a caller on a frozen/test clock stamps occupants in one timebase and this store reaps them in
+    // another (immediately, if they differ by more than kIdleMs). main.cpp passes its own now_ms(), which
+    // honours COMMONS_TEST_CLOCK_FILE. A default-constructed store uses the real wall clock.
+    using Clock = std::function<long long()>;
+    explicit PresenceStore(Clock clock = {});
+
     static constexpr std::size_t kPerRegionCap = 24;
     static constexpr std::size_t kGlobalCap = 96;
     // presence.md's crash-recovery pin, applied here as the idle-reap
@@ -101,6 +111,7 @@ public:
     bool update_shirt(const std::string& id, const std::string& hex);
 
 private:
+    Clock clock_;  // never empty after construction
     std::mutex mu_;
     std::map<std::string, std::vector<Occupant>> regions_; // guarded by mu_
     std::size_t total_ = 0;                                  // guarded by mu_

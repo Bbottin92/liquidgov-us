@@ -200,11 +200,8 @@ bwear dave '{"index":8}'; assert_code "now discovered, wearable: 200" 200
 assert_contains "carbon ink's own hex" "$BODY" '"hex":"#0d0d0d"'
 
 echo "-- wear a pigment: persists across a rejoin, and a nearby occupant sees a live change with no rejoin at all"
-# presence.cpp's own idle-reap runs on the real wall clock (never the injectable test clock studio.cpp
-# reads) -- the frozen studio clock above is still sitting near T0 (2023), which real reap_locked() would
-# see as a 30s-idle occupant on the very next presence call and remove immediately. Real time only for
-# this section, which is presence-only from here to stop_daemon.
-set_clock "$(python3 -c 'import time; print(int(time.time()*1000))')"
+# No clock reset needed: PresenceStore is constructed with main.cpp's test-clock-aware now_ms(), so
+# occupants are stamped and reaped in the same (frozen) timebase.
 bjoin dave "1,1"; assert_code "dave joins the Square: 200" 200
 assert_contains "the join response carries dave's own worn colour" "$BODY" '"shirt":"#0d0d0d"'
 su erin
@@ -212,6 +209,17 @@ bjoin erin "1,1"; assert_code "erin joins the same region: 200" 200
 occupants "1,1"; assert_contains "the region GET shows dave wearing carbon ink" "$BODY" '"shirt":"#0d0d0d"'
 bwear dave '{}'; assert_code "dave clears back to default while still standing there: 200" 200
 occupants "1,1"; assert_not_contains "and it's gone from the region GET immediately, no rejoin needed" "$BODY" '"shirt"'
+
+echo "-- presence idle-reap follows the injected test clock, not the wall clock"
+occupants "1,1"; assert_contains "at the frozen clock, dave is present (not reaped for being 2023 vs. real time)" "$BODY" '"display_name":"dave"'
+bjoin dave "1,1" >/dev/null                      # fresh stamp at the current frozen time
+PRES0="$(cat "$CLOCK_FILE")"
+set_clock $((PRES0 + 20000))                     # 20s: inside kIdleMs (30s)
+bmove erin "1,1"; assert_code "erin moves at +20s, refreshing her stamp: 200" 200
+occupants "1,1"; assert_contains "dave still present at +20s" "$BODY" '"display_name":"dave"'
+set_clock $((PRES0 + 40000))                     # dave idle 40s (> 30s), erin idle 20s
+occupants "1,1"; assert_not_contains "dave reaped at +40s (idle > kIdleMs on the test clock)" "$BODY" '"display_name":"dave"'
+assert_contains "erin (moved 20s ago) survives" "$BODY" '"display_name":"erin"'
 
 stop_daemon
 echo "== test_studio: done"

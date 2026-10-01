@@ -213,19 +213,19 @@ if (ok.ok) {
   check(!/#easel, #bench, #notebook, #backpack\{/.test(css) && css.includes("Corner widget, not a full-screen overlay"), "the backpack is a corner widget, not in the full-screen overlay group");
   check(ev(ok, "(function () { var h = null, i; for (i = 0; i < interactables.length; i++) if (interactables[i].type === 'hall') h = interactables[i]; if (!h) return false; location.search = '?at=hall'; applyHallReturn(); var tx = Math.floor(player.x / TILE), ty = Math.floor(player.y / TILE); var okAt = tx === h.x && ty === h.y - 1 && player.dir === DIR_DOWN && solid[ty * WORLD_W + tx] === 0 && Math.max(Math.abs(tx - h.x), Math.abs(ty - h.y)) === 1; player.x = ((spawn.x0 + spawn.x1 + 1) / 2) * TILE; player.y = ((spawn.y0 + spawn.y1 + 1) / 2) * TILE; player.dir = DIR_DOWN; location.search = ''; return okAt; })()"), "at=hall stands on the walkable tile north of the Hall door, facing it");
 
-  // ---- CLAUDE_PROPERTY_COHERENCE.md: the Homestead doors are gone. A gate on the path south of
-  // Creek asks where. Home is your plot. A name is a visit to the grass plot, not the furniture.
+  // ---- The gate is on Homestead Row, the first region south of the Square. The road beside it
+  // stays open. The old wall is gone. Home is your plot. A name is their grass plot.
   check(ev(ok, "interactables.every(function (it) { return it.type !== 'demoDoor' && it.type !== 'houseDoor' && it.type !== 'friendDoor'; })"), "Homestead Row has no demo door, house door, or friend door");
   check(ev(ok, "FRIEND_LOT_DOORS.length === 0"), "the friend-lot door list is empty; the gate holds that choice now");
-  check(ev(ok, "tiles[47 * WORLD_W + 25] === T_WALL && tiles[47 * WORLD_W + 26] === T_WALL && tiles[47 * WORLD_W + 29] === T_WALL"), "the old door tiles on the homestead wall are wall");
-  check(ev(ok, "tiles[80 * WORLD_W + 34] === T_PATH && tiles[80 * WORLD_W + 35] === T_PATH && tiles[83 * WORLD_W + 34] === T_PATH"), "the spine continues south of y=79 on x=34 and x=35");
-  check(ev(ok, "(function () { var g = null, i; for (i = 0; i < interactables.length; i++) if (interactables[i].type === 'whereGate') g = interactables[i]; if (!g) return false; return g.prompt === 'Where' && g.y > 79 && (g.x === 34 || g.x === 35) && tiles[g.y * WORLD_W + g.x] === T_DOOR_DEMO && tiles[(g.y - 1) * WORLD_W + g.x] === T_PATH; })()"), "the gate sits on that path, and the tile north of it is path");
+  check(ev(ok, "tiles[47 * WORLD_W + 25] !== T_WALL && tiles[47 * WORLD_W + 26] !== T_WALL"), "the homestead facade is not a wall anymore");
+  check(ev(ok, "tiles[80 * WORLD_W + 34] !== T_PATH && tiles[80 * WORLD_W + 35] !== T_PATH"), "the road does not run off the named map into the empty grass south of Creek");
+  check(ev(ok, "(function () { var g = null, s = null, i; for (i = 0; i < interactables.length; i++) { if (interactables[i].type === 'whereGate') g = interactables[i]; if (interactables[i].type === 'sign' && interactables[i].text && interactables[i].text.indexOf('Plots') === 0) s = interactables[i]; } if (!g || !s) return false; var h = regionAt(g.x, g.y); return h && h.name === 'Homestead Row' && g.prompt === 'Where' && g.x === 34 && tiles[g.y * WORLD_W + g.x] === T_DOOR_DEMO && tiles[(g.y - 1) * WORLD_W + g.x] === T_PATH && tiles[g.y * WORLD_W + 35] === T_PATH && s.x === g.x + 2 && s.y === g.y; })()"), "the gate is on Homestead Row, the tile north of it is path, and the other half of the road stays open");
   check(ev(ok, "visitSpace.tiles[idxIn(16, 8, 8)] === T_GRASS_A && visitSpace.tiles.indexOf(T_TABLE) === -1 && visitSpace.tiles.indexOf(T_CHAIR) === -1 && visitSpace.tiles[idxIn(16, 8, 0)] === T_HEDGE"), "a visit is grass and hedge, not the furnished demo room");
   check(ev(ok, "whereChoices(['alice']).map(function (c) { return c.label; }).join(',') === 'Home,alice' && whereChoices(['alice']).every(function (c) { return c.kind !== 'group'; })"), "the list is Home, then that name, and it has no Group line");
   ev(ok, "isBound = true; mode = 'outdoor'; activeSpace = outdoorSpace; chooseWhere({ kind: 'home', label: 'Home' });");
-  check(ev(ok, "mode === 'house' && activeSpace === ownHouseSpace"), "choosing Home enters the owner's plot");
+  check(ev(ok, "mode === 'house' && activeSpace === ownHouseSpace && interiorPlaceName() === 'your plot'"), "choosing Home enters the owner's plot, and the banner says so");
   ev(ok, "chooseWhere({ kind: 'visit', label: 'alice', name: 'alice' });");
-  check(ev(ok, "mode === 'visit' && activeSpace === visitSpace && visitingOwner === 'alice' && INTERIOR_INSTANCE_KEY.visit === 'instance:house:alice'"), "choosing a name enters that person's grass plot");
+  check(ev(ok, "mode === 'visit' && activeSpace === visitSpace && visitingOwner === 'alice' && INTERIOR_INSTANCE_KEY.visit === 'instance:house:alice' && interiorPlaceName() === \"alice's plot\""), "choosing a name enters that person's grass plot");
   ev(ok, "mode = 'outdoor'; activeSpace = outdoorSpace; isBound = false; whereOpen = false; nearestInteractable = { type: 'whereGate', prompt: 'Where', x: 0, y: 0 }; toast.msg = '';");
   var gateFetches = 0;
   ok.g.fetch = function () { gateFetches++; return new Promise(function () {}); };

@@ -435,18 +435,6 @@ var WORKSHOP_DOOR_TILE = null;
     tiles[idx(dunesPathX, dpy)] = T_PATH;
   }
 
-  // BUILD property coherence (CLAUDE_PROPERTY_COHERENCE.md): the spine was pinned at Shore so it would
-  // not run into the empty grass. That grass is the edge the gate sits on. Continue x=34 and x=35
-  // from y=80, four tiles, and stop. The gate itself is one tile south of that, on x=34, so the
-  // tile you stand on (34, 83) is path and in range.
-  for (var gy = shore.y1 + 1; gy <= shore.y1 + 4; gy++) {
-    tiles[idx(px0, gy)] = T_PATH;
-    tiles[idx(px1, gy)] = T_PATH;
-  }
-  tiles[idx(px0, shore.y1 + 5)] = T_DOOR_DEMO;
-  WHERE_GATE = { x: px0, y: shore.y1 + 5 };
-  interactables.push({ type: "whereGate", x: WHERE_GATE.x, y: WHERE_GATE.y, prompt: "Where" });
-
   dressRegions();
   addStudioGatherMarkers();
   // After the building branches (those stay as routed) and after every prop.
@@ -494,15 +482,19 @@ function dressRegions() {
     prompt: "Hall"
   });
 
-  // Homestead Row: a facade, no doors. BUILD property coherence: yours, the demo, and the six
-  // friend slots used to be cut into this wall. They were a directory of places. The directory is
-  // the gate at the south edge now, so every former door tile is wall like the rest of the facade.
-  // The spine (x=34..35) is already path and is left alone.
-  var wallY = homestead.y0 + 7; // y=47
-  for (var wx = homestead.x0 + 1; wx <= homestead.x1 - 1; wx++) {
-    if (tiles[idx(wx, wallY)] === T_PATH || tiles[idx(wx, wallY)] === T_BRIDGE) continue;
-    tiles[idx(wx, wallY)] = T_WALL;
-  }
+  // Homestead Row is the first region south of the Square, on the road you are already walking.
+  // The long wall used to be a row of doors. The doors left, and the wall stayed as a facade that
+  // went nowhere. It is grass now. The gate sits on the west half of the spine (x=34). The east
+  // half (x=35) stays path, so the road to Creek is not blocked by your own front door. The sign
+  // is one tile east of that road, off the path.
+  WHERE_GATE = { x: 34, y: homestead.y0 + 3 }; // (34, 43), inside Homestead, north of the lab junction
+  tiles[idx(WHERE_GATE.x, WHERE_GATE.y)] = T_DOOR_DEMO;
+  interactables.push({ type: "whereGate", x: WHERE_GATE.x, y: WHERE_GATE.y, prompt: "Where" });
+  tiles[idx(WHERE_GATE.x + 2, WHERE_GATE.y)] = T_SIGN;
+  interactables.push({
+    type: "sign", x: WHERE_GATE.x + 2, y: WHERE_GATE.y, prompt: "Read",
+    text: "Plots. The gate is on the road."
+  });
 
   // Creek: a bench directly beside the bridge -- collision.md flagged the
   // previous spot as stranded out in flooded water, disconnected from the

@@ -39,8 +39,8 @@ function interiorPlaceName() {
   if (mode === "mine") return "the mine";
   if (mode === "workshop") return "the Workshop";
   if (mode === "demoHouse") return "the demo house";
-  if (mode === "house") return "your house";
-  if (mode === "visit") return visitingOwner ? (visitingOwner + "'s house") : "a house";
+  if (mode === "house") return "your plot";
+  if (mode === "visit") return visitingOwner ? (visitingOwner + "'s plot") : "a plot";
   return "";
 }
 function announcePlace(name) {

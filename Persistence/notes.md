@@ -18,6 +18,8 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-10-01 -- The gate moved onto Homestead Row.** It had been pasted on the unnamed grass south of Creek, and the homestead wall was a facade with nothing behind it. The wall is gone. The gate is on the west half of the road just south of the Square. The east half stays path, so Creek is not behind your door. The banner says "your plot." Not deployed.
+
 - **2026-10-01 -- `BUILD property coherence` built and tested; not deployed.** The Homestead doors are wall. The spine continues south of Creek to one gate. Enter asks where: Home, then whoever is online. A visit opens the grass plot, not the furnished room. Group is not a line. `client_files_unit.js` 155/0, `world_scatter_unit.js` 33/0. See `CLAUDE_PROPERTY_COHERENCE.md`.
 
 - **2026-10-01 -- Property coherence, the entrance changed before any build.** Brandon: a path to the edge, and a gate that asks Home, Friend, or Group. Home and the online-friend list can be that gate, south of Creek on the empty grass. Group cannot yet: the daemon never asks civic which group you are in, and only a house's owner can place. See `CLAUDE_PROPERTY_COHERENCE.md`.

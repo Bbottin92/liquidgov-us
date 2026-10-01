@@ -29,7 +29,7 @@
 <div id="stage"><canvas id="game"></canvas></div>
 <div id="connStatus" role="status" aria-live="polite" title="Can't reach the Square. You can keep walking, but others can't see you until it reconnects."></div>
 <div id="invHud" aria-label="What you are holding"></div>
-<button id="bagBtn" type="button" hidden>Bag</button>
+<button id="bagBtn" type="button" aria-expanded="false" aria-controls="backpack">Bag</button>
 <div id="toast" role="status" aria-live="polite"></div>
 <div id="placeName"></div>
 <div id="batchReady" role="status" aria-live="polite"></div>
@@ -84,13 +84,13 @@
   </div>
 </div>
 
-<div id="backpack" role="dialog" aria-modal="true" aria-label="Backpack" hidden>
-  <p id="backpackTitle">Backpack</p>
-  <p id="backpackEmpty"></p>
-  <div id="backpackGrid"></div>
-  <div id="backpackActions">
+<div id="backpack" role="dialog" aria-modal="false" aria-label="Backpack" hidden>
+  <div class="bpHead">
+    <p id="backpackTitle">Backpack</p>
     <button type="button" id="backpackClose">Close</button>
   </div>
+  <p id="backpackEmpty"></p>
+  <div id="backpackGrid"></div>
 </div>
 
 <div id="nameOverlay">

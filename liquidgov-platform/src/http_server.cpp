@@ -7599,7 +7599,12 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         if(!acc) return need_login();
         std::string html = "<h1>Proposals</h1>"
             "<p class=\"muted\">Unofficial straw polls &mdash; a way to gauge how people feel about "
-            "something not yet decided. Not a CitizenId vote, not binding, not this platform's Phase 2.</p>";
+            "something not yet decided. Not a CitizenId vote, not binding, not this platform's Phase 2.</p>"
+            // The Hall door in the Commons opens this page. This is the way back, onto the path
+            // tile in front of that door (commons actors.js applyHallReturn), not the Square spawn
+            // the footer link uses.
+            "<div class=\"card\"><a class=\"btn\" href=\"/commons/?at=hall\">Hall door</a>"
+            "<p class=\"muted\" style=\"margin:.6rem 0 0\">Back into the Commons, on the path in front of this door.</p></div>";
         html += flash_error(qs);
         html += "<div class=\"card\"><form method=\"POST\" action=\"/proposals\">"
                 "<label>Title</label><input name=\"title\" maxlength=\"140\" required>"

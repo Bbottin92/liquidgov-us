@@ -143,6 +143,16 @@ function exitToOutdoor(spawnTile) {
   forceRedraw = true;
 }
 
+// The lab door is a walk-in: stepping on the tile enters. It was not an
+// interactable, so standing next to it showed nothing and Enter did nothing.
+// A door you can see should answer Enter from the tile in front of it too.
+function besideLabDoor() {
+  if (mode !== "outdoor" || !LAB_DOOR_TILE) return false;
+  var ptx = Math.floor(player.x / TILE), pty = Math.floor(player.y / TILE);
+  if (ptx === LAB_DOOR_TILE.x && pty === LAB_DOOR_TILE.y) return false;
+  return Math.max(Math.abs(ptx - LAB_DOOR_TILE.x), Math.abs(pty - LAB_DOOR_TILE.y)) <= 1;
+}
+
 function tryInteract() {
   // A real interactable in range always wins -- checked first. Without
   // this order, standing right next to a lab station and pressing Enter
@@ -252,6 +262,9 @@ function tryInteract() {
     }
     return;
   }
+
+  // Nothing in range. The lab door still answers from the tile in front of it.
+  if (besideLabDoor()) { enterInterior("lab", labSpace, LAB_ENTRY); return; }
 
   // C2: in your own house, empty Enter facing a clear floor tile puts the
   // last pickup down (cap 8). Facing the door / a wall still leaves, same

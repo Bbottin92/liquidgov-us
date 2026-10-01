@@ -728,9 +728,19 @@ function layApproachPaths() {
 
   // The Lab branch already runs along the south side of the west doors and
   // stops at the spine. Continue that same row to the Garden beds, and step
-  // south to the tile above the woad.
+  // south to the tile above the woad. Madder is four tiles north of that
+  // street and weld is the east edge, past the bed row, so neither was on a
+  // path. Step north off the street, then east along the open grass above
+  // the beds. The beds themselves stay; the lane goes around them.
   paveH(35, 55, 48);
-  paveV(49, 49, 53);
+  paveV(49, 45, 53);
+  paveH(50, 69, 46);
+
+  // Iron and copper are crates in the yard, not on the street. The door's
+  // path is x=11. One step east along y=28 reaches the tile beside the iron,
+  // and the next tile south is beside the copper too.
+  paveH(12, 15, 28);
+  pave(16, 29);
 
   // The mine branch already reaches the door and runs east at y=69. Ochre and
   // alum are still bare dirt south of that. One spur, not a second crossing.

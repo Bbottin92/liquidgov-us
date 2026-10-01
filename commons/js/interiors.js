@@ -381,63 +381,19 @@ workshopSpace.interactables = [
 // "Do not invent guest persistence"). A bound player's are also saved by the
 // daemon (GROK_V6_ANSWER.md, bound inventory) and restored on load, so
 // `inventory` and `lastPickedItem` survive a refresh or a daemon restart.
-// lastPickedItem is what the wall and the floor place. The strip (#invHud)
-// shows counts and lets you tap a chip to change what's in hand -- still
-// not a backpack menu, not a crafting screen.
+// lastPickedItem is what the wall and the floor place. The counts used to
+// be painted again as chips on the grass (#invHud). The backpack is that
+// list, so the strip stays empty -- a second copy of the same items.
 var inventory = {};
 var lastPickedItem = null;
 
 function renderInvHud() {
   var el = document.getElementById("invHud");
   var bag = document.getElementById("bagBtn");
-  if (!el) return;
-  var keys = [];
-  for (var k in inventory) if (Object.prototype.hasOwnProperty.call(inventory, k) && inventory[k] > 0) keys.push(k);
-  el.innerHTML = "";
-  // BUILD backpack: the Bag button follows the strip's own empty/non-empty rule (CLAUDE_BACKPACK.md
-  // decision 1, "always there once the strip has anything to show") -- same `inventory`, no new state.
-  if (bag) bag.hidden = !keys.length;
-  if (!keys.length) return;
-  keys.sort(function (a, b) {
-    if (a === lastPickedItem) return -1;
-    if (b === lastPickedItem) return 1;
-    return a < b ? -1 : 1;
-  });
-  for (var i = 0; i < keys.length; i++) {
-    var slug = keys[i];
-    var info = PLACED_ITEM_INFO[slug] || { color: "#888888", label: slug };
-    var b = document.createElement("button");
-    b.type = "button";
-    b.className = "invChip" + (slug === lastPickedItem ? " held" : "");
-    b.setAttribute("data-item", slug);
-    b.setAttribute("title", info.label + " ×" + inventory[slug] + (slug === lastPickedItem ? " (in hand)" : ""));
-    var sw = document.createElement("canvas");
-    sw.width = 10; sw.height = 10;
-    var sctx = sw.getContext("2d");
-    sctx.imageSmoothingEnabled = false;
-    if (typeof drawItemGlyph !== "function" || !drawItemGlyph(sctx, slug, 0, 0, 10)) {
-      sctx.fillStyle = info.color;
-      sctx.fillRect(0, 0, 10, 10);
-    }
-    var lab = document.createElement("span");
-    lab.textContent = info.label;
-    var qty = document.createElement("em");
-    qty.textContent = String(inventory[slug]);
-    b.appendChild(sw); b.appendChild(lab); b.appendChild(qty);
-    el.appendChild(b);
-  }
+  if (el) el.innerHTML = "";
+  // The Bag button is the widget's toggle, like the juketube button: it stays
+  // even when nothing is held, so an empty pack can still be opened.
+  if (bag) bag.hidden = false;
+  if (typeof backpackOpen === "function" && backpackOpen() && typeof renderBackpack === "function") renderBackpack();
 }
-
-(function bindInvHud() {
-  var el = document.getElementById("invHud");
-  if (!el || !el.addEventListener) return;
-  el.addEventListener("click", function (e) {
-    var t = e.target;
-    while (t && t !== el && !(t.getAttribute && t.getAttribute("data-item"))) t = t.parentNode;
-    if (!t || t === el) return;
-    if (e.preventDefault) e.preventDefault();
-    lastPickedItem = t.getAttribute("data-item");
-    renderInvHud();
-  });
-})();
 

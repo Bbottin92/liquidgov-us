@@ -18,6 +18,16 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-10-01 -- Property phase 4 built and tested; NOT deployed.** `CLAUDE_PROPERTY_PHASE4.md` as
+  written: `GRID_ROWS` 4->5, a new region "the Dunes" at (0,4) with its own `T_SAND` tile (reusing the
+  grass speckle technique) and a path in from Quarry Ridge. Two real bugs found while building, not by
+  inspection: the existing spine path's own loop ran to `WORLD_H - 1` and would have silently extended 20
+  tiles into the new, intentionally-undressed part of the map once the grid grew (pinned to `shore.y1`
+  instead); and `make_art.py`'s tileset generator has a *hardcoded* `NTILES` constant that isn't derived
+  from `world.js` like everything else in that script -- failed its own assertion the moment a new tile
+  was added, caught by running it. `client_files_unit.js` grew from 143 to 148, both mutation-confirmed.
+  Full suite: 26 files, 0 failed. See `property-phase-4-built.md`.
+
 - **2026-10-01 -- Property phase 4 proposed, not built.** Brandon wants real new world regions, not a
   re-skin -- checked the actual risk of expanding the grid rather than asserting it (he pushed back and
   was right to): `regionAABB`/`regionAt`/camera-polling are parameterized off `GRID_COLS`/`GRID_ROWS`/

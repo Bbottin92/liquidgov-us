@@ -261,6 +261,13 @@ if (ok.ok) {
   check(ev(ok, "tileBlockedAtPixel(8 * TILE + 5, 8 * TILE + 5) === true"), "a structural floor item blocks the tile it sits on");
   ev(ok, "placedFloor = [{ item: 'seashell', x: 8, y: 8 }];");
   check(ev(ok, "tileBlockedAtPixel(8 * TILE + 5, 8 * TILE + 5) === false"), "an ordinary (non-structural) floor item does not -- seashell was never meant to block anyone");
+
+  // ---- CLAUDE_PROPERTY_PHASE4.md: a real new region, the Dunes, south of Quarry Ridge.
+  check(ev(ok, "GRID_ROWS === 5 && WORLD_H === 100"), "the grid grew by one row (4 -> 5), WORLD_H 80 -> 100");
+  check(ev(ok, "findRegion('the Dunes') !== null && findRegion('the Dunes').col === 0 && findRegion('the Dunes').row === 4"), "the Dunes exists in REGIONS at (0, 4)");
+  check(ev(ok, "(function () { var q = regionAABB(findRegion('Quarry Ridge')), d = regionAABB(findRegion('the Dunes')); return tiles[idx(14, q.y1 - 1)] === T_PATH && tiles[idx(14, d.y0 + 1)] === T_PATH; })()"), "a path connects Quarry Ridge's south edge to the Dunes' north edge, not two disconnected patches of ground");
+  check(ev(ok, "(function () { var d = regionAABB(findRegion('the Dunes')); return tiles[idx(d.x0 + 2, d.y0 + 2)] === T_SAND; })()"), "the Dunes' own ground is T_SAND, not left as the default T_GRASS_A");
+  check(ev(ok, "(function () { var d = regionAABB(findRegion('the Dunes')); return tiles[idx(d.x1 + 2, d.y0 + 2)] === T_GRASS_A; })()"), "columns 1-2 of the new row stay default grass, confirmed rather than assumed");
 }
 
 // ---- controls: the check must be able to FAIL (a wrong order has to throw a ReferenceError)

@@ -7,7 +7,7 @@ byte-identical PNGs. This is the *source* of the art; the PNGs are what ships.
     python3 Persistence/TheCommons/art/make_art.py
 
 tiles.png   256 x 64   16x16 cells, 16 per row, row-major.  Cell N is tile id N
-            (the T_* enum in commons/js/world.js) for N = 0..40.  Cells 48..51 are
+            (the T_* enum in commons/js/world.js) for N = 0..41.  Cells 48..51 are
             grass variants (A phase 1,2 = 48,49 ; B phase 1,2 = 50,51) so the
             bake can keep breaking up the lattice with a position hash.
 sprites.png 128 x 24   8 cells of 16x24 with alpha: (dir*2 + frame), dir order
@@ -75,7 +75,7 @@ for m in re.finditer(r'COLOR\[(T_[A-Z_0-9]+)\]\s*=\s*"(#[0-9a-fA-F]{6})"', src):
     COLOR[ids[m.group(1)]] = hexrgb(m.group(2))
 INK = hexrgb(re.search(r'var INK = "(#[0-9a-fA-F]{6})"', src).group(1))
 BODY, SKIN = hexrgb("#3a5a7a"), hexrgb("#c9a97a")   # the existing player colours
-NTILES = 41
+NTILES = 42  # BUILD property phase 4: ids 0..41 (T_SAND added)
 assert len(COLOR) == NTILES and sorted(COLOR) == list(range(NTILES)), sorted(set(range(NTILES)) - set(COLOR))
 
 def C(name): return COLOR[ids[name]]
@@ -366,8 +366,10 @@ DRAW = {
     "T_FLOWERBED": flowerbed, "T_LOWWALL": lowwall, "T_CRATE": crate, "T_ADIT": adit,
     "T_DOOR_HOUSE": lambda: door(C("T_DOOR_HOUSE"), "plain"),
     "T_MINE_DOOR": mine_door, "T_LAMP": lamp,
+    # BUILD property phase 4: reuses grass()'s own speckle technique, sand's own colour -- no new drawing.
+    "T_SAND": lambda: grass(C("T_SAND"), 0),
 }
-assert {ids[n] for n in DRAW} == set(range(NTILES)), "every tile id 0..40 needs a drawing"
+assert {ids[n] for n in DRAW} == set(range(NTILES)), "every tile id needs a drawing"
 
 def build_tiles():
     sheet = Img(16 * T, 4 * T, (0, 0, 0, 255))

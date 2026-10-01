@@ -206,3 +206,11 @@ INSERT OR IGNORE INTO recipe_outputs (recipe_id, item_id, quantity)
           UNION ALL SELECT 'fence_post',                  'fence_post') m
     JOIN recipes r ON r.slug = m.recipe
     JOIN items   i ON i.slug = m.item;
+
+-- BUILD property phase 4 (CLAUDE_PROPERTY_PHASE4.md decision 6): one new outdoor region. Presence treats
+-- a region key as an opaque string and does not actually need this row to let anyone stand in "0,4" --
+-- added anyway so `maps` stays an accurate record of what exists, matching every other region's own row.
+-- INSERT OR IGNORE (not seed.sql, which only ever runs on a brand-new database) so an existing production
+-- database picks this up on its next ordinary start, the same way every other catalog addition has.
+INSERT OR IGNORE INTO maps (slug, display_name, kind, width_tiles, height_tiles, grid_col, grid_row) VALUES
+    ('dunes', 'the Dunes', 'outdoor', 24, 20, 0, 4);

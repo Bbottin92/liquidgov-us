@@ -15,7 +15,10 @@
 // ---- World constants (locked in atlas.md) -----------------------------
 var TILE = 16;
 var REGION_W = 24, REGION_H = 20;   // tiles per region
-var GRID_COLS = 3, GRID_ROWS = 4;   // supermap layout
+// BUILD property phase 4 (CLAUDE_PROPERTY_PHASE4.md): 4 -> 5 rows for the Dunes. The grid math below
+// (regionAABB/regionAt/regionsIntersectingCamera in net.js) is parameterized off these two constants and
+// REGIONS, not hardcoded to 12 cells anywhere -- checked directly before this change, not assumed.
+var GRID_COLS = 3, GRID_ROWS = 5;   // supermap layout
 var WORLD_W = GRID_COLS * REGION_W; // 72
 var WORLD_H = GRID_ROWS * REGION_H; // 80
 var WORLD_PW = WORLD_W * TILE;      // 1152
@@ -34,7 +37,10 @@ var REGIONS = [
   { name: "Garden",         col: 2, row: 2 },
   { name: "Quarry Ridge",   col: 0, row: 3 },
   { name: "Creek",          col: 1, row: 3 },
-  { name: "Shore",          col: 2, row: 3 }
+  { name: "Shore",          col: 2, row: 3 },
+  // BUILD property phase 4: one new region, south of Quarry Ridge -- arid rock giving way to open sand.
+  // Columns 1-2 of this row stay unnamed (default grass fill); a later pass can fill them in.
+  { name: "the Dunes",      col: 0, row: 4 }
 ];
 
 function regionAABB(r) {
@@ -94,7 +100,9 @@ var T_GRASS_A = 0, T_GRASS_B = 1, T_PATH = 2, T_WATER = 3, T_DIRT = 4,
     // BUILD lab A (GROK_OBJECTS_ANSWER.md): five more lookup stations.
     // Cells 36-47 were free; 48-51 stay grass variants. No lime.
     T_STATION_VINEGAR = 36, T_STATION_TANNIN = 37, T_STATION_LAMPBLACK = 38,
-    T_STATION_ALUM = 39, T_STATION_GUM = 40;
+    T_STATION_ALUM = 39, T_STATION_GUM = 40,
+    // BUILD property phase 4: the Dunes' ground. Cells 36-47 were free; this is the next one.
+    T_SAND = 41;
 
 // Palette, from art.md -- outdoor stays grass/dirt/water, never parchment.
 // Brass stays "sparingly" for the Hall door only, per art.md -- the
@@ -143,6 +151,7 @@ COLOR[T_ADIT]         = "#5d564c";
 COLOR[T_DOOR_HOUSE]   = "#5a7a8a";
 COLOR[T_MINE_DOOR]    = "#25211c";
 COLOR[T_LAMP]         = "#e6b957";
+COLOR[T_SAND]         = "#d8bd84";
 var INK = "#1a1814";
 
 // ---- Tile painter (BUILD tile dither) --------------------------------------
@@ -209,9 +218,11 @@ function paintTile(c, id, tx, ty, nb) {
   c.fillStyle = base;
   c.fillRect(px, py, TILE, TILE);
 
-  if (id === T_GRASS_A || id === T_GRASS_B) {
+  if (id === T_GRASS_A || id === T_GRASS_B || id === T_SAND) {
     // two dot lattices on a 4px pitch, checkered; which phase a tile gets
     // comes from a fixed hash of its position, and A/B use opposite tones.
+    // BUILD property phase 4: T_SAND reuses this exact technique (same speckle, sand's own colour) --
+    // no new art, no new drawing path, per CLAUDE_PROPERTY_PHASE4.md decision 3.
     var phase = (tx * 7 + ty * 13) % 3;
     var dark = shadeHex(base, -0.10), light = shadeHex(base, 0.07);
     for (var gy = 0; gy < 4; gy++) {
@@ -347,12 +358,17 @@ var WORKSHOP_DOOR_TILE = null;
   var creek = regionAABB(findRegion("Creek"));
   var shore = regionAABB(findRegion("Shore"));
   var quarry = regionAABB(findRegion("Quarry Ridge"));
+  var dunes = regionAABB(findRegion("the Dunes"));
 
   for (var y = 0; y < WORLD_H; y++) {
     for (var x = 0; x < WORLD_W; x++) {
       var t;
       if (x >= quarry.x0 && x <= quarry.x1 && y >= quarry.y0 && y <= quarry.y1) {
         t = T_DIRT;
+      } else if (x >= dunes.x0 && x <= dunes.x1 && y >= dunes.y0 && y <= dunes.y1) {
+        // BUILD property phase 4: the Dunes' own ground. Columns 1-2 of this row have no named region
+        // yet and fall through to the plain grass fill below, same as any other unused grid cell.
+        t = T_SAND;
       } else {
         // Was a 1-tile checker of the two greens. At 16px that is a spreadsheet,
         // and it sat under the lanes so the road had no edge. One field colour;
@@ -381,8 +397,12 @@ var WORKSHOP_DOOR_TILE = null;
   // Path ribbon, terrain only: the Square -> Homestead Row -> Creek -> Shore.
   // Vertical spine at x=34..35 threads all three (they share grid col 1),
   // then a jog at y=69..70 carries it east into Shore.
+  // BUILD property phase 4: this used to run to WORLD_H - 1 (the world's own bottom edge), which was
+  // exactly Shore's own south edge until this build grew the grid by a row -- pinned to shore.y1
+  // explicitly now, so the spine still ends at Shore and doesn't drift into the new, intentionally
+  // undressed column 1-2 of row 4 underneath it.
   var px0 = 34, px1 = 35;
-  for (var vy = 20; vy <= WORLD_H - 1; vy++) {
+  for (var vy = 20; vy <= shore.y1; vy++) {
     tiles[idx(px0, vy)] = T_PATH;
     tiles[idx(px1, vy)] = T_PATH;
   }
@@ -400,6 +420,15 @@ var WORKSHOP_DOOR_TILE = null;
     var inCreek = x2 >= creek.x0 && x2 <= creek.x1 && y2 >= creek.y0 && y2 <= creek.y1;
     var inShore = x2 >= shore.x0 && x2 <= shore.x1 && y2 >= shore.y0 && y2 <= shore.y1;
     if ((inCreek || inShore) && tiles[i] === T_PATH) tiles[i] = T_BRIDGE;
+  }
+
+  // BUILD property phase 4: a path connecting Quarry Ridge into the Dunes, laid before dressRegions()
+  // so a scatter prop can never land on it. Brandon's own standing rule, already applied to every other
+  // region this session: nothing gets built without a way to reach it. x=14 is clear of Quarry Ridge's
+  // own scatter (T_LOWWALL/T_CRATE sit at x=2,5,12,17,18,21) and south of its sign (y=68).
+  var dunesPathX = 14;
+  for (var dpy = quarry.y1 - 4; dpy <= dunes.y0 + 4; dpy++) {
+    tiles[idx(dunesPathX, dpy)] = T_PATH;
   }
 
   dressRegions();

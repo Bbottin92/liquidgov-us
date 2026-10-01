@@ -244,6 +244,7 @@ if (ok.ok) {
   check(ev(ok, "demoHouseSpace.tiles[idxIn(16, 8, 8)] === T_FLOOR && demoHouseSpace.tiles[idxIn(16, 8, 0)] === T_IWALL"), "the demo house keeps plain floor and wall, unchanged");
   check(ev(ok, "ownHouseSpace.tiles[idxIn(16, 7, 0)] === T_WALLSLOT"), "the wall slot is still exactly where it was");
   check(ev(ok, "ownHouseSpace.solid[idxIn(16, 8, 0)] === 1 && SOLID_TILE[T_HEDGE] === 1"), "the hedge border is still solid -- the boundary still blocks, just reads as a hedge instead of a wall");
+  check(/placedFloor\.length >= 24/.test(read("js/interact.js")), "tryFloorPlace's own local cap check matches the daemon's 24 (a real bug found after the fact: it still said 8)");
 }
 
 // ---- controls: the check must be able to FAIL (a wrong order has to throw a ReferenceError)

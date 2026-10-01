@@ -105,7 +105,10 @@ function tryFloorPlace() {
       return true;
     }
   }
-  if (placedFloor.length >= 8) {
+  // BUILD property phase 1 follow-up: this local pre-check still said 8 after the daemon's own cap
+  // (house.cpp's place_floor) was raised to 24 -- a real bug, not a style choice: every placement past
+  // the 8th was silently refused client-side before ever reaching the server that would have allowed it.
+  if (placedFloor.length >= 24) {
     showToast("No more room.");
     return true;
   }

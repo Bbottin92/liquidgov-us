@@ -209,7 +209,11 @@ var PLACED_ITEM_INFO = {
   verdigris_green:        { color: "#3f8f5f", label: "verdigris" },
   madder_red:             { color: "#a72a2a", label: "madder lake" },
   weld_yellow:            { color: "#e0c04a", label: "weld lake" },
-  woad_blue:              { color: "#2e4c72", label: "woad blue" }
+  woad_blue:              { color: "#2e4c72", label: "woad blue" },
+  // BUILD property phase 2+3 (CLAUDE_PROPERTY_PHASE2.md): a tool (held, never consumed) and the
+  // structural item it unlocks. Colour is plain wood/iron tone -- neither is paint, no pigment_hex.
+  hammer:                 { color: "#8a8a8a", label: "hammer" },
+  fence_post:             { color: "#8a7a4a", label: "fence post" }
 };
 
 // BUILD backpack (CLAUDE_BACKPACK.md decision 2): a small set of procedural shape categories for the
@@ -242,7 +246,11 @@ var ITEM_CATEGORY = {
   verdigris_green:  "swatch",
   madder_red:       "swatch",
   weld_yellow:      "swatch",
-  woad_blue:        "swatch"
+  woad_blue:        "swatch",
+  // BUILD property phase 2+3: fence_post is wood, same category as the twigs it's made from. hammer
+  // gets the one new category this build adds (sprites.js's "tool") -- nothing existing reads as a tool.
+  fence_post:       "twig",
+  hammer:           "tool"
 };
 
 // BUILD backpack (decision 3): one short sentence per slug, client-side only (no schema/catalog change --
@@ -287,8 +295,15 @@ var ITEM_DESC = {
   verdigris_green:        "Copper's green -- the slow, expensive one.",
   madder_red:             "A lake pigment, later and northern-European.",
   weld_yellow:            "A lake pigment, from a Bolognese method.",
-  woad_blue:              "A simplified vat, settled onto shell white."
+  woad_blue:              "A simplified vat, settled onto shell white.",
+  hammer:                 "A hammer head set into a willow haft. Yours to keep; it never wears out.",
+  fence_post:             "Willow, trimmed and pointed. Plant it, and it stays."
 };
+
+// BUILD property phase 2+3 (CLAUDE_PROPERTY_PHASE2.md decisions 2/3): which placed-floor items are
+// structural -- block movement, gated on holding a hammer -- rather than purely decorative. A real table,
+// not one hardcoded slug check, so a second structure type later is one more line, not a new branch.
+var STRUCTURAL_ITEMS = { fence_post: true };
 var labSpace = buildInterior(20, 16, function (t, w) {
   t[idxIn(w, LAB_DOOR.x, LAB_DOOR.y)] = T_IDOOR;
   t[idxIn(w, 8, 1)]  = T_WORKBENCH;

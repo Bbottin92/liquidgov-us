@@ -138,6 +138,12 @@ var itemGlyphIndex = {};
       px(ox, 8, 5, 4, 4, col);
       px(ox, 6, 8, 4, 3, col);
       px(ox, 4, 7, 8, 1, "rgba(26,24,20,.55)");
+    } else if (ITEM_CATEGORY[slug] === "tool") {
+      // BUILD property phase 2+3: a plain T -- a head bar over a haft. The one new category this build
+      // adds (every other new item reuses an existing one); nothing else here looks like a tool.
+      px(ox, 4, 3, 8, 3, col);
+      px(ox, 7, 6, 2, 7, col);
+      px(ox, 4, 3, 8, 1, "#f4efe4");
     } else {
       px(ox, 4, 4, 8, 8, col);
       px(ox, 5, 5, 6, 2, "#f4efe4");

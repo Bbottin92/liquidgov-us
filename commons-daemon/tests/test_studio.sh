@@ -11,9 +11,10 @@ set_clock "$T0"
 for u in alice bob; do su $u; done
 
 echo "-- the catalog itself: every Studio recipe is sound"
-assert_eq "13 Studio recipes (duration_s set)" 13 "$(dbq "select count(*) from recipes where duration_s is not null")"
-assert_eq "every one has a tier and both notes" 13 "$(dbq "select count(*) from recipes where duration_s is not null and tier is not null and real_range_note is not null and history_note is not null")"
-assert_eq "every duration is positive and at most 7 days (the verdigris cap)" 13 "$(dbq "select count(*) from recipes where duration_s is not null and duration_s > 0 and duration_s <= 604800")"
+# BUILD property phase 2+3: 13 -> 15 (hammer, fence_post -- both tier 1, both from existing materials).
+assert_eq "15 Studio recipes (duration_s set)" 15 "$(dbq "select count(*) from recipes where duration_s is not null")"
+assert_eq "every one has a tier and both notes" 15 "$(dbq "select count(*) from recipes where duration_s is not null and tier is not null and real_range_note is not null and history_note is not null")"
+assert_eq "every duration is positive and at most 7 days (the verdigris cap)" 15 "$(dbq "select count(*) from recipes where duration_s is not null and duration_s > 0 and duration_s <= 604800")"
 assert_eq "no recipe_inputs quantity is anything but 1 (no stoichiometry, studio.md decision 2)" 0 "$(dbq "select count(*) from recipe_inputs where quantity != 1")"
 assert_eq "every recipe_inputs item_id is a real item (the FK already guarantees this; asserted for documentation)" 0 "$(dbq "select count(*) from recipe_inputs ri where not exists (select 1 from items i where i.item_id=ri.item_id)")"
 assert_eq "every recipe_outputs item_id is a real item" 0 "$(dbq "select count(*) from recipe_outputs ro where not exists (select 1 from items i where i.item_id=ro.item_id)")"
@@ -113,7 +114,8 @@ assert_contains "the discovery carries its display_name" "$BODY" '"display_name"
 assert_contains "the discovery carries its real_range_note" "$BODY" '"real_range_note":"Hours, plus cooling'
 assert_contains "the discovery carries its history_note" "$BODY" '"history_note":"Left overnight'
 # recipe_count is the notebook's own length: every bench recipe (duration_s set), not per-player.
-assert_contains "recipe_count is the fixed 13 bench recipes" "$BODY" '"recipe_count":13'
+# BUILD property phase 2+3: 13 -> 15 (hammer, fence_post).
+assert_contains "recipe_count is the fixed 15 bench recipes" "$BODY" '"recipe_count":15'
 bcollect alice "$BATCH1"; assert_code "collecting the same batch again: 409" 409
 assert_contains "already_collected" "$BODY" already_collected
 bcollect bob "$BATCH1"; assert_code "bob tries to collect alice's batch: 403 not_yours" 403
@@ -220,6 +222,26 @@ occupants "1,1"; assert_contains "dave still present at +20s" "$BODY" '"display_
 set_clock $((PRES0 + 40000))                     # dave idle 40s (> 30s), erin idle 20s
 occupants "1,1"; assert_not_contains "dave reaped at +40s (idle > kIdleMs on the test clock)" "$BODY" '"display_name":"dave"'
 assert_contains "erin (moved 20s ago) survives" "$BODY" '"display_name":"erin"'
+
+echo "-- property phase 2+3: gather, craft a hammer and a fence post (CLAUDE_PROPERTY_PHASE2.md)"
+su frank
+GSTART=$((PRES0 + 40001))
+set_clock "$GSTART"
+bgather frank north_woods_twigs; assert_code "gather willow twigs (qty 3): 200" 200
+bgather frank workshop_iron; assert_code "gather scrap iron: 200" 200
+bbench frank hammer; assert_code "start hammer (willow_twigs + scrap_iron): 200" 200
+HAMMER_BATCH="$(jget batch_id)"; HAMMER_READY="$(jget ready_ms)"
+assert_eq "hammer ready_ms is start + 3600s (1h)" "$((GSTART + 3600000))" "$HAMMER_READY"
+set_clock $((HAMMER_READY + 1))
+bcollect frank "$HAMMER_BATCH"; assert_code "collect hammer: 200" 200
+bstudio frank; assert_contains "inventory shows the hammer" "$BODY" '"item":"hammer","qty":1'
+assert_contains "and 2 willow_twigs remain (gathered 3, hammer used only 1)" "$BODY" '"item":"willow_twigs","qty":2'
+bbench frank fence_post; assert_code "start fence_post (willow_twigs, already held): 200" 200
+FP_BATCH="$(jget batch_id)"; FP_READY="$(jget ready_ms)"
+assert_eq "fence_post ready_ms is start + 1800s (30 min)" "$((HAMMER_READY + 1 + 1800000))" "$FP_READY"
+set_clock $((FP_READY + 1))
+bcollect frank "$FP_BATCH"; assert_code "collect fence_post: 200" 200
+bstudio frank; assert_contains "inventory shows the fence post" "$BODY" '"item":"fence_post","qty":1'
 
 stop_daemon
 echo "== test_studio: done"

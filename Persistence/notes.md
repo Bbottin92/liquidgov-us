@@ -18,6 +18,17 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-10-01 -- Property phase 2+3 built and tested; NOT deployed.** `CLAUDE_PROPERTY_PHASE2.md` as
+  written: two new catalog items (`hammer`, `fence_post`) reusing existing materials, no new gather spot,
+  zero daemon C++ changes (pure `catalog.sql` data). The one genuinely new mechanic -- a structural floor
+  item that actually blocks movement -- lives entirely client-side (`tileBlockedAtPixel` in `actors.js`),
+  gated on holding a hammer (`tryFloorPlace` in `interact.js`), consistent with `place_floor`'s own
+  existing "never checks inventory" stance. `client_files_unit.js` grew to 143, `test_studio.sh` to 145.
+  The first full-suite run found a real miss: `test_migrations.sh` had its own separate hardcoded catalog
+  totals (38 items/21 recipes) this build's own plan hadn't accounted for -- fixed to 40/23, then swept
+  the rest of the test directory for the same numbers. Second full run: 26 files, 0 failed. See
+  `property-phase-2-built.md`.
+
 - **2026-10-01 -- Found and fixed a real bug after phase 1 shipped: `interact.js`'s `tryFloorPlace()` still
   refused at 8 after `house.cpp`'s own cap moved to 24 -- client-side pre-check missed in the original
   build, caught while reading nearby code for phase 2, not by phase 1's own tests. Fixed, pushed, and

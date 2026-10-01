@@ -195,7 +195,7 @@ if (ok.ok) {
   check(ev(ok, "Object.keys(PLACED_ITEM_INFO).every(function (s) { return typeof ITEM_DESC[s] === 'string' && ITEM_DESC[s].length > 0; })"), "every PLACED_ITEM_INFO slug has a non-empty ITEM_DESC entry (no blank tooltip)");
   var bespokeGlyphSlugs = ["chalk_block", "iron_gall_ink_page", "lampblack_ink", "carbon_ink_black", "iron_gall_blue_black", "copper_acetate_bottle", "vinegar_jar", "vinegar", "cider_apple", "seashell", "alum_crystal", "oak_gall", "oak_gall_tannin", "gum_arabic"];
   check(ev(ok, "Object.keys(PLACED_ITEM_INFO).every(function (s) { return " + JSON.stringify(bespokeGlyphSlugs) + ".indexOf(s) >= 0 || typeof ITEM_CATEGORY[s] === 'string'; })"), "every PLACED_ITEM_INFO slug either has bespoke atlas art or an ITEM_CATEGORY mapping (nothing silently falls through to the plain generic square)");
-  check(ev(ok, "['charcoal','shell_white','yellow_ochre','red_ochre','gum_solution','oak_gall_tannin_studio','carbon_ink','iron_acetate','iron_gall_ink_studio','verdigris','madder_lake','weld_lake','woad_blue'].every(function (s) { return typeof RECIPE_OUTPUT_ITEM[s] === 'string' && typeof RECIPE_DURATION_MS[s] === 'number'; })"), "all 13 bench recipes have an output-item and a duration entry for the bench's icon/progress bar");
+  check(ev(ok, "['charcoal','shell_white','yellow_ochre','red_ochre','gum_solution','oak_gall_tannin_studio','carbon_ink','iron_acetate','iron_gall_ink_studio','verdigris','madder_lake','weld_lake','woad_blue','hammer','fence_post'].every(function (s) { return typeof RECIPE_OUTPUT_ITEM[s] === 'string' && typeof RECIPE_DURATION_MS[s] === 'number'; })"), "all 15 bench recipes have an output-item and a duration entry for the bench's icon/progress bar");
   var bpFetches = 0, bpThrew = "";
   ok.g.fetch = function () { bpFetches++; return Promise.resolve({ ok: false, json: function () { return Promise.resolve({}); } }); };
   try { ev(ok, "isBound = false; openBackpack(); closeBackpack();"); }
@@ -245,6 +245,22 @@ if (ok.ok) {
   check(ev(ok, "ownHouseSpace.tiles[idxIn(16, 7, 0)] === T_WALLSLOT"), "the wall slot is still exactly where it was");
   check(ev(ok, "ownHouseSpace.solid[idxIn(16, 8, 0)] === 1 && SOLID_TILE[T_HEDGE] === 1"), "the hedge border is still solid -- the boundary still blocks, just reads as a hedge instead of a wall");
   check(/placedFloor\.length >= 24/.test(read("js/interact.js")), "tryFloorPlace's own local cap check matches the daemon's 24 (a real bug found after the fact: it still said 8)");
+
+  // ---- CLAUDE_PROPERTY_PHASE2.md: a hammer gates structural placement, and a structural floor item
+  // actually blocks movement -- the one genuinely new mechanic this build adds.
+  check(ev(ok, "STRUCTURAL_ITEMS.fence_post === true"), "STRUCTURAL_ITEMS exists and marks fence_post");
+  var pfFetches = 0;
+  ok.g.fetch = function () { pfFetches++; return new Promise(function () {}); };
+  ev(ok, "mode = 'house'; activeSpace = ownHouseSpace; player.x = 8 * TILE; player.y = 8 * TILE; player.dir = DIR_DOWN; placedFloor = []; inventory = { fence_post: 1 }; lastPickedItem = 'fence_post'; toast.msg = '';");
+  ev(ok, "tryFloorPlace();");
+  check(ev(ok, "toast.msg === 'Need a hammer.'") && pfFetches === 0, "holding a fence_post but no hammer is refused, client-side, before any fetch: " + ev(ok, "toast.msg") + " / " + pfFetches + " fetches");
+  ev(ok, "inventory.hammer = 1; toast.msg = ''; tryFloorPlace();");
+  check(ev(ok, "toast.msg === 'Set down.'"), "holding both a hammer and a fence_post succeeds: " + ev(ok, "toast.msg"));
+  check(ev(ok, "typeof tileBlockedAtPixel === 'function'"), "tileBlockedAtPixel exists after load");
+  ev(ok, "mode = 'house'; placedFloor = [{ item: 'fence_post', x: 8, y: 8 }];");
+  check(ev(ok, "tileBlockedAtPixel(8 * TILE + 5, 8 * TILE + 5) === true"), "a structural floor item blocks the tile it sits on");
+  ev(ok, "placedFloor = [{ item: 'seashell', x: 8, y: 8 }];");
+  check(ev(ok, "tileBlockedAtPixel(8 * TILE + 5, 8 * TILE + 5) === false"), "an ordinary (non-structural) floor item does not -- seashell was never meant to block anyone");
 }
 
 // ---- controls: the check must be able to FAIL (a wrong order has to throw a ReferenceError)

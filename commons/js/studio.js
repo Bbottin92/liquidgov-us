@@ -145,7 +145,10 @@ var RECIPE_OUTPUT_ITEM = {
   verdigris:               "verdigris_green",
   madder_lake:             "madder_red",
   weld_lake:               "weld_yellow",
-  woad_blue:               "woad_blue"
+  woad_blue:               "woad_blue",
+  // BUILD property phase 2+3 (CLAUDE_PROPERTY_PHASE2.md): same mirrored-table shape, two more rows.
+  hammer:                  "hammer",
+  fence_post:              "fence_post"
 };
 var RECIPE_DURATION_MS = {
   charcoal:                28800000,
@@ -160,7 +163,9 @@ var RECIPE_DURATION_MS = {
   verdigris:               604800000,
   madder_lake:             172800000,
   weld_lake:               86400000,
-  woad_blue:               259200000
+  woad_blue:               259200000,
+  hammer:                  3600000,
+  fence_post:              1800000
 };
 
 function benchIcon(recipeSlug) {

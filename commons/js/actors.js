@@ -86,7 +86,21 @@ applyHallReturn();
 function tileBlockedAtPixel(px, py) {
   var tx = Math.floor(px / TILE), ty = Math.floor(py / TILE);
   if (tx < 0 || ty < 0 || tx >= activeSpace.w || ty >= activeSpace.h) return true;
-  return activeSpace.solid[idxIn(activeSpace.w, tx, ty)] === 1;
+  if (activeSpace.solid[idxIn(activeSpace.w, tx, ty)] === 1) return true;
+  // BUILD property phase 2+3: the one genuinely new mechanic this build adds -- a structural floor item
+  // (a fence post) blocks movement. placedFloor is only ever populated in house/visit mode (net.js), and
+  // this is a short list (the cap is 24), so a plain scan costs nothing per frame. mode/placedFloor are
+  // declared in interact.js/net.js, which load AFTER this file -- assertSpawnIsFree() below calls this
+  // function at load time, before either exists, so both need the same typeof guard easel.js already
+  // uses for the same reason.
+  if (typeof mode !== "undefined" && (mode === "house" || mode === "visit") &&
+      typeof placedFloor !== "undefined" && placedFloor.length) {
+    for (var fi = 0; fi < placedFloor.length; fi++) {
+      var fl = placedFloor[fi];
+      if (fl.x === tx && fl.y === ty && STRUCTURAL_ITEMS[fl.item]) return true;
+    }
+  }
+  return false;
 }
 
 function boxBlockedAt(cx, cy, half) {

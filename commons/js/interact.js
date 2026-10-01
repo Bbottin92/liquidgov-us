@@ -112,6 +112,14 @@ function tryFloorPlace() {
     showToast("No more room.");
     return true;
   }
+  // BUILD property phase 2+3 (CLAUDE_PROPERTY_PHASE2.md decision 2): a structural item needs a hammer
+  // held, checked client-side only -- place_floor itself has never checked inventory for anything
+  // (confirmed by reading house.cpp directly), so a server-side gate here would be a new, inconsistent
+  // security boundary for one item type in a system that is deliberately "low stakes" everywhere else.
+  if (STRUCTURAL_ITEMS[lastPickedItem] && !(inventory.hammer > 0)) {
+    showToast("Need a hammer.");
+    return true;
+  }
   netPlaceFloor(lastPickedItem, t.x, t.y);
   showToast("Set down.");
   return true;

@@ -91,7 +91,11 @@ INSERT OR IGNORE INTO items (slug, display_name, category, wall_slot_ok, sprite_
     ('verdigris_green',      'Verdigris',              'material', 0, 'studio_verdigris_green',      '#3f8f5f'),
     ('madder_red',           'Madder lake',            'material', 0, 'studio_madder_red',           '#a72a2a'),
     ('weld_yellow',          'Weld lake',              'material', 0, 'studio_weld_yellow',          '#e0c04a'),
-    ('woad_blue',            'Woad blue',              'material', 0, 'studio_woad_blue',            '#2e4c72');
+    ('woad_blue',            'Woad blue',              'material', 0, 'studio_woad_blue',            '#2e4c72'),
+    -- BUILD property phase 2+3: a tool (held, never placed -- category 'material' like every other
+    -- Studio intermediate) and a placeable structural item, both from materials that already existed.
+    ('hammer',               'Hammer',                 'material',  0, 'studio_hammer',              NULL),
+    ('fence_post',           'Fence post',              'placeable', 0, 'studio_fence_post',          NULL);
 
 -- station is always 'bench' here, distinct from every Lab-A recipe's 'lab' -- studio.md: the bench (a
 -- timed batch) and the lab (an instant Look) are different mechanics until slice 3 converts the lab.
@@ -134,7 +138,15 @@ INSERT OR IGNORE INTO recipes (slug, display_name, station, duration_s, tier, re
      'Weld precipitated onto shell white with alum, per a Bolognese-manuscript method.'),
     ('woad_blue', 'Woad + shell white -> woad blue', 'bench', 259200, 6,
      'Real vats ferment for weeks; here: 3 days, simplified.',
-     'Woad froth settled onto shell white, a simplified vat -- no lye, no pH, no urine.');
+     'Woad froth settled onto shell white, a simplified vat -- no lye, no pH, no urine.'),
+    -- BUILD property phase 2+3 (CLAUDE_PROPERTY_PHASE2.md): tier 1, same as charcoal -- a direct product
+    -- of raw gathers, no intermediate dependency. Both reuse willow_twigs/scrap_iron; no new gather spot.
+    ('hammer', 'Willow haft + scrap iron -> hammer', 'bench', 3600, 1,
+     'Unsourced; here: 1 hour (a simple haft-and-head job).',
+     'A hammer head set into a willow haft -- ordinary household ironwork, not a forge piece.'),
+    ('fence_post', 'Willow twigs -> fence post', 'bench', 1800, 1,
+     'Minutes to shape; here: 30 minutes.',
+     'Willow, trimmed and pointed -- the plainest post there is, now or in any century.');
 
 -- Inputs. Every quantity is 1 (decision 2: no stoichiometry). Water is implicit and untracked
 -- (studio.md), so it is never listed here even where the real process uses it. C1: no ash anywhere
@@ -163,7 +175,10 @@ INSERT OR IGNORE INTO recipe_inputs (recipe_id, item_id, quantity)
           UNION ALL SELECT 'weld_lake',               'alum_stone'
           UNION ALL SELECT 'weld_lake',               'shell_white'
           UNION ALL SELECT 'woad_blue',               'woad_leaves'
-          UNION ALL SELECT 'woad_blue',               'shell_white') m
+          UNION ALL SELECT 'woad_blue',               'shell_white'
+          UNION ALL SELECT 'hammer',                  'willow_twigs'
+          UNION ALL SELECT 'hammer',                  'scrap_iron'
+          UNION ALL SELECT 'fence_post',               'willow_twigs') m
     JOIN recipes r ON r.slug = m.recipe
     JOIN items   i ON i.slug = m.item;
 
@@ -186,6 +201,8 @@ INSERT OR IGNORE INTO recipe_outputs (recipe_id, item_id, quantity)
           UNION ALL SELECT 'verdigris',                  'verdigris_green'
           UNION ALL SELECT 'madder_lake',                'madder_red'
           UNION ALL SELECT 'weld_lake',                  'weld_yellow'
-          UNION ALL SELECT 'woad_blue',                  'woad_blue') m
+          UNION ALL SELECT 'woad_blue',                  'woad_blue'
+          UNION ALL SELECT 'hammer',                      'hammer'
+          UNION ALL SELECT 'fence_post',                  'fence_post') m
     JOIN recipes r ON r.slug = m.recipe
     JOIN items   i ON i.slug = m.item;

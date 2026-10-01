@@ -233,6 +233,17 @@ if (ok.ok) {
   check(ev(ok, "typeof myShirtHex === 'string'"), "myShirtHex exists after load, for the player's own recolour");
   var mainJsSrc = read("js/main.js");
   check(/a\.shirt/.test(mainJsSrc) && /shirt:\s*myShirtHex/.test(mainJsSrc) && /shirt:\s*o\.shirt_hex/.test(mainJsSrc), "drawOneActor reads a.shirt, and both the player and other occupants are pushed with a shirt field");
+
+  // ---- CLAUDE_PROPERTY.md phase 1: the owner's own property is an empty grass/hedge plot; the demo
+  // house is explicitly untouched (still the furnished fillHouse example for a fresh guest).
+  var ownFurnitureTiles = ["T_TABLE", "T_CHAIR", "T_CRATE", "T_WORKBENCH", "T_FLOWERBED", "T_LAMP", "T_RUG"];
+  check(ev(ok, "[" + ownFurnitureTiles.join(",") + "].every(function (id) { return ownHouseSpace.tiles.indexOf(id) === -1; })"), "none of the old fixed furniture tile ids appear anywhere in the owner's own property");
+  check(ev(ok, "[" + ownFurnitureTiles.join(",") + "].every(function (id) { return demoHouseSpace.tiles.indexOf(id) !== -1; })"), "the shared demo house still has every one of them, unchanged");
+  check(ev(ok, "ownHouseSpace.tiles[idxIn(16, 8, 8)] === T_GRASS_A"), "the owner's property floor is grass, not T_FLOOR (spot-checked well clear of the door/wall-slot/latch)");
+  check(ev(ok, "ownHouseSpace.tiles[idxIn(16, 8, 0)] === T_HEDGE && ownHouseSpace.tiles[idxIn(16, 0, 8)] === T_HEDGE"), "the owner's property border is hedge, not T_IWALL (top and left edges, clear of the wall slot/latch)");
+  check(ev(ok, "demoHouseSpace.tiles[idxIn(16, 8, 8)] === T_FLOOR && demoHouseSpace.tiles[idxIn(16, 8, 0)] === T_IWALL"), "the demo house keeps plain floor and wall, unchanged");
+  check(ev(ok, "ownHouseSpace.tiles[idxIn(16, 7, 0)] === T_WALLSLOT"), "the wall slot is still exactly where it was");
+  check(ev(ok, "ownHouseSpace.solid[idxIn(16, 8, 0)] === 1 && SOLID_TILE[T_HEDGE] === 1"), "the hedge border is still solid -- the boundary still blocks, just reads as a hedge instead of a wall");
 }
 
 // ---- controls: the check must be able to FAIL (a wrong order has to throw a ReferenceError)

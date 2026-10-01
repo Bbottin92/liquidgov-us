@@ -18,6 +18,19 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-10-01 -- Property phase 1 built and tested; NOT deployed.** `CLAUDE_PROPERTY.md` as written: the
+  owner's own house is now an empty grass-and-hedge plot (`T_GRASS_A`/`T_HEDGE` via a new optional
+  `baseTile`/`borderTile` pair on `buildInterior`, every other caller unaffected) instead of the old
+  furnished room -- table, chairs, rugs, shelves, crates, lamp and flowerbed all removed. Door, latch,
+  wall slot, and both Studio art frames kept and working unchanged. The existing (already-built, already
+  deployed) floor-item system is the actual "design it yourself" tool; its cap went 8 -> 24 now that
+  there's an open plot to use it in, pure coordinate math on the daemon side so the palette swap cost it
+  nothing. Uniform change, not per-account (no per-instance tile storage exists yet) -- the one real
+  player's room is redecorated, nothing of theirs deleted. `client_files_unit.js` grew from 129 to 136,
+  `test_house.sh` from 51 to 53 (the cap-24 boundary checked against a real GET, not just "nothing
+  errored" -- a wrong cap would have slipped past the old test shape). Full suite: 26 files, 0 failed.
+  See `property-phase-1-built.md`.
+
 - **2026-10-01 -- Your own property, proposed, not built.** Brandon's full vision: an empty plot you
   design yourself, friends visit from a main world that could have several environments (forest, desert,
   mountains, beach), plus a town to buy and sell in. Confirmed as a 5-phase roadmap, not one feature --

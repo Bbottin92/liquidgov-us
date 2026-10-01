@@ -90,7 +90,7 @@ c = sqlite3.connect(os.environ["DB_PATH"]); c.execute("DROP TRIGGER t_snap"); c.
 PY
 assert_contains "the journal has the real sqlite error, not the response" "$(cat "$WORK/daemon.log")" 'injected'
 
-echo "-- C2: floor items, cap 8, owner only, survive restart"
+echo "-- C2: floor items, cap 24 (BUILD property phase 1, was 8), owner only, survive restart"
 bjoin alice $H 7 14 >/dev/null
 bplacefloor alice $H seashell 5 10
 assert_contains "owner puts a shell on the floor" "$BODY" '"ok":true'
@@ -105,13 +105,23 @@ bplacefloor alice $H cider_apple 7 15
 assert_code "the door tile is refused" 400
 bplacefloor alice $H cider_apple 5 10
 assert_code "same tile is occupied" 409
+# 22 more (23 total with the shell above), a grid on y=2/y=3 well clear of the shell (y=10) and the
+# door (7,14 / 7,15). Checked against the actual GET afterward, not just "the loop didn't error" --
+# a cap silently off by a few would otherwise pass this test for the wrong reason.
 i=1
-while [ $i -le 7 ]; do
-  bplacefloor alice $H oak_gall $((1 + i)) 3 >/dev/null
+while [ $i -le 22 ]; do
+  gx=$(( ( (i - 1) % 13 ) + 1 ))
+  gy=$(( 2 + (i - 1) / 13 ))
+  bplacefloor alice $H oak_gall $gx $gy >/dev/null
   i=$((i + 1))
 done
-bplacefloor alice $H oak_gall 10 3
-assert_code "the 9th floor item is refused" 409
+get "$D/placed/$H"
+echo "$BODY" > "$WORK/floor_after_loop.json"
+assert_eq "all 22 loop placements actually landed, none silently refused" 22 "$(python3 -c "import json; d=json.load(open('$WORK/floor_after_loop.json')); print(sum(1 for f in d['floor'] if f['item']=='oak_gall'))")"
+bplacefloor alice $H oak_gall 1 4
+assert_code "the 24th floor item (1 shell + 22 gall + this one) succeeds" 200
+bplacefloor alice $H oak_gall 2 4
+assert_code "the 25th floor item is refused" 409
 assert_contains "full" "$BODY" 'full'
 btakefloor alice $H 5 10
 assert_contains "take returns the slug" "$BODY" 'seashell'

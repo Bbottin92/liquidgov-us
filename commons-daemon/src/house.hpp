@@ -102,7 +102,8 @@ public:
     std::string get_wall_slot(int instance_id);
     void set_wall_slot(int instance_id, const std::string& item_slug);
 
-    // C2 (GROK_OBJECTS_ANSWER.md): floor items in the owner's house, cap 8,
+    // C2 (GROK_OBJECTS_ANSWER.md): floor items in the owner's house, cap 24 (BUILD property phase 1:
+    // was 8, raised once the fixed furniture that used to eat most of the room was removed),
     // not the wall slot. Visitors see them; only the owner adds or removes.
     struct FloorItem { std::string slug; int x = 0; int y = 0; };
     std::vector<FloorItem> list_floor(int instance_id);

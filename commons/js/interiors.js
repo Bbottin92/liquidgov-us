@@ -11,12 +11,17 @@ var activeSpace = outdoorSpace;
 
 function idxIn(w, x, y) { return y * w + x; }
 
-function buildInterior(w, h, fillFn) {
+// BUILD property phase 1: baseTile/borderTile are optional (default T_FLOOR/T_IWALL, every existing
+// caller's exact old behavior) -- the owner's own property is the one space that passes grass/hedge
+// instead, so it reads as a plot of land, not a room.
+function buildInterior(w, h, fillFn, baseTile, borderTile) {
+  if (baseTile === undefined) baseTile = T_FLOOR;
+  if (borderTile === undefined) borderTile = T_IWALL;
   var t = new Uint8Array(w * h);
   var s = new Uint8Array(w * h);
-  for (var y = 0; y < h; y++) for (var x = 0; x < w; x++) t[idxIn(w, x, y)] = T_FLOOR;
-  for (var x2 = 0; x2 < w; x2++) { t[idxIn(w, x2, 0)] = T_IWALL; t[idxIn(w, x2, h - 1)] = T_IWALL; }
-  for (var y2 = 0; y2 < h; y2++) { t[idxIn(w, 0, y2)] = T_IWALL; t[idxIn(w, w - 1, y2)] = T_IWALL; }
+  for (var y = 0; y < h; y++) for (var x = 0; x < w; x++) t[idxIn(w, x, y)] = baseTile;
+  for (var x2 = 0; x2 < w; x2++) { t[idxIn(w, x2, 0)] = borderTile; t[idxIn(w, x2, h - 1)] = borderTile; }
+  for (var y2 = 0; y2 < h; y2++) { t[idxIn(w, 0, y2)] = borderTile; t[idxIn(w, w - 1, y2)] = borderTile; }
   fillFn(t, w, h);
   for (var i = 0; i < t.length; i++) s[i] = SOLID_TILE[t[i]] ? 1 : 0;
 
@@ -95,10 +100,21 @@ function setHousePolicy(p) {
   housePolicy = HOUSE_POLICY_NEXT[p] ? p : "friends";
   HOUSE_LATCH.prompt = "Door: " + housePolicy;
 }
+// BUILD property phase 1 (CLAUDE_PROPERTY.md): the owner's own space is no longer fillHouse's fixed
+// furnished room -- the demo house keeps that exactly as it was (still fillHouse, still T_FLOOR/T_IWALL,
+// a "here's a lived-in example" reference for a fresh guest). This is an empty grass-and-hedge plot: the
+// door and the wall slot stay (functional, not decoration), everything fixed-and-unchangeable (table,
+// chairs, both rug pairs, both workbench "shelves", both crate "bookcases", the lamp, the flowerbed) is
+// gone. The existing floor-item system (house.cpp's place_floor, already fully built) is the actual
+// "design it yourself" tool now that there's room to use it in.
+function fillProperty(t, w) {
+  t[idxIn(w, DEMO_DOOR.x, DEMO_DOOR.y)] = T_IDOOR;
+  t[idxIn(w, 7, 0)] = T_WALLSLOT; // on the wall itself, not standing on the floor
+}
 var ownHouseSpace = buildInterior(16, 16, function (t, w) {
-  fillHouse(t, w);
+  fillProperty(t, w);
   t[idxIn(w, HOUSE_LATCH.x, HOUSE_LATCH.y)] = T_SIGN;
-});
+}, T_GRASS_A, T_HEDGE);
 ownHouseSpace.interactables = [
   { type: "wallSlot", x: 7, y: 0, prompt: "Place" },
   HOUSE_LATCH,
@@ -111,6 +127,9 @@ ownHouseSpace.interactables = [
 // drawing is painted 3 tiles wide and 2 tall, centered on the wall slot at (7,0),
 // so it covers x 6-8 and y 0-1. Shelves are the workbenches at (2,1) and (3,1).
 // The lamp is (14,1). The owner's latch is (0,13). The door is (7,15).
+// (BUILD property phase 1: the shelves/lamp this paragraph pins against are gone from
+// the owner's own house now -- fillHouse, and so these landmarks, still describe the
+// demo house unchanged. The coordinates picked relative to them are untouched either way.)
 // x 10-11 are plain wall, one tile clear of the civic frame and three clear of
 // the lamp. The portrait is 32x32, which is exactly 2x2 tiles of 16px: (10,0) and
 // (11,0) on the wall, (10,1) and (11,1) over the floor the same way the civic

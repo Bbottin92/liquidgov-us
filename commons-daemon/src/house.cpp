@@ -274,7 +274,9 @@ std::string HouseStore::place_floor(int instance_id, const std::string& item_slu
         sqlx::Stmt n(db_,
             "SELECT COUNT(*) FROM placed WHERE instance_id = ?1 AND is_wall_slot = 0;");
         n.integer(1, instance_id);
-        if (n.row() && n.column_int(0) >= 8) return "full";
+        // BUILD property phase 1: 8 -> 24. The room this was sized for had most of its clear tiles
+        // already eaten by fixed furniture; an emptied, grass-plot property has far more room to fill.
+        if (n.row() && n.column_int(0) >= 24) return "full";
     }
     {
         sqlx::Stmt hit(db_,

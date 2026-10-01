@@ -18,6 +18,8 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-10-01 -- Property phase 5 named, not built.** A shop door in the Square, not a new region. Coins are a `players` column the server writes, not a client-trusted balance and not an item. The counter sells a stool and a lantern. It buys the 10-minute raw gathers and nothing a recipe consumes or produces, so the keg and the long bench waits stay what `CLAUDE_STUDIO_5.md` tuned. Player-to-player trade is not in this doc. See `CLAUDE_PROPERTY_PHASE5.md`.
+
 - **2026-10-01 -- Property phase 4 built, tested, and DEPLOYED (`a8fd080`; 37 verify checks, 0 failed;
   `maps` correctly recognized as grown 14->15; confirmed live by content -- served `world.js` mentions
   "the Dunes", served `tiles.png` is the exact regenerated 2817-byte file).** `CLAUDE_PROPERTY_PHASE4.md` as

@@ -18,6 +18,20 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-10-01 -- Your own property, proposed, not built.** Brandon's full vision: an empty plot you
+  design yourself, friends visit from a main world that could have several environments (forest, desert,
+  mountains, beach), plus a town to buy and sell in. Confirmed as a 5-phase roadmap, not one feature --
+  phase 5 (the town) is the one that reverses "no currency," said by Brandon himself this time, not
+  relayed, so it's real when we get there, but gets its own conversation first. `CLAUDE_PROPERTY.md` is
+  Phase 1 only (an empty plot): found while scoping it that "design your own space" is already fully built
+  and deployed (`HouseStore::place_floor`/cap 8, wired client-side) -- `CLAUDE_IDEAS.md`'s item 3 describing
+  it as unbuilt was wrong, a gap in that survey, not the game. Also found: every player's house is one
+  hardcoded shared room shape (no per-instance tile storage exists anywhere yet), so Phase 1 is a uniform
+  visual/layout change (grass + hedge border replacing floor + wall, fixed furniture removed, a small real
+  wall kept just for the existing portrait/painting frames), not a new per-account instance type. Proposes
+  also raising the floor-item cap from 8 to 24. Client-only except that one daemon constant. Awaiting
+  `BUILD property phase 1` against this doc.
+
 - **2026-10-01 -- Everything since the backpack deployed: `2c71f4b` (commons-daemon + client), civic
   `10eac7d` (liquidgov-platform, first).** Covers the bag corner panel, the proposals door back to the
   Hall, wear-a-pigment, the friend-door "Away" wording, the Enter-label/paths fix, and the presence

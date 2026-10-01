@@ -67,9 +67,9 @@ tint costs almost nothing and directly answers what you asked about last turn.
 3. **Place more than one thing in your own house** -- extend `placed` beyond the single wall slot to a
    handful of floor-tile decorations from your own inventory. The bigger of the three: touches the daemon's
    placement checks, not just the client. Most directly answers "how do you customize your own space."
-4. **A shared discoveries board** -- read-only aggregate across all players' `discoveries`, framed as the
-   Commons's own collection rather than a leaderboard (no ranking, no competition -- just "this exists, and
-   here's who found it first"). One new daemon route, no schema change, but its own client screen.
+   **2026-10-01: superseded by a bigger version of this same idea -- see `CLAUDE_PROPERTY.md`.**
+
+Dropped at Brandon's request (2026-10-01): a shared discoveries board. Not pursued.
 
 Each would get its own `CLAUDE_*.md` at build time the way every other feature here has, with real numbers
 in place of "a handful" and "a few decorations" -- this doc is the survey and the order, not the spec for

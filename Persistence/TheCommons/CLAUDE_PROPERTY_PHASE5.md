@@ -1,5 +1,8 @@
 # Property phase 5: a shop in the Square — proposed
 
+Amended by `CLAUDE_PROPERTY_COHERENCE.md`. The shop below is still the town. That doc does not move it,
+reprice it, or add a second town. "Go into town on the main map" is the Square plus this door. Gather
+spots already on the outdoor map are "walk around and collect stuff." Neither is redesigned here.
 Brandon: a town, where you buy and sell. This is the phase that reverses "no currency." That reversal is
 his, not a relay, and it is confined to this phase. `CLAUDE_IDEAS.md` still lists shops under Rejected.
 Leave that bullet until a `BUILD` actually ships this. A proposal does not un-reject it.

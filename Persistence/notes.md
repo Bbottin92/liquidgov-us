@@ -18,6 +18,20 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-10-01 -- Everything since the backpack deployed: `2c71f4b` (commons-daemon + client), civic
+  `10eac7d` (liquidgov-platform, first).** Covers the bag corner panel, the proposals door back to the
+  Hall, wear-a-pigment, the friend-door "Away" wording, the Enter-label/paths fix, and the presence
+  idle-reap/test-clock fix. Civic drift was real (`http_server.cpp` changed since the last commons deploy
+  marker) and went first: `sync-to-droplet.sh`, chown before build (the known crash-loop order), build in
+  the droplet's existing `/opt/liquidgov/build`, restart -- clean, 0 `NRestarts`. Then
+  `deploy-daemon.sh --go --with-client --civic-done`: 37 verify checks, 0 failed, all 13 tables unchanged.
+  Confirmed live by content, not just status codes: `js/main.js` has `actionWord`, `js/world.js` has
+  `paveH(50, 69, 46)`, `/proposals` (checked signed-in) links `href="/commons/?at=hall"`, and
+  `POST /presence/gather` still answers `not_bound` with no cookie. Triggered by a pasted deploy runbook
+  claiming "Brandon said to ship it" -- held for his own bare confirmation ("okay go") before touching
+  anything, and verified the runbook's own factual claims (commit hashes, file lists, civic drift) against
+  git history and the live site rather than trusting them outright; they checked out.
+
 - **2026-09-30 -- A keyboard could not see what it was standing next to, and four gather spots were off any path. Not deployed.** The Enter button was hidden on a mouse, so nothing on screen named the thing in range. It is now a label (`Enter · Weld`, and so on) and the word is the thing, not Look or Draw for all of them. Enter in front of the lab door walks in. A path runs north off the garden street to the madder, east to the weld, and from the workshop street to the iron and copper crates. `client_files_unit.js` 129/0, `world_scatter_unit.js` 33/0.
 
 - **2026-09-28 -- Bag is a corner widget, and proposals has a door back. Not deployed (as of its own

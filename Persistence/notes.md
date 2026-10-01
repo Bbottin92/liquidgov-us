@@ -18,7 +18,9 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
-- **2026-10-01 -- Property phase 2+3 built and tested; NOT deployed.** `CLAUDE_PROPERTY_PHASE2.md` as
+- **2026-10-01 -- Property phase 2+3 built, tested, and DEPLOYED (`dac63fc`; 37 verify checks, 0 failed;
+  catalog correctly recognized as grown -- items 38->40, recipes 21->23 -- not flagged as a mismatch;
+  confirmed live by content).** `CLAUDE_PROPERTY_PHASE2.md` as
   written: two new catalog items (`hammer`, `fence_post`) reusing existing materials, no new gather spot,
   zero daemon C++ changes (pure `catalog.sql` data). The one genuinely new mechanic -- a structural floor
   item that actually blocks movement -- lives entirely client-side (`tileBlockedAtPixel` in `actors.js`),

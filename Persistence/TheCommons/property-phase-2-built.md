@@ -1,4 +1,4 @@
-# Your own property, Phase 2+3: gather, craft a tool, build a real fence — built, tested, NOT deployed
+# Your own property, Phase 2+3: gather, craft a tool, build a real fence — built, tested, DEPLOYED
 
 Brandon: `BUILD property phase 2`, approving `CLAUDE_PROPERTY_PHASE2.md` as written. Phases 2 (gather/craft
 tools) and 3 (build structures) shipped together -- a tool with nothing to unlock would be half-finished
@@ -67,5 +67,7 @@ scope; this is fence posts only, the smallest real unit. Phases 4 (biomes) and 5
 
 ## Deploy
 
-Client-only except the two new `catalog.sql` rows (no schema change, no new route). Holds for a literal
-`deploy`, same as always.
+Deployed 2026-10-01, revision `dac63fc`. `verify.sh`: 37 checks, 0 failed -- the catalog tables correctly
+recognized as grown rather than flagged as changed (items 38->40, recipes 21->23, recipe_inputs 23->26,
+recipe_outputs 24->26), every other table unchanged. Confirmed live by content: the served `interact.js`
+has "Need a hammer." and `actors.js` has `STRUCTURAL_ITEMS`.

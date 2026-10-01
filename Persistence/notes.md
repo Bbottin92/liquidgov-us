@@ -20,8 +20,9 @@ Not bug classes. Not “what is live on the droplet.”
 
 - **2026-10-01 -- Found and fixed a real bug after phase 1 shipped: `interact.js`'s `tryFloorPlace()` still
   refused at 8 after `house.cpp`'s own cap moved to 24 -- client-side pre-check missed in the original
-  build, caught while reading nearby code for phase 2, not by phase 1's own tests. Fixed and pushed
-  (`9731e45`); NOT yet deployed.
+  build, caught while reading nearby code for phase 2, not by phase 1's own tests. Fixed, pushed, and
+  DEPLOYED (`2893d1d`; 37 verify checks, 0 failed; confirmed live by content -- the served `interact.js`
+  has `placedFloor.length >= 24`).
 
 - **2026-10-01 -- Property phase 2+3 proposed, not built.** Combined per Brandon's own framing ("gather
   things to make tools, then with those tools build") -- a tool with nothing to unlock would be

@@ -18,6 +18,27 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-10-02 -- Two juketube bugs Brandon hit, both real, both fixed (not deployed).**
+  (1) "I shouldn't be able to skip videos on public juketube channels": `run_community_session`'s WS `"play"`
+  handler (`http_server.cpp`) overwrote the whole station's now-playing unconditionally -- any connected
+  member clicking any search result instantly hijacked what everyone else on that public/community station
+  was hearing, with none of the `isShared()` posture the Skip button already enforced client-side (and no
+  server-side check either). Fixed by making `"play"` do exactly what `"add"` already does: start now only
+  if the station is idle, otherwise queue. (2) "i dont see an accurate history": nothing ever recorded a
+  shared station's plays anywhere -- `/jukebox/history` only ever understood `?for=<personal-owner>`, but
+  both jukebox UIs (`assets/juketube.js`'s full page, and the separate inline `jukebox_script()` the
+  `/listen` standalone page still uses) sent `?station=<id>` for a non-personal station, which the route
+  silently ignored and fell back to the *viewer's own* personal history instead -- inaccurate, not empty.
+  Added an in-memory, capped (15), per-station history ring (`g_community_history_by_station`, recorded on
+  `"ended"`), a `?station=` branch on the route, and fixed both clients to send `for=` for a personal "u:"
+  station and `station=` (including `""` for site-wide) for a real shared one. Deliberately in-memory only.
+  not persisted to the LGP file -- a shared station's past tracklist resetting on restart is an honest,
+  low-risk trade given touching the account store's binary format was not warranted for this. Verified live
+  end-to-end with a stdlib-only WS test client (no package install): played A, tried to force-play B while A
+  was active (correctly queued instead, A kept playing), ended A (advanced to queued B, A appeared in
+  `/jukebox/history?station=`). Existing platform test suite (auth/avatar/blob/file_store/file_transfer/
+  messenger) unaffected, all green.
+
 - **2026-10-02 -- Landing page hero changed to "This is YOUR government!", DEPLOYED (`3be1692`).** Brandon's
   own wording, replacing "This is genesis, not a government" / "LiquidGov.US is a voluntary association...".
   The card further down used to flatly contradict it ("This is not a government") -- reframed to "not a

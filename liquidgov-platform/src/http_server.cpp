@@ -105,6 +105,18 @@ std::map<std::string, CommunityNowPlaying> g_community_now_by_station;
 std::map<std::string, std::deque<CommunityTrack>> g_community_upcoming_by_station;
 std::map<std::string, int> g_community_listeners_by_station;
 std::map<std::string, std::int64_t> g_community_last_flush_by_station;
+// Recently-played, per station (bug: the History section never showed a
+// shared station's actual history -- it fell back to the viewer's OWN
+// personal plays instead, since nothing ever recorded a shared station's
+// plays anywhere and the one route that served history only understood a
+// personal owner). In-memory only, capped (kCommunityHistoryCap), same
+// posture as every other g_community_* map here: real history for a
+// personal jukebox is durable (FileStore), a shared station's "now
+// playing" position is durable too (jpos), but a shared station's past
+// tracklist resetting across a restart is an honest, low-risk trade-off
+// for not touching the LGP file format for this.
+constexpr std::size_t kCommunityHistoryCap = 15;
+std::map<std::string, std::deque<CommunityTrack>> g_community_history_by_station;
 
 // Caller must hold g_community_mu.
 std::int64_t community_elapsed_locked(const std::string& station, std::int64_t now) {
@@ -3894,18 +3906,46 @@ void run_community_session(int fd, const std::string& username, const std::strin
                         }
                     }
                 } else if (auto raw = extract_json_string_field(s, "\"play\"")) {
+                    // Bug (Brandon: "I shouldn't be able to skip videos on public juketube
+                    // channels"): this used to overwrite g_community_now_by_station
+                    // unconditionally, so ANY connected member clicking any search result
+                    // instantly hijacked what the whole station was playing for everyone --
+                    // a full track-interrupt with none of the posture the Skip button
+                    // enforces (isShared() client-side, and there was never a server-side
+                    // check here either). "play" now does exactly what "add" already does:
+                    // start immediately only if the station is idle, otherwise queue. A
+                    // station with nothing playing still starts right away, so clicking a
+                    // result still feels instant when there's nothing to interrupt.
                     if (auto id = extract_youtube_id(trim_ws(*raw))) {
                         const auto now = std::chrono::duration_cast<std::chrono::seconds>(
                             std::chrono::system_clock::now().time_since_epoch()).count();
                         std::lock_guard<std::mutex> lock(g_community_mu);
-                        g_community_now_by_station[station] = CommunityNowPlaying{*id, username, 0, now, true};
+                        auto& now_playing = g_community_now_by_station[station];
+                        auto& upcoming = g_community_upcoming_by_station[station];
+                        if (!now_playing.active && upcoming.empty()) {
+                            now_playing = CommunityNowPlaying{*id, username, 0, now, true};
+                            g_store.set_jukebox_pos(station, *id, 0, now);
+                            g_community_last_flush_by_station[station] = now;
+                        } else {
+                            upcoming.push_back(CommunityTrack{*id, username});
+                        }
                         lglog::emit("jukebox", "play "+station+" "+*id+" by "+username);
                     }
                 } else if (s.find("\"ended\"") != std::string::npos) {
                     const auto now = std::chrono::duration_cast<std::chrono::seconds>(
                         std::chrono::system_clock::now().time_since_epoch()).count();
                     std::lock_guard<std::mutex> lock(g_community_mu);
-                    if (g_community_now_by_station[station].active) {
+                    auto& now_playing = g_community_now_by_station[station];
+                    if (now_playing.active) {
+                        // Bug (Brandon: "i dont see an accurate history"): nothing ever
+                        // recorded a shared station's plays anywhere, so the History
+                        // section's /jukebox/history?station= call always came back empty
+                        // and silently fell back to the viewer's OWN personal plays --
+                        // "inaccurate," not missing. Recorded here, the one place a track
+                        // on this station is actually known to be done.
+                        auto& hist = g_community_history_by_station[station];
+                        hist.push_back(CommunityTrack{now_playing.video_id, now_playing.queued_by});
+                        if (hist.size() > kCommunityHistoryCap) hist.pop_front();
                         community_advance_locked(station, now);
                         const auto& np = g_community_now_by_station[station];
                         if (np.active) g_store.set_jukebox_pos(station, np.video_id, 0, now);
@@ -4619,14 +4659,16 @@ std::string jukebox_script(const std::string& yt_key, bool standalone, const std
         "searchCat.addEventListener('change',runSearch);"
         "searchInput.addEventListener('input',runSearch);"
         "runSearch();"
-        // History: newest first, scoped to whatever personal channel is
-        // actually tuned in right now; a community/site-wide station (or
-        // nothing playing yet) has no personal history of its own, so
-        // this falls back to the viewer's own plays instead of staying
-        // empty.
+        // History: newest first. A personal channel's history is scoped by
+        // owner (?for=); a community/site-wide station's own history (bug
+        // fix: this used to always send ?for= with an empty owner, which
+        // isn't a station lookup at all -- it silently fell back to the
+        // VIEWER'S OWN plays, not the station's) is scoped by ?station=
+        // instead, including "" for the site-wide station itself.
         "function loadHistory(){"
-        "var owner=personalOwnerFromId(activeStationId())||'';"
-        "fetch('/jukebox/history?for='+encodeURIComponent(owner))"
+        "var sid=activeStationId();var owner=personalOwnerFromId(sid);"
+        "var q=owner?('for='+encodeURIComponent(owner)):('station='+encodeURIComponent(sid||''));"
+        "fetch('/jukebox/history?'+q)"
         ".then(function(r){return r.json();})"
         ".then(function(data){"
         "historySel.innerHTML='<option value=\"\">Something you\\u2019ve played before\\u2026</option>';"
@@ -7133,11 +7175,30 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
     }
     if(method=="GET"&&path=="/jukebox/history") {
         if(!acc) return http_raw("401 Unauthorized", "application/json", "{\"items\":[]}");
+        // ?station=<id> (bug fix: the History section never showed a shared station's own
+        // history -- the standalone jukebox page always sent `station=`, but this route only
+        // ever understood `for=`, so it silently fell back to the viewer's OWN personal
+        // plays instead. "" is the site-wide station, a real and distinct value from "no
+        // station param at all" -- qs.count, not qs[].empty(), is what tells them apart.
+        if (qs.count("station")) {
+            std::deque<CommunityTrack> hist;
+            {
+                std::lock_guard<std::mutex> lock(g_community_mu);
+                hist = g_community_history_by_station[qs.at("station")];
+            }
+            std::string out = "{\"items\":[";
+            for (auto it = hist.rbegin(); it != hist.rend(); ++it) {
+                if (it != hist.rbegin()) out += ",";
+                out += "{\"video_id\":\"" + json_escape(it->video_id) + "\",\"queued_by\":\"" +
+                       json_escape(it->queued_by) + "\"}";
+            }
+            out += "]}";
+            return http_raw("200 OK", "application/json", out, "Cache-Control: no-store\r\n");
+        }
         // ?for=<personal-owner> scopes to whatever personal channel is
-        // actively tuned in on the caller's widget; empty (a community/
-        // site-wide station, or nothing tuned yet) falls back to the
-        // viewer's own plays, same as an owner with no plays of their own
-        // yet falls back to nothing rather than erroring.
+        // actively tuned in on the caller's widget; empty (nothing tuned yet)
+        // falls back to the viewer's own plays, same as an owner with no
+        // plays of their own yet falls back to nothing rather than erroring.
         auto for_owner = trim_ws(qs["for"]);
         auto hist = (!for_owner.empty() && valid_username(for_owner)) ? g_store.jukebox_history_of(for_owner)
                                                                         : std::vector<JukeboxHistoryEntry>{};

@@ -543,7 +543,14 @@
     var q = search.value.trim().toLowerCase();
     var my = ++gen;
     resultsEl.textContent = "Loading history…";
-    fetch("/jukebox/history?station=" + encodeURIComponent(stationId), { credentials: "same-origin" })
+    // Bug fix: a personal station ("u:<name>") has its own durable history keyed by that
+    // username (/u/<name>/jukebox/complete writes it) -- querying it by `station=` instead
+    // of `for=` hit a bucket that route never writes to and came back empty. A real shared
+    // station (not "u:"-prefixed, "" for site-wide) has no owner at all, so `station=` is
+    // the only query that means anything for it.
+    var owner = personalOwner();
+    var q_param = owner ? ("for=" + encodeURIComponent(owner)) : ("station=" + encodeURIComponent(stationId));
+    fetch("/jukebox/history?" + q_param, { credentials: "same-origin" })
       .then(function (r) { return r.ok ? r.json() : { items: [] }; })
       .then(function (data) {
         if (my !== gen) return;

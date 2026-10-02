@@ -18,6 +18,17 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-10-02 -- fb:app_id is live.** Brandon weighed it (share-analytics attribution in Meta's Insights
+  vs. accepting the Meta Platform Terms for a bare app) and said do it once he understood what it actually
+  bought him. Registered his account as a Meta Developer (he accepted the terms himself), created app
+  "LiquidGov.US" (no use case, no business portfolio -- just an app ID, nothing else requested or granted),
+  app id `844023505436341`. Set `LIQUIDGOV_FACEBOOK_APP_ID` in the droplet's `/opt/liquidgov/.env.local`
+  (same file `LIQUIDGOV_GOOGLE_CLIENT_ID`/`YOUTUBE_API_KEY` already live in, never synced from the repo) and
+  restarted: `NRestarts=0`, no journal errors. Confirmed live by content -- served `/` carries
+  `<meta property="fb:app_id" content="844023505436341">`. Facebook's Sharing Debugger hadn't picked it up
+  as valid yet at re-scrape time (brand new app, likely propagation lag on their side, not a config issue
+  here) -- our own served HTML is already correct regardless.
+
 - **2026-10-02 -- Share card v4: the exact line, more inviting, and "Genesis" gone from the title,
   DEPLOYED (`ecfcb0c`).** Brandon's own corrections to v3: the card should say "This is YOUR government!" /
   "REPRESENT YOURSELF" exactly (not v3's softened wording); make it more inviting (added a warm gradient,

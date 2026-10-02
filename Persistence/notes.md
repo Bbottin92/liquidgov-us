@@ -18,7 +18,7 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
-- **2026-10-02 -- Two juketube bugs Brandon hit, both real, both fixed (not deployed).**
+- **2026-10-02 -- Two juketube bugs Brandon hit, both real, both fixed, DEPLOYED (`067fcff`).**
   (1) "I shouldn't be able to skip videos on public juketube channels": `run_community_session`'s WS `"play"`
   handler (`http_server.cpp`) overwrote the whole station's now-playing unconditionally -- any connected
   member clicking any search result instantly hijacked what everyone else on that public/community station
@@ -37,7 +37,9 @@ Not bug classes. Not “what is live on the droplet.”
   end-to-end with a stdlib-only WS test client (no package install): played A, tried to force-play B while A
   was active (correctly queued instead, A kept playing), ended A (advanced to queued B, A appeared in
   `/jukebox/history?station=`). Existing platform test suite (auth/avatar/blob/file_store/file_transfer/
-  messenger) unaffected, all green.
+  messenger) unaffected, all green. Civic deploy order followed (sync, chown before build, build in the
+  droplet's existing `/opt/liquidgov/build`, restart): `NRestarts=0`, no error lines in the journal.
+  Confirmed live by content -- served `assets/juketube.js` carries the fixed `q_param` history logic.
 
 - **2026-10-02 -- Landing page hero changed to "This is YOUR government!", DEPLOYED (`3be1692`).** Brandon's
   own wording, replacing "This is genesis, not a government" / "LiquidGov.US is a voluntary association...".

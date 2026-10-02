@@ -18,6 +18,16 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-10-02 -- og:url added, DEPLOYED (`5d922e0`); fb:app_id wired but not live.** Facebook's Sharing
+  Debugger flagged both as missing after the share-card scrape. `og:url` is a flat site-wide value
+  (`https://liquidgov.us/`, `https://liquidgov.us/commons/` for the client) -- same posture as og_desc/
+  og_image, since `page_wrap` has no per-page request path in scope. `fb:app_id` needs a real Facebook
+  App ID, which doesn't exist anywhere in this repo -- wired through `LIQUIDGOV_FACEBOOK_APP_ID` the same
+  way the Google client ID already is (tag absent until configured, never a made-up id). Waiting on
+  Brandon for a real App ID before that env var gets set on the droplet. Civic deployed first (chown before
+  build, `NRestarts=0`, no journal errors), then `deploy-daemon.sh --go --with-client --civic-done`
+  (37/37 verify checks). Confirmed live: `og:url` on both `/` and `/commons/`.
+
 - **2026-10-02 -- Share card hook, DEPLOYED (`7f66fe9`).** The unfurl no longer tells the Myspace joke. The card is `assets/og-image-v3.jpg`: "This is YOUR government." / "You represent yourself." The five stars are gone; that conceit was a review gag and could not carry the line. The description adds the limit the landing page already states: a voluntary association, not a replacement for the government you live under. The joke stays on the genesis quote card. v2 stays served so old cached shares still resolve. See `og-card-v3-built.md`. Civic deployed first (sync, chown before build, build, restart: `NRestarts=0`, no journal errors), then `deploy-daemon.sh --go --with-client --civic-done` (37/37 verify checks). Confirmed live across all four ways the URL gets shared -- `https://liquidgov.us`, `https://www.liquidgov.us`, bare `www.liquidgov.us`, bare `liquidgov.us` -- every one resolves (via nginx's existing www/http redirect, unrelated to this change) to the apex serving `og-image-v3.jpg` and the new description; `/commons/` carries the same tags too.
 
 - **2026-10-02 -- Two juketube bugs Brandon hit, both real, both fixed, DEPLOYED (`067fcff`).**

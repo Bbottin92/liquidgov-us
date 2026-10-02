@@ -18,6 +18,16 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-10-02 -- Landing page hero changed to "This is YOUR government!", DEPLOYED (`3be1692`).** Brandon's
+  own wording, replacing "This is genesis, not a government" / "LiquidGov.US is a voluntary association...".
+  The card further down used to flatly contradict it ("This is not a government") -- reframed to "not a
+  legal government entity... a space to organize, collaborate, and build the systems a real government will
+  need," same legal substance kept (no legal authority claimed, doesn't replace your real government, Phase
+  2 is the actual landslide). Civic deploy order followed (`sync-to-droplet.sh`, chown before build, build
+  in the droplet's existing `/opt/liquidgov/build`, restart): `NRestarts=0`, no error lines in the journal.
+  Confirmed live by content, not status codes -- served `/` has both the new `<h1>` and the reframed card;
+  `/commons/` still 200, unaffected.
+
 - **2026-10-01 -- Walked the map fresh (no account, no tutorial) after `14e1f08`; one real problem, fixed.**
   The gate, its sign, the lab, the Square/Homestead region-name banner, and the guest-vs-bound gate copy
   all read clearly and work as `property-coherence-built.md` describes -- verified live, not assumed. The

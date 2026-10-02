@@ -1,4 +1,4 @@
-# Share card v4: the exact line, and losing Genesis — built, not deployed
+# Share card v4: the exact line, and losing Genesis — deployed
 
 Brandon, directly, three corrections to v3 in one pass:
 
@@ -49,10 +49,13 @@ Rebuilt, smoke-tested locally: `/assets/og-image-v4.jpg` is 200/image-jpeg;
 
 ## Deploy
 
-Not deployed. Civic first (the binary answers `/assets/og-image-v4.jpg`),
-then the Commons client (`commons/index.html`'s own tags), same two-step
-`og-card-v3-built.md` already used. After civic:
+Deployed 2026-10-02, revision `ecfcb0c`. Civic first (chown before build,
+`NRestarts=0`, no journal errors), then `deploy-daemon.sh --go
+--with-client --civic-done` (37/37 verify checks).
 
-`curl -sI https://liquidgov.us/assets/og-image-v4.jpg` should be `200`,
-`image/jpeg`. Facebook's Sharing Debugger (already logged in from last
-time) needs a "Scrape Again" to drop its v3 cache, same as it did for v2.
+`curl -sI https://liquidgov.us/assets/og-image-v4.jpg` is `200`,
+`image/jpeg`. Confirmed live on `/` and `/commons/` by content, not just
+status codes. Facebook's Sharing Debugger re-scraped: `og:title` "Home —
+LiquidGov.US" (not Genesis), `og:image` v4, `og:url` now recognized as a
+present property. Only remaining flag is `fb:app_id`, waiting on a real
+App ID from Brandon.

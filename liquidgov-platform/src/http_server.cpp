@@ -5357,10 +5357,12 @@ std::string genesis_body() {
            "<hr style=\"border:0;border-top:1px solid var(--rule);margin:1rem 0\">" +
            lawstrip +
            solution + quotes + inside +
-           "<div class=\"card\"><p>This is not a government, and it does not replace your real one — your "
-           "actual city, state, or federal government still governs you exactly as it did before you found "
-           "this site. No office seated from these pages carries legal authority over anyone who hasn't "
-           "chosen to associate with it.</p>"
+           "<div class=\"card\"><p>This isn't a legal government entity — not a city, state, or federal "
+           "authority, and it doesn't replace the one you already live under; that government still governs "
+           "you exactly as it did before you found this site. What it is: a space to organize, collaborate, "
+           "and build the systems a real government will need, so they're ready when the time comes to "
+           "actually become one. No office seated from these pages carries legal authority over anyone who "
+           "hasn't chosen to associate with it.</p>"
            "<p>Website control is temporary. When a working election exists among enrolled citizens, "
            "that control is meant to end. The internal shape of that election is itself a citizen vote. "
            "Real governmental authority is a later, explicit landslide — Phase 2 — not this page and not "

@@ -1387,11 +1387,11 @@ std::string page_wrap(const std::string& title, const std::string& navhtml, cons
     // already live under. The old Myspace joke stays on the genesis quote
     // card. It is not what a stranger should see in a share preview.
     const std::string og_desc =
-        "This is YOUR government. You represent yourself — a voluntary "
+        "This is YOUR government! Represent yourself — a voluntary "
         "association, not a replacement for the one you already live under.";
-    // One shared image site-wide. v3 is a new path because v2 is cached
-    // immutable for a year on crawlers, same reason v2 replaced v1.
-    const std::string og_image = "https://liquidgov.us/assets/og-image-v3.jpg";
+    // One shared image site-wide. v4 is a new path because v3 (and v2
+    // before it) is cached immutable for a year on crawlers.
+    const std::string og_image = "https://liquidgov.us/assets/og-image-v4.jpg";
     // Facebook's Sharing Debugger flags og:url as a missing-but-recommended
     // property if it's absent -- it's what the scraper treats as this
     // page's canonical identity (and what like/share counts attribute to).
@@ -7477,6 +7477,20 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         }
         return http_raw("200 OK", "video/mp4", cached, cache_hdr);
     }
+    if(method=="GET"&&path=="/assets/og-image-v4.jpg") {
+        static std::string cached;
+        static bool tried = false;
+        if (!tried) {
+            tried = true;
+            std::ifstream in("assets/og-image-v4.jpg", std::ios::binary);
+            if (in) { std::ostringstream ss; ss << in.rdbuf(); cached = ss.str(); }
+        }
+        if (cached.empty()) return http_raw("404 Not Found", "text/plain; charset=utf-8", "not found");
+        return http_raw("200 OK", "image/jpeg", cached,
+            "Cache-Control: public, max-age=31536000, immutable\r\n");
+    }
+    // v3, kept so an old cached share still resolves. The tags now point at
+    // og-image-v4.jpg (page_wrap).
     if(method=="GET"&&path=="/assets/og-image-v3.jpg") {
         static std::string cached;
         static bool tried = false;
@@ -7502,7 +7516,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             "Cache-Control: public, max-age=31536000, immutable\r\n");
     }
     // v1, kept so an old cached share of /assets/og-image.png still resolves.
-    // The tags now point at og-image-v3.jpg (page_wrap).
+    // The tags now point at og-image-v4.jpg (page_wrap).
     if(method=="GET"&&path=="/assets/og-image.png") {
         static std::string cached;
         static bool tried = false;
@@ -7557,7 +7571,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         std::string extra =
             "<div class=\"card\"><p class=\"row\"><a class=\"btn\" href=\"/signup\">Create an account</a> "
             "<a class=\"btn ghost\" href=\"/login\">Log in</a></p></div>";
-        return http_ok(wrap("Genesis", user, unread, genesis_body()+extra, true));
+        return http_ok(wrap("Home", user, unread, genesis_body()+extra, true));
     }
     if(method=="GET"&&path=="/laws") return pg("Laws", laws_body());
     if(method=="GET"&&path.rfind("/laws/",0)==0) {

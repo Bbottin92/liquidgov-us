@@ -1371,14 +1371,17 @@ std::string page_wrap(const std::string& title, const std::string& navhtml, cons
     // What a link unfurls to on Facebook/X/Slack/etc. Without these tags a
     // shared liquidgov.us link shows nothing but the bare URL. One shared
     // description site-wide, not a per-page one -- there's no per-page
-    // summary tracked anywhere to draw from, and this is what the site
-    // itself opens with.
+    // summary tracked anywhere to draw from. The line is the landing hero
+    // ("This is YOUR government!") plus the limit the page itself states:
+    // a voluntary association, not a replacement for the government you
+    // already live under. The old Myspace joke stays on the genesis quote
+    // card. It is not what a stranger should see in a share preview.
     const std::string og_desc =
-        "It's like Myspace had a three-way with a ballot box and a gameboy. "
-        "— Anonymous";
-    // One shared image site-wide. v2 is a new path because the old
-    // /assets/og-image.png is cached immutable for a year on crawlers.
-    const std::string og_image = "https://liquidgov.us/assets/og-image-v2.jpg";
+        "This is YOUR government. You represent yourself — a voluntary "
+        "association, not a replacement for the one you already live under.";
+    // One shared image site-wide. v3 is a new path because v2 is cached
+    // immutable for a year on crawlers, same reason v2 replaced v1.
+    const std::string og_image = "https://liquidgov.us/assets/og-image-v3.jpg";
     return "<!doctype html><html lang=\"en\""+theme_attr+"><head><meta charset=\"utf-8\">"
            // viewport-fit=cover: without it, env(safe-area-inset-bottom)
            // resolves to 0 everywhere per spec -- every bottom-fixed
@@ -7453,6 +7456,18 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         }
         return http_raw("200 OK", "video/mp4", cached, cache_hdr);
     }
+    if(method=="GET"&&path=="/assets/og-image-v3.jpg") {
+        static std::string cached;
+        static bool tried = false;
+        if (!tried) {
+            tried = true;
+            std::ifstream in("assets/og-image-v3.jpg", std::ios::binary);
+            if (in) { std::ostringstream ss; ss << in.rdbuf(); cached = ss.str(); }
+        }
+        if (cached.empty()) return http_raw("404 Not Found", "text/plain; charset=utf-8", "not found");
+        return http_raw("200 OK", "image/jpeg", cached,
+            "Cache-Control: public, max-age=31536000, immutable\r\n");
+    }
     if(method=="GET"&&path=="/assets/og-image-v2.jpg") {
         static std::string cached;
         static bool tried = false;
@@ -7465,9 +7480,8 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         return http_raw("200 OK", "image/jpeg", cached,
             "Cache-Control: public, max-age=31536000, immutable\r\n");
     }
-    // The og:image/twitter:image referenced from every page's <head> (see
-    // page_wrap) -- what a shared liquidgov.us link actually shows on
-    // Facebook/X/Slack/etc. instead of a bare, imageless title card.
+    // v1, kept so an old cached share of /assets/og-image.png still resolves.
+    // The tags now point at og-image-v3.jpg (page_wrap).
     if(method=="GET"&&path=="/assets/og-image.png") {
         static std::string cached;
         static bool tried = false;

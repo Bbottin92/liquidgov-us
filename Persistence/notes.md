@@ -18,6 +18,8 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-10-02 -- Share card hook built, not deployed.** The unfurl no longer tells the Myspace joke. The card is `assets/og-image-v3.jpg`: "This is YOUR government." / "You represent yourself." The five stars are gone; that conceit was a review gag and could not carry the line. The description adds the limit the landing page already states: a voluntary association, not a replacement for the government you live under. The joke stays on the genesis quote card. v2 stays served so old cached shares still resolve. See `og-card-v3-built.md`.
+
 - **2026-10-02 -- Two juketube bugs Brandon hit, both real, both fixed, DEPLOYED (`067fcff`).**
   (1) "I shouldn't be able to skip videos on public juketube channels": `run_community_session`'s WS `"play"`
   handler (`http_server.cpp`) overwrote the whole station's now-playing unconditionally -- any connected

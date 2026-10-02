@@ -210,6 +210,16 @@ const char* google_client_id_from_env() {
     const char* p = std::getenv("LIQUIDGOV_GOOGLE_CLIENT_ID");
     return p && p[0] ? p : "";
 }
+// Facebook App ID (a public identifier, not a secret) for the fb:app_id
+// meta tag -- lets Facebook's Sharing Debugger attribute like/share/comment
+// counts on a shared link to a real app instead of flagging it as a
+// missing property. Empty means "not configured yet"; the tag just
+// doesn't render rather than shipping a made-up or wrong app id (see
+// page_wrap's fb_app_id).
+const char* facebook_app_id_from_env() {
+    const char* p = std::getenv("LIQUIDGOV_FACEBOOK_APP_ID");
+    return p && p[0] ? p : "";
+}
 bool is_operator(const std::string& username); // defined below (needs trim_ws), used here by nav()
 
 FileStore g_store{store_path_from_env()};
@@ -1382,6 +1392,15 @@ std::string page_wrap(const std::string& title, const std::string& navhtml, cons
     // One shared image site-wide. v3 is a new path because v2 is cached
     // immutable for a year on crawlers, same reason v2 replaced v1.
     const std::string og_image = "https://liquidgov.us/assets/og-image-v3.jpg";
+    // Facebook's Sharing Debugger flags og:url as a missing-but-recommended
+    // property if it's absent -- it's what the scraper treats as this
+    // page's canonical identity (and what like/share counts attribute to).
+    // page_wrap has no request path in scope (it's called from inside each
+    // route handler, which would all need threading through to do this
+    // per-page) -- same "one shared value site-wide" posture as og_desc/
+    // og_image above, not a half-finished per-page version of this.
+    const std::string og_url = "https://liquidgov.us/";
+    const std::string fb_app_id = facebook_app_id_from_env();
     return "<!doctype html><html lang=\"en\""+theme_attr+"><head><meta charset=\"utf-8\">"
            // viewport-fit=cover: without it, env(safe-area-inset-bottom)
            // resolves to 0 everywhere per spec -- every bottom-fixed
@@ -1391,6 +1410,8 @@ std::string page_wrap(const std::string& title, const std::string& navhtml, cons
            "<title>"+full_title+"</title>"
            "<meta property=\"og:type\" content=\"website\">"
            "<meta property=\"og:site_name\" content=\"LiquidGov.US\">"
+           "<meta property=\"og:url\" content=\""+og_url+"\">"+
+           (fb_app_id.empty() ? "" : "<meta property=\"fb:app_id\" content=\""+fb_app_id+"\">") +
            "<meta property=\"og:title\" content=\""+full_title+"\">"
            "<meta property=\"og:description\" content=\""+og_desc+"\">"
            "<meta property=\"og:image\" content=\""+og_image+"\">"

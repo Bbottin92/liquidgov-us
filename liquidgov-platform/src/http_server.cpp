@@ -5350,9 +5350,9 @@ std::string genesis_body() {
            listen_audio +
            emblem +
            "<p class=\"eyebrow\" style=\"color:var(--accent)\">A Voluntary Natural Democracy</p>"
-           "<h1>This is genesis, not a government.</h1>"
-           "<p class=\"lede\">LiquidGov.US is a voluntary association and working software for "
-           "liquid, natural-law democracy. Anyone here is a guest or a member of that association.</p>"
+           "<h1>This is YOUR government!</h1>"
+           "<p class=\"lede\">Here you represent yourself, and accountability is universally distributed. "
+           "Officials are incentivized to serve the people, not the other way around.</p>"
            "</div>"
            "<hr style=\"border:0;border-top:1px solid var(--rule);margin:1rem 0\">" +
            lawstrip +

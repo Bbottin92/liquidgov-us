@@ -30,8 +30,10 @@ Not bug classes. Not “what is live on the droplet.”
   clear by the generic per-interactable ring rule) and raised the floor to 4-7 trees / 1-2 benches so the
   region can't come back this bare on a bad roll. Regenerated `commons/js/world.js`'s `SCATTER` table the
   only correct way (the generator, never by hand); `world_scatter_unit.js`'s own hardcoded caps for that
-  region updated to the new, deliberately-higher floor. `client_files_unit.js` 155/0, `world_scatter_unit.js`
-  33/0. Client-only, not deployed.
+  region updated to the new, deliberately-higher floor. DEPLOYED `026c322`, 2026-10-02: 37 verify checks,
+  0 failed, every table unchanged against the pre-deploy backup; confirmed live by content -- served
+  `world.js` carries the new Homestead Row tree coordinates. `client_files_unit.js` 155/0, `world_scatter_unit.js`
+  33/0.
 
 - **2026-10-01 -- The gate moved onto Homestead Row.** It had been pasted on the unnamed grass south of Creek, and the homestead wall was a facade with nothing behind it. The wall is gone. The gate is on the west half of the road just south of the Square. The east half stays path, so Creek is not behind your door. The banner says "your plot." Not deployed.
 

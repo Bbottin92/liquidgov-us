@@ -39,11 +39,13 @@ Civic first: the binary (it is what answers `/assets/og-image-v3.jpg`)
 and `assets/og-image-v3.jpg` beside it. Then the Commons client, or a
 shared `/commons/` link still unfurls the joke from the old static tags.
 
-Not deployed. The live URL was checked and does not have the file yet:
+Deployed 2026-10-02, revision `7f66fe9`. Civic first (sync, chown before
+build, build, restart: `NRestarts=0`, no journal errors), then
+`deploy-daemon.sh --go --with-client --civic-done` (37/37 verify checks).
 
-`curl -sI https://liquidgov.us/assets/og-image-v3.jpg` is not 200 until
-that civic deploy. After it is:
-
-the same curl should be `200` and `image/jpeg`. Paste
-`https://liquidgov.us/` into an X compose box. The card should say
-"This is YOUR government." Facebook may need a scrape refresh.
+`curl -sI https://liquidgov.us/assets/og-image-v3.jpg` is `200`,
+`image/jpeg`. Confirmed across all four ways the URL gets shared --
+`https://liquidgov.us`, `https://www.liquidgov.us`, bare
+`www.liquidgov.us`, bare `liquidgov.us` -- every one resolves (nginx's
+existing www/http redirect) to the apex serving `og-image-v3.jpg` and the
+new description; `/commons/` carries the same tags too.

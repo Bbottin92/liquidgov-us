@@ -38,6 +38,7 @@ function interiorPlaceName() {
   if (mode === "lab") return "the Lab";
   if (mode === "mine") return "the mine";
   if (mode === "workshop") return "the Workshop";
+  if (mode === "shop") return shopTitle || "a shop";
   if (mode === "demoHouse") return "the demo house";
   if (mode === "house") return "your plot";
   if (mode === "visit") return visitingOwner ? (visitingOwner + "'s plot") : "a plot";
@@ -125,6 +126,14 @@ function tryFloorPlace() {
   return true;
 }
 
+var shopTitle = "";
+function enterShop(id) {
+  var shop = SHOPS[id];
+  if (!shop) return;
+  shopTitle = shop.title;
+  INTERIOR_INSTANCE_KEY.shop = "instance:shop:" + id;
+  enterInterior("shop", shop.space, shop.entry);
+}
 function enterInterior(key, space, entry) {
   savedOutdoorX = player.x; savedOutdoorY = player.y;
   activeSpace = space;
@@ -185,6 +194,8 @@ function tryInteract() {
       // "Once on entering the workshop" (CLAUDE_STUDIO_3.md "When to fetch"). Guests never call
       // /presence/studio at all -- netFetchStudio() itself no-ops unless isBound.
       netFetchStudio();
+    } else if (it.type === "shopDoor") {
+      enterShop(it.shop);
     } else if (it.type === "whereGate") {
       // BUILD property coherence: one gate. The list is Home, then whoever /presence/lots
       // already names. A guest gets the login toast and no list. Group is not a line.
@@ -267,6 +278,7 @@ function tryInteract() {
   if (mode === "lab") { exitToOutdoor({ x: LAB_DOOR_TILE.x, y: LAB_DOOR_TILE.y + 1 }); return; }
   if (mode === "mine") { exitToOutdoor({ x: MINE_DOOR_TILE.x, y: MINE_DOOR_TILE.y + 1 }); return; }
   if (mode === "workshop") { exitToOutdoor({ x: WORKSHOP_DOOR_TILE.x, y: WORKSHOP_DOOR_TILE.y + 1 }); return; }
+  if (mode === "shop") { exitToOutdoor(null); return; }
 }
 
 // BUILD property coherence. Home, then each name the lots route returned. Never a Group line:

@@ -92,7 +92,7 @@ var NET_INTERVAL_MS = 500; // presence.md: per-region ~2Hz
 // "if (netReady && instanceKey)" guard already used for demoHouse/lab.
 // "visit" (friends policy) is filled in per door -- whichever friend's house
 // the player just walked into.
-var INTERIOR_INSTANCE_KEY = { demoHouse: "instance:demo", lab: "instance:lab", mine: "instance:mine", workshop: "instance:workshop" };
+var INTERIOR_INSTANCE_KEY = { demoHouse: "instance:demo", lab: "instance:lab", mine: "instance:mine", workshop: "instance:workshop", shop: "instance:shop" };
 var netId = null, netSecret = null, netReady = false;
 // A bound player has two ids: the guest credential above (what this client
 // authenticates with) and "u:<username>", the id the daemon actually files

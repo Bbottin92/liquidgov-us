@@ -322,6 +322,10 @@ var labSpace = buildInterior(20, 16, function (t, w) {
   t[idxIn(w, 9, 1)]  = T_WORKBENCH;
   t[idxIn(w, 10, 1)] = T_WORKBENCH;
   t[idxIn(w, 11, 1)] = T_WORKBENCH;
+  t[idxIn(w, 2, 1)] = T_SHELF;
+  t[idxIn(w, 16, 1)] = T_SHELF;
+  t[idxIn(w, 0, 4)] = T_WINDOW;
+  t[idxIn(w, w - 1, 4)] = T_WINDOW;
   t[idxIn(w, 5, 7)]  = T_STATION_COPPER;
   t[idxIn(w, 10, 7)] = T_STATION_IRON;
   t[idxIn(w, 14, 7)] = T_STATION_CHALK;
@@ -411,6 +415,11 @@ var workshopSpace = buildInterior(14, 10, function (t, w) {
   t[idxIn(w, 7, 5)] = T_RUG;
   t[idxIn(w, 7, 7)] = T_RUG;
   t[idxIn(w, 12, 3)] = T_SIGN;
+  t[idxIn(w, 0, 3)] = T_WINDOW;
+  t[idxIn(w, w - 1, 3)] = T_WINDOW;
+  t[idxIn(w, 13, 1)] = T_SHELF;
+  t[idxIn(w, 4, 6)] = T_COUNTER;
+  t[idxIn(w, 9, 6)] = T_COUNTER;
   // BUILD studio 3: the bench and the notebook, on the two existing workbench tiles from the P2
   // set-dressing pass (no new tile, no new art) rather than inventing a crafting-minigame prop.
   t[idxIn(w, 3, 2)] = T_WORKBENCH;
@@ -422,6 +431,62 @@ workshopSpace.interactables = [
   { type: "bench", x: 3, y: 2, prompt: "Make" },
   { type: "notebook", x: 10, y: 2, prompt: "Read" }
 ];
+
+// Shops. One room shape, five counters. You walk in off a path, look at
+// what is on the shelf, the counter, and the table, and leave. Nothing is
+// for sale: there is no coin in this game yet. The rooms are the thing
+// the path was going to.
+var SHOPS = {};
+function makeShop(id, title, goods) {
+  var entry = { x: 5, y: 6 };
+  var space = buildInterior(11, 8, function (t, w) {
+    t[idxIn(w, 5, 7)] = T_IDOOR;
+    t[idxIn(w, 0, 3)] = T_WINDOW;
+    t[idxIn(w, w - 1, 3)] = T_WINDOW;
+    t[idxIn(w, 2, 1)] = T_SHELF;
+    t[idxIn(w, 3, 1)] = T_SHELF;
+    t[idxIn(w, 5, 1)] = T_LAMP;
+    t[idxIn(w, 7, 1)] = T_SHELF;
+    t[idxIn(w, 8, 1)] = T_SHELF;
+    t[idxIn(w, 3, 3)] = T_COUNTER;
+    t[idxIn(w, 4, 3)] = T_COUNTER;
+    t[idxIn(w, 6, 3)] = T_COUNTER;
+    t[idxIn(w, 7, 3)] = T_COUNTER;
+    t[idxIn(w, 2, 5)] = T_TABLE;
+    t[idxIn(w, 1, 5)] = T_CHAIR;
+  });
+  space.interactables = [
+    { type: "sign", x: 3, y: 1, prompt: "Look", text: goods.shelf },
+    { type: "sign", x: 4, y: 3, prompt: "Look", text: goods.counter },
+    { type: "sign", x: 2, y: 5, prompt: "Look", text: goods.table }
+  ];
+  SHOPS[id] = { space: space, entry: entry, title: title };
+}
+makeShop("grove", "the Grove stall", {
+  shelf: "Bundles of herbs, hung on the shelf.",
+  counter: "Jars in a row. Nothing is priced.",
+  table: "A bowl of dried flowers."
+});
+makeShop("meadow", "the Meadow shop", {
+  shelf: "Bolts of cloth on the shelf.",
+  counter: "Thread, needles, a pair of shears.",
+  table: "A folded shirt. Not for sale."
+});
+makeShop("hedge", "the Hedge shop", {
+  shelf: "Nails, sorted in tins.",
+  counter: "Twine and a hammer that stays on the counter.",
+  table: "A coil of wire."
+});
+makeShop("point", "the Point shop", {
+  shelf: "Hooks on a strip of wood.",
+  counter: "Line, and a basket of shells.",
+  table: "A folded net."
+});
+makeShop("dunes", "the Dunes stall", {
+  shelf: "Canvas, rolled and tied.",
+  counter: "Rope. A lamp that isn't lit.",
+  table: "A crate of pegs."
+});
 
 // Pickups. A guest's are session-only (v1.md: RAM, vanish on refresh --
 // "Do not invent guest persistence"). A bound player's are also saved by the

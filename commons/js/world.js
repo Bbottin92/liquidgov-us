@@ -109,7 +109,11 @@ var T_GRASS_A = 0, T_GRASS_B = 1, T_PATH = 2, T_WATER = 3, T_DIRT = 4,
     T_STATION_VINEGAR = 36, T_STATION_TANNIN = 37, T_STATION_LAMPBLACK = 38,
     T_STATION_ALUM = 39, T_STATION_GUM = 40,
     // BUILD property phase 4: the Dunes' ground. Cells 36-47 were free; this is the next one.
-    T_SAND = 41;
+    T_SAND = 41,
+    // Short buildings. A roof, a wall with a window, a counter and a shelf.
+    // Drawn in the tileset the same way every other id is. Not a new sheet
+    // format: the next free cells, under the grass variants at 48.
+    T_ROOF = 42, T_WINDOW = 43, T_COUNTER = 44, T_SHELF = 45;
 
 // Palette, from art.md -- outdoor stays grass/dirt/water, never parchment.
 // Brass stays "sparingly" for the Hall door only, per art.md -- the
@@ -159,6 +163,10 @@ COLOR[T_DOOR_HOUSE]   = "#5a7a8a";
 COLOR[T_MINE_DOOR]    = "#25211c";
 COLOR[T_LAMP]         = "#e6b957";
 COLOR[T_SAND]         = "#d8bd84";
+COLOR[T_ROOF]         = "#8b3d32";
+COLOR[T_WINDOW]       = "#6b4a32";
+COLOR[T_COUNTER]      = "#6b4a32";
+COLOR[T_SHELF]        = "#6b4a32";
 var INK = "#1a1814";
 
 // ---- Tile painter (BUILD tile dither) --------------------------------------
@@ -189,7 +197,7 @@ function shadeHex(hex, f) {
 // the world first bakes with paintTile (the fallback) and is re-baked from the
 // sheet the moment it loads; if it never loads (offline, 404, wrong size) the
 // paintTile look simply stays. No runtime packer, no per-frame sheet blits.
-var TILE_SHEET_URL = "tiles.png?v=2", SPRITE_SHEET_URL = "sprites.png?v=1";
+var TILE_SHEET_URL = "tiles.png?v=3", SPRITE_SHEET_URL = "sprites.png?v=1";
 var TILE_SHEET_W = 256, TILE_SHEET_H = 64;
 var tileSheet = null;                  // an <img>, set only once it loaded at the expected size
 var GRASS_VARIANT_CELLS = {};          // grass id -> [phase1 cell, phase2 cell]
@@ -255,6 +263,33 @@ function paintTile(c, id, tx, ty, nb) {
     c.fillRect(px + 1, py + 10, 4, 1);
     c.fillRect(px + 7, py + 10, 8, 1);
     c.fillRect(px, py + TILE - 1, TILE, 1);            // shaded underside
+  } else if (id === T_ROOF) {
+    c.fillStyle = shadeHex(base, -0.28);
+    c.fillRect(px, py + 12, TILE, 4);
+    c.fillStyle = shadeHex(base, 0.16);
+    c.fillRect(px, py + 2, TILE, 2);
+    c.fillStyle = shadeHex(base, -0.18);
+    c.fillRect(px, py + 7, TILE, 1);
+  } else if (id === T_WINDOW) {
+    c.fillStyle = shadeHex(base, -0.2);
+    c.fillRect(px, py, TILE, TILE);
+    c.fillStyle = "#9eb4c0";
+    c.fillRect(px + 4, py + 4, 8, 6);
+    c.fillStyle = shadeHex(base, -0.45);
+    c.fillRect(px + 7, py + 4, 1, 6);
+    c.fillRect(px + 4, py + 6, 8, 1);
+  } else if (id === T_COUNTER || id === T_SHELF) {
+    c.fillStyle = shadeHex(base, id === T_SHELF ? -0.15 : 0.05);
+    c.fillRect(px, py + (id === T_SHELF ? 6 : 8), TILE, id === T_SHELF ? 3 : 6);
+    c.fillStyle = "#c45a3a";
+    c.fillRect(px + 2, py + 3, 3, 3);
+    c.fillStyle = "#d8c070";
+    c.fillRect(px + 7, py + 2, 3, 4);
+    c.fillStyle = "#3d6a4a";
+    c.fillRect(px + 11, py + 3, 3, 3);
+  } else if (id === T_TABLE) {
+    c.fillStyle = "#d8c070";
+    c.fillRect(px + 6, py + 4, 4, 3);
   }
 }
 
@@ -297,6 +332,10 @@ SOLID_TILE[T_CRATE] = 1;
 SOLID_TILE[T_ADIT] = 1;
 SOLID_TILE[T_MINE_DOOR] = 1;
 SOLID_TILE[T_LAMP] = 1;
+SOLID_TILE[T_ROOF] = 1;
+SOLID_TILE[T_WINDOW] = 1;
+SOLID_TILE[T_COUNTER] = 1;
+SOLID_TILE[T_SHELF] = 1;
 
 // Tall props redraw in Y-order with actors so a 24px sprite can pass
 // behind a tree/hedge/wall instead of always stamping on top of the bake.
@@ -308,6 +347,8 @@ TALL_TILE[T_NOTICE_POST] = 1;
 TALL_TILE[T_SIGN] = 1;
 TALL_TILE[T_WALL] = 1;
 TALL_TILE[T_IWALL] = 1;
+TALL_TILE[T_ROOF] = 1;
+TALL_TILE[T_WINDOW] = 1;
 
 // ---- Scatter: the extra props (BUILD objects B) ------------------------------
 // Data, not code: [x, y] tile coords per region, drawn with tiles that already exist (tree, sit-log,
@@ -472,6 +513,29 @@ var WORKSHOP_DOOR_TILE = null;
 // P1 + P2 + P3: every region is dressed now (set piece + collision land
 // together, per region). Same tileset throughout -- T_TREE/T_BENCH/etc.
 // reappear across regions; only the arrangement differs (art.md).
+// A building is three tiles tall, like a Pokemon mart: roof, windows, door.
+// It is wider than it is tall, and it is not a filled square. The door is
+// the south edge so the path in front of it is where you stand.
+function placeFront(doorX, doorY, half, doorTile, shop) {
+  var dx;
+  for (dx = -half; dx <= half; dx++) {
+    tiles[idx(doorX + dx, doorY - 2)] = T_ROOF;
+    tiles[idx(doorX + dx, doorY - 1)] = T_WINDOW;
+    if (dx !== 0) tiles[idx(doorX + dx, doorY)] = T_WINDOW;
+  }
+  tiles[idx(doorX, doorY)] = doorTile;
+  if (shop) interactables.push({ type: "shopDoor", x: doorX, y: doorY, prompt: "Enter", shop: shop });
+}
+function placeFrontWest(doorX, doorY, extra, doorTile) {
+  var x;
+  for (x = doorX - extra; x <= doorX; x++) {
+    tiles[idx(x, doorY - 2)] = T_ROOF;
+    tiles[idx(x, doorY - 1)] = T_WINDOW;
+    if (x !== doorX) tiles[idx(x, doorY)] = T_WINDOW;
+  }
+  tiles[idx(doorX, doorY)] = doorTile;
+}
+
 function dressRegions() {
   var square = regionAABB(findRegion("the Square"));
   var hall = regionAABB(findRegion("Hall Lawn"));
@@ -497,6 +561,16 @@ function dressRegions() {
   tiles[idx(hallCx, hallCy)] = T_HALL_DOOR;
   tiles[idx(hallCx - 2, hallCy)] = T_HEDGE;
   tiles[idx(hallCx + 2, hallCy)] = T_HEDGE;
+  // Short roof beside the walk up to the door. The tile directly north of
+  // the door is the path, so the roof does not sit on it.
+  tiles[idx(hallCx - 2, hallCy - 2)] = T_ROOF;
+  tiles[idx(hallCx - 1, hallCy - 2)] = T_ROOF;
+  tiles[idx(hallCx + 1, hallCy - 2)] = T_ROOF;
+  tiles[idx(hallCx + 2, hallCy - 2)] = T_ROOF;
+  tiles[idx(hallCx - 1, hallCy - 1)] = T_WINDOW;
+  tiles[idx(hallCx + 1, hallCy - 1)] = T_WINDOW;
+  tiles[idx(hallCx - 1, hallCy)] = T_WINDOW;
+  tiles[idx(hallCx + 1, hallCy)] = T_WINDOW;
   interactables.push({
     type: "hall", x: hallCx, y: hallCy,
     prompt: "Hall"
@@ -556,12 +630,9 @@ function dressRegions() {
   // detect the crossing.
   var lab = regionAABB(findRegion("Lab Yard"));
   var labDoorX = lab.x0 + 11, labDoorY = lab.y0 + 8; // (11,48)
-  for (var lx = lab.x0 + 8; lx <= lab.x0 + 14; lx++) {
-    for (var ly = lab.y0 + 3; ly <= lab.y0 + 8; ly++) {
-      tiles[idx(lx, ly)] = T_WALL;
-    }
-  }
-  tiles[idx(labDoorX, labDoorY)] = T_LAB_DOOR;
+  // The old lab was a filled square. It is a short front now: roof and
+  // windows, the door at the east end so the path can arrive beside it.
+  // The door itself is still the walk-in tile, painted after the path.
   tiles[idx(labDoorX + 3, labDoorY + 1)] = T_SIGN;
   LAB_DOOR_TILE = { x: labDoorX, y: labDoorY };
 
@@ -627,14 +698,12 @@ function dressRegions() {
   // the pin"); he reopened it 2026-09-20 (BUILD workshop, option A: thin,
   // like the Hall). The same tile is now a real door into instance:workshop
   // -- a plain room with a bench, no crafting and nothing to pick up.
-  var wsFacadeX0 = 8, wsFacadeX1 = 14, wsFacadeY0 = 24, wsFacadeY1 = 27;
-  for (var wsx = wsFacadeX0; wsx <= wsFacadeX1; wsx++) {
-    for (var wsy = wsFacadeY0; wsy <= wsFacadeY1; wsy++) tiles[idx(wsx, wsy)] = T_WALL;
-  }
-  var shutterX = 11, shutterY = wsFacadeY1;
-  tiles[idx(shutterX, shutterY)] = T_DOOR_DEMO; // existing solid Enter door, no new art
-  WORKSHOP_DOOR_TILE = { x: shutterX, y: shutterY };
-  interactables.push({ type: "workshopDoor", x: shutterX, y: shutterY, prompt: "Enter" });
+  var wsFacadeX0 = 8, wsFacadeY1 = 27;
+  // Three tiles tall, not a block. Door stays (11, 27), which is the tile
+  // the workshop test already names.
+  placeFront(11, wsFacadeY1, 2, T_DOOR_DEMO, null);
+  WORKSHOP_DOOR_TILE = { x: 11, y: wsFacadeY1 };
+  interactables.push({ type: "workshopDoor", x: 11, y: wsFacadeY1, prompt: "Enter" });
   tiles[idx(9, 29)] = T_BENCH;
   tiles[idx(16, 28)] = T_CRATE;
   tiles[idx(17, 30)] = T_CRATE;
@@ -682,6 +751,9 @@ function dressRegions() {
   // neighbour of a path, benches excepted) means a freshly generated crate can never land here again.
 
   for (var lbh = 12; lbh <= 34; lbh++) tiles[idx(lbh, 48)] = T_PATH; // Lab door (11,48) east through Homestead Row to the spine.
+  // After the path, so the lane does not erase the front. The door is the
+  // east end of a short roof, and it stays the walk-in tile.
+  placeFrontWest(11, 48, 4, T_LAB_DOOR);
   // Straight now, not a dogleg: same reasoning -- the two crates at (16,48)/(17,48) were the old hand
   // list; scatter_author.js cannot regenerate a prop onto this lane or its shoulder.
 
@@ -711,11 +783,22 @@ function dressRegions() {
   for (var gnx = 72; gnx <= 94; gnx++) tiles[idx(gnx, 0)] = T_TREE;
   tiles[idx(WORLD_W - 1, 0)] = T_TREE; // the corner, or it is a one-tile pocket behind the tree line
   for (var edgeY = 1; edgeY <= 65; edgeY++) tiles[idx(WORLD_W - 1, edgeY)] = T_TREE;
-  tiles[idx(88, 32)] = T_BENCH;
   tiles[idx(78, 52)] = T_HEDGE;
   tiles[idx(80, 52)] = T_HEDGE;
   tiles[idx(82, 52)] = T_HEDGE;
-  tiles[idx(88, 75)] = T_BENCH;
+
+  // Every one of these roads already came this far and stopped at grass.
+  // The door is the thing at the end. Each is three tiles tall: roof,
+  // windows, door. The path tile south of the door is where you stand.
+  placeFront(82, 8, 2, T_DOOR_DEMO, "grove");
+  for (var mxs = 85; mxs <= 89; mxs++) tiles[idx(mxs, 32)] = T_PATH;
+  placeFront(89, 31, 2, T_DOOR_DEMO, "meadow");
+  placeFront(80, 45, 2, T_DOOR_DEMO, "hedge");
+  for (var pxs = 85; pxs <= 88; pxs++) tiles[idx(pxs, 76)] = T_PATH;
+  placeFront(88, 75, 2, T_DOOR_DEMO, "point");
+  tiles[idx(14, 85)] = T_PATH;
+  for (var dxs = 15; dxs <= 18; dxs++) tiles[idx(dxs, 85)] = T_PATH;
+  placeFront(18, 84, 2, T_DOOR_DEMO, "dunes");
 
   scatterRegions();
 }

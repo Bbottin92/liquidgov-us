@@ -7,7 +7,7 @@ byte-identical PNGs. This is the *source* of the art; the PNGs are what ships.
     python3 Persistence/TheCommons/art/make_art.py
 
 tiles.png   256 x 64   16x16 cells, 16 per row, row-major.  Cell N is tile id N
-            (the T_* enum in commons/js/world.js) for N = 0..41.  Cells 48..51 are
+            (the T_* enum in commons/js/world.js) for N = 0..45.  Cells 48..51 are
             grass variants (A phase 1,2 = 48,49 ; B phase 1,2 = 50,51) so the
             bake can keep breaking up the lattice with a position hash.
 sprites.png 128 x 24   8 cells of 16x24 with alpha: (dir*2 + frame), dir order
@@ -75,7 +75,7 @@ for m in re.finditer(r'COLOR\[(T_[A-Z_0-9]+)\]\s*=\s*"(#[0-9a-fA-F]{6})"', src):
     COLOR[ids[m.group(1)]] = hexrgb(m.group(2))
 INK = hexrgb(re.search(r'var INK = "(#[0-9a-fA-F]{6})"', src).group(1))
 BODY, SKIN = hexrgb("#3a5a7a"), hexrgb("#c9a97a")   # the existing player colours
-NTILES = 42  # BUILD property phase 4: ids 0..41 (T_SAND added)
+NTILES = 46  # ids 0..45 (roof, window, counter, shelf)
 assert len(COLOR) == NTILES and sorted(COLOR) == list(range(NTILES)), sorted(set(range(NTILES)) - set(COLOR))
 
 def C(name): return COLOR[ids[name]]
@@ -274,6 +274,7 @@ def table():
     t = floor_bg(); w = C("T_TABLE")
     t.rect(1, 3, 14, 9, w); t.rect(1, 3, 14, 1, shade(w, 0.18)); t.rect(1, 11, 14, 1, shade(w, -0.25))
     t.rect(2, 12, 2, 3, shade(w, -0.2)); t.rect(12, 12, 2, 3, shade(w, -0.2))
+    t.rect(6, 5, 4, 3, shade(C("T_STATION_ALUM"), -0.05))  # something left on the table
     return t
 
 def chair():
@@ -335,6 +336,38 @@ def lamp():
             if d <= 9: t.px(x, y, shade(b, 0.55))
     return t
 
+def roof():
+    b = C("T_ROOF"); t = fill(b)
+    t.rect(0, 0, 16, 3, shade(b, 0.16))
+    t.rect(0, 7, 16, 1, shade(b, -0.22))
+    t.rect(0, 12, 16, 4, shade(b, -0.32))
+    return t
+
+def window():
+    b = C("T_WINDOW"); t = fill(shade(b, -0.18))
+    glass = hexrgb("#9eb4c0")
+    t.rect(4, 4, 8, 6, glass)
+    t.rect(7, 4, 1, 6, shade(b, -0.45))
+    t.rect(4, 6, 8, 1, shade(b, -0.45))
+    return t
+
+def counter():
+    b = C("T_COUNTER"); t = fill(b)
+    t.rect(0, 0, 16, 2, shade(b, 0.2))
+    t.rect(0, 14, 16, 2, shade(b, -0.28))
+    t.rect(2, 4, 3, 3, hexrgb("#c45a3a"))
+    t.rect(7, 3, 3, 4, hexrgb("#d8c070"))
+    t.rect(11, 4, 3, 3, hexrgb("#3d6a4a"))
+    return t
+
+def shelf():
+    b = C("T_SHELF"); t = fill(shade(b, -0.12))
+    t.rect(0, 8, 16, 3, shade(b, 0.12))
+    t.rect(2, 4, 3, 3, hexrgb("#c45a3a"))
+    t.rect(7, 3, 3, 4, hexrgb("#d8c070"))
+    t.rect(11, 4, 3, 3, hexrgb("#3d6a4a"))
+    return t
+
 # ---- interior-only tiles that are plain colour blocks
 def solid_tex(name, seed=None, n=6):
     return speckle(C(name), seed or 1, n, -0.10, 0.08)
@@ -368,6 +401,7 @@ DRAW = {
     "T_MINE_DOOR": mine_door, "T_LAMP": lamp,
     # BUILD property phase 4: reuses grass()'s own speckle technique, sand's own colour -- no new drawing.
     "T_SAND": lambda: grass(C("T_SAND"), 0),
+    "T_ROOF": roof, "T_WINDOW": window, "T_COUNTER": counter, "T_SHELF": shelf,
 }
 assert {ids[n] for n in DRAW} == set(range(NTILES)), "every tile id needs a drawing"
 

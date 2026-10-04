@@ -38,8 +38,7 @@ var REGIONS = [
   { name: "Quarry Ridge",   col: 0, row: 3 },
   { name: "Creek",          col: 1, row: 3 },
   { name: "Shore",          col: 2, row: 3 },
-  // BUILD property phase 4: one new region, south of Quarry Ridge -- arid rock giving way to open sand.
-  // Columns 1-2 of this row stay unnamed (default grass fill); a later pass can fill them in.
+  // Columns 1-2 of this row are the sea (see bakeTileIds). They are not a region.
   { name: "the Dunes",      col: 0, row: 4 }
 ];
 
@@ -371,9 +370,15 @@ var WORKSHOP_DOOR_TILE = null;
       if (x >= quarry.x0 && x <= quarry.x1 && y >= quarry.y0 && y <= quarry.y1) {
         t = T_DIRT;
       } else if (x >= dunes.x0 && x <= dunes.x1 && y >= dunes.y0 && y <= dunes.y1) {
-        // BUILD property phase 4: the Dunes' own ground. Columns 1-2 of this row have no named region
-        // yet and fall through to the plain grass fill below, same as any other unused grid cell.
+        // BUILD property phase 4: the Dunes' own ground.
         t = T_SAND;
+      } else if (y >= dunes.y0 && x > dunes.x1) {
+        // The south of the map used to be a 48 by 20 field of the same grass as the Square, with
+        // no name and no path. A Link to the Past, Link's Awakening, Stardew Valley, Pokémon Red,
+        // EarthBound, Super Mario World, Hollow Knight, Animal Crossing, Undertale, and Breath of
+        // the Wild all stop the walkable world at a terrain edge (water, a cliff, a wall, or the
+        // path simply ending). This water is that edge. The Dunes stay sand and meet it on the east.
+        t = T_WATER;
       } else {
         // Was a 1-tile checker of the two greens. At 16px that is a spreadsheet,
         // and it sat under the lanes so the road had no edge. One field colour;

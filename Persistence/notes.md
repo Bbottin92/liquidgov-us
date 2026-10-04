@@ -18,6 +18,8 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-10-04 -- The south edge of the map is water.** Ten maps (A Link to the Past, Link's Awakening, Stardew Valley, Pokémon Red, EarthBound, Super Mario World, Hollow Knight, Animal Crossing, Undertale, Breath of the Wild) all share a walkable world that stops at a real edge. The Commons already had a path to every door and a junction at the Square. What it did not have was an edge: south of Creek and Shore was a blank grass field with no name. That field is the sea. Not deployed.
+
 - **2026-10-02 -- fb:app_id is live.** Brandon weighed it (share-analytics attribution in Meta's Insights
   vs. accepting the Meta Platform Terms for a bare app) and said do it once he understood what it actually
   bought him. Registered his account as a Meta Developer (he accepted the terms himself), created app

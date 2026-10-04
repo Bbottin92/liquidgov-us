@@ -278,7 +278,7 @@ if (ok.ok) {
   check(ev(ok, "findRegion('the Dunes') !== null && findRegion('the Dunes').col === 0 && findRegion('the Dunes').row === 4"), "the Dunes exists in REGIONS at (0, 4)");
   check(ev(ok, "(function () { var q = regionAABB(findRegion('Quarry Ridge')), d = regionAABB(findRegion('the Dunes')); return tiles[idx(14, q.y1 - 1)] === T_PATH && tiles[idx(14, d.y0 + 1)] === T_PATH; })()"), "a path connects Quarry Ridge's south edge to the Dunes' north edge, not two disconnected patches of ground");
   check(ev(ok, "(function () { var d = regionAABB(findRegion('the Dunes')); return tiles[idx(d.x0 + 2, d.y0 + 2)] === T_SAND; })()"), "the Dunes' own ground is T_SAND, not left as the default T_GRASS_A");
-  check(ev(ok, "(function () { var d = regionAABB(findRegion('the Dunes')); return tiles[idx(d.x1 + 2, d.y0 + 2)] === T_GRASS_A; })()"), "columns 1-2 of the new row stay default grass, confirmed rather than assumed");
+  check(ev(ok, "(function () { var d = regionAABB(findRegion('the Dunes')); return tiles[idx(d.x1 + 2, d.y0 + 2)] === T_WATER && tiles[idx(d.x1, d.y0 + 2)] === T_SAND; })()"), "south of Creek is water, the edge of the map; the Dunes stay sand and meet that water");
 }
 
 // ---- controls: the check must be able to FAIL (a wrong order has to throw a ReferenceError)

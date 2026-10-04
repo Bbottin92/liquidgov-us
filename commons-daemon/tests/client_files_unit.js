@@ -275,6 +275,9 @@ if (ok.ok) {
 
   // ---- CLAUDE_PROPERTY_PHASE4.md: a real new region, the Dunes, south of Quarry Ridge.
   check(ev(ok, "GRID_ROWS === 5 && WORLD_H === 100"), "the grid grew by one row (4 -> 5), WORLD_H 80 -> 100");
+  check(ev(ok, "GRID_COLS === 4 && WORLD_W === 96"), "the grid grew by one column (3 -> 4), WORLD_W 72 -> 96");
+  check(ev(ok, "findRegion('the Grove') !== null && findRegion('the Point') !== null && findRegion('the Point').col === 3"), "the east column is the Grove, the Meadow, the Hedge, and the Point");
+  check(ev(ok, "tiles[9 * WORLD_W + 84] === T_PATH && tiles[68 * WORLD_W + 84] === T_BRIDGE && tiles[46 * WORLD_W + 70] === T_PATH"), "the orchard road and the garden street both reach the new lane, and the lane crosses the Point on a bridge");
   check(ev(ok, "findRegion('the Dunes') !== null && findRegion('the Dunes').col === 0 && findRegion('the Dunes').row === 4"), "the Dunes exists in REGIONS at (0, 4)");
   check(ev(ok, "(function () { var q = regionAABB(findRegion('Quarry Ridge')), d = regionAABB(findRegion('the Dunes')); return tiles[idx(14, q.y1 - 1)] === T_PATH && tiles[idx(14, d.y0 + 1)] === T_PATH; })()"), "a path connects Quarry Ridge's south edge to the Dunes' north edge, not two disconnected patches of ground");
   check(ev(ok, "(function () { var d = regionAABB(findRegion('the Dunes')); return tiles[idx(d.x0 + 2, d.y0 + 2)] === T_SAND; })()"), "the Dunes' own ground is T_SAND, not left as the default T_GRASS_A");

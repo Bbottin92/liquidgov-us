@@ -18,27 +18,31 @@ var REGION_W = 24, REGION_H = 20;   // tiles per region
 // BUILD property phase 4 (CLAUDE_PROPERTY_PHASE4.md): 4 -> 5 rows for the Dunes. The grid math below
 // (regionAABB/regionAt/regionsIntersectingCamera in net.js) is parameterized off these two constants and
 // REGIONS, not hardcoded to 12 cells anywhere -- checked directly before this change, not assumed.
-var GRID_COLS = 3, GRID_ROWS = 5;   // supermap layout
-var WORLD_W = GRID_COLS * REGION_W; // 72
-var WORLD_H = GRID_ROWS * REGION_H; // 80
-var WORLD_PW = WORLD_W * TILE;      // 1152
-var WORLD_PH = WORLD_H * TILE;      // 1280
+var GRID_COLS = 4, GRID_ROWS = 5;   // supermap layout
+var WORLD_W = GRID_COLS * REGION_W; // 96
+var WORLD_H = GRID_ROWS * REGION_H; // 100
+var WORLD_PW = WORLD_W * TILE;      // 1536
+var WORLD_PH = WORLD_H * TILE;      // 1600
 
 // Region table: name, grid col/row -- matches atlas.md exactly.
 var REGIONS = [
   { name: "North Woods",    col: 0, row: 0 },
   { name: "Lookout",        col: 1, row: 0 },
   { name: "Orchard",        col: 2, row: 0 },
+  { name: "the Grove",      col: 3, row: 0 },
   { name: "Workshop Lane",  col: 0, row: 1 },
   { name: "the Square",     col: 1, row: 1 },
   { name: "Hall Lawn",      col: 2, row: 1 },
+  { name: "the Meadow",     col: 3, row: 1 },
   { name: "Lab Yard",       col: 0, row: 2 },
   { name: "Homestead Row",  col: 1, row: 2 },
   { name: "Garden",         col: 2, row: 2 },
+  { name: "the Hedge",      col: 3, row: 2 },
   { name: "Quarry Ridge",   col: 0, row: 3 },
   { name: "Creek",          col: 1, row: 3 },
   { name: "Shore",          col: 2, row: 3 },
-  // Columns 1-2 of this row are the sea (see bakeTileIds). They are not a region.
+  { name: "the Point",      col: 3, row: 3 },
+  // The rest of this row is the sea (see bakeTileIds). It is not a region.
   { name: "the Dunes",      col: 0, row: 4 }
 ];
 
@@ -403,6 +407,16 @@ var WORKSHOP_DOOR_TILE = null;
       tiles[idx(sx, sy)] = T_DIRT;
     }
   }
+  // The Point is the new east column's coast. The creek's water used to stop
+  // at the old map edge and turn into grass. It keeps going, then the same
+  // dirt bank the Shore already has, so the coast is one shore and not a seam.
+  var point = regionAABB(findRegion("the Point"));
+  for (var py = waterY0; py <= waterY1; py++) {
+    for (var px = point.x0; px < WORLD_W; px++) tiles[idx(px, py)] = T_WATER;
+  }
+  for (var pdy = waterY1 + 1; pdy <= point.y1; pdy++) {
+    for (var pdx = point.x0; pdx < WORLD_W; pdx++) tiles[idx(pdx, pdy)] = T_DIRT;
+  }
 
   // Path ribbon, terrain only: the Square -> Homestead Row -> Creek -> Shore.
   // Vertical spine at x=34..35 threads all three (they share grid col 1),
@@ -678,6 +692,30 @@ function dressRegions() {
   for (var mbh = 10; mbh <= 33; mbh++) tiles[idx(mbh, 69)] = T_PATH; // crossbar east through Creek, meeting the existing Shore jog
 
   for (var hbh = 34; hbh <= 57; hbh++) tiles[idx(hbh, 30)] = T_PATH; // spine, across the Square and Hall Lawn, to just short of the Hall's own flanking hedges at x=58/62
+
+  // The map grew one column to the east (72 -> 96). These four regions are
+  // that column. The lane is x=84. The orchard road (y=9) and the garden
+  // street (y=46) are extended to meet it, so the new land is the same walk
+  // and not a second map you have to already know about. The water crossing
+  // at the Point is a bridge, same as the creek. Trees on the north of the
+  // Grove and the east edge of the grass are the stop, the same reason the
+  // North Woods has a tree line instead of an invisible wall.
+  var east = 84;
+  for (var ox = 66; ox <= east; ox++) tiles[idx(ox, 9)] = T_PATH;
+  for (var ey = 10; ey <= 65; ey++) tiles[idx(east, ey)] = T_PATH;
+  for (var by = 66; by <= 72; by++) tiles[idx(east, by)] = T_BRIDGE;
+  for (var beachY = 73; beachY <= 76; beachY++) tiles[idx(east, beachY)] = T_PATH;
+  for (var gx = 70; gx < east; gx++) tiles[idx(gx, 46)] = T_PATH;
+  var groveTrees = [[76, 4], [90, 4], [76, 14], [90, 14]];
+  for (var gt = 0; gt < groveTrees.length; gt++) tiles[idx(groveTrees[gt][0], groveTrees[gt][1])] = T_TREE;
+  for (var gnx = 72; gnx <= 94; gnx++) tiles[idx(gnx, 0)] = T_TREE;
+  tiles[idx(WORLD_W - 1, 0)] = T_TREE; // the corner, or it is a one-tile pocket behind the tree line
+  for (var edgeY = 1; edgeY <= 65; edgeY++) tiles[idx(WORLD_W - 1, edgeY)] = T_TREE;
+  tiles[idx(88, 32)] = T_BENCH;
+  tiles[idx(78, 52)] = T_HEDGE;
+  tiles[idx(80, 52)] = T_HEDGE;
+  tiles[idx(82, 52)] = T_HEDGE;
+  tiles[idx(88, 75)] = T_BENCH;
 
   scatterRegions();
 }

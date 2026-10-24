@@ -18,6 +18,8 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-10-24 -- Google sign-in client was deleted.** Live button posted to Google and returned `Error 401: deleted_client` for `508630567243-f0s5gh21csd5evp1ls48j289pg14r0eb`. Brandon created a new Web client in a different project: `738917322917-p9hvl2s82l8esj70bc9s58dbv4viraqv.apps.googleusercontent.com`, origin `https://liquidgov.us`, redirect `https://liquidgov.us/login/google`. Not an AI-agent client. Grok cannot SSH. Job for Claude is `CLAUDE_GOOGLE_LOGIN.md`: set `LIQUIDGOV_GOOGLE_CLIENT_ID` in `/opt/liquidgov/.env.local` and `systemctl restart liquidgov` only. No rebuild, no rsync.
+
 - **2026-10-04 -- Shops, short, with roofs.** The Lab, the Workshop, and the Hall are three tiles tall instead of blocks. Five stalls (Grove, Meadow, Hedge, Point, Dunes) sit at the end of paths that used to stop on grass. Each room has a window, a shelf, a counter, and a table, and you can look at what is on them. Nothing is for sale. Not deployed.
 
 - **2026-10-04 -- The map is one column wider.** 72 tiles to 96. The new land, east of the Orchard, is the Grove, the Meadow, the Hedge, and the Point. The orchard road and the garden street both run into it. The sea still ends the south, and it continues under the new column. Not deployed.

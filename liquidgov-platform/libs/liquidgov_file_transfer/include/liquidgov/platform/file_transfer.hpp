@@ -54,7 +54,9 @@ enum class FileTransferError {
 // caller passes the sender's policy: operators get every kind up to the
 // server ceiling, others what an operator granted them. Stored as-is,
 // like video: there is no structural proof for "what's inside is safe",
-// so the gate is who may send it, plus the malware scan.
+// so the gate is who may send it. The MalwareScanner still runs, but the
+// one this site uses (MailAttachmentScanner) only re-checks the type: it
+// is not an antivirus, and nothing else scans programs.
 struct ProgramPolicy {
     std::uint32_t kinds = 0;     // bitmask of ProgramKind
     std::uint64_t max_bytes = 0; // per person; never above SizeCaps::protocol_max_bytes

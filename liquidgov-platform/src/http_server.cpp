@@ -1852,16 +1852,21 @@ std::string decode_chunked(const std::string& body) {
     return out;
 }
 
-// max_body_for(headers) is the body limit for this request (kMaxBody, or a
-// program sender's bigger mail limit -- see request_body_limit). A body
-// over it sets *too_large so the caller can answer 413 instead of handling
-// a truncated upload. A Content-Length body is read straight into `req`:
-// a 100 MB upload must not be held twice on a 0.5 GB server.
-bool read_http_request(int fd, std::string& req,
+// Reads one request: `req` gets the request line and headers (ending in
+// "\r\n\r\n"), `body` the body, kept apart so a 100 MB upload is held
+// once, not copied into a header+body string and again for handle() (a
+// 0.5 GB server, review 2026-10-27). max_body_for(headers) is this
+// request's body limit (kMaxBody, or a program sender's /mail/big limit,
+// see request_body_limit). Over it, *too_large is set and *declared gets
+// the Content-Length (0 if unknown) so the caller can answer 413 and drain
+// what the client still sends instead of handling a cut-off upload.
+bool read_http_request(int fd, std::string& req, std::string& body,
                        const std::function<std::size_t(const std::string&)>& max_body_for,
-                       bool* too_large) {
+                       bool* too_large, std::size_t* declared) {
     req.clear();
+    body.clear();
     *too_large = false;
+    *declared = 0;
     char buf[8192];
     auto more = [&]() -> ssize_t {
         ssize_t n = recv(fd, buf, sizeof(buf), 0);
@@ -1893,11 +1898,14 @@ bool read_http_request(int fd, std::string& req,
     for (char& c : te) if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
     bool chunked = te.find("chunked") != std::string::npos;
 
+    body.assign(req, body_start, std::string::npos); // what arrived with the headers (a few KB at most)
+    req.resize(body_start);
+
     if (!chunked && !cl.empty()) {
         std::size_t need = 0;
         try { need = static_cast<std::size_t>(std::stoull(cl)); } catch (...) { need = 0; }
-        if (need > max_body) { *too_large = true; return false; }
-        if (!expect.empty() && req.size() == body_start) {
+        if (need > max_body) { *too_large = true; *declared = need; return false; }
+        if (!expect.empty() && body.empty()) {
             std::string low = expect;
             for (char& c : low) if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
             if (low.find("100-continue") != std::string::npos) {
@@ -1905,15 +1913,16 @@ bool read_http_request(int fd, std::string& req,
                 send(fd, msg, sizeof(msg) - 1, 0);
             }
         }
-        req.reserve(body_start + need);
-        while (req.size() - body_start < need) {
-            if (more() <= 0) break;
+        body.reserve(need);
+        while (body.size() < need) {
+            ssize_t n = recv(fd, buf, sizeof(buf), 0);
+            if (n <= 0) break;
+            body.append(buf, static_cast<std::size_t>(n));
         }
-        if (req.size() - body_start > need) req.resize(body_start + need);
+        if (body.size() > need) body.resize(need);
         return true;
     }
 
-    std::string body = req.substr(body_start);
     if (!expect.empty() && body.empty()) {
         std::string low = expect;
         for (char& c : low) if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
@@ -1928,12 +1937,11 @@ bool read_http_request(int fd, std::string& req,
             ssize_t n = recv(fd, buf, sizeof(buf), 0);
             if (n <= 0) break;
             body.append(buf, static_cast<std::size_t>(n));
-            if (body.size() > max_body) { *too_large = true; return false; }
+            if (body.size() > max_body) { *too_large = true; return false; } // chunked: no length to drain to
         }
         body = decode_chunked(body);
         if (body.size() > max_body) { *too_large = true; return false; }
     }
-    req = headers + "\r\n\r\n" + body;
     return true;
 }
 
@@ -2238,14 +2246,14 @@ std::string sanitize_download_name(const std::string& raw, const ProgramKindInfo
 // How an attachment shows in a mail bubble. A program gets a card with its
 // name, size and who sent it, and a plain warning; anything else keeps the
 // existing "Download attachment" link.
-// `sender` is the username (the download name's key); `sender_label` is
-// how the bubble names them.
-std::string mail_attachment_html(const std::string& blob_id, const std::string& mime, const std::string& sender,
+// `name_key` is the message's attachment_name_key; `sender_label` is how
+// the bubble names the sender.
+std::string mail_attachment_html(const std::string& blob_id, const std::string& mime, const std::string& name_key,
                                  const std::string& sender_label, bool mine) {
     const std::string href = "/mail/attachment/" + html_escape(blob_id);
     const ProgramKindInfo* kind = program_kind_by_mime(mime);
     if (!kind) return "<div><a href=\"" + href + "\">Download attachment</a></div>";
-    const std::string name = g_store.attachment_name(blob_id, sender).value_or(attachment_filename_for_mime(mime));
+    const std::string name = g_store.attachment_name(name_key).value_or(attachment_filename_for_mime(mime));
     const auto meta = g_blobs.meta(blob_id);
     std::string html = "<div class=\"mailprog\"><a href=\"" + href + "\" download>"
                        "<span aria-hidden=\"true\">\xF0\x9F\x93\xA6</span> <strong>" + html_escape(name) + "</strong></a>"
@@ -2297,14 +2305,30 @@ std::string mail_program_note_html(const std::string& user) {
            html_escape(program_kinds_text(policy->kinds)) + ", up to " + fmt_size(policy->max_bytes) + ".</p>";
 }
 
-// Ingest a mail attachment with the sender's program policy; for a
-// program, keep its sanitized name for the download. Returns the
-// ?err= code on refusal, "" on success.
-std::string ingest_mail_attachment(const std::string& user, const std::string& ctype, const std::string& body,
-                                   const std::vector<std::uint8_t>& file, std::optional<std::string>& blob_id,
-                                   std::optional<std::string>& mime) {
+// A mail send's attachment, taken out of the request: the file bytes and
+// the name the browser gave it. The body is released right after (it held
+// the same bytes), so a 100 MB upload is in memory twice at most, briefly.
+struct MailUpload {
+    std::optional<std::vector<std::uint8_t>> file;
+    std::string filename;
+};
+MailUpload take_mail_upload(const std::string& ctype, std::string& body) {
+    MailUpload up;
+    if (ctype.find("multipart/form-data") == std::string::npos) return up;
+    up.filename = multipart_filename(ctype, body, "attachment");
+    up.file = multipart_file(ctype, body, "attachment");
+    std::string().swap(body);
+    return up;
+}
+
+// Ingest a mail attachment with the sender's program policy. On success
+// `download_name` is the sanitized name for a program ("" otherwise); the
+// caller stores it with set_attachment_name once the message exists.
+// Returns the ?err= code on refusal, "" on success.
+std::string ingest_mail_attachment(const std::string& user, const MailUpload& up, std::optional<std::string>& blob_id,
+                                   std::optional<std::string>& mime, std::string& download_name) {
     auto policy = program_policy_for(user);
-    auto r = ingest_file(g_blobs, g_mail_scanner, g_mail_caps, file, policy ? &*policy : nullptr);
+    auto r = ingest_file(g_blobs, g_mail_scanner, g_mail_caps, *up.file, policy ? &*policy : nullptr);
     if (r.error != FileTransferError::None || !r.blob_id) {
         switch (r.error) {
             case FileTransferError::TooLarge: return "large";
@@ -2317,58 +2341,88 @@ std::string ingest_mail_attachment(const std::string& user, const std::string& c
     blob_id = r.blob_id;
     mime = r.stored_mime_type;
     if (const ProgramKindInfo* kind = program_kind_by_mime(mime.value_or("")))
-        g_store.set_attachment_name(*blob_id, user,
-                                    sanitize_download_name(multipart_filename(ctype, body, "attachment"), *kind));
+        download_name = sanitize_download_name(up.filename, *kind);
     return {};
 }
 
-// The download of a mail attachment the caller already authorized. A
-// program goes out through nginx when LIQUIDGOV_BLOB_ACCEL names the
-// internal location that maps to the blob folder (e.g. "/_lgblob/"; see
-// deploy/nginx-program-mail.conf): nginx streams the file from disk, so a
-// 100 MB download never sits in this process's memory. Without it, or for
-// any other attachment, the bytes are sent from here as before.
-std::string mail_attachment_response(const std::string& blob_id, const std::string& mime, const std::string& sender) {
+// The download of a mail attachment the caller already authorized
+// (`name_key`: that message's attachment_name_key). With
+// LIQUIDGOV_BLOB_ACCEL set to the internal nginx location that maps to the
+// blob folder ("/_lgblob/", deploy/nginx-program-mail.conf) every
+// attachment goes out through nginx, streamed from disk. Without it only
+// files up to 26 MB are sent from here (a 100 MB one would be held about
+// four times on a 0.5 GB server); bigger ones get a 503 (review 2026-10-27).
+std::string mail_attachment_response(const std::string& blob_id, const std::string& mime, const std::string& name_key) {
     const ProgramKindInfo* kind = program_kind_by_mime(mime);
-    const std::string name = kind ? g_store.attachment_name(blob_id, sender).value_or(attachment_filename_for_mime(mime))
+    const std::string name = kind ? g_store.attachment_name(name_key).value_or(attachment_filename_for_mime(mime))
                                   : attachment_filename_for_mime(mime);
     const std::string extra = "Content-Disposition: attachment; filename=\"" + name + "\"\r\n"
                               "Cache-Control: private, no-store\r\n";
+    const auto meta = g_blobs.meta(blob_id);
+    if (!meta || blob_id.size() <= 2) return http_raw("404 Not Found", "text/plain; charset=utf-8", "not found");
     const char* accel = std::getenv("LIQUIDGOV_BLOB_ACCEL");
-    if (kind && accel && accel[0] && g_blobs.meta(blob_id) && blob_id.size() > 2) {
+    if (accel && accel[0]) {
         return http_raw("200 OK", mime.c_str(), "",
                         extra + "X-Accel-Redirect: " + accel + blob_id.substr(0, 2) + "/" + blob_id + "\r\n");
     }
+    if (meta->size > kMaxBody)
+        return http_raw("503 Service Unavailable", "text/plain; charset=utf-8",
+                        "This file is too big to send without the server's download handoff.");
     auto bytes = g_blobs.get(blob_id);
     if (!bytes) return http_raw("404 Not Found", "text/plain; charset=utf-8", "not found");
     return http_raw("200 OK", mime.c_str(), std::string(bytes->begin(), bytes->end()), extra);
 }
 
-// The body limit read_http_request enforces, from the headers alone: the
-// usual kMaxBody, except a mail send (POST /mail or /mail/g/<id>/send) by
-// someone who may send programs gets their program limit plus room for
-// the multipart wrapping. Looked up before the body is read, so a stranger
-// can't make the server buffer 100 MB. Doesn't touch the session (handle()
-// does that).
-std::size_t request_body_limit(const std::string& headers) {
-    auto le = headers.find("\r\n");
-    std::istringstream is(headers.substr(0, le));
-    std::string method, target;
-    is >> method >> target;
-    target = target.substr(0, target.find('?'));
-    const bool mail_send = method == "POST" &&
-        (target == "/mail" || (target.rfind("/mail/g/", 0) == 0 && target.size() > 5 &&
-                               target.compare(target.size() - 5, 5, "/send") == 0));
-    if (!mail_send) return kMaxBody;
-    std::lock_guard<std::mutex> lock(g_mu);
+// Big uploads have one door: POST /mail/big (1:1) and /mail/big/g/<id>/send
+// (groups). nginx lets a body over 26 MB through only there, and only after
+// GET /internal/upload-ok said yes for that cookie and Content-Length
+// (deploy/nginx-program-mail.conf), so nobody else can make nginx or this
+// process buffer 100 MB (review 2026-10-27).
+bool is_big_upload_target(const std::string& target) {
+    if (target == "/mail/big") return true;
+    return target.rfind("/mail/big/g/", 0) == 0 && target.size() > 17 &&
+           target.compare(target.size() - 5, 5, "/send") == 0;
+}
+
+// The body limit for a program sender on the big door: their limit plus
+// room for the multipart wrapping; kMaxBody for everyone and everything
+// else. Caller holds g_mu.
+constexpr std::size_t kMultipartRoom = 1024 * 1024;
+std::size_t program_body_limit_locked(const std::string& headers) {
     auto sess = g_store.get_session(cookie_of(headers));
     if (!sess) return kMaxBody;
     auto acc = g_store.find_by_id(sess->account);
     if (!acc) return kMaxBody;
     auto policy = program_policy_for(acc->username);
     if (!policy) return kMaxBody;
-    constexpr std::size_t kMultipartRoom = 1024 * 1024;
     return std::max<std::size_t>(kMaxBody, static_cast<std::size_t>(policy->max_bytes) + kMultipartRoom);
+}
+
+// The limit read_http_request enforces, from the headers alone (before the
+// body is read). Doesn't touch the session (handle() does that).
+std::size_t request_body_limit(const std::string& headers) {
+    auto le = headers.find("\r\n");
+    std::istringstream is(headers.substr(0, le));
+    std::string method, target;
+    is >> method >> target;
+    target = target.substr(0, target.find('?'));
+    if (method != "POST" || !is_big_upload_target(target)) return kMaxBody;
+    std::lock_guard<std::mutex> lock(g_mu);
+    return program_body_limit_locked(headers);
+}
+
+// nginx's auth_request for /mail/big: 204 when this cookie's account may
+// upload X-Original-Length bytes to X-Original-URI, 403 otherwise (nginx
+// then never reads the body). Caller holds g_mu.
+std::string upload_ok_response(const std::string& headers) {
+    std::string uri = header_value(headers, "X-Original-URI");
+    uri = uri.substr(0, uri.find('?'));
+    std::size_t length = 0;
+    try { length = static_cast<std::size_t>(std::stoull(header_value(headers, "X-Original-Length"))); } catch (...) { length = 0; }
+    const bool ok = is_big_upload_target(uri) && program_body_limit_locked(headers) > kMaxBody &&
+                    length <= program_body_limit_locked(headers);
+    return ok ? http_raw("204 No Content", "text/plain; charset=utf-8", "")
+              : http_raw("403 Forbidden", "text/plain; charset=utf-8", "no");
 }
 
 std::string portrait_tag(const std::string& username, const char* cls) {
@@ -2729,12 +2783,13 @@ std::string mail_thread_html(const std::string& user, const std::string& other,
         html += "<div class=\"msg "+std::string(mine ? "mine" : "theirs")+"\"><div class=\"bubble\">";
         if (!m.text.empty()) html += html_escape(m.text);
         if (m.attachment_blob_id) {
-            html += mail_attachment_html(*m.attachment_blob_id, m.attachment_mime.value_or(""), m.from, m.from, mine);
+            html += mail_attachment_html(*m.attachment_blob_id, m.attachment_mime.value_or(""), attachment_name_key(m), m.from, mine);
         }
         html += "<span class=\"bubtime\">"+html_escape(fmt_time(m.ts))+"</span></div></div>";
     }
     html += "</div>"
-        "<form method=\"POST\" action=\"/mail\" enctype=\"multipart/form-data\" class=\"mailcomposer\" id=\"mailcomposer\">"
+        "<form method=\"POST\" action=\"" + std::string(program_policy_for(user) ? "/mail/big" : "/mail") +
+        "\" enctype=\"multipart/form-data\" class=\"mailcomposer\" id=\"mailcomposer\">"
         "<input type=\"hidden\" name=\"to\" value=\""+html_escape(other)+"\">"
         "<div class=\"row\" style=\"align-items:flex-end;gap:.4rem;flex-wrap:nowrap\">"
         "<textarea name=\"text\" id=\"mailtext\" maxlength=\"2000\" rows=\"2\" placeholder=\"Message\" "
@@ -2897,7 +2952,10 @@ std::string mail_widget_script() {
         "if(!form)return;"
         "e.preventDefault();"
         "var fd=new FormData(form);"
-        "fetch('/mail',{method:'POST',body:fd,credentials:'same-origin'}).then(function(){loadMail(activeWith,true);});"
+        // the form's own action (/mail/big for a program sender); a refusal (?err=, /mail/too-large) is shown as a
+        // page, since the panel reload would drop its message
+        "fetch(form.getAttribute('action')||'/mail',{method:'POST',body:fd,credentials:'same-origin'}).then(function(r){"
+        "if(/[?&]err=|\\/mail\\/too-large/.test(r.url)){location.href=r.url;return;}loadMail(activeWith,true);});"
         "});"
         "mailRoot.addEventListener('keydown',function(e){"
         "if(e.key!=='Enter'||e.shiftKey)return;"
@@ -6264,7 +6322,8 @@ std::string admin_programs_cell(const std::string& username) {
             "<input type=\"number\" name=\"max_mb\" min=\"1\" max=\"" + std::to_string(ceiling_mb) +
             "\" step=\"1\" value=\"" + std::to_string(cur_mb) + "\" style=\"width:5rem\"></label>"
             "<p class=\"muted\" style=\"margin:.2rem 0\">Server limit " + fmt_size(program_ceiling_bytes()) +
-            ". Untick everything to stop them sending programs.</p>"
+            ". Untick everything to stop them sending programs. Programs are not virus-checked: allow only people "
+            "you trust, and only the kinds they need.</p>"
             "<button class=\"ghost\" type=\"submit\">Save</button></form></details>";
     return html;
 }
@@ -7180,7 +7239,9 @@ static bool push_subs_upsert(const std::string& user, const std::string& endpoin
     return std::rename("push_subs.txt.tmp", "push_subs.txt") == 0;
 }
 
-std::string handle(const std::string& req, const std::string& peer_ip) {
+// `req` is the request line and headers only; the body arrives on its own
+// (read_http_request keeps them apart so an upload is never copied).
+std::string handle(const std::string& req, const std::string& peer_ip, std::string body) {
     auto line_end=req.find("\r\n");
     if(line_end==std::string::npos) line_end=req.find('\n');
     if(line_end==std::string::npos) return http_ok(wrap("Error","",0,"<p>bad request</p>"));
@@ -7188,11 +7249,11 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
     if (method == "HEAD") method = "GET";
     std::string path = rawpath;
     auto qpos=path.find('?'); if(qpos!=std::string::npos) path=path.substr(0,qpos);
+    // Program uploads come in through /mail/big (nginx lets big bodies only
+    // in there, after asking /internal/upload-ok); past the door they are
+    // the ordinary /mail and /mail/g/<id>/send posts.
+    if (method == "POST" && (path == "/mail/big" || path.rfind("/mail/big/", 0) == 0)) path = "/mail" + path.substr(9);
     auto qs = parse_qs(rawpath);
-    std::string body;
-    auto sep=req.find("\r\n\r\n");
-    if(sep!=std::string::npos) body=req.substr(sep+4);
-    else { sep=req.find("\n\n"); if(sep!=std::string::npos) body=req.substr(sep+2); }
     std::lock_guard<std::mutex> lock(g_mu);
     auto proto = header_value(req, "X-Forwarded-Proto");
     for (char& c : proto) if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
@@ -7217,6 +7278,10 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         return http_code("404 Not Found", wrap("Not found", user, unread,
             "<div class=\"card\"><h1>Not found</h1><p>That page is not here.</p></div>"));
     };
+
+    // nginx's auth_request for the /mail/big upload door (nginx blocks
+    // /internal/ from outside).
+    if (path == "/internal/upload-ok") return upload_ok_response(req);
 
     if (path.size() > 1 && path.back() == '/') {
         std::string dest = path.substr(0, path.size() - 1);
@@ -8552,6 +8617,14 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         return pg("Search", html);
     }
 
+    // Where nginx sends a /mail/big upload it refused before reading it.
+    if(method=="GET"&&path=="/mail/too-large") {
+        std::string why = "That file is bigger than you can send.";
+        if (!acc || !program_policy_for(user)) why = "Only an admin, or someone an admin allowed, can send programs and large files.";
+        return pg("Too large", "<div class=\"card\"><h1>Not sent</h1><p>" + why + "</p>"
+                  "<p><a href=\"/mail\">Back to mail</a></p></div>");
+    }
+
     if(method=="GET"&&path=="/mail") {
         if(!acc) return need_login();
         g_store.mark_notices_read_of_type(user, "message");
@@ -8589,17 +8662,18 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         if (!found) {
             auto gfound = g_store.find_group_attachment(acc->id, blob_id);
             if (!gfound) return http_raw("404 Not Found", "text/plain; charset=utf-8", "not found");
-            auto gsender = g_store.find_by_id(gfound->sender);
             return mail_attachment_response(blob_id,
                 gfound->attachment_mime.empty() ? "application/octet-stream" : gfound->attachment_mime,
-                gsender ? gsender->username : std::string());
+                attachment_name_key(*gfound));
         }
         const std::string other = (found->from == user) ? found->to : found->from;
         // Same gate as the thread view: attachments do not outlive the
         // friendship they were sent inside of. Do not open stranger DMs.
         if (!g_store.are_friends(user, other) || g_store.is_blocked(user, other) || g_store.is_blocked(other, user))
             return http_raw("404 Not Found", "text/plain; charset=utf-8", "not found");
-        return mail_attachment_response(blob_id, found->attachment_mime.value_or("application/octet-stream"), found->from);
+        // (the same bytes sent twice under two names: the download is named after the message the store finds)
+        return mail_attachment_response(blob_id, found->attachment_mime.value_or("application/octet-stream"),
+                                        attachment_name_key(*found));
     }
 
     if(method=="GET"&&path.rfind("/mail/g/",0)==0) {
@@ -8645,11 +8719,9 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
                 html += "<em class=\"muted\">Message deleted.</em>";
             } else {
                 if (!m.text.empty()) html += html_escape(m.text);
-                if (!m.attachment_blob_id.empty()) {
-                    auto sender = g_store.find_by_id(m.sender);
-                    html += mail_attachment_html(m.attachment_blob_id, m.attachment_mime,
-                                                 sender ? sender->username : std::string(), display_name_for(m.sender), mine);
-                }
+                if (!m.attachment_blob_id.empty())
+                    html += mail_attachment_html(m.attachment_blob_id, m.attachment_mime, attachment_name_key(m),
+                                                 display_name_for(m.sender), mine);
                 if (m.edited_at>0) html += "<span class=\"muted\"> (edited)</span>";
             }
             html += "<span class=\"bubtime\">"+html_escape(fmt_time(m.sent_at))+"</span></div></div>";
@@ -8657,7 +8729,9 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         if (!any) html += "<p class=\"empty\">No messages yet.</p>";
         html += "</div>";
         if (active) {
-            html += "<form method=\"POST\" action=\""+base+"/send\" enctype=\"multipart/form-data\" class=\"mailcomposer\" id=\"mailcomposer\">"
+            const std::string send_to = program_policy_for(user) ? "/mail/big/g/" + std::to_string(conv_id) + "/send"
+                                                                 : base + "/send";
+            html += "<form method=\"POST\" action=\""+send_to+"\" enctype=\"multipart/form-data\" class=\"mailcomposer\" id=\"mailcomposer\">"
                     "<div class=\"row\" style=\"align-items:flex-end;gap:.4rem;flex-wrap:nowrap\">"
                     "<textarea name=\"text\" id=\"mailtext\" maxlength=\"2000\" rows=\"2\" placeholder=\"Message\" "
                     "style=\"flex:1;min-width:0;min-height:44px;resize:vertical\"></textarea>"
@@ -9762,15 +9836,14 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         std::string hdrs = hdr_end==std::string::npos ? req : req.substr(0, hdr_end);
         std::string ctype = header_value(hdrs, "Content-Type");
         std::string to, text;
-        std::optional<std::vector<std::uint8_t>> file;
         if (ctype.find("multipart/form-data") != std::string::npos) {
             to = multipart_field(ctype, body, "to");
             text = multipart_field(ctype, body, "text");
-            file = multipart_file(ctype, body, "attachment");
         } else {
             auto f = parse_form(body);
             to = f["to"]; text = f["text"];
         }
+        const MailUpload up = take_mail_upload(ctype, body); // releases the body
         if(text.size()>2000) text.resize(2000);
         // Do not open stranger DMs: friends-only, both directions unblocked,
         // exactly as before attachments existed.
@@ -9778,11 +9851,22 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             return http_redir("/mail?with="+to+"&err=notfriends");
 
         std::optional<std::string> blob_id, mime;
-        if (file && !file->empty()) {
-            const std::string code = ingest_mail_attachment(user, ctype, body, *file, blob_id, mime);
+        std::string download_name;
+        if (up.file && !up.file->empty()) {
+            const std::string code = ingest_mail_attachment(user, up, blob_id, mime, download_name);
             if (!code.empty()) return http_redir("/mail?with="+to+"&err="+code);
         }
-        if (!text.empty() || blob_id) g_store.add_mail(user,to,text,blob_id,mime);
+        if (!text.empty() || blob_id) {
+            g_store.add_mail(user,to,text,blob_id,mime);
+            if (!download_name.empty()) { // named once the message exists (review 2026-10-27)
+                const auto thread = g_store.mail_with(user, to);
+                for (auto it = thread.rbegin(); it != thread.rend(); ++it)
+                    if (it->from == user && it->attachment_blob_id == blob_id) {
+                        g_store.set_attachment_name(attachment_name_key(*it), download_name);
+                        break;
+                    }
+            }
+        }
         return http_redir("/mail?with="+to);
     }
 
@@ -9894,18 +9978,18 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             std::string hdrs = hdr_end==std::string::npos ? req : req.substr(0, hdr_end);
             std::string ctype = header_value(hdrs, "Content-Type");
             std::string text;
-            std::optional<std::vector<std::uint8_t>> file;
             if (ctype.find("multipart/form-data") != std::string::npos) {
                 text = multipart_field(ctype, body, "text");
-                file = multipart_file(ctype, body, "attachment");
             } else {
                 text = parse_form(body)["text"];
             }
+            const MailUpload up = take_mail_upload(ctype, body); // releases the body
             text = trim_ws(text);
             if (text.size()>2000) text.resize(2000);
             std::optional<std::string> blob_id, mime;
-            if (file && !file->empty()) {
-                const std::string code = ingest_mail_attachment(user, ctype, body, *file, blob_id, mime);
+            std::string download_name;
+            if (up.file && !up.file->empty()) {
+                const std::string code = ingest_mail_attachment(user, up, blob_id, mime, download_name);
                 if (!code.empty()) return http_redir(base+"?err="+code);
             }
             if (!text.empty() || blob_id) {
@@ -9916,6 +10000,8 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
                         msg->attachment_blob_id = *blob_id;
                         msg->attachment_mime = mime.value_or("");
                         g_store.update_message(*msg);
+                        if (!download_name.empty()) // named once the message exists (review 2026-10-27)
+                            g_store.set_attachment_name(attachment_name_key(*msg), download_name);
                     }
                 }
             }
@@ -10243,15 +10329,30 @@ int main() {
         timeval tv{}; tv.tv_sec=30; tv.tv_usec=0;
         setsockopt(c,SOL_SOCKET,SO_RCVTIMEO,&tv,sizeof(tv));
         char ipbuf[INET_ADDRSTRLEN]="0.0.0.0"; inet_ntop(AF_INET,&peer.sin_addr,ipbuf,sizeof(ipbuf));
-        std::string req;
+        std::string req, body;
         bool too_large = false;
-        read_http_request(c, req, request_body_limit, &too_large);
+        std::size_t declared = 0;
+        read_http_request(c, req, body, request_body_limit, &too_large, &declared);
         if (too_large) {
-            // Answer before reading the rest, instead of handling a cut-off upload.
+            // Answer instead of handling a cut-off upload, then read and drop what the client is still sending:
+            // closing with unread bytes resets the connection, which nginx reports as a 502, not this page
+            // (review 2026-10-27). Bounded: the declared length, 2 s per read, 15 s in all.
             std::string resp = http_code("413 Payload Too Large",
                 page_wrap("Too large", nav("",0), "<div class=\"card\"><p>That upload is too large to send. "
                           "<a href=\"/mail\">Back to mail</a></p></div>"));
-            send(c,resp.data(),resp.size(),0); close(c);
+            send(c,resp.data(),resp.size(),0);
+            shutdown(c, SHUT_WR);
+            timeval drain_tv{}; drain_tv.tv_sec = 2;
+            setsockopt(c,SOL_SOCKET,SO_RCVTIMEO,&drain_tv,sizeof(drain_tv));
+            const auto drain_until = std::chrono::steady_clock::now() + std::chrono::seconds(15);
+            char sink[65536];
+            std::size_t drained = 0;
+            while ((declared == 0 || drained < declared) && std::chrono::steady_clock::now() < drain_until) {
+                ssize_t n = recv(c, sink, sizeof(sink), 0);
+                if (n <= 0) break;
+                drained += static_cast<std::size_t>(n);
+            }
+            close(c);
             continue;
         }
 
@@ -10355,7 +10456,7 @@ int main() {
 
         std::string resp;
         try {
-            resp = handle(req,ipbuf);
+            resp = handle(req, ipbuf, std::move(body));
             lglog::access(req, resp);
         } catch (const std::exception& e) {
             lglog::emit("error", e.what());

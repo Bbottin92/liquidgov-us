@@ -186,10 +186,13 @@
 //   prgr   <username> <kinds> <max_bytes> <granted_by> <granted_at>   // an
 //          operator's permission to send programs in mail (ProgramGrant):
 //          kinds is the ProgramKind bitmask. Absent = no programs.
-//   afn    <blob_id> <sender> <name>   // download name of a program attachment,
-//          sanitized to [A-Za-z0-9 ._()+-] before it is stored, so it can
-//          go in a Content-Disposition header (other attachments are still
-//          named from their mime, see MailMessage).
+//   afn    <key> <name>   // download name of a program attachment, per
+//          message (attachment_name_key: "d|from|to|ts|blob" for 1:1 mail,
+//          "g|<message id>" for a group message), sanitized to
+//          [A-Za-z0-9 ._()+-] before it is stored so it can go in a
+//          Content-Disposition header (other attachments are still named
+//          from their mime, see MailMessage). Pruned when the message or
+//          an account in it is gone (at load and on account deletion).
 //
 // NOTE: the loader rejects unknown tags, so a binary older than prgr/afn
 // cannot read a file written once a grant or program attachment exists.
@@ -245,6 +248,14 @@ struct ProgramGrant {
     std::string granted_by;
     std::int64_t granted_at = 0;
 };
+
+// The "afn" key of a message's attachment name: one per message, so the
+// same bytes sent twice keep each send's own name. Usernames can't hold
+// '|' (valid_username), so the key splits back unambiguously.
+inline std::string attachment_name_key(const MailMessage& m) {
+    return "d|" + m.from + "|" + m.to + "|" + std::to_string(m.ts) + "|" + m.attachment_blob_id.value_or("");
+}
+inline std::string attachment_name_key(const Message& m) { return "g|" + std::to_string(m.id); }
 
 // A minimum-trust ladder, most to least open: anyone at all, then anyone
 // signed in, then friends only, then the owner alone. Each level implies
@@ -811,10 +822,10 @@ public:
     void revoke_program_grant(const std::string& username);
     // The download name of a program attachment ("afn" tag), already
     // sanitized by the caller; other attachments keep the mime-derived name.
-    // Keyed by blob and sender: blobs are content-addressed, so two people
-    // sending the same bytes under different names share one blob.
-    void set_attachment_name(const std::string& blob_id, const std::string& sender, const std::string& name);
-    std::optional<std::string> attachment_name(const std::string& blob_id, const std::string& sender) const;
+    // Keyed per message (attachment_name_key below): blobs are content-
+    // addressed, so two sends of the same bytes share one blob.
+    void set_attachment_name(const std::string& key, const std::string& name);
+    std::optional<std::string> attachment_name(const std::string& key) const;
 
     std::optional<Avatar> get(AccountId owner) const override;
     void set(const Avatar& avatar) override;
@@ -919,7 +930,9 @@ private:
     std::set<std::string> locked_;
     std::vector<AuditLogEntry> audit_log_;
     std::map<std::string, ProgramGrant> program_grants_;
-    std::map<std::pair<std::string, std::string>, std::string> attachment_names_; // (blob id, sender) -> name
+    std::map<std::string, std::string> attachment_names_; // attachment_name_key -> download name
+    // Drops names whose message, or an account in it, is gone ("afn").
+    void prune_attachment_names();
     std::map<SessionId, Session> sessions_;
     std::map<AccountId, std::string> blurbs_;
     std::map<std::string, Profile> profiles_;

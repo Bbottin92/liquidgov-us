@@ -15,8 +15,19 @@ FileTransferResult ingest_file(BlobStore& blobs, MalwareScanner& scanner,
     // 2. Content-based detection.
     DetectedType type = detect_type(bytes);
 
+    // Types stored exactly as sent (no re-encode) can carry an archive a
+    // zip / RAR / 7-Zip reader still opens ("%PDF" + a zip, a video with a
+    // zip at the end): such a file is that archive, a program kind
+    // (review 2026-10-27). Images are re-encoded below, which drops it.
+    if (type == DetectedType::Pdf || type == DetectedType::PlainText || type == DetectedType::Mp4 ||
+        type == DetectedType::WebM) {
+        if (DetectedType archive = embedded_archive(bytes); archive != DetectedType::Unknown) type = archive;
+    }
+
     // Programs: the sender's policy decides, then the scan; stored from
     // `bytes` directly (no copy -- these are the biggest uploads there are).
+    // NOTE the scanner on this site only re-checks the type; nothing scans
+    // a program for malware (review 2026-10-27), so the grant is the gate.
     if (const ProgramKindInfo* program = program_kind_of(type)) {
         if (!programs || (programs->kinds & static_cast<std::uint32_t>(program->kind)) == 0) {
             return {FileTransferError::ProgramNotAllowed, std::nullopt, std::nullopt};

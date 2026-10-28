@@ -1455,15 +1455,29 @@ void FileStore::revoke_program_grant(const std::string& username) {
     if (program_grants_.erase(username)) flush();
 }
 
-void FileStore::set_attachment_name(const std::string& blob_id, const std::string& sender, const std::string& name) {
-    attachment_names_[{blob_id, sender}] = name;
+void FileStore::set_attachment_name(const std::string& key, const std::string& name) {
+    attachment_names_[key] = name;
     flush();
 }
 
-std::optional<std::string> FileStore::attachment_name(const std::string& blob_id, const std::string& sender) const {
-    auto it = attachment_names_.find({blob_id, sender});
+std::optional<std::string> FileStore::attachment_name(const std::string& key) const {
+    auto it = attachment_names_.find(key);
     if (it == attachment_names_.end()) return std::nullopt;
     return it->second;
+}
+
+// A name lives as long as its message: 1:1 mail still in mail_ (account
+// deletion relabels from/to, so the key stops matching), a group message
+// not deleted for everyone whose sender still exists.
+void FileStore::prune_attachment_names() {
+    std::set<std::string> live;
+    for (const auto& m : mail_)
+        if (m.attachment_blob_id) live.insert(attachment_name_key(m));
+    for (const auto& [id, m] : messages_)
+        if (!m.attachment_blob_id.empty() && m.deletion != DeletionState::DeletedForEveryone && accounts_.count(m.sender))
+            live.insert(attachment_name_key(m));
+    for (auto it = attachment_names_.begin(); it != attachment_names_.end();)
+        it = live.count(it->first) ? std::next(it) : attachment_names_.erase(it);
 }
 
 bool FileStore::delete_account(AccountId id) {
@@ -1550,6 +1564,7 @@ bool FileStore::delete_account(AccountId id) {
     jukebox_relay_.erase(name);
     by_username_.erase(name);
     accounts_.erase(it);
+    prune_attachment_names(); // the file names they sent or received (may hold personal details)
     flush();
     return true;
 }
@@ -2090,8 +2105,8 @@ void FileStore::load() {
             g.granted_at = parse_i64(f[5], "prgr granted_at");
             if (!g.username.empty() && g.kinds != 0) program_grants_[g.username] = g;
         } else if (tag == "afn") {
-            if (f.size() != 4) throw std::runtime_error("LGP1: bad afn record");
-            attachment_names_[{pct_decode(f[1]), pct_decode(f[2])}] = pct_decode(f[3]);
+            if (f.size() != 3) throw std::runtime_error("LGP1: bad afn record");
+            attachment_names_[pct_decode(f[1])] = pct_decode(f[2]);
         } else if (tag == "mlr") {
             if (f.size() != 4) throw std::runtime_error("LGP1: bad mlr record");
             const std::string user = pct_decode(f[1]);
@@ -2114,6 +2129,7 @@ void FileStore::load() {
             throw std::runtime_error("LGP1: unknown record type '" + tag + "'");
         }
     }
+    prune_attachment_names(); // names whose mail was purged since the last run
     for (auto& p : posts_) {
         auto rit = pending_reposts.find(p.id);
         if (rit != pending_reposts.end()) {
@@ -2411,7 +2427,7 @@ void FileStore::flush() {
              << pct_encode(g.granted_by) << "\t" << g.granted_at << "\n";
     }
     for (const auto& [key, name] : attachment_names_) {
-        body << "afn\t" << pct_encode(key.first) << "\t" << pct_encode(key.second) << "\t" << pct_encode(name) << "\n";
+        body << "afn\t" << pct_encode(key) << "\t" << pct_encode(name) << "\n";
     }
     // Conversations/messages are never pruned when an account is deleted —
     // same "keep the row, relabel at render time" choice as mail_/posts_

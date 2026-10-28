@@ -53,9 +53,28 @@ BlobId FilesystemBlobStore::put(const std::vector<std::uint8_t>& bytes,
     if (it == meta_.end()) {
         fs::path p = path_for(id);
         fs::create_directories(p.parent_path());
-        std::ofstream out(p, std::ios::binary);
-        out.write(reinterpret_cast<const char*>(bytes.data()),
-                   static_cast<std::streamsize>(bytes.size()));
+        // Written to a temp file, checked, then renamed: on a full disk the
+        // write fails and nothing is recorded, instead of a cut-off blob
+        // kept as good (review 2026-10-27). The caller's request fails.
+        fs::path tmp = p;
+        tmp += ".part";
+        {
+            std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
+            out.write(reinterpret_cast<const char*>(bytes.data()),
+                       static_cast<std::streamsize>(bytes.size()));
+            out.close();
+            if (!out) {
+                std::error_code ec;
+                fs::remove(tmp, ec);
+                throw std::runtime_error("blob write failed: " + p.string());
+            }
+        }
+        std::error_code rename_ec;
+        fs::rename(tmp, p, rename_ec);
+        if (rename_ec) {
+            fs::remove(tmp, rename_ec);
+            throw std::runtime_error("blob rename failed: " + p.string());
+        }
 
         BlobMeta m;
         m.id = id;

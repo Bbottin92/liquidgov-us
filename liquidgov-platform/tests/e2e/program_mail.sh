@@ -36,12 +36,18 @@ with zipfile.ZipFile(f"{w}/two_mb.zip", "w", zipfile.ZIP_STORED) as z:
     z.writestr("x.bin", os.urandom(2 * 1024 * 1024))
 pe = bytearray(512); pe[0:2] = b"MZ"; pe[0x3C] = 0x80; pe[0x80:0x84] = b"PE\0\0"
 open(f"{w}/tool.exe", "wb").write(pe)
+open(f"{w}/tool.elf", "wb").write(b"\x7fELF" + bytes(60))
 open(f"{w}/note.txt", "w").write("plain text still works\n")
 EOF
 
-send() { # session to file name -> "code location"
-    curl -s -o $W/resp.html -w '%{http_code} %{redirect_url}' -b "lg_session=$1" \
-        -F "to=$2" -F "text=see attached" -F "attachment=@$3;filename=$4" $URL/mail
+send() { # session to file name [path, default /mail] [extra curl args...] -> "code location"
+    local s=$1 to=$2 file=$3 name=$4 path=${5:-/mail}; shift 5 2>/dev/null || shift $#
+    curl -s -o $W/resp.html -w '%{http_code} %{redirect_url}' -b "lg_session=$s" "$@" \
+        -F "to=$to" -F "text=see attached" -F "attachment=@$file;filename=$name" $URL$path
+}
+upload_ok() { # session uri length -> the app's answer to nginx's auth_request
+    curl -s -o /dev/null -w '%{http_code}' -b "lg_session=$1" -H "X-Original-URI: $2" -H "X-Original-Length: $3" \
+        $URL/internal/upload-ok
 }
 grant() { # admin-session target kinds... max_mb
     local target=$1 mb=$2; shift 2
@@ -70,12 +76,38 @@ check "the download is typed as a zip" 'grep -qi "Content-Type: application/zip"
 code=$(curl -s -o /dev/null -w '%{http_code}' -b "lg_session=$STRANGER" "$URL$blob")
 check "someone outside the conversation can't download it" '[[ "$code" == 404 ]]' "$code"
 
-r=$(send $ADMIN pal $W/big.zip "Big.zip")
-check "the admin can send 30 MB (over the old 25 MB wall)" '[[ "$r" != *"err="* && "$r" == 30* ]]' "$r"
+curl -s -b "lg_session=$ADMIN" "$URL/mail?with=pal" > $W/admin_compose.html
+check "a program sender's composer posts to the big-upload door" 'grep -q "action=\"/mail/big\"" $W/admin_compose.html' "no /mail/big"
+check "a member's composer posts to plain /mail" 'grep -q "action=\"/mail\"" $W/pal_thread.html' "no /mail"
 
-code=$(send $PAL Bbottin $W/big.zip "Big.zip" | cut -d' ' -f1)
-check "a member's 30 MB upload is refused before it is read (413)" '[[ "$code" == 413 ]]' "$code"
+code=$(send $ADMIN pal $W/big.zip "Big.zip" | cut -d' ' -f1)
+check "30 MB through the ordinary /mail is refused, even for the admin (413)" '[[ "$code" == 413 ]]' "$code"
+r=$(send $ADMIN pal $W/big.zip "Big.zip" /mail/big)
+check "the admin can send 30 MB through /mail/big" '[[ "$r" != *"err="* && "$r" == 30* ]]' "$r"
+
+code=$(send $PAL Bbottin $W/big.zip "Big.zip" /mail/big | cut -d' ' -f1)
+check "a member's 30 MB upload to /mail/big is refused before it is read (413)" '[[ "$code" == 413 ]]' "$code"
+code=$(send $PAL Bbottin $W/big.zip "Big.zip" /mail/big -H "Expect:" | cut -d' ' -f1)
+check "...also when the client sends the body at once (no Expect, like nginx): a 413, not a reset" '[[ "$code" == 413 ]]' "$code"
 check "the server is still up after a 413" 'curl -s -o /dev/null $URL/' "down"
+
+check "nginx's check: the admin may upload 30 MB to /mail/big" '[[ $(upload_ok $ADMIN /mail/big 31457280) == 204 ]]' "no"
+check "nginx's check: ...and to a group's big door" '[[ $(upload_ok $ADMIN /mail/big/g/7/send 31457280) == 204 ]]' "no"
+check "nginx's check: not over the 100 MB ceiling" '[[ $(upload_ok $ADMIN /mail/big 209715200) == 403 ]]' "yes"
+check "nginx's check: not to any other path" '[[ $(upload_ok $ADMIN /feed 31457280) == 403 ]]' "yes"
+check "nginx's check: a member without a grant may not" '[[ $(upload_ok $PAL /mail/big 31457280) == 403 ]]' "yes"
+check "nginx's check: nobody signed out" '[[ $(upload_ok nosuchsession /mail/big 1000) == 403 ]]' "yes"
+check "the refused-upload page says why" 'curl -s -b "lg_session=$PAL" $URL/mail/too-large | grep -q "Only an admin"' "no page"
+
+curl -s -b "lg_session=$PAL" "$URL/mail?with=Bbottin" > $W/pal_thread2.html
+bigblob=$(grep -o '/mail/attachment/[0-9a-f]*' $W/pal_thread2.html | tail -1)
+code=$(curl -s -o /dev/null -w '%{http_code}' -b "lg_session=$PAL" "$URL$bigblob")
+check "without the nginx handoff a 30 MB download is refused (503), not held in memory" '[[ "$code" == 503 ]]' "$code"
+
+r=$(send $ADMIN pal $W/tool.elf "invoice.pdf")
+check "the admin can send a Linux program" '[[ "$r" != *"err="* ]]' "$r"
+curl -s -b "lg_session=$PAL" "$URL/mail?with=Bbottin" > $W/pal_thread3.html
+check "a Linux program can't pose as a PDF: it is named .bin" 'grep -q "invoice.pdf.bin" $W/pal_thread3.html' "no .bin"
 
 check "the admin grants pal zips up to 1 MB" '[[ $(grant pal 1 zip) == 30* ]]' "post failed"
 curl -s -b "lg_session=$ADMIN" "$URL/admin/accounts" > $W/admin.html

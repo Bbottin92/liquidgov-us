@@ -99,7 +99,8 @@ const std::vector<ProgramKindInfo> kProgramKinds = {
     {ProgramKind::WindowsExe, "exe", "Windows program (.exe)", ".exe", "application/vnd.microsoft.portable-executable"},
     {ProgramKind::WindowsMsi, "msi", "Windows installer (.msi)", ".msi", "application/x-msi"},
     {ProgramKind::AndroidApk, "apk", "Android app (.apk)", ".apk", "application/vnd.android.package-archive"},
-    {ProgramKind::LinuxElf, "elf", "Linux program (no extension)", "", "application/x-elf"},
+    // .bin, not none: with no forced extension, a Linux program could download as "invoice.pdf" (review 2026-10-27)
+    {ProgramKind::LinuxElf, "elf", "Linux program (.bin)", ".bin", "application/x-elf"},
 };
 
 } // namespace
@@ -129,25 +130,75 @@ const ProgramKindInfo* program_kind_by_mime(const std::string& mime) {
     return nullptr;
 }
 
-DetectedType detect_type(const std::vector<std::uint8_t>& bytes) {
-    if (starts_with(bytes, {0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A})) return DetectedType::Png;
-    if (starts_with(bytes, {0xFF, 0xD8, 0xFF})) return DetectedType::Jpeg;
-    if (starts_with(bytes, {'G', 'I', 'F', '8'})) return DetectedType::Gif;
-    // ISO base media (MP4/MOV/M4V): a 4-byte box-size field then the
-    // literal box type "ftyp" at offset 4 -- true for every brand
-    // (isom/mp42/qt  /avc1/...), so this checks the box type only, not
-    // any specific brand string.
-    if (bytes.size() >= 8 && bytes[4] == 'f' && bytes[5] == 't' && bytes[6] == 'y' && bytes[7] == 'p')
-        return DetectedType::Mp4;
-    if (starts_with(bytes, {0x1A, 0x45, 0xDF, 0xA3})) return DetectedType::WebM;
-    // Programs are matched on their leading magic before the PDF search
-    // below, which looks anywhere in the first 1KB: an .exe or archive
-    // with "%PDF" in its header must not pass as a PDF.
+namespace {
+
+// A program's own leading magic (not an embedded one), or Unknown. Checked
+// before every other type (review 2026-10-27): an .exe whose DOS header has
+// "ftyp" at byte 4 is still an .exe, and Windows runs it as one.
+DetectedType program_magic(const std::vector<std::uint8_t>& bytes) {
     if (starts_with(bytes, {'7', 'z', 0xBC, 0xAF, 0x27, 0x1C})) return DetectedType::SevenZip;
     if (starts_with(bytes, {'R', 'a', 'r', '!', 0x1A, 0x07})) return DetectedType::Rar;
     if (starts_with(bytes, {0x7F, 'E', 'L', 'F'})) return DetectedType::LinuxElf;
     if (is_pe_executable(bytes)) return DetectedType::WindowsExe;
     if (is_msi(bytes)) return DetectedType::WindowsMsi;
+    return DetectedType::Unknown;
+}
+
+// An OOXML candidate: a zip with [Content_Types].xml. That alone proves
+// little (review 2026-10-27: an empty one plus payload.exe passed as a Word
+// file), so inspect_ooxml_container also refuses any entry that is a
+// program or archive by content, or a script / executable by name.
+// Requiring a main part (word/document.xml ...) was considered: an empty
+// one is as easy to add, and the committed fixtures don't have one.
+bool is_ooxml_package(mz_zip_archive& zip) {
+    return zip_has(zip, "[Content_Types].xml");
+}
+
+// Entry names a document never needs and Windows runs or opens as code.
+bool runnable_name(const std::string& lower_name) {
+    static const char* kRunnable[] = {".exe", ".dll", ".com", ".scr", ".msi", ".msp", ".bat", ".cmd", ".ps1", ".psm1",
+                                      ".vbs", ".vbe", ".js", ".jse", ".wsf", ".wsh", ".hta", ".jar", ".lnk", ".reg",
+                                      ".cpl", ".pif", ".apk", ".sh", ".zip", ".7z", ".rar"};
+    for (const char* ext : kRunnable) {
+        const std::size_t n = std::strlen(ext);
+        if (lower_name.size() >= n && lower_name.compare(lower_name.size() - n, n, ext) == 0) return true;
+    }
+    return false;
+}
+
+} // namespace
+
+DetectedType embedded_archive(const std::vector<std::uint8_t>& bytes) {
+    // Zip readers find the central directory from the end, so "%PDF" plus
+    // a zip opens as a zip; RAR and 7-Zip readers look for their signature
+    // anywhere in front.
+    mz_zip_archive zip{};
+    if (mz_zip_reader_init_mem(&zip, bytes.data(), bytes.size(), 0)) {
+        mz_zip_reader_end(&zip);
+        return DetectedType::Zip;
+    }
+    // miniz refuses a zip with data in front (its offsets are off by the
+    // prefix), but 7-Zip and unzip open it: look for the end-of-central-
+    // directory record itself, in the last 64 KB, whose comment length
+    // reaches exactly to the end of the file (a chance match is ~never).
+    if (bytes.size() >= 22) {
+        const std::size_t lowest = bytes.size() > 65535 + 22 ? bytes.size() - 65535 - 22 : 0;
+        for (std::size_t p = bytes.size() - 22 + 1; p-- > lowest;) {
+            if (bytes[p] == 'P' && bytes[p + 1] == 'K' && bytes[p + 2] == 0x05 && bytes[p + 3] == 0x06) {
+                const std::size_t comment = bytes[p + 20] | (static_cast<std::size_t>(bytes[p + 21]) << 8);
+                if (p + 22 + comment == bytes.size()) return DetectedType::Zip;
+            }
+        }
+    }
+    static const std::uint8_t kSevenZip[6] = {'7', 'z', 0xBC, 0xAF, 0x27, 0x1C};
+    static const std::uint8_t kRar[6] = {'R', 'a', 'r', '!', 0x1A, 0x07};
+    if (std::search(bytes.begin(), bytes.end(), kSevenZip, kSevenZip + 6) != bytes.end()) return DetectedType::SevenZip;
+    if (std::search(bytes.begin(), bytes.end(), kRar, kRar + 6) != bytes.end()) return DetectedType::Rar;
+    return DetectedType::Unknown;
+}
+
+DetectedType detect_type(const std::vector<std::uint8_t>& bytes) {
+    if (DetectedType program = program_magic(bytes); program != DetectedType::Unknown) return program;
     if (starts_with(bytes, {'P', 'K', 0x03, 0x04})) {
         // Prefix match alone is not proof — verify with a real zip
         // reader that actually parses the central directory (located at
@@ -157,13 +208,29 @@ DetectedType detect_type(const std::vector<std::uint8_t>& bytes) {
         mz_zip_archive zip{};
         if (mz_zip_reader_init_mem(&zip, bytes.data(), bytes.size(), 0)) {
             DetectedType type = DetectedType::Zip;
-            if (zip_has(zip, "[Content_Types].xml")) type = DetectedType::OoxmlZipContainer;
+            if (is_ooxml_package(zip)) type = DetectedType::OoxmlZipContainer;
             else if (zip_has(zip, "AndroidManifest.xml") && zip_has(zip, "classes.dex")) type = DetectedType::AndroidApk;
             mz_zip_reader_end(&zip);
             return type;
         }
         return DetectedType::Unknown; // looked like a zip, did not actually parse as one
     }
+    if (starts_with(bytes, {0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A})) return DetectedType::Png;
+    if (starts_with(bytes, {0xFF, 0xD8, 0xFF})) return DetectedType::Jpeg;
+    if (starts_with(bytes, {'G', 'I', 'F', '8'})) return DetectedType::Gif;
+    // ISO base media (MP4/MOV/M4V): a 4-byte box-size field then the
+    // literal box type "ftyp" at offset 4 -- true for every brand
+    // (isom/mp42/qt  /avc1/...), so the brand itself isn't checked, only
+    // that it is four printable characters and the first box has a sane
+    // size (8 bytes to 4 KB).
+    if (bytes.size() >= 12 && bytes[4] == 'f' && bytes[5] == 't' && bytes[6] == 'y' && bytes[7] == 'p') {
+        const std::uint32_t box = (static_cast<std::uint32_t>(bytes[0]) << 24) | (static_cast<std::uint32_t>(bytes[1]) << 16) |
+                                  (static_cast<std::uint32_t>(bytes[2]) << 8) | bytes[3];
+        bool brand_ok = true;
+        for (std::size_t i = 8; i < 12; ++i) brand_ok = brand_ok && bytes[i] >= 0x20 && bytes[i] <= 0x7E;
+        return box >= 8 && box <= 4096 && box <= bytes.size() && brand_ok ? DetectedType::Mp4 : DetectedType::Unknown;
+    }
+    if (starts_with(bytes, {0x1A, 0x45, 0xDF, 0xA3})) return DetectedType::WebM;
     // PDF magic is allowed within the first 1KB, not only at offset 0 —
     // some real-world PDFs are preceded by junk bytes some tools insert.
     {
@@ -207,6 +274,12 @@ OoxmlInspection inspect_ooxml_container(const std::vector<std::uint8_t>& zip_byt
         // Inspect declarative XML parts (content types, relationships)
         // for VBA/OLE/ActiveX/remote-template declarations.
         std::string lower_name = to_lower(entry_name);
+        if (runnable_name(lower_name)) {
+            result.has_macro_content = true;
+            result.rejection_reason = "runnable file at " + entry_name;
+            mz_zip_reader_end(&zip);
+            return result;
+        }
         bool is_declaration_part =
             lower_name.find("[content_types].xml") != std::string::npos ||
             lower_name.find(".rels") != std::string::npos;
@@ -227,23 +300,29 @@ OoxmlInspection inspect_ooxml_container(const std::vector<std::uint8_t>& zip_byt
 
         // Content-based check independent of the entry's declared name:
         // does this member's own data start with the OLE compound-file
-        // signature? This is where a renamed vbaProject.bin or
-        // oleObjectN.bin actually lives regardless of what the package
-        // calls it. extract_to_mem requires a buffer sized for the full
-        // entry, not a partial read, so this extracts the whole (small)
-        // member and checks its head rather than trying to read just 8
-        // bytes directly.
-        if (stat.m_uncomp_size >= 8 && stat.m_uncomp_size < 20 * 1024 * 1024) {
-            std::vector<char> full(stat.m_uncomp_size);
-            if (mz_zip_reader_extract_to_mem(&zip, i, full.data(), full.size(), 0)) {
-                static const unsigned char kOleSignature[] = {0xD0, 0xCF, 0x11, 0xE0,
-                                                                0xA1, 0xB1, 0x1A, 0xE1};
-                if (std::memcmp(full.data(), kOleSignature, 8) == 0) {
-                    result.has_macro_content = true;
-                    result.rejection_reason = "OLE compound file at " + entry_name;
-                    mz_zip_reader_end(&zip);
-                    return result;
-                }
+        // signature (where a renamed vbaProject.bin or oleObjectN.bin
+        // actually lives), or with a program or archive (review
+        // 2026-10-27: a document must not carry an .exe or a zip)? Only
+        // the first 4 KB of each entry is decompressed, whatever its
+        // size, so a large entry is checked too and a zip bomb costs 4 KB.
+        if (stat.m_uncomp_size >= 2) {
+            std::vector<std::uint8_t> head(static_cast<std::size_t>(std::min<mz_uint64>(stat.m_uncomp_size, 4096)));
+            std::size_t got = 0;
+            if (mz_zip_reader_extract_iter_state* it = mz_zip_reader_extract_iter_new(&zip, i, 0)) {
+                got = mz_zip_reader_extract_iter_read(it, head.data(), head.size());
+                mz_zip_reader_extract_iter_free(it);
+            }
+            head.resize(got);
+            static const std::uint8_t kOleSignature[] = {0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1};
+            const char* why = nullptr;
+            if (head.size() >= 8 && std::memcmp(head.data(), kOleSignature, 8) == 0) why = "OLE compound file at ";
+            else if (program_magic(head) != DetectedType::Unknown || starts_with(head, {'M', 'Z'})) why = "program at ";
+            else if (starts_with(head, {'P', 'K', 0x03, 0x04})) why = "archive at ";
+            if (why) {
+                result.has_macro_content = true;
+                result.rejection_reason = why + entry_name;
+                mz_zip_reader_end(&zip);
+                return result;
             }
         }
     }

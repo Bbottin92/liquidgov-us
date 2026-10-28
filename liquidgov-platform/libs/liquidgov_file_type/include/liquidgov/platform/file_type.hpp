@@ -74,7 +74,16 @@ const std::vector<ProgramKindInfo>& program_kinds();
 const ProgramKindInfo* program_kind_of(DetectedType type);
 const ProgramKindInfo* program_kind_by_mime(const std::string& mime);
 
+// Program magic (exe, ELF, 7z, RAR, msi, zip/apk) is checked before every
+// other type, so a program can't pass as a video or an image.
 DetectedType detect_type(const std::vector<std::uint8_t>& bytes);
+
+// An archive hidden inside a file that is otherwise stored as-is (PDF,
+// text, video): a zip central directory that parses (zip readers find it
+// from the end), or a 7-Zip / RAR signature anywhere (their readers skip
+// what's in front). Returns Zip / SevenZip / Rar, or Unknown when clean.
+// ingest_file treats such a file as that program kind.
+DetectedType embedded_archive(const std::vector<std::uint8_t>& bytes);
 
 struct OoxmlInspection {
     bool is_valid_zip = false;

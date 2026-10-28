@@ -164,6 +164,61 @@ int main() {
     assert(ingest_file(blobs, dirty, caps, plain_zip, &everything).error == FileTransferError::FailedScan);
     std::cout << "the malware scan still runs on programs\n";
 
+    // The fresh review's bypasses (2026-10-27): each would have let anyone
+    // send a program that a zip / RAR reader or Windows still opens.
+    {
+        // a zip with an (empty) [Content_Types].xml and an .exe passed as a Word file
+        const auto fake_doc = build_zip({{"[Content_Types].xml", ""}, {"payload.exe", std::string(pe_file().begin(), pe_file().end())}});
+        assert(ingest_file(blobs, clean, caps, fake_doc).error == FileTransferError::ActiveContentBlocked);
+        const auto doc_with_script = build_zip({{"[Content_Types].xml", "<Types/>"}, {"word/document.xml", "<w/>"},
+                                               {"word/media/run.js", "WScript.Echo(1)"}});
+        assert(ingest_file(blobs, clean, caps, doc_with_script).error == FileTransferError::ActiveContentBlocked);
+        const auto doc_with_zip = build_zip({{"[Content_Types].xml", "<Types/>"}, {"word/document.xml", "<w/>"},
+                                            {"word/media/image1.png", std::string(plain_zip.begin(), plain_zip.end())}});
+        assert(ingest_file(blobs, clean, caps, doc_with_zip).error == FileTransferError::ActiveContentBlocked);
+        // a large entry is checked too (the old OLE check skipped entries of 20 MB or more)
+        std::string big_mz(21 * 1024 * 1024, 'x');
+        big_mz[0] = 'M'; big_mz[1] = 'Z';
+        const auto doc_with_big_exe = build_zip({{"[Content_Types].xml", "<Types/>"}, {"word/media/big.bin", big_mz}});
+        assert(ingest_file(blobs, clean, caps, doc_with_big_exe).error == FileTransferError::ActiveContentBlocked);
+
+        // an .exe with "ftyp" at bytes 4..7 passed as an MP4
+        auto exe_as_mp4 = pe_file();
+        std::memcpy(exe_as_mp4.data() + 4, "ftyp", 4);
+        assert(detect_type(exe_as_mp4) == DetectedType::WindowsExe);
+        assert(ingest_file(blobs, clean, caps, exe_as_mp4).error == FileTransferError::ProgramNotAllowed);
+
+        // "%PDF" in front of a zip passed as a PDF and still opened as a zip
+        std::vector<std::uint8_t> pdf_zip = {'%', 'P', 'D', 'F', '-', '1', '.', '4', '\n'};
+        pdf_zip.insert(pdf_zip.end(), plain_zip.begin(), plain_zip.end());
+        assert(ingest_file(blobs, clean, caps, pdf_zip).error == FileTransferError::ProgramNotAllowed);
+        // and RAR / 7-Zip signatures behind a PDF
+        std::vector<std::uint8_t> pdf_rar = {'%', 'P', 'D', 'F', '-', '1', '.', '4', '\n', 'R', 'a', 'r', '!', 0x1A, 0x07, 0x00};
+        assert(ingest_file(blobs, clean, caps, pdf_rar).error == FileTransferError::ProgramNotAllowed);
+
+        // a real-looking MP4 header with a zip after it
+        std::vector<std::uint8_t> mp4_zip = {0, 0, 0, 0x18, 'f', 't', 'y', 'p', 'i', 's', 'o', 'm', 0, 0, 2, 0,
+                                             'i', 's', 'o', 'm', 'm', 'p', '4', '1'};
+        assert(detect_type(mp4_zip) == DetectedType::Mp4);
+        mp4_zip.insert(mp4_zip.end(), plain_zip.begin(), plain_zip.end());
+        assert(ingest_file(blobs, clean, caps, mp4_zip).error == FileTransferError::ProgramNotAllowed);
+        // an "ftyp" box with a silly size is not an MP4
+        std::vector<std::uint8_t> bad_box = {0x7F, 0, 0, 0, 'f', 't', 'y', 'p', 'i', 's', 'o', 'm'};
+        assert(detect_type(bad_box) != DetectedType::Mp4);
+
+        // still fine: a plain PDF and a plain MP4 header, from anyone
+        std::vector<std::uint8_t> pdf = {'%', 'P', 'D', 'F', '-', '1', '.', '4', '\n', '%', '%', 'E', 'O', 'F', '\n'};
+        assert(ingest_file(blobs, clean, caps, pdf).error == FileTransferError::None);
+        std::vector<std::uint8_t> mp4 = {0, 0, 0, 0x18, 'f', 't', 'y', 'p', 'i', 's', 'o', 'm', 0, 0, 2, 0,
+                                         'i', 's', 'o', 'm', 'm', 'p', '4', '1'};
+        assert(ingest_file(blobs, clean, caps, mp4).error == FileTransferError::None);
+        // and a granted sender's program inside a PDF is stored as the archive it is
+        auto r = ingest_file(blobs, clean, caps, pdf_zip, &zip_only);
+        assert(r.error == FileTransferError::None && r.stored_mime_type == "application/zip");
+    }
+    std::cout << "review bypasses closed: fake Office zips, scripts / programs / archives inside documents, "
+                 "exe-as-MP4, archives behind a PDF or video\n";
+
     // A policy never lifts the non-program caps or the protocol ceiling.
     std::vector<std::uint8_t> huge(caps.protocol_max_bytes + 1, 0x41);
     assert(ingest_file(blobs, clean, caps, huge, &everything).error == FileTransferError::TooLarge);
@@ -184,17 +239,31 @@ int main() {
         g.granted_by = "Bbottin";
         g.granted_at = 1793534400;
         store.set_program_grant(g);
-        store.set_attachment_name("abc123", "Bbottin", "Jammo 1.0.zip");
-        store.set_attachment_name("abc123", "friend", "same bytes.zip"); // same blob, another sender
+
+        // the same bytes sent twice under two names keep both (names are per message)
+        assert(create_account(store, breach, "pal", "correct-horse-battery-staple", "+15551213").error == AuthError::None);
+        store.add_mail("friend", "pal", "", std::string("abc123"), std::string("application/zip"));
+        store.add_mail("pal", "friend", "", std::string("abc123"), std::string("application/zip"));
+        const auto thread = store.mail_with("friend", "pal");
+        assert(thread.size() == 2);
+        for (const auto& m : thread)
+            store.set_attachment_name(attachment_name_key(m), m.from == "friend" ? "Jammo 1.0.zip" : "same bytes.zip");
+        store.set_attachment_name("d|ghost|nobody|1|abc123", "orphan.zip"); // no such message
     }
     {
         FileStore store(path); // reload from disk
         auto g = store.program_grant("friend");
         assert(g && g->kinds == (bit(ProgramKind::Zip) | bit(ProgramKind::WindowsExe)));
         assert(g->max_bytes == 80ull * 1024 * 1024 && g->granted_by == "Bbottin" && g->granted_at == 1793534400);
-        assert(store.attachment_name("abc123", "Bbottin") == std::optional<std::string>("Jammo 1.0.zip"));
-        assert(store.attachment_name("abc123", "friend") == std::optional<std::string>("same bytes.zip"));
-        assert(!store.attachment_name("abc123", "nobody"));
+        const auto thread = store.mail_with("friend", "pal");
+        for (const auto& m : thread)
+            assert(store.attachment_name(attachment_name_key(m)) ==
+                   std::optional<std::string>(m.from == "friend" ? "Jammo 1.0.zip" : "same bytes.zip"));
+        assert(!store.attachment_name("d|ghost|nobody|1|abc123")); // pruned at load
+        // deleting an account drops the names of the mail it sent or received
+        auto pal = store.find_by_username("pal");
+        assert(pal && store.delete_account(pal->id));
+        for (const auto& m : thread) assert(!store.attachment_name(attachment_name_key(m)));
 
         ProgramGrant none;
         none.username = "friend";

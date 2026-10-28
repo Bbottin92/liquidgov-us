@@ -79,6 +79,7 @@ check "someone outside the conversation can't download it" '[[ "$code" == 404 ]]
 curl -s -b "lg_session=$ADMIN" "$URL/mail?with=pal" > $W/admin_compose.html
 check "a program sender's composer posts to plain /mail..." 'grep -q "action=\"/mail\"" $W/admin_compose.html' "no /mail"
 check "...and switches to the big-upload door only for a big file" 'grep -q "/mail/big" $W/admin_compose.html' "no switch"
+check "the composer shows the attached file and says Sending (2026-10-27: nothing showed)" 'grep -q "mailfile" $W/admin_compose.html && grep -q "Sending..." $W/admin_compose.html && grep -q "Attached: " $W/admin_compose.html' "missing"
 check "a member's composer posts to plain /mail, with no big door" 'grep -q "action=\"/mail\"" $W/pal_thread.html && ! grep -q "/mail/big" $W/pal_thread.html' "wrong"
 
 code=$(send $ADMIN pal $W/big.zip "Big.zip" | cut -d' ' -f1)

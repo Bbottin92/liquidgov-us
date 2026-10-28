@@ -2297,20 +2297,30 @@ std::string mail_attachment_error_html(const std::string& e, const std::string& 
 std::string mail_file_input_html(const std::string& user, const std::string& big_action = {}) {
     std::string accept = "image/png,image/jpeg,image/gif,application/pdf,text/plain,.docx,.xlsx,.pptx";
     auto policy = program_policy_for(user);
-    std::string onchange;
+    // The picked file's name and size show under the composer (.mailfile): the paperclip alone gave no sign a file
+    // was attached (2026-10-27).
+    std::string onchange = " onchange=\"var f=this.files&amp;&amp;this.files[0],F=this.form,s=F.querySelector('.mailfile');"
+                           "if(s)s.textContent=f?'Attached: '+f.name+' ('+(f.size/1048576).toFixed(1)+' MB)':'';";
     if (policy) {
         for (const auto& k : program_kinds())
             if ((policy->kinds & static_cast<std::uint32_t>(k.kind)) && k.extension[0]) accept += std::string(",") + k.extension;
         if (!big_action.empty()) {
             const std::size_t ordinary = kMaxBody - kMultipartRoom; // what fits through plain /mail with its form fields
-            onchange = " onchange=\"var f=this.files&amp;&amp;this.files[0],F=this.form;"
-                       "if(!F.dataset.small)F.dataset.small=F.getAttribute('action');"
-                       "F.setAttribute('action',f&amp;&amp;f.size&gt;" + std::to_string(ordinary) +
-                       "?'" + big_action + "':F.dataset.small);\"";
+            onchange += "if(!F.dataset.small)F.dataset.small=F.getAttribute('action');"
+                        "F.setAttribute('action',f&amp;&amp;f.size&gt;" + std::to_string(ordinary) +
+                        "?'" + big_action + "':F.dataset.small);";
         }
     }
-    return "<input type=\"file\" name=\"attachment\" accept=\"" + accept + "\"" + onchange + ">";
+    return "<input type=\"file\" name=\"attachment\" accept=\"" + accept + "\"" + onchange + "\">";
 }
+
+// The composer form's onsubmit: Send says "Sending..." and a second press does nothing, on the full mail page
+// (the browser shows the upload's progress) and in the pop-up (which also counts the percent, see its XHR).
+const char* const kComposerOnSubmit =
+    " onsubmit=\"if(this.dataset.sent)return false;this.dataset.sent='1';"
+    "var b=this.querySelector('button[type=submit]');if(b)b.textContent='Sending...';\"";
+// Where the picked file's name shows (filled by the file input's onchange).
+const char* const kComposerFileLine = "<p class=\"muted mailfile\" style=\"margin:.3rem 0 0\"></p>";
 
 std::string mail_program_note_html(const std::string& user) {
     auto policy = program_policy_for(user);
@@ -2805,7 +2815,8 @@ std::string mail_thread_html(const std::string& user, const std::string& other,
         html += "<span class=\"bubtime\">"+html_escape(fmt_time(m.ts))+"</span></div></div>";
     }
     html += "</div>"
-        "<form method=\"POST\" action=\"/mail\" enctype=\"multipart/form-data\" class=\"mailcomposer\" id=\"mailcomposer\">"
+        "<form method=\"POST\" action=\"/mail\" enctype=\"multipart/form-data\" class=\"mailcomposer\" id=\"mailcomposer\""
+        + std::string(kComposerOnSubmit) + ">"
         "<input type=\"hidden\" name=\"to\" value=\""+html_escape(other)+"\">"
         "<div class=\"row\" style=\"align-items:flex-end;gap:.4rem;flex-wrap:nowrap\">"
         "<textarea name=\"text\" id=\"mailtext\" maxlength=\"2000\" rows=\"2\" placeholder=\"Message\" "
@@ -2814,6 +2825,7 @@ std::string mail_thread_html(const std::string& user, const std::string& other,
         + mail_file_input_html(user, "/mail/big") +
         "<span aria-hidden=\"true\">\xF0\x9F\x93\x8E</span></label>"
         "<button type=\"submit\">Send</button></div>"
+        + std::string(kComposerFileLine) +
         "<p class=\"muted\" style=\"margin:.3rem 0 0\">Enter sends. Shift+Enter is a new line.</p>"
         + mail_program_note_html(user) + "</form></div>"
         "<script>(function(){"
@@ -2968,12 +2980,21 @@ std::string mail_widget_script() {
         "if(!form)return;"
         "e.preventDefault();"
         "var fd=new FormData(form);"
+        // XHR, not fetch, for the upload's progress: the Send button reads "Sending 37%" while a file goes up
+        // (2026-10-27: a 17 MB program looked like nothing was happening, and leaving the panel cancelled it)
+        "var btn=form.querySelector('button[type=submit]');"
+        "if(form.dataset.sending)return;form.dataset.sending='1';if(btn)btn.textContent='Sending...';"
+        "var x=new XMLHttpRequest();"
         // the form's own action (/mail/big for a program sender); a refusal (?err=, /mail/too-large) is shown as a
         // page, since the panel reload would drop its message
-        "fetch(form.getAttribute('action')||'/mail',{method:'POST',body:fd,credentials:'same-origin'}).then(function(r){"
-        "if(/[?&]err=|\\/mail\\/too-large/.test(r.url)){location.href=r.url;return;}"
+        "x.open('POST',form.getAttribute('action')||'/mail');"
+        "x.upload.onprogress=function(p){if(btn&&p.lengthComputable)btn.textContent='Sending '+Math.floor(p.loaded*100/p.total)+'%';};"
+        "x.onload=function(){var u=x.responseURL||'';"
+        "if(/[?&]err=|\\/mail\\/too-large/.test(u)){location.href=u;return;}"
         // nginx's own refusals of an upload (too large 413, too many at once 429) never reach the app
-        "if(!r.ok){location.href='/mail/too-large?status='+r.status;return;}loadMail(activeWith,true);});"
+        "if(x.status<200||x.status>=300){location.href='/mail/too-large?status='+x.status;return;}loadMail(activeWith,true);};"
+        "x.onerror=function(){location.href='/mail/too-large?status=0';};"
+        "x.send(fd);"
         "});"
         "mailRoot.addEventListener('keydown',function(e){"
         "if(e.key!=='Enter'||e.shiftKey)return;"
@@ -8749,7 +8770,8 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         if (!any) html += "<p class=\"empty\">No messages yet.</p>";
         html += "</div>";
         if (active) {
-            html += "<form method=\"POST\" action=\""+base+"/send\" enctype=\"multipart/form-data\" class=\"mailcomposer\" id=\"mailcomposer\">"
+            html += "<form method=\"POST\" action=\""+base+"/send\" enctype=\"multipart/form-data\" class=\"mailcomposer\" id=\"mailcomposer\""
+                    + std::string(kComposerOnSubmit) + ">"
                     "<div class=\"row\" style=\"align-items:flex-end;gap:.4rem;flex-wrap:nowrap\">"
                     "<textarea name=\"text\" id=\"mailtext\" maxlength=\"2000\" rows=\"2\" placeholder=\"Message\" "
                     "style=\"flex:1;min-width:0;min-height:44px;resize:vertical\"></textarea>"
@@ -8757,6 +8779,7 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
                     + mail_file_input_html(user, "/mail/big/g/" + std::to_string(conv_id) + "/send") +
                     "<span aria-hidden=\"true\">\xF0\x9F\x93\x8E</span></label>"
                     "<button type=\"submit\">Send</button></div>"
+                    + std::string(kComposerFileLine) +
                     "<p class=\"muted\" style=\"margin:.3rem 0 0\">Enter sends. Shift+Enter is a new line.</p>"
                     + mail_program_note_html(user) + "</form>";
         }

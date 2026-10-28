@@ -105,6 +105,18 @@ std::map<std::string, CommunityNowPlaying> g_community_now_by_station;
 std::map<std::string, std::deque<CommunityTrack>> g_community_upcoming_by_station;
 std::map<std::string, int> g_community_listeners_by_station;
 std::map<std::string, std::int64_t> g_community_last_flush_by_station;
+// Recently-played, per station (bug: the History section never showed a
+// shared station's actual history -- it fell back to the viewer's OWN
+// personal plays instead, since nothing ever recorded a shared station's
+// plays anywhere and the one route that served history only understood a
+// personal owner). In-memory only, capped (kCommunityHistoryCap), same
+// posture as every other g_community_* map here: real history for a
+// personal jukebox is durable (FileStore), a shared station's "now
+// playing" position is durable too (jpos), but a shared station's past
+// tracklist resetting across a restart is an honest, low-risk trade-off
+// for not touching the LGP file format for this.
+constexpr std::size_t kCommunityHistoryCap = 15;
+std::map<std::string, std::deque<CommunityTrack>> g_community_history_by_station;
 
 // Caller must hold g_community_mu.
 std::int64_t community_elapsed_locked(const std::string& station, std::int64_t now) {
@@ -196,6 +208,16 @@ const char* youtube_api_key_from_env() {
 // rather than shipping a broken one (see google_signin_button_html()).
 const char* google_client_id_from_env() {
     const char* p = std::getenv("LIQUIDGOV_GOOGLE_CLIENT_ID");
+    return p && p[0] ? p : "";
+}
+// Facebook App ID (a public identifier, not a secret) for the fb:app_id
+// meta tag -- lets Facebook's Sharing Debugger attribute like/share/comment
+// counts on a shared link to a real app instead of flagging it as a
+// missing property. Empty means "not configured yet"; the tag just
+// doesn't render rather than shipping a made-up or wrong app id (see
+// page_wrap's fb_app_id).
+const char* facebook_app_id_from_env() {
+    const char* p = std::getenv("LIQUIDGOV_FACEBOOK_APP_ID");
     return p && p[0] ? p : "";
 }
 bool is_operator(const std::string& username); // defined below (needs trim_ws), used here by nav()
@@ -1141,20 +1163,46 @@ std::string intro_overlay_html(bool always_play) {
            "try{if(localStorage.getItem('liquidgov.intro.seen')){el.remove();return;}}"
            "catch(e){el.remove();return;}";
     return "<div id=\"lgintro\" style=\"position:fixed;inset:0;z-index:999;background:#14120f;"
-           "display:flex;align-items:center;justify-content:center;overflow:hidden\">"
+           "display:flex;align-items:center;justify-content:center;overflow:hidden;cursor:pointer\">"
            "<video id=\"lgintrovid\" autoplay muted playsinline "
            "style=\"width:100%;height:100%;object-fit:cover\" src=\"/assets/intro.mp4?v=2\"></video>"
+           "<button type=\"button\" id=\"lgintroskip\" style=\"position:absolute;right:1rem;bottom:1rem;"
+           "z-index:1;min-height:44px;padding:.5rem 1rem;border:1px solid rgba(242,234,216,.35);"
+           "border-radius:8px;background:rgba(20,18,15,.7);color:#f2ead8;font:600 .9rem system-ui,sans-serif;"
+           "cursor:pointer\">Skip</button>"
            "</div>"
            "<script>(function(){"
            "var el=document.getElementById('lgintro');"
            +gate+
            "var vid=document.getElementById('lgintrovid');"
+           "var done=false;"
            "function finish(){"
+           "if(done||!el)return;done=true;"
            "try{localStorage.setItem('liquidgov.intro.seen','1');}catch(e){}"
            "el.style.transition='opacity .7s ease';el.style.opacity='0';"
-           "setTimeout(function(){el.remove();},720);"
+           "setTimeout(function(){if(el&&el.parentNode)el.remove();},720);"
            "}"
            "vid.addEventListener('ended',finish);"
+           "vid.addEventListener('error',finish);"
+           "el.addEventListener('click',finish);"
+           "var skip=document.getElementById('lgintroskip');"
+           "if(skip)skip.addEventListener('click',function(e){e.stopPropagation();finish();});"
+           // iOS Low Power Mode (and some other autoplay-declining browsers) silently never
+           // starts an attribute-only `autoplay` video: no error event fires and the play
+           // promise this explicit call() gives us is the only signal. Without it, a blocked
+           // autoplay just sits on a black frame (el's own background-color) until the 12s
+           // fallback below finally removes it -- 12 seconds of a stuck black screen is what
+           // "not working" looks like from the outside, found live on iPhone Safari 2026-09-21.
+           // A rejected promise is the fast path; the 1.5s watchdog below also catches the
+           // rarer case actually observed live: the promise resolves and currentTime even
+           // advances a little (0.445s in that trace), then playback silently freezes with
+           // no error and no further events -- checking `paused` alone (not also requiring
+           // currentTime===0) is what catches that case, and 1.5s is ample time for any
+           // browser that is really going to play this to have left the paused state by then.
+           "var playPromise=vid.play();"
+           "if(playPromise&&playPromise.catch)playPromise.catch(finish);"
+           "setTimeout(function(){if(vid.paused)finish();},1500);"
+           "setTimeout(finish,12000);"
            "})();</script>";
 }
 
@@ -1333,20 +1381,26 @@ std::string page_wrap(const std::string& title, const std::string& navhtml, cons
     // What a link unfurls to on Facebook/X/Slack/etc. Without these tags a
     // shared liquidgov.us link shows nothing but the bare URL. One shared
     // description site-wide, not a per-page one -- there's no per-page
-    // summary tracked anywhere to draw from, and this is what the site
-    // itself opens with.
+    // summary tracked anywhere to draw from. The line is the landing hero
+    // ("This is YOUR government!") plus the limit the page itself states:
+    // a voluntary association, not a replacement for the government you
+    // already live under. The old Myspace joke stays on the genesis quote
+    // card. It is not what a stranger should see in a share preview.
     const std::string og_desc =
-        "A voluntary natural democracy. Genesis, not a government -- "
-        "three rules hold, the rest is your call.";
-    // One shared image site-wide, same reasoning as og_desc above -- a
-    // generated 1200x630 card (see assets/og-image.png, made once by
-    // og-image/render.js -- @napi-rs/canvas, real serif type, run with
-    // node outside this build entirely) so a shared link actually shows
-    // something branded instead of the bare title-only card platforms
-    // fall back to with no image at all. summary_large_image (not
-    // summary) is what makes X/Twitter actually render it at that size
-    // instead of a small square thumbnail.
-    const std::string og_image = "https://liquidgov.us/assets/og-image.png";
+        "This is YOUR government! Represent yourself — a voluntary "
+        "association, not a replacement for the one you already live under.";
+    // One shared image site-wide. v4 is a new path because v3 (and v2
+    // before it) is cached immutable for a year on crawlers.
+    const std::string og_image = "https://liquidgov.us/assets/og-image-v4.jpg";
+    // Facebook's Sharing Debugger flags og:url as a missing-but-recommended
+    // property if it's absent -- it's what the scraper treats as this
+    // page's canonical identity (and what like/share counts attribute to).
+    // page_wrap has no request path in scope (it's called from inside each
+    // route handler, which would all need threading through to do this
+    // per-page) -- same "one shared value site-wide" posture as og_desc/
+    // og_image above, not a half-finished per-page version of this.
+    const std::string og_url = "https://liquidgov.us/";
+    const std::string fb_app_id = facebook_app_id_from_env();
     return "<!doctype html><html lang=\"en\""+theme_attr+"><head><meta charset=\"utf-8\">"
            // viewport-fit=cover: without it, env(safe-area-inset-bottom)
            // resolves to 0 everywhere per spec -- every bottom-fixed
@@ -1356,6 +1410,8 @@ std::string page_wrap(const std::string& title, const std::string& navhtml, cons
            "<title>"+full_title+"</title>"
            "<meta property=\"og:type\" content=\"website\">"
            "<meta property=\"og:site_name\" content=\"LiquidGov.US\">"
+           "<meta property=\"og:url\" content=\""+og_url+"\">"+
+           (fb_app_id.empty() ? "" : "<meta property=\"fb:app_id\" content=\""+fb_app_id+"\">") +
            "<meta property=\"og:title\" content=\""+full_title+"\">"
            "<meta property=\"og:description\" content=\""+og_desc+"\">"
            "<meta property=\"og:image\" content=\""+og_image+"\">"
@@ -1374,7 +1430,7 @@ std::string page_wrap(const std::string& title, const std::string& navhtml, cons
            // its own "Add to Home Screen" (Share sheet) works from nothing
            // more than the page itself, which is why /install still needs
            // to spell that path out separately.
-           "<link rel=\"manifest\" href=\""+(title=="Messages"?"/manifest-mail.webmanifest":"/manifest.webmanifest")+"\">"
+           "<link rel=\"manifest\" href=\""+(title=="Messages"?"/manifest-mail.webmanifest":title=="Social"?"/manifest-social.webmanifest":title=="Civic"?"/manifest-civic.webmanifest":"/manifest.webmanifest")+"\">"
            "<meta name=\"apple-mobile-web-app-capable\" content=\"yes\">"
            "<meta name=\"mobile-web-app-capable\" content=\"yes\">"
            "<meta name=\"apple-mobile-web-app-title\" content=\""+html_escape(title)+"\">"
@@ -1408,8 +1464,16 @@ std::string page_wrap(const std::string& title, const std::string& navhtml, cons
        }()+"</div></header>"
            "<main class=\"wrap\">"+body+"</main>"
            +ios_install_hint()+
+           // "Who holds control" used to sit in this row as a plain link, reading like just another page (Laws, Privacy).
+           // It stays reachable everywhere (/control is unchanged) but tucked behind a closed disclosure, same
+           // <details><summary> pattern this file already uses for "Delete…" (see e.g. the post-menu one above) --
+           // closed by default, one click to reveal, not a routine nav item.
            "<footer class=\"site\"><a href=\"/\">Genesis</a> · <a href=\"/laws\">Laws</a> · "
-           "<a href=\"/control\">Who holds control</a> · <a href=\"/install\">Install this as an app</a><br>"
+           "<a href=\"/commons/\">The Commons</a> · "
+           "<a href=\"/install\">Install this as an app</a> · "
+           "<a href=\"/privacy\">Privacy</a> · "
+           "<details style=\"display:inline-block\"><summary class=\"muted\" style=\"cursor:pointer;display:inline\">Disclaimer</summary> "
+           "<a href=\"/control\">Who holds control</a></details><br>"
            "Not a government. A platform account is not a citizen identity. "
            "LiquidGov.US is in Beta — some of what's here is still being built.</footer>"
            "</body></html>";
@@ -1423,8 +1487,13 @@ std::string flash_error(const std::map<std::string,std::string>& qs); // defined
 std::string nav(const std::string& user, int unread) {
     if (user.empty()) {
         std::string burger = "<label class=\"navbtn\" for=\"navc\">Menu</label><input id=\"navc\" type=\"checkbox\">";
+        // "Who holds control" is reachable from here too, but as a closed disclosure, not a top-level nav item --
+        // same reasoning and the same <details><summary> pattern as the footer's, just below.
         return burger+"<nav><a href=\"/\">Genesis</a><a href=\"/laws\">Laws</a>"
-               "<a href=\"/control\">Who holds control</a><a href=\"/apps\">App</a>"
+               "<a href=\"/commons/\">The Commons</a>"
+               "<details style=\"display:inline-block\"><summary class=\"muted\" style=\"cursor:pointer;display:inline;min-height:44px;align-items:center\">Disclaimer</summary>"
+               "<a href=\"/control\">Who holds control</a></details>"
+               "<a href=\"/apps\">App</a>"
                "<a href=\"/signup\">Sign up</a><a href=\"/login\">Log in</a></nav>";
     }
     // Notifications and Messages are their own always-visible icon buttons
@@ -1490,7 +1559,7 @@ std::string nav(const std::string& user, int unread) {
         "<a href=\"/communities\">Groups</a>"
         "<a href=\"/proposals\">Proposals</a>"
         "<a href=\"/officials\">Officials</a>"
-        "<a href=\"/world\">World</a>"
+        "<a href=\"/commons/\">The Commons</a>"
         "<a href=\"/laws\">Laws</a>"
         "<a href=\"/logout\">Log out</a>"
         "</nav>";
@@ -3861,18 +3930,46 @@ void run_community_session(int fd, const std::string& username, const std::strin
                         }
                     }
                 } else if (auto raw = extract_json_string_field(s, "\"play\"")) {
+                    // Bug (Brandon: "I shouldn't be able to skip videos on public juketube
+                    // channels"): this used to overwrite g_community_now_by_station
+                    // unconditionally, so ANY connected member clicking any search result
+                    // instantly hijacked what the whole station was playing for everyone --
+                    // a full track-interrupt with none of the posture the Skip button
+                    // enforces (isShared() client-side, and there was never a server-side
+                    // check here either). "play" now does exactly what "add" already does:
+                    // start immediately only if the station is idle, otherwise queue. A
+                    // station with nothing playing still starts right away, so clicking a
+                    // result still feels instant when there's nothing to interrupt.
                     if (auto id = extract_youtube_id(trim_ws(*raw))) {
                         const auto now = std::chrono::duration_cast<std::chrono::seconds>(
                             std::chrono::system_clock::now().time_since_epoch()).count();
                         std::lock_guard<std::mutex> lock(g_community_mu);
-                        g_community_now_by_station[station] = CommunityNowPlaying{*id, username, 0, now, true};
+                        auto& now_playing = g_community_now_by_station[station];
+                        auto& upcoming = g_community_upcoming_by_station[station];
+                        if (!now_playing.active && upcoming.empty()) {
+                            now_playing = CommunityNowPlaying{*id, username, 0, now, true};
+                            g_store.set_jukebox_pos(station, *id, 0, now);
+                            g_community_last_flush_by_station[station] = now;
+                        } else {
+                            upcoming.push_back(CommunityTrack{*id, username});
+                        }
                         lglog::emit("jukebox", "play "+station+" "+*id+" by "+username);
                     }
                 } else if (s.find("\"ended\"") != std::string::npos) {
                     const auto now = std::chrono::duration_cast<std::chrono::seconds>(
                         std::chrono::system_clock::now().time_since_epoch()).count();
                     std::lock_guard<std::mutex> lock(g_community_mu);
-                    if (g_community_now_by_station[station].active) {
+                    auto& now_playing = g_community_now_by_station[station];
+                    if (now_playing.active) {
+                        // Bug (Brandon: "i dont see an accurate history"): nothing ever
+                        // recorded a shared station's plays anywhere, so the History
+                        // section's /jukebox/history?station= call always came back empty
+                        // and silently fell back to the viewer's OWN personal plays --
+                        // "inaccurate," not missing. Recorded here, the one place a track
+                        // on this station is actually known to be done.
+                        auto& hist = g_community_history_by_station[station];
+                        hist.push_back(CommunityTrack{now_playing.video_id, now_playing.queued_by});
+                        if (hist.size() > kCommunityHistoryCap) hist.pop_front();
                         community_advance_locked(station, now);
                         const auto& np = g_community_now_by_station[station];
                         if (np.active) g_store.set_jukebox_pos(station, np.video_id, 0, now);
@@ -4586,14 +4683,16 @@ std::string jukebox_script(const std::string& yt_key, bool standalone, const std
         "searchCat.addEventListener('change',runSearch);"
         "searchInput.addEventListener('input',runSearch);"
         "runSearch();"
-        // History: newest first, scoped to whatever personal channel is
-        // actually tuned in right now; a community/site-wide station (or
-        // nothing playing yet) has no personal history of its own, so
-        // this falls back to the viewer's own plays instead of staying
-        // empty.
+        // History: newest first. A personal channel's history is scoped by
+        // owner (?for=); a community/site-wide station's own history (bug
+        // fix: this used to always send ?for= with an empty owner, which
+        // isn't a station lookup at all -- it silently fell back to the
+        // VIEWER'S OWN plays, not the station's) is scoped by ?station=
+        // instead, including "" for the site-wide station itself.
         "function loadHistory(){"
-        "var owner=personalOwnerFromId(activeStationId())||'';"
-        "fetch('/jukebox/history?for='+encodeURIComponent(owner))"
+        "var sid=activeStationId();var owner=personalOwnerFromId(sid);"
+        "var q=owner?('for='+encodeURIComponent(owner)):('station='+encodeURIComponent(sid||''));"
+        "fetch('/jukebox/history?'+q)"
         ".then(function(r){return r.json();})"
         ".then(function(data){"
         "historySel.innerHTML='<option value=\"\">Something you\\u2019ve played before\\u2026</option>';"
@@ -5207,7 +5306,7 @@ std::string genesis_body() {
         "inside well-designed structures are naturally corrected by them.&rdquo;</p>"
         "<p class=\"attrib\">&mdash; Brandon Bottin</p></div>"
         "<div class=\"card quote centered\"><p class=\"stars\">&#9733;&#9733;&#9733;&#9733;&#9733;</p>"
-        "<p>&ldquo;It's like a ballot box and Myspace had a baby.&rdquo;</p>"
+        "<p>&ldquo;It's like Myspace had a three-way with a ballot box and a gameboy.&rdquo;</p>"
         "<p class=\"attrib muted\">&mdash; Anonymous</p></div>";
     // The decorative emblem from the top of the design's own welcome
     // screen -- a triangle (the three laws) with a droplet at its
@@ -5232,15 +5331,8 @@ std::string genesis_body() {
         "</div>"
         "<p class=\"muted\" style=\"text-align:center;max-width:22rem;margin:.7rem auto 0\">"
         "Three rules hold. Whoever you are, wherever you're starting from, the rest is your call.</p>";
-    // "What is inside" in the source is a 2x2 grid of feature cards --
-    // Live rooms, People near you, Meetups, and a fourth. Only Live rooms
-    // maps to something real (/world plus the jukebox stations); the
-    // other two are exactly the geolocation/meetup concepts already set
-    // aside as having no backend at all, so only this one card is built,
-    // per Brandon's own call rather than presenting the other two as if
-    // they existed. Icon and copy are the source's own (rect+two-dot
-    // glyph, "Live rooms"), with "Studio" dropped from the description
-    // since that feature doesn't exist either.
+    // "What is inside" -- Live rooms is The Commons. Guests walk; the
+    // old Quad (/world) is no longer the door.
     std::string liveRoomsIcon =
         "<svg viewBox=\"0 0 24 24\" width=\"19\" height=\"19\" fill=\"none\" style=\"stroke:var(--accent)\" "
         "stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\">"
@@ -5248,6 +5340,8 @@ std::string genesis_body() {
         "<circle cx=\"9.2\" cy=\"11.4\" r=\"1.7\" style=\"fill:var(--accent)\" stroke=\"none\"/>"
         "<circle cx=\"15\" cy=\"15.2\" r=\"1.7\" style=\"fill:var(--accent)\" stroke=\"none\"/>"
         "</svg>";
+    // Live rooms is The Commons (the Square), not The Quad. Guests can
+    // walk; do not put a login wall in front of a guest-playable plaza.
     std::string inside =
         "<p class=\"eyebrow\" style=\"color:var(--accent)\">What is inside</p>"
         "<div class=\"card\" style=\"display:flex;gap:.8rem;align-items:flex-start\">"
@@ -5255,8 +5349,8 @@ std::string genesis_body() {
         "border:1px solid var(--rule);display:flex;align-items:center;justify-content:center;flex-shrink:0\">" +
         liveRoomsIcon + "</div>"
         "<div><strong>Live rooms</strong>"
-        "<p class=\"muted\" style=\"margin:.3rem 0 0\">The Quad is a shared room. "
-        "<a href=\"/login?next=/world\">Sign in to walk in</a>.</p></div></div>";
+        "<p class=\"muted\" style=\"margin:.3rem 0 0\">The Commons is a shared plaza. "
+        "<a href=\"/commons/\">Walk in</a>.</p></div></div>";
     // Real recorded narration (Helios), served from /assets/chapter1.mp3.
     // The latest file already starts on the first sentence (no spoken
     // title), so no #t= skip is needed anymore. No native <audio controls>
@@ -5322,17 +5416,19 @@ std::string genesis_body() {
            listen_audio +
            emblem +
            "<p class=\"eyebrow\" style=\"color:var(--accent)\">A Voluntary Natural Democracy</p>"
-           "<h1>This is genesis, not a government.</h1>"
-           "<p class=\"lede\">LiquidGov.US is a voluntary association and working software for "
-           "liquid, natural-law democracy. Anyone here is a guest or a member of that association.</p>"
+           "<h1>This is YOUR government!</h1>"
+           "<p class=\"lede\">Here you represent yourself, and accountability is universally distributed. "
+           "Officials are incentivized to serve the people, not the other way around.</p>"
            "</div>"
            "<hr style=\"border:0;border-top:1px solid var(--rule);margin:1rem 0\">" +
            lawstrip +
            solution + quotes + inside +
-           "<div class=\"card\"><p>This is not a government, and it does not replace your real one — your "
-           "actual city, state, or federal government still governs you exactly as it did before you found "
-           "this site. No office seated from these pages carries legal authority over anyone who hasn't "
-           "chosen to associate with it.</p>"
+           "<div class=\"card\"><p>This isn't a legal government entity — not a city, state, or federal "
+           "authority, and it doesn't replace the one you already live under; that government still governs "
+           "you exactly as it did before you found this site. What it is: a space to organize, collaborate, "
+           "and build the systems a real government will need, so they're ready when the time comes to "
+           "actually become one. No office seated from these pages carries legal authority over anyone who "
+           "hasn't chosen to associate with it.</p>"
            "<p>Website control is temporary. When a working election exists among enrolled citizens, "
            "that control is meant to end. The internal shape of that election is itself a citizen vote. "
            "Real governmental authority is a later, explicit landslide — Phase 2 — not this page and not "
@@ -5342,7 +5438,7 @@ std::string genesis_body() {
            "<div class=\"clocks\">"
            "<div class=\"card\"><h2>Two clocks</h2><p><strong>Site control</strong> ends when a working election exists among enrolled citizens.</p>"
            "<p><strong>Governmental authority</strong> stays a later landslide — more than half of the eligible citizen population. However long that takes.</p></div>"
-           "<div class=\"card\"><h2>This website is the door</h2><p>Feed, friends, mail, and communities live here. "
+           "<div class=\"card\"><h2>This website is the door</h2><p>The Commons, feed, friends, mail, and communities live here. "
            "Voting weight, offices, land, and judgments live in a separate governance kernel. "
            "A platform account is not a citizen identity. Combined verification for civic acts is not live.</p></div>"
            "</div>" +
@@ -5360,29 +5456,15 @@ std::string home_dashboard(const std::string& user) {
     const auto friends = g_store.friends_of(user).size();
     const auto committees = g_store.communities_of(user);
 
-    size_t world_here = 0;
-    {
-        std::lock_guard<std::mutex> lock(g_world_mu);
-        world_here = g_world_players.size();
-    }
-
-    // The design's home screen leads with a prominent Quad callout card
-    // (gradient card, live headline, "Walk in" CTA) above the plain rooms
-    // list, not just another row in it -- found in the raw source since
-    // an accessibility-tree read shows the same text either way and
-    // doesn't distinguish "one row among several" from "the lead card."
-    // The design's own copy ("2 here now", "Somebody is in the Quad.")
-    // was a static example, not template-bound -- built here with real
-    // conditional copy off the actual live world_here count instead.
-    std::string quadHeadline = world_here == 0 ? "Nobody's in the Quad right now."
-        : world_here == 1 ? "Somebody is in the Quad."
-        : std::to_string(world_here) + " people are in the Quad.";
+    // The lead card used to be The Quad (/world) with a live occupant
+    // count from g_world_players. Brandon replaced that door with The
+    // Commons. Do not show Quad occupancy here -- that count is the old
+    // room. Commons presence is the daemon; civic does not read it.
     std::string quadCard =
-        "<a class=\"card quadcard\" href=\"/world\">"
-        "<p class=\"eyebrow\" style=\"color:var(--accent)\">The Quad &middot; " +
-        (world_here == 0 ? std::string("quiet") : std::to_string(world_here) + " here now") + "</p>"
-        "<p class=\"quadhead\">" + quadHeadline + "</p>"
-        "<p class=\"muted\">Walk in and see who is around. No call to join, no scheduling.</p>"
+        "<a class=\"card quadcard\" href=\"/commons/\">"
+        "<p class=\"eyebrow\" style=\"color:var(--accent)\">The Commons</p>"
+        "<p class=\"quadhead\">Walk the Square.</p>"
+        "<p class=\"muted\">A shared plaza. Guests can walk. Your house opens when you are signed in.</p>"
         "<span class=\"btn\" style=\"margin-top:.6rem\">Walk in &rarr;</span></a>";
 
     std::string rooms;
@@ -5801,14 +5883,37 @@ std::string control_body() {
            "explicitly not a binding vote. Sign in to see them.</p></div>";
 }
 
-// Not a native app, not a store listing -- this is what turns the site
-// itself into one, using each browser's own install mechanism. iOS Safari
-// never reads a web manifest for this; it works straight off the page
-// through the Share sheet, which is why its steps are spelled out
-// separately from Chrome/Edge's manifest-driven "Install" prompt (see
-// page_wrap()'s <link rel="manifest">). No native wrapper, no App Store,
-// no separate download -- installing just bookmarks a standalone window
-// to this same site.
+// Honest, short, and already true of the live site. Not a lawyer's privacy
+// policy — the same facts /control already names, on their own page so
+// a shared link and a footer have somewhere to land. /about is the
+// operator disclosure; /terms is how the association works.
+std::string privacy_body() {
+    return "<h1>What we keep</h1>"
+           "<p class=\"lede\">Not a government. A platform account is not a citizen identity.</p>"
+           "<div class=\"card\"><h2>Sign-in</h2>"
+           "<p>Username and password. A phone is bound at signup so a deleted account cannot immediately reopen under the same number. "
+           "The number itself is not kept &mdash; only a fingerprint.</p>"
+           "<p>A session cookie (<code>lg_session</code>) keeps you signed in. The Commons uses that same cookie when you are signed in, so your house is yours. Guests can walk the plaza without an account.</p></div>"
+           "<div class=\"card\"><h2>What you put here</h2>"
+           "<p>Posts, mail, drawings, and things you place in your house stay until you delete them, or until an operator removes spam. "
+           "Friends are mutual accept. A block hides you from that person on civic pages and on The Commons wall.</p>"
+           "<p>Sign in to <a href=\"/login?next=/export\">export</a> or delete from <a href=\"/login?next=/settings\">Settings</a>.</p></div>"
+           "<p class=\"muted\">The operator of this copy is named on <a href=\"/control\">who holds control</a>.</p>";
+}
+
+std::string terms_body() {
+    return "<h1>How this association works</h1>"
+           "<p class=\"lede\">LiquidGov.US is a voluntary association. Three rules hold: do not steal, do not damage, do not deprive of liberty.</p>"
+           "<div class=\"card\">"
+           "<p>Nothing here is a government. Nothing here binds you unless you chose it. "
+           "Proposals are an unofficial straw poll, not a binding vote. No election has been held.</p>"
+           "<p>Your account is a platform account, not a citizen identity, not a vote, and not standing.</p>"
+           "<p>The operator can change this software and this store today. That is disclosed on "
+           "<a href=\"/control\">who holds control</a>. It is not an office.</p>"
+           "</div>"
+           "<p class=\"muted\"><a href=\"/laws\">The three laws</a> · <a href=\"/privacy\">What we keep</a></p>";
+}
+
 std::string install_body() {
     return "<h1>Install this as an app</h1>"
            "<p class=\"lede\">Not a download from a store &mdash; your browser turning this site into its "
@@ -6852,9 +6957,98 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
 
     if(method=="GET"&&path=="/robots.txt")
         return http_raw("200 OK", "text/plain; charset=utf-8",
-            "User-agent: *\nAllow: /\nDisallow: /settings\nDisallow: /mail\nDisallow: /export\n");
+            "User-agent: *\nAllow: /\nDisallow: /settings\nDisallow: /mail\nDisallow: /export\nDisallow: /internal\n");
     if(method=="GET"&&path=="/favicon.ico")
         return http_redir("/favicon.svg");
+
+    // Same-box only: the commons-daemon sibling forwards a visitor's raw
+    // Cookie header here to resolve it into an account, exactly the way
+    // account_from_req() already does for civic's own pages (cookie-bind.md,
+    // Persistence/TheCommons). Never reachable from the public internet --
+    // nginx's only path in sets X-Forwarded-For (nginx-liquidgov.us.conf), so
+    // its presence means this request came through the proxy, not directly
+    // from another loopback process, and is refused the same way /logs
+    // refuses a non-operator: a 404 indistinguishable from no route at all.
+    if(method=="GET"&&path=="/internal/session-user") {
+        if (!header_value(req, "X-Forwarded-For").empty() ||
+            (peer_ip != "127.0.0.1" && peer_ip != "::1"))
+            return http_raw("404 Not Found", "text/plain", "not found\n");
+        return http_raw("200 OK", "application/json",
+            acc ? ("{\"username\":\"" + json_escape(user) + "\"}") : std::string("{}"),
+            "Cache-Control: no-store\r\n");
+    }
+
+    // Same-box only, same gate as /internal/session-user above (refused as
+    // a plain 404 if X-Forwarded-For is present or the raw peer isn't
+    // loopback). The commons-daemon forwards a visitor's own Cookie here to
+    // learn who that session's mutual friends are (glue.md "Friends query").
+    // The name comes from the session -- never from a query parameter, so
+    // there is no way to ask about anyone but yourself. Read-only: mutual
+    // accepts only (friends_of), minus anyone blocked in either direction.
+    if(method=="GET"&&path=="/internal/friends") {
+        if (!header_value(req, "X-Forwarded-For").empty() ||
+            (peer_ip != "127.0.0.1" && peer_ip != "::1"))
+            return http_raw("404 Not Found", "text/plain", "not found\n");
+        std::string body = "{}";
+        if (acc) {
+            body = "{\"username\":\"" + json_escape(user) + "\",\"friends\":[";
+            bool first = true;
+            for (const auto& f : g_store.friends_of(user)) {
+                if (g_store.is_blocked(user, f) || g_store.is_blocked(f, user)) continue;
+                if (!first) body += ",";
+                first = false;
+                body += "\"" + json_escape(f) + "\"";
+            }
+            body += "]}";
+        }
+        return http_raw("200 OK", "application/json", body, "Cache-Control: no-store\r\n");
+    }
+
+    // Same-box only, same gate as /internal/session-user and /internal/friends
+    // above (a plain 404 if X-Forwarded-For is present or the raw peer isn't
+    // loopback -- nginx's only path in sets X-Forwarded-For, so this can never be
+    // reached from the public internet). The commons-daemon asks it whether a
+    // visitor may walk into an `open` house: the VIEWER is the session cookie
+    // (never a parameter), the path is the house OWNER. {"blocked":true} if
+    // either side has blocked the other. It FAILS CLOSED: no session, an unknown
+    // owner or a malformed name all answer {"blocked":true} (still a 200, so the
+    // daemon can tell it from the public 404), and only a real
+    // {"blocked":false} can open a door. Read-only; nothing is written.
+    if(method=="GET"&&path.rfind("/internal/blocked/",0)==0) {
+        if (!header_value(req, "X-Forwarded-For").empty() ||
+            (peer_ip != "127.0.0.1" && peer_ip != "::1"))
+            return http_raw("404 Not Found", "text/plain", "not found\n");
+        bool blocked = true;
+        const std::string owner = path.substr(18);
+        if (acc && valid_username(owner)) {
+            auto found = g_store.find_by_username(owner);
+            if (found)
+                blocked = g_store.is_blocked(user, found->username) ||
+                          g_store.is_blocked(found->username, user);
+        }
+        return http_raw("200 OK", "application/json",
+            blocked ? std::string("{\"blocked\":true}") : std::string("{\"blocked\":false}"),
+            "Cache-Control: no-store\r\n");
+    }
+
+    // Same-box only, same gate as /internal/blocked above. Does this username
+    // exist as a LiquidGov account right now? The commons-daemon uses it to find
+    // game rows whose owner is GONE (orphans: civic lets a deleted username be
+    // registered again, and the new owner would otherwise inherit the old
+    // player's house and inventory). No cookie and no identity: it asks only
+    // about existence. It answers {"exists":false} ONLY for a well-formed name
+    // that is not in the store; a malformed name answers {"exists":null}, never
+    // false, so nothing weird can ever read as "gone". Read-only.
+    if(method=="GET"&&path.rfind("/internal/user-exists/",0)==0) {
+        if (!header_value(req, "X-Forwarded-For").empty() ||
+            (peer_ip != "127.0.0.1" && peer_ip != "::1"))
+            return http_raw("404 Not Found", "text/plain", "not found\n");
+        const std::string who = path.substr(std::string("/internal/user-exists/").size());
+        std::string exists_body = "{\"exists\":null}";
+        if (valid_username(who))
+            exists_body = g_store.find_by_username(who) ? "{\"exists\":true}" : "{\"exists\":false}";
+        return http_raw("200 OK", "application/json", exists_body, "Cache-Control: no-store\r\n");
+    }
 
     if(method=="GET"&&path=="/logs") {
         const char* op = std::getenv("LIQUIDGOV_OPERATOR");
@@ -7005,11 +7199,30 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
     }
     if(method=="GET"&&path=="/jukebox/history") {
         if(!acc) return http_raw("401 Unauthorized", "application/json", "{\"items\":[]}");
+        // ?station=<id> (bug fix: the History section never showed a shared station's own
+        // history -- the standalone jukebox page always sent `station=`, but this route only
+        // ever understood `for=`, so it silently fell back to the viewer's OWN personal
+        // plays instead. "" is the site-wide station, a real and distinct value from "no
+        // station param at all" -- qs.count, not qs[].empty(), is what tells them apart.
+        if (qs.count("station")) {
+            std::deque<CommunityTrack> hist;
+            {
+                std::lock_guard<std::mutex> lock(g_community_mu);
+                hist = g_community_history_by_station[qs.at("station")];
+            }
+            std::string out = "{\"items\":[";
+            for (auto it = hist.rbegin(); it != hist.rend(); ++it) {
+                if (it != hist.rbegin()) out += ",";
+                out += "{\"video_id\":\"" + json_escape(it->video_id) + "\",\"queued_by\":\"" +
+                       json_escape(it->queued_by) + "\"}";
+            }
+            out += "]}";
+            return http_raw("200 OK", "application/json", out, "Cache-Control: no-store\r\n");
+        }
         // ?for=<personal-owner> scopes to whatever personal channel is
-        // actively tuned in on the caller's widget; empty (a community/
-        // site-wide station, or nothing tuned yet) falls back to the
-        // viewer's own plays, same as an owner with no plays of their own
-        // yet falls back to nothing rather than erroring.
+        // actively tuned in on the caller's widget; empty (nothing tuned yet)
+        // falls back to the viewer's own plays, same as an owner with no
+        // plays of their own yet falls back to nothing rather than erroring.
         auto for_owner = trim_ws(qs["for"]);
         auto hist = (!for_owner.empty() && valid_username(for_owner)) ? g_store.jukebox_history_of(for_owner)
                                                                         : std::vector<JukeboxHistoryEntry>{};
@@ -7153,6 +7366,38 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             "}");
     }
 
+    // Same pattern as /manifest-mail.webmanifest, linked only from a page rendered with title "Social" or "Civic"
+    // (the /app/social and /app/civic install shells, which /apps sends people to). start_url is the real app page,
+    // exactly where each shell already sends a standalone launch (see assets/app-social.html / app-civic.html), so an
+    // installed Social opens the feed and an installed Civic opens proposals instead of the Genesis landing page.
+    // Icons and theme colours are the ones page_wrap already uses for those titles. (iOS ignores manifests.)
+    if(method=="GET"&&path=="/manifest-social.webmanifest") {
+        return http_raw("200 OK", "application/manifest+json",
+            "{"
+            "\"name\":\"Social\","
+            "\"short_name\":\"Social\","
+            "\"description\":\"LiquidGov.US feed, people, and groups.\","
+            "\"start_url\":\"/feed\","
+            "\"display\":\"standalone\","
+            "\"background_color\":\"#f7f1e4\","
+            "\"theme_color\":\"#c17a4a\","
+            "\"icons\":[{\"src\":\"/icon-social-192.png\",\"sizes\":\"192x192\",\"type\":\"image/png\",\"purpose\":\"any\"},{\"src\":\"/icon-social-512.png\",\"sizes\":\"512x512\",\"type\":\"image/png\",\"purpose\":\"any maskable\"}]"
+            "}");
+    }
+    if(method=="GET"&&path=="/manifest-civic.webmanifest") {
+        return http_raw("200 OK", "application/manifest+json",
+            "{"
+            "\"name\":\"Civic\","
+            "\"short_name\":\"Civic\","
+            "\"description\":\"LiquidGov.US proposals, laws, and who holds control.\","
+            "\"start_url\":\"/proposals\","
+            "\"display\":\"standalone\","
+            "\"background_color\":\"#f7f1e4\","
+            "\"theme_color\":\"#6b7d5a\","
+            "\"icons\":[{\"src\":\"/icon-civic-192.png\",\"sizes\":\"192x192\",\"type\":\"image/png\",\"purpose\":\"any\"},{\"src\":\"/icon-civic-512.png\",\"sizes\":\"512x512\",\"type\":\"image/png\",\"purpose\":\"any maskable\"}]"
+            "}");
+    }
+
     if(method=="GET"&&(path=="/apple-touch-icon.png"||path=="/apple-touch-icon-precomposed.png"||path=="/icon-192.png"||path=="/icon-512.png"||path=="/assets/icon-192.png"||path=="/assets/icon-512.png"||path=="/assets/apple-touch-icon.png")) {
         std::string file="assets/apple-touch-icon.png";
         if(path.find("192")!=std::string::npos) file="assets/icon-192.png";
@@ -7232,9 +7477,46 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         }
         return http_raw("200 OK", "video/mp4", cached, cache_hdr);
     }
-    // The og:image/twitter:image referenced from every page's <head> (see
-    // page_wrap) -- what a shared liquidgov.us link actually shows on
-    // Facebook/X/Slack/etc. instead of a bare, imageless title card.
+    if(method=="GET"&&path=="/assets/og-image-v4.jpg") {
+        static std::string cached;
+        static bool tried = false;
+        if (!tried) {
+            tried = true;
+            std::ifstream in("assets/og-image-v4.jpg", std::ios::binary);
+            if (in) { std::ostringstream ss; ss << in.rdbuf(); cached = ss.str(); }
+        }
+        if (cached.empty()) return http_raw("404 Not Found", "text/plain; charset=utf-8", "not found");
+        return http_raw("200 OK", "image/jpeg", cached,
+            "Cache-Control: public, max-age=31536000, immutable\r\n");
+    }
+    // v3, kept so an old cached share still resolves. The tags now point at
+    // og-image-v4.jpg (page_wrap).
+    if(method=="GET"&&path=="/assets/og-image-v3.jpg") {
+        static std::string cached;
+        static bool tried = false;
+        if (!tried) {
+            tried = true;
+            std::ifstream in("assets/og-image-v3.jpg", std::ios::binary);
+            if (in) { std::ostringstream ss; ss << in.rdbuf(); cached = ss.str(); }
+        }
+        if (cached.empty()) return http_raw("404 Not Found", "text/plain; charset=utf-8", "not found");
+        return http_raw("200 OK", "image/jpeg", cached,
+            "Cache-Control: public, max-age=31536000, immutable\r\n");
+    }
+    if(method=="GET"&&path=="/assets/og-image-v2.jpg") {
+        static std::string cached;
+        static bool tried = false;
+        if (!tried) {
+            tried = true;
+            std::ifstream in("assets/og-image-v2.jpg", std::ios::binary);
+            if (in) { std::ostringstream ss; ss << in.rdbuf(); cached = ss.str(); }
+        }
+        if (cached.empty()) return http_raw("404 Not Found", "text/plain; charset=utf-8", "not found");
+        return http_raw("200 OK", "image/jpeg", cached,
+            "Cache-Control: public, max-age=31536000, immutable\r\n");
+    }
+    // v1, kept so an old cached share of /assets/og-image.png still resolves.
+    // The tags now point at og-image-v4.jpg (page_wrap).
     if(method=="GET"&&path=="/assets/og-image.png") {
         static std::string cached;
         static bool tried = false;
@@ -7289,7 +7571,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         std::string extra =
             "<div class=\"card\"><p class=\"row\"><a class=\"btn\" href=\"/signup\">Create an account</a> "
             "<a class=\"btn ghost\" href=\"/login\">Log in</a></p></div>";
-        return http_ok(wrap("Genesis", user, unread, genesis_body()+extra, true));
+        return http_ok(wrap("Home", user, unread, genesis_body()+extra, true));
     }
     if(method=="GET"&&path=="/laws") return pg("Laws", laws_body());
     if(method=="GET"&&path.rfind("/laws/",0)==0) {
@@ -7301,6 +7583,10 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         return pg("Laws · " + chapters[n-1].title, laws_chapter_body(n));
     }
     if(method=="GET"&&path=="/control") return pg("Who holds control", control_body());
+    if(method=="GET"&&path=="/privacy") return pg("Privacy", privacy_body());
+    if(method=="GET"&&path=="/terms") return pg("How this association works", terms_body());
+    if(method=="GET"&&path=="/about") return http_redir("/control");
+    if(method=="GET"&&path=="/profile") return http_redir(user.empty() ? login_url("/me") : "/me");
     if(method=="GET"&&(path=="/install"||path=="/apps")) {
         std::ifstream in("assets/apps.html"); std::ostringstream body; if(in) body<<in.rdbuf();
         return pg("Get the app", body.str());
@@ -7367,8 +7653,9 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
     }
 
     if(method=="GET"&&path=="/world") {
-        if(!acc) return need_login();
-        return pg("World", world_page(user));
+        // The Quad is no longer the public walk-in. Bookmarks and old
+        // login?next=/world land in The Commons.
+        return http_redir("/commons/");
     }
     if(method=="GET"&&path=="/me/canvas") {
         if(!acc) return need_login();
@@ -7424,7 +7711,12 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         if(!acc) return need_login();
         std::string html = "<h1>Proposals</h1>"
             "<p class=\"muted\">Unofficial straw polls &mdash; a way to gauge how people feel about "
-            "something not yet decided. Not a CitizenId vote, not binding, not this platform's Phase 2.</p>";
+            "something not yet decided. Not a CitizenId vote, not binding, not this platform's Phase 2.</p>"
+            // The Hall door in the Commons opens this page. This is the way back, onto the path
+            // tile in front of that door (commons actors.js applyHallReturn), not the Square spawn
+            // the footer link uses.
+            "<div class=\"card\"><a class=\"btn\" href=\"/commons/?at=hall\">Hall door</a>"
+            "<p class=\"muted\" style=\"margin:.6rem 0 0\">Back into the Commons, on the path in front of this door.</p></div>";
         html += flash_error(qs);
         html += "<div class=\"card\"><form method=\"POST\" action=\"/proposals\">"
                 "<label>Title</label><input name=\"title\" maxlength=\"140\" required>"
@@ -7487,6 +7779,33 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         std::string png(bytes->begin(), bytes->end());
         return http_raw("200 OK", "image/png", png,
             "Cache-Control: private, max-age=300\r\nContent-Disposition: inline; filename=\"portrait.png\"\r\n");
+    }
+
+    // /canvas-frame/<username>/latest -- the newest saved snapshot, for the
+    // commons wall slot (glue.md "Wall-slot bitmap"). A separate path token,
+    // registered ahead of the index route below on purpose: that handler
+    // std::stoi()s the last segment, so "latest" must never reach it (it
+    // would 404 today, and any looser parse would read as frame 0 -- the
+    // first stroke, often near-blank). Same checks as the index route
+    // (unknown user, the viewer's own block check -- anonymous skips it --
+    // no frames, missing blob); every one is a plain 404, which the game
+    // reads as "empty wall slot", not a broken image. Read-only.
+    if(method=="GET"&&path.rfind("/canvas-frame/",0)==0&&path.size()>21&&
+       path.compare(path.size()-7,7,"/latest")==0) {
+        const std::string who = path.substr(14, path.size()-14-7);
+        std::string body404 = "not found";
+        if (!valid_username(who)) return http_raw("404 Not Found", "text/plain; charset=utf-8", body404);
+        auto found = g_store.find_by_username(who);
+        if (!found) return http_raw("404 Not Found", "text/plain; charset=utf-8", body404);
+        if (acc && g_store.is_blocked(user, found->username))
+            return http_raw("404 Not Found", "text/plain; charset=utf-8", body404);
+        auto frames = g_store.canvas_frames(found->id);
+        if (frames.empty()) return http_raw("404 Not Found", "text/plain; charset=utf-8", body404);
+        auto bytes = g_blobs.get(frames.back());
+        if (!bytes) return http_raw("404 Not Found", "text/plain; charset=utf-8", body404);
+        std::string png(bytes->begin(), bytes->end());
+        return http_raw("200 OK", "image/png", png,
+            "Cache-Control: private, max-age=300\r\nContent-Disposition: inline; filename=\"frame.png\"\r\n");
     }
 
     // /canvas-frame/<username>/<index> -- one saved drawing snapshot.
@@ -8117,7 +8436,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
     }
 
     if(method=="GET"&&path=="/communities") {
-        if(!acc) return http_redir("/login");
+        if(!acc) return need_login();
         std::string err = flash_error(qs);
         std::string html = "<h1>Groups</h1>"+err+
             "<p class=\"lede\">Platform groups. Not AVND localities, and they do not confer standing.</p>";
@@ -9086,7 +9405,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         } else {
             form = "<p class=\"muted\"><a href=\"/login?next=/officials\">Log in</a> to vote or open a race.</p>";
         }
-        return http_ok(wrap("Officials — LiquidGov.US", user, unread,
+        return http_ok(wrap("Officials", user, unread,
             std::string("<h1>Officials</h1>"
             "<p class=\"muted\">Account vote only. Not a certified election and not proof of residency.</p>")
             + cards + form));

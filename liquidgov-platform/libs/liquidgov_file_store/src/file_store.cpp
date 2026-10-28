@@ -2105,6 +2105,8 @@ void FileStore::load() {
             g.granted_at = parse_i64(f[5], "prgr granted_at");
             if (!g.username.empty() && g.kinds != 0) program_grants_[g.username] = g;
         } else if (tag == "afn") {
+            // 4 fields: the first test build's (blob, sender) records, never on the live site; dropped
+            if (f.size() == 4) continue;
             if (f.size() != 3) throw std::runtime_error("LGP1: bad afn record");
             attachment_names_[pct_decode(f[1])] = pct_decode(f[2]);
         } else if (tag == "mlr") {

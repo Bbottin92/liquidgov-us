@@ -192,6 +192,14 @@ int main() {
         std::vector<std::uint8_t> pdf_zip = {'%', 'P', 'D', 'F', '-', '1', '.', '4', '\n'};
         pdf_zip.insert(pdf_zip.end(), plain_zip.begin(), plain_zip.end());
         assert(ingest_file(blobs, clean, caps, pdf_zip).error == FileTransferError::ProgramNotAllowed);
+        // ...even with a byte after the zip (second review: the end-of-file check missed it)
+        auto pdf_zip_tail = pdf_zip;
+        pdf_zip_tail.push_back(0);
+        assert(ingest_file(blobs, clean, caps, pdf_zip_tail).error == FileTransferError::ProgramNotAllowed);
+        // a disk image inside a document is refused by name
+        const auto doc_with_iso = build_zip({{"[Content_Types].xml", "<Types/>"}, {"word/document.xml", "<w/>"},
+                                            {"word/media/disk.iso", "CD001 pretend"}});
+        assert(ingest_file(blobs, clean, caps, doc_with_iso).error == FileTransferError::ActiveContentBlocked);
         // and RAR / 7-Zip signatures behind a PDF
         std::vector<std::uint8_t> pdf_rar = {'%', 'P', 'D', 'F', '-', '1', '.', '4', '\n', 'R', 'a', 'r', '!', 0x1A, 0x07, 0x00};
         assert(ingest_file(blobs, clean, caps, pdf_rar).error == FileTransferError::ProgramNotAllowed);

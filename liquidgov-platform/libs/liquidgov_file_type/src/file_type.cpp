@@ -158,7 +158,12 @@ bool is_ooxml_package(mz_zip_archive& zip) {
 bool runnable_name(const std::string& lower_name) {
     static const char* kRunnable[] = {".exe", ".dll", ".com", ".scr", ".msi", ".msp", ".bat", ".cmd", ".ps1", ".psm1",
                                       ".vbs", ".vbe", ".js", ".jse", ".wsf", ".wsh", ".hta", ".jar", ".lnk", ".reg",
-                                      ".cpl", ".pif", ".apk", ".sh", ".zip", ".7z", ".rar"};
+                                      ".cpl", ".pif", ".apk", ".sh", ".zip", ".7z", ".rar",
+                                      // second review 2026-10-27: disk images, cabinets, app packages, Office
+                                      // add-ins, shortcuts and the archive formats whose content the first 4 KB
+                                      // doesn't give away
+                                      ".iso", ".img", ".vhd", ".vhdx", ".cab", ".msix", ".appx", ".chm", ".xll",
+                                      ".url", ".sct", ".wsc", ".scf", ".gz", ".tar", ".tgz", ".xz", ".bz2"};
     for (const char* ext : kRunnable) {
         const std::size_t n = std::strlen(ext);
         if (lower_name.size() >= n && lower_name.compare(lower_name.size() - n, n, ext) == 0) return true;
@@ -178,16 +183,24 @@ DetectedType embedded_archive(const std::vector<std::uint8_t>& bytes) {
         return DetectedType::Zip;
     }
     // miniz refuses a zip with data in front (its offsets are off by the
-    // prefix), but 7-Zip and unzip open it: look for the end-of-central-
-    // directory record itself, in the last 64 KB, whose comment length
-    // reaches exactly to the end of the file (a chance match is ~never).
-    if (bytes.size() >= 22) {
-        const std::size_t lowest = bytes.size() > 65535 + 22 ? bytes.size() - 65535 - 22 : 0;
-        for (std::size_t p = bytes.size() - 22 + 1; p-- > lowest;) {
-            if (bytes[p] == 'P' && bytes[p + 1] == 'K' && bytes[p + 2] == 0x05 && bytes[p + 3] == 0x06) {
-                const std::size_t comment = bytes[p + 20] | (static_cast<std::size_t>(bytes[p + 21]) << 8);
-                if (p + 22 + comment == bytes.size()) return DetectedType::Zip;
-            }
+    // prefix), but 7-Zip, unzip and Python open one with data in front or
+    // behind. So look anywhere for an end-of-central-directory record
+    // ("PK\5\6") whose central directory -- size at +12 -- ends right
+    // where the record starts and begins with a directory header
+    // ("PK\1\2"). That holds whatever is in front or behind, and two
+    // signatures at an exact distance don't happen by chance (second
+    // review 2026-10-27: a trailing byte defeated "the comment reaches the
+    // end of the file").
+    static const std::uint8_t kEndRecord[4] = {'P', 'K', 0x05, 0x06};
+    for (auto it = std::search(bytes.begin(), bytes.end(), kEndRecord, kEndRecord + 4); it != bytes.end();
+         it = std::search(it + 1, bytes.end(), kEndRecord, kEndRecord + 4)) {
+        const std::size_t p = static_cast<std::size_t>(it - bytes.begin());
+        if (p + 22 > bytes.size()) break;
+        const std::size_t dir_size = read_u32_le(bytes, p + 12);
+        if (dir_size >= 46 && dir_size <= p) { // 46: the smallest central directory header
+            const std::size_t dir = p - dir_size;
+            if (bytes[dir] == 'P' && bytes[dir + 1] == 'K' && bytes[dir + 2] == 0x01 && bytes[dir + 3] == 0x02)
+                return DetectedType::Zip;
         }
     }
     static const std::uint8_t kSevenZip[6] = {'7', 'z', 0xBC, 0xAF, 0x27, 0x1C};
@@ -312,10 +325,12 @@ OoxmlInspection inspect_ooxml_container(const std::vector<std::uint8_t>& zip_byt
                 got = mz_zip_reader_extract_iter_read(it, head.data(), head.size());
                 mz_zip_reader_extract_iter_free(it);
             }
+            const bool unreadable = got < head.size(); // encrypted, or a method miniz can't read (second review)
             head.resize(got);
             static const std::uint8_t kOleSignature[] = {0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1};
             const char* why = nullptr;
-            if (head.size() >= 8 && std::memcmp(head.data(), kOleSignature, 8) == 0) why = "OLE compound file at ";
+            if (unreadable) why = "unreadable entry at ";
+            else if (head.size() >= 8 && std::memcmp(head.data(), kOleSignature, 8) == 0) why = "OLE compound file at ";
             else if (program_magic(head) != DetectedType::Unknown || starts_with(head, {'M', 'Z'})) why = "program at ";
             else if (starts_with(head, {'P', 'K', 0x03, 0x04})) why = "archive at ";
             if (why) {

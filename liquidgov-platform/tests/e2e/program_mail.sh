@@ -77,8 +77,9 @@ code=$(curl -s -o /dev/null -w '%{http_code}' -b "lg_session=$STRANGER" "$URL$bl
 check "someone outside the conversation can't download it" '[[ "$code" == 404 ]]' "$code"
 
 curl -s -b "lg_session=$ADMIN" "$URL/mail?with=pal" > $W/admin_compose.html
-check "a program sender's composer posts to the big-upload door" 'grep -q "action=\"/mail/big\"" $W/admin_compose.html' "no /mail/big"
-check "a member's composer posts to plain /mail" 'grep -q "action=\"/mail\"" $W/pal_thread.html' "no /mail"
+check "a program sender's composer posts to plain /mail..." 'grep -q "action=\"/mail\"" $W/admin_compose.html' "no /mail"
+check "...and switches to the big-upload door only for a big file" 'grep -q "/mail/big" $W/admin_compose.html' "no switch"
+check "a member's composer posts to plain /mail, with no big door" 'grep -q "action=\"/mail\"" $W/pal_thread.html && ! grep -q "/mail/big" $W/pal_thread.html' "wrong"
 
 code=$(send $ADMIN pal $W/big.zip "Big.zip" | cut -d' ' -f1)
 check "30 MB through the ordinary /mail is refused, even for the admin (413)" '[[ "$code" == 413 ]]' "$code"
@@ -110,6 +111,9 @@ curl -s -b "lg_session=$PAL" "$URL/mail?with=Bbottin" > $W/pal_thread3.html
 check "a Linux program can't pose as a PDF: it is named .bin" 'grep -q "invoice.pdf.bin" $W/pal_thread3.html' "no .bin"
 
 check "the admin grants pal zips up to 1 MB" '[[ $(grant pal 1 zip) == 30* ]]' "post failed"
+check "nginx's check: a small grant may still use the big door for an ordinary size" '[[ $(upload_ok $PAL /mail/big 1000) == 204 ]]' "no"
+check "nginx's check: no length (chunked) is a no" '[[ $(upload_ok $PAL /mail/big "") == 403 ]]' "yes"
+check "the busy page says to wait" 'curl -s -b "lg_session=$PAL" "$URL/mail/too-large?status=429" | grep -q "Wait a minute"' "no page"
 curl -s -b "lg_session=$ADMIN" "$URL/admin/accounts" > $W/admin.html
 check "the accounts page shows pal's grant" 'grep -q "up to 1.0 MB" $W/admin.html' "not shown"
 r=$(send $PAL stranger $W/small.zip "Pal.zip")

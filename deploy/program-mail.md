@@ -4,7 +4,9 @@ What it does: admins (LIQUIDGOV_OPERATORS) can send programs in mail (zip, 7z, r
 programs) up to the 100 MB ceiling. On /admin/accounts an admin can allow anyone else, choosing their kinds and
 their own size limit. Nobody else can send programs: a zip no longer passes as a Word file, and archives hidden
 in PDFs, text or videos, or programs inside Office files, are refused. Mail attachments over 1 MB start working
-at all (nginx had its 1 MB default); ordinary mail is capped at 26 MB, program uploads go through /mail/big.
+at all (nginx had its 1 MB default); ordinary mail is capped at 26 MB. A file over that (only a program sender's)
+goes through /mail/big: the composer switches its form there when such a file is attached, so ordinary chat
+never meets the upload rate limit, and a small grant (say 10 MB) still sends everything through plain /mail.
 
 **Programs are not virus-checked.** The site's "scanner" only re-checks the file type; ClamAV doesn't fit in
 0.5 GB. The gate is who may send: grant rarely, only the kinds needed. Recipients see who sent it and a warning.
@@ -30,6 +32,7 @@ Nothing here is live until Brandon says go for this change (hard rule: the live 
    - Brandon (admin) sends a small zip to a friend from /mail: the friend sees the card and downloads it with
      its name (the response comes from nginx: no `X-Accel-Redirect` header reaches the browser).
    - Brandon sends a ~30 MB file: it arrives; a member without a grant trying the same gets "Not sent".
+   - 8 quick text messages from Brandon in the mail pop-up all arrive (chat isn't rate-limited).
    - a member sends a 2 MB picture: it arrives (was refused by nginx's 1 MB default before).
 10. `ctx log claude deploy liquidgov.us --result ok|fail --ref <commit>`.
 

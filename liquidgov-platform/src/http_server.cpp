@@ -46,6 +46,8 @@ constexpr int kPort = 8080;
 // document/PDF/OOXML 25 MiB — see SizeCaps in file_transfer.hpp). The read
 // loop's ceiling has to cover the largest of those plus multipart overhead.
 constexpr std::size_t kMaxBody = 25ull * 1024 * 1024 + 64 * 1024;
+// Room for the multipart wrapping and form fields around a program upload on /mail/big.
+constexpr std::size_t kMultipartRoom = 1024 * 1024;
 std::mutex g_mu;
 
 // --- World: one shared room, connected users see each other move. ---
@@ -2287,15 +2289,27 @@ std::string mail_attachment_error_html(const std::string& e, const std::string& 
 }
 
 // The composer's file picker: what it offers, plus a line telling a
-// program sender what they may send.
-std::string mail_file_input_html(const std::string& user) {
+// program sender what they may send. `big_action` is the composer's
+// /mail/big door: a program sender's form posts there only while a file
+// over the ordinary limit is attached (second review 2026-10-27: posting
+// every message there refused all mail from a small grant and put chat
+// under the upload rate limit).
+std::string mail_file_input_html(const std::string& user, const std::string& big_action = {}) {
     std::string accept = "image/png,image/jpeg,image/gif,application/pdf,text/plain,.docx,.xlsx,.pptx";
     auto policy = program_policy_for(user);
+    std::string onchange;
     if (policy) {
         for (const auto& k : program_kinds())
             if ((policy->kinds & static_cast<std::uint32_t>(k.kind)) && k.extension[0]) accept += std::string(",") + k.extension;
+        if (!big_action.empty()) {
+            const std::size_t ordinary = kMaxBody - kMultipartRoom; // what fits through plain /mail with its form fields
+            onchange = " onchange=\"var f=this.files&amp;&amp;this.files[0],F=this.form;"
+                       "if(!F.dataset.small)F.dataset.small=F.getAttribute('action');"
+                       "F.setAttribute('action',f&amp;&amp;f.size&gt;" + std::to_string(ordinary) +
+                       "?'" + big_action + "':F.dataset.small);\"";
+        }
     }
-    return "<input type=\"file\" name=\"attachment\" accept=\"" + accept + "\">";
+    return "<input type=\"file\" name=\"attachment\" accept=\"" + accept + "\"" + onchange + ">";
 }
 
 std::string mail_program_note_html(const std::string& user) {
@@ -2387,7 +2401,6 @@ bool is_big_upload_target(const std::string& target) {
 // The body limit for a program sender on the big door: their limit plus
 // room for the multipart wrapping; kMaxBody for everyone and everything
 // else. Caller holds g_mu.
-constexpr std::size_t kMultipartRoom = 1024 * 1024;
 std::size_t program_body_limit_locked(const std::string& headers) {
     auto sess = g_store.get_session(cookie_of(headers));
     if (!sess) return kMaxBody;
@@ -2412,15 +2425,19 @@ std::size_t request_body_limit(const std::string& headers) {
 }
 
 // nginx's auth_request for /mail/big: 204 when this cookie's account may
-// upload X-Original-Length bytes to X-Original-URI, 403 otherwise (nginx
-// then never reads the body). Caller holds g_mu.
+// send programs and X-Original-Length fits its limit (or the ordinary one,
+// whichever is bigger), 403 otherwise (nginx then never reads the body).
+// No length (a chunked upload) is a no: nginx couldn't hold it to a size.
+// Caller holds g_mu.
 std::string upload_ok_response(const std::string& headers) {
     std::string uri = header_value(headers, "X-Original-URI");
     uri = uri.substr(0, uri.find('?'));
     std::size_t length = 0;
     try { length = static_cast<std::size_t>(std::stoull(header_value(headers, "X-Original-Length"))); } catch (...) { length = 0; }
-    const bool ok = is_big_upload_target(uri) && program_body_limit_locked(headers) > kMaxBody &&
-                    length <= program_body_limit_locked(headers);
+    bool granted = false;
+    if (auto sess = g_store.get_session(cookie_of(headers)))
+        if (auto acc = g_store.find_by_id(sess->account)) granted = program_policy_for(acc->username).has_value();
+    const bool ok = granted && is_big_upload_target(uri) && length > 0 && length <= program_body_limit_locked(headers);
     return ok ? http_raw("204 No Content", "text/plain; charset=utf-8", "")
               : http_raw("403 Forbidden", "text/plain; charset=utf-8", "no");
 }
@@ -2788,14 +2805,13 @@ std::string mail_thread_html(const std::string& user, const std::string& other,
         html += "<span class=\"bubtime\">"+html_escape(fmt_time(m.ts))+"</span></div></div>";
     }
     html += "</div>"
-        "<form method=\"POST\" action=\"" + std::string(program_policy_for(user) ? "/mail/big" : "/mail") +
-        "\" enctype=\"multipart/form-data\" class=\"mailcomposer\" id=\"mailcomposer\">"
+        "<form method=\"POST\" action=\"/mail\" enctype=\"multipart/form-data\" class=\"mailcomposer\" id=\"mailcomposer\">"
         "<input type=\"hidden\" name=\"to\" value=\""+html_escape(other)+"\">"
         "<div class=\"row\" style=\"align-items:flex-end;gap:.4rem;flex-wrap:nowrap\">"
         "<textarea name=\"text\" id=\"mailtext\" maxlength=\"2000\" rows=\"2\" placeholder=\"Message\" "
         "autocomplete=\"off\" style=\"flex:1;min-width:0;min-height:44px;resize:vertical;background:#fff;color:#14110c;caret-color:#14110c\"></textarea>"
         "<label class=\"mailattbtn\" title=\"Attach a file\">"
-        + mail_file_input_html(user) +
+        + mail_file_input_html(user, "/mail/big") +
         "<span aria-hidden=\"true\">\xF0\x9F\x93\x8E</span></label>"
         "<button type=\"submit\">Send</button></div>"
         "<p class=\"muted\" style=\"margin:.3rem 0 0\">Enter sends. Shift+Enter is a new line.</p>"
@@ -2955,7 +2971,9 @@ std::string mail_widget_script() {
         // the form's own action (/mail/big for a program sender); a refusal (?err=, /mail/too-large) is shown as a
         // page, since the panel reload would drop its message
         "fetch(form.getAttribute('action')||'/mail',{method:'POST',body:fd,credentials:'same-origin'}).then(function(r){"
-        "if(/[?&]err=|\\/mail\\/too-large/.test(r.url)){location.href=r.url;return;}loadMail(activeWith,true);});"
+        "if(/[?&]err=|\\/mail\\/too-large/.test(r.url)){location.href=r.url;return;}"
+        // nginx's own refusals of an upload (too large 413, too many at once 429) never reach the app
+        "if(!r.ok){location.href='/mail/too-large?status='+r.status;return;}loadMail(activeWith,true);});"
         "});"
         "mailRoot.addEventListener('keydown',function(e){"
         "if(e.key!=='Enter'||e.shiftKey)return;"
@@ -8621,6 +8639,7 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
     if(method=="GET"&&path=="/mail/too-large") {
         std::string why = "That file is bigger than you can send.";
         if (!acc || !program_policy_for(user)) why = "Only an admin, or someone an admin allowed, can send programs and large files.";
+        if (qs["status"] == "429" || qs["status"] == "503") why = "Too many uploads at once. Wait a minute, then send it again.";
         return pg("Too large", "<div class=\"card\"><h1>Not sent</h1><p>" + why + "</p>"
                   "<p><a href=\"/mail\">Back to mail</a></p></div>");
     }
@@ -8729,14 +8748,12 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         if (!any) html += "<p class=\"empty\">No messages yet.</p>";
         html += "</div>";
         if (active) {
-            const std::string send_to = program_policy_for(user) ? "/mail/big/g/" + std::to_string(conv_id) + "/send"
-                                                                 : base + "/send";
-            html += "<form method=\"POST\" action=\""+send_to+"\" enctype=\"multipart/form-data\" class=\"mailcomposer\" id=\"mailcomposer\">"
+            html += "<form method=\"POST\" action=\""+base+"/send\" enctype=\"multipart/form-data\" class=\"mailcomposer\" id=\"mailcomposer\">"
                     "<div class=\"row\" style=\"align-items:flex-end;gap:.4rem;flex-wrap:nowrap\">"
                     "<textarea name=\"text\" id=\"mailtext\" maxlength=\"2000\" rows=\"2\" placeholder=\"Message\" "
                     "style=\"flex:1;min-width:0;min-height:44px;resize:vertical\"></textarea>"
                     "<label class=\"mailattbtn\" title=\"Attach a file\">"
-                    + mail_file_input_html(user) +
+                    + mail_file_input_html(user, "/mail/big/g/" + std::to_string(conv_id) + "/send") +
                     "<span aria-hidden=\"true\">\xF0\x9F\x93\x8E</span></label>"
                     "<button type=\"submit\">Send</button></div>"
                     "<p class=\"muted\" style=\"margin:.3rem 0 0\">Enter sends. Shift+Enter is a new line.</p>"
@@ -10003,6 +10020,8 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
                         if (!download_name.empty()) // named once the message exists (review 2026-10-27)
                             g_store.set_attachment_name(attachment_name_key(*msg), download_name);
                     }
+                } else if (blob_id) {
+                    g_blobs.release(*blob_id); // not sent (left the group, blocked...): don't keep up to 100 MB for nothing
                 }
             }
             return http_redir(base);

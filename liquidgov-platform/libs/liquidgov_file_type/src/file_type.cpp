@@ -196,6 +196,10 @@ DetectedType embedded_archive(const std::vector<std::uint8_t>& bytes) {
          it = std::search(it + 1, bytes.end(), kEndRecord, kEndRecord + 4)) {
         const std::size_t p = static_cast<std::size_t>(it - bytes.begin());
         if (p + 22 > bytes.size()) break;
+        // Zip64: the real directory size lives in the Zip64 record, found through the locator ("PK\6\7") that
+        // sits right before the end record (third review 2026-10-27).
+        if (p >= 20 && bytes[p - 20] == 'P' && bytes[p - 19] == 'K' && bytes[p - 18] == 0x06 && bytes[p - 17] == 0x07)
+            return DetectedType::Zip;
         const std::size_t dir_size = read_u32_le(bytes, p + 12);
         if (dir_size >= 46 && dir_size <= p) { // 46: the smallest central directory header
             const std::size_t dir = p - dir_size;

@@ -114,6 +114,7 @@ check "the admin grants pal zips up to 1 MB" '[[ $(grant pal 1 zip) == 30* ]]' "
 check "nginx's check: a small grant may still use the big door for an ordinary size" '[[ $(upload_ok $PAL /mail/big 1000) == 204 ]]' "no"
 check "nginx's check: no length (chunked) is a no" '[[ $(upload_ok $PAL /mail/big "") == 403 ]]' "yes"
 check "the busy page says to wait" 'curl -s -b "lg_session=$PAL" "$URL/mail/too-large?status=429" | grep -q "Wait a minute"' "no page"
+check "a site error isn't called too large" 'curl -s -b "lg_session=$PAL" "$URL/mail/too-large?status=502" | grep -q "Try again in a moment"' "wrong words"
 curl -s -b "lg_session=$ADMIN" "$URL/admin/accounts" > $W/admin.html
 check "the accounts page shows pal's grant" 'grep -q "up to 1.0 MB" $W/admin.html' "not shown"
 r=$(send $PAL stranger $W/small.zip "Pal.zip")

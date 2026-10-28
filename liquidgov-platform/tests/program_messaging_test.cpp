@@ -196,6 +196,19 @@ int main() {
         auto pdf_zip_tail = pdf_zip;
         pdf_zip_tail.push_back(0);
         assert(ingest_file(blobs, clean, caps, pdf_zip_tail).error == FileTransferError::ProgramNotAllowed);
+        // ...and a Zip64 one (third review): its end record holds 0xFFFFFFFF placeholders and the real sizes sit in
+        // the Zip64 record found through the locator "PK\6\7" just before it. Hand-built tail (miniz won't write a
+        // Zip64 end for a small archive): locator (20 bytes) + end record (22 bytes) + a stray byte.
+        {
+            std::vector<std::uint8_t> pdf_zip64 = {'%', 'P', 'D', 'F', '-', '1', '.', '4', '\n'};
+            const std::uint8_t locator[20] = {'P', 'K', 6, 7, 0, 0, 0, 0, 0x40, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0};
+            const std::uint8_t end[22] = {'P', 'K', 5, 6, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+                                          0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0, 0};
+            pdf_zip64.insert(pdf_zip64.end(), locator, locator + 20);
+            pdf_zip64.insert(pdf_zip64.end(), end, end + 22);
+            pdf_zip64.push_back(0);
+            assert(ingest_file(blobs, clean, caps, pdf_zip64).error == FileTransferError::ProgramNotAllowed);
+        }
         // a disk image inside a document is refused by name
         const auto doc_with_iso = build_zip({{"[Content_Types].xml", "<Types/>"}, {"word/document.xml", "<w/>"},
                                             {"word/media/disk.iso", "CD001 pretend"}});

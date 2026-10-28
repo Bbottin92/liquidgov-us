@@ -8639,8 +8639,9 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
     if(method=="GET"&&path=="/mail/too-large") {
         std::string why = "That file is bigger than you can send.";
         if (!acc || !program_policy_for(user)) why = "Only an admin, or someone an admin allowed, can send programs and large files.";
-        if (qs["status"] == "429" || qs["status"] == "503") why = "Too many uploads at once. Wait a minute, then send it again.";
-        return pg("Too large", "<div class=\"card\"><h1>Not sent</h1><p>" + why + "</p>"
+        if (qs["status"] == "429") why = "Too many uploads at once. Wait a minute, then send it again.";
+        else if (!qs["status"].empty() && qs["status"] != "413") why = "It wasn't sent (the site didn't answer). Try again in a moment.";
+        return pg("Not sent", "<div class=\"card\"><h1>Not sent</h1><p>" + why + "</p>"
                   "<p><a href=\"/mail\">Back to mail</a></p></div>");
     }
 

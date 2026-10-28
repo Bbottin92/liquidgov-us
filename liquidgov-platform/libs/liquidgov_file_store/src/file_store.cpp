@@ -1436,6 +1436,36 @@ std::vector<AuditLogEntry> FileStore::recent_audit_log(std::size_t limit) const 
     return out;
 }
 
+std::optional<ProgramGrant> FileStore::program_grant(const std::string& username) const {
+    auto it = program_grants_.find(username);
+    if (it == program_grants_.end()) return std::nullopt;
+    return it->second;
+}
+
+void FileStore::set_program_grant(const ProgramGrant& grant) {
+    if (grant.kinds == 0) {
+        program_grants_.erase(grant.username);
+    } else {
+        program_grants_[grant.username] = grant;
+    }
+    flush();
+}
+
+void FileStore::revoke_program_grant(const std::string& username) {
+    if (program_grants_.erase(username)) flush();
+}
+
+void FileStore::set_attachment_name(const std::string& blob_id, const std::string& sender, const std::string& name) {
+    attachment_names_[{blob_id, sender}] = name;
+    flush();
+}
+
+std::optional<std::string> FileStore::attachment_name(const std::string& blob_id, const std::string& sender) const {
+    auto it = attachment_names_.find({blob_id, sender});
+    if (it == attachment_names_.end()) return std::nullopt;
+    return it->second;
+}
+
 bool FileStore::delete_account(AccountId id) {
     auto it = accounts_.find(id);
     if (it == accounts_.end()) return false;
@@ -1463,6 +1493,7 @@ bool FileStore::delete_account(AccountId id) {
     inner_.erase(name);
     for (auto& [owner, set] : inner_) set.erase(name);
     locked_.erase(name);
+    program_grants_.erase(name);
     emails_.erase(name);
     reset_tokens_.erase(name);
     google_ids_.erase(name);
@@ -1569,6 +1600,8 @@ void FileStore::load() {
     jukebox_pos_.clear();
     locked_.clear();
     audit_log_.clear();
+    program_grants_.clear();
+    attachment_names_.clear();
     conversations_.clear();
     messages_.clear();
 
@@ -2047,6 +2080,18 @@ void FileStore::load() {
             e.action = pct_decode(f[3]);
             e.target = pct_decode(f[4]);
             audit_log_.push_back(std::move(e));
+        } else if (tag == "prgr") {
+            if (f.size() != 6) throw std::runtime_error("LGP1: bad prgr record");
+            ProgramGrant g;
+            g.username = pct_decode(f[1]);
+            g.kinds = static_cast<std::uint32_t>(parse_u64(f[2], "prgr kinds"));
+            g.max_bytes = parse_u64(f[3], "prgr max_bytes");
+            g.granted_by = pct_decode(f[4]);
+            g.granted_at = parse_i64(f[5], "prgr granted_at");
+            if (!g.username.empty() && g.kinds != 0) program_grants_[g.username] = g;
+        } else if (tag == "afn") {
+            if (f.size() != 4) throw std::runtime_error("LGP1: bad afn record");
+            attachment_names_[{pct_decode(f[1]), pct_decode(f[2])}] = pct_decode(f[3]);
         } else if (tag == "mlr") {
             if (f.size() != 4) throw std::runtime_error("LGP1: bad mlr record");
             const std::string user = pct_decode(f[1]);
@@ -2359,6 +2404,14 @@ void FileStore::flush() {
             body << "alog\t" << e.ts << "\t" << pct_encode(e.operator_name) << "\t"
                  << pct_encode(e.action) << "\t" << pct_encode(e.target) << "\n";
         }
+    }
+    for (const auto& [name, g] : program_grants_) {
+        if (!by_username_.count(name)) continue;
+        body << "prgr\t" << pct_encode(name) << "\t" << g.kinds << "\t" << g.max_bytes << "\t"
+             << pct_encode(g.granted_by) << "\t" << g.granted_at << "\n";
+    }
+    for (const auto& [key, name] : attachment_names_) {
+        body << "afn\t" << pct_encode(key.first) << "\t" << pct_encode(key.second) << "\t" << pct_encode(name) << "\n";
     }
     // Conversations/messages are never pruned when an account is deleted —
     // same "keep the row, relabel at render time" choice as mail_/posts_

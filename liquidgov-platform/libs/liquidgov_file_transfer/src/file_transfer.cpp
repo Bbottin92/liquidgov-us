@@ -5,7 +5,8 @@
 namespace liquidgov::platform {
 
 FileTransferResult ingest_file(BlobStore& blobs, MalwareScanner& scanner,
-                                const SizeCaps& caps, const std::vector<std::uint8_t>& bytes) {
+                                const SizeCaps& caps, const std::vector<std::uint8_t>& bytes,
+                                const ProgramPolicy* programs) {
     // 1. Length first, before any parsing at all.
     if (bytes.size() > caps.protocol_max_bytes) {
         return {FileTransferError::TooLarge, std::nullopt, std::nullopt};
@@ -13,6 +14,22 @@ FileTransferResult ingest_file(BlobStore& blobs, MalwareScanner& scanner,
 
     // 2. Content-based detection.
     DetectedType type = detect_type(bytes);
+
+    // Programs: the sender's policy decides, then the scan; stored from
+    // `bytes` directly (no copy -- these are the biggest uploads there are).
+    if (const ProgramKindInfo* program = program_kind_of(type)) {
+        if (!programs || (programs->kinds & static_cast<std::uint32_t>(program->kind)) == 0) {
+            return {FileTransferError::ProgramNotAllowed, std::nullopt, std::nullopt};
+        }
+        if (bytes.size() > programs->max_bytes) {
+            return {FileTransferError::TooLarge, std::nullopt, std::nullopt};
+        }
+        if (!scanner.is_clean(bytes)) {
+            return {FileTransferError::FailedScan, std::nullopt, std::nullopt};
+        }
+        BlobId id = blobs.put(bytes, program->mime);
+        return {FileTransferError::None, id, std::string(program->mime)};
+    }
 
     std::vector<std::uint8_t> to_store;
     std::string mime;

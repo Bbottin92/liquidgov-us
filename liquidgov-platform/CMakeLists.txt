@@ -40,6 +40,16 @@ target_link_libraries(liquidgov_platform_file_transfer_test PRIVATE liquidgov_fi
 add_executable(liquidgov_platform_messenger_test tests/messenger_test.cpp)
 target_link_libraries(liquidgov_platform_messenger_test PRIVATE liquidgov_messenger)
 
+add_executable(liquidgov_platform_program_messaging_test tests/program_messaging_test.cpp)
+target_link_libraries(liquidgov_platform_program_messaging_test PRIVATE
+    liquidgov_auth liquidgov_file_store liquidgov_file_transfer liquidgov_file_type liquidgov_image third_party_miniz)
+target_compile_definitions(liquidgov_platform_program_messaging_test PRIVATE LG_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+
+# End-to-end check of programs in mail against the real server on port 18080 with a throwaway store:
+#   bash tests/e2e/program_mail.sh build/liquidgov_http build/liquidgov_e2e_seed
+add_executable(liquidgov_e2e_seed tests/e2e/seed.cpp)
+target_link_libraries(liquidgov_e2e_seed PRIVATE liquidgov_auth liquidgov_file_store)
+
 # Site process. Links every feature library http_server.cpp talks to directly.
 find_package(Threads REQUIRED)
 add_executable(liquidgov_http src/http_server.cpp)

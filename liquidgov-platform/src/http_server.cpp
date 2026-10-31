@@ -19,6 +19,7 @@
 #include <cctype>
 #include <chrono>
 #include <cmath>
+#include <csignal>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -10333,6 +10334,14 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
 }
 }
 int main() {
+    // A write to a socket the other side already closed (a /world or jukebox player who just left, a browser
+    // that hung up mid-download) or to the password-reset mail pipe after curl quit raises SIGPIPE, whose
+    // default action kills this whole process -- every route, every connected user, all in-memory room state.
+    // Ignored, that write just fails with EPIPE, which every write here already handles (ws_write_frame returns
+    // false, page sends close the socket, the mail path logs pclose's status). Found by a capacity bench of the
+    // /world room code: 200 players leaving at once killed it with exit 141 (2026-10-30).
+    std::signal(SIGPIPE, SIG_IGN);
+
     // FilesystemBlobStore::get()/meta() both gate on an in-memory refcount
     // entry that ONLY put() or adopt() ever create -- bytes sitting on
     // disk from a previous process are otherwise invisible, not just

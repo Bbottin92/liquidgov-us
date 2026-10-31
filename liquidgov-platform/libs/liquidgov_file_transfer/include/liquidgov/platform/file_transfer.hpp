@@ -28,7 +28,8 @@
 // off this list — SVG for the same script-injection-via-markup class
 // already refused for raw CSS; general archives because the outer type
 // says nothing about what's inside, and full recursive validation is a
-// separate, larger project.
+// separate, larger project. Archives and other programs are taken only
+// from a sender an operator allowed (ProgramPolicy below).
 //
 // Video (MP4/WebM) gets the same treatment as PDF/PlainText, not images:
 // a real content-signature match (see file_type.hpp), then stored as-is.
@@ -46,6 +47,19 @@ enum class FileTransferError {
     TypeNotAllowed,
     ActiveContentBlocked, // macro, embedded object, or OLE signature found
     FailedScan,
+    ProgramNotAllowed,    // a program kind (archive/installer/executable) this sender may not send
+};
+
+// Programs (see ProgramKind in file_type.hpp) are refused unless the
+// caller passes the sender's policy: operators get every kind up to the
+// server ceiling, others what an operator granted them. Stored as-is,
+// like video: there is no structural proof for "what's inside is safe",
+// so the gate is who may send it. The MalwareScanner still runs, but the
+// one this site uses (MailAttachmentScanner) only re-checks the type: it
+// is not an antivirus, and nothing else scans programs.
+struct ProgramPolicy {
+    std::uint32_t kinds = 0;     // bitmask of ProgramKind
+    std::uint64_t max_bytes = 0; // per person; never above SizeCaps::protocol_max_bytes
 };
 
 struct FileTransferResult {
@@ -68,6 +82,7 @@ struct SizeCaps {
 };
 
 FileTransferResult ingest_file(BlobStore& blobs, MalwareScanner& scanner,
-                                const SizeCaps& caps, const std::vector<std::uint8_t>& bytes);
+                                const SizeCaps& caps, const std::vector<std::uint8_t>& bytes,
+                                const ProgramPolicy* programs = nullptr);
 
 } // namespace liquidgov::platform

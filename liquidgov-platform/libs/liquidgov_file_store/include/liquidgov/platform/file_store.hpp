@@ -179,9 +179,24 @@
 //   alog   <ts> <operator> <action> <target>   // one operator-panel
 //          action, newest last (same append order as everything else here);
 //          trimmed to kAuditLogCap on write. action is one of lock/unlock/
-//          logout_all/delete_account/delete_post/delete_community; target
-//          is a bare username, post id, or slug -- never a phone/email
-//          fingerprint or anything else that counts as PII.
+//          logout_all/delete_account/delete_post/delete_community/
+//          programs_grant/programs_revoke; target is a bare username, post
+//          id, or slug -- never a phone/email fingerprint or anything else
+//          that counts as PII.
+//   prgr   <username> <kinds> <max_bytes> <granted_by> <granted_at>   // an
+//          operator's permission to send programs in mail (ProgramGrant):
+//          kinds is the ProgramKind bitmask. Absent = no programs.
+//   afn    <key> <name>   // download name of a program attachment, per
+//          message (attachment_name_key: "d|from|to|ts|blob" for 1:1 mail,
+//          "g|<message id>" for a group message), sanitized to
+//          [A-Za-z0-9 ._()+-] before it is stored so it can go in a
+//          Content-Disposition header (other attachments are still named
+//          from their mime, see MailMessage). Pruned when the message or
+//          an account in it is gone (at load and on account deletion).
+//
+// NOTE: the loader rejects unknown tags, so a binary older than prgr/afn
+// cannot read a file written once a grant or program attachment exists.
+// Roll back by restoring the pre-deploy .lgp copy, not just the binary.
 //
 // password_hash is argon2id from hash_password(). Never plaintext.
 // Phone number is not stored (signup binding only). Sessions are secrets;
@@ -221,6 +236,26 @@ struct MailMessage {
     std::optional<std::string> attachment_blob_id;
     std::optional<std::string> attachment_mime;
 };
+
+// An operator's permission for one person to send programs (archives,
+// installers, executables -- ProgramKind in file_type.hpp) in mail: which
+// kinds and how big. Operators themselves need no grant (is_operator in
+// http_server.cpp gives them every kind up to the server ceiling).
+struct ProgramGrant {
+    std::string username;
+    std::uint32_t kinds = 0;      // bitmask of ProgramKind
+    std::uint64_t max_bytes = 0;
+    std::string granted_by;
+    std::int64_t granted_at = 0;
+};
+
+// The "afn" key of a message's attachment name: one per message, so the
+// same bytes sent twice keep each send's own name. Usernames can't hold
+// '|' (valid_username), so the key splits back unambiguously.
+inline std::string attachment_name_key(const MailMessage& m) {
+    return "d|" + m.from + "|" + m.to + "|" + std::to_string(m.ts) + "|" + m.attachment_blob_id.value_or("");
+}
+inline std::string attachment_name_key(const Message& m) { return "g|" + std::to_string(m.id); }
 
 // A minimum-trust ladder, most to least open: anyone at all, then anyone
 // signed in, then friends only, then the owner alone. Each level implies
@@ -780,6 +815,18 @@ public:
     // Newest first, capped at `limit` -- /admin/log shows the tail of this.
     std::vector<AuditLogEntry> recent_audit_log(std::size_t limit) const;
 
+    // Program sending (see ProgramGrant and the "prgr" tag). Setting a grant
+    // with no kinds removes it. Deleting the account removes it too.
+    std::optional<ProgramGrant> program_grant(const std::string& username) const;
+    void set_program_grant(const ProgramGrant& grant);
+    void revoke_program_grant(const std::string& username);
+    // The download name of a program attachment ("afn" tag), already
+    // sanitized by the caller; other attachments keep the mime-derived name.
+    // Keyed per message (attachment_name_key below): blobs are content-
+    // addressed, so two sends of the same bytes share one blob.
+    void set_attachment_name(const std::string& key, const std::string& name);
+    std::optional<std::string> attachment_name(const std::string& key) const;
+
     std::optional<Avatar> get(AccountId owner) const override;
     void set(const Avatar& avatar) override;
     void erase(AccountId owner) override;
@@ -882,6 +929,10 @@ private:
     std::map<AccountId, PlatformAccount> accounts_;
     std::set<std::string> locked_;
     std::vector<AuditLogEntry> audit_log_;
+    std::map<std::string, ProgramGrant> program_grants_;
+    std::map<std::string, std::string> attachment_names_; // attachment_name_key -> download name
+    // Drops names whose message, or an account in it, is gone ("afn").
+    void prune_attachment_names();
     std::map<SessionId, Session> sessions_;
     std::map<AccountId, std::string> blurbs_;
     std::map<std::string, Profile> profiles_;

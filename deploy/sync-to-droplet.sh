@@ -16,15 +16,23 @@
 #
 # Usage: deploy/sync-to-droplet.sh [user@]host[:path]
 #   defaults to root@143.198.159.58:/opt/liquidgov/
+#   LIQUIDGOV_DEPLOY_DRY_RUN=1  list what would change, change nothing (run this first)
+#   LIQUIDGOV_DEPLOY_SSH="..."  the ssh command rsync uses (default: ssh -i $LIQUIDGOV_DEPLOY_KEY). Each assistant
+#                               uses its own key; from WSL on the PC, Windows' ssh.exe can read it, e.g.
+#                               "/mnt/c/Windows/System32/OpenSSH/ssh.exe -i C:/Users/Brandon/.ssh/id_ed25519_claude -o IdentitiesOnly=yes"
+# Files are compared by checksum, so unchanged sources keep their times and the build stays incremental.
 
 set -euo pipefail
 
 DEST="${1:-root@143.198.159.58:/opt/liquidgov/}"
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/../liquidgov-platform" && pwd)/"
 KEY="${LIQUIDGOV_DEPLOY_KEY:-$HOME/.ssh/liquidgov_deploy_key}"
+SSH_CMD="${LIQUIDGOV_DEPLOY_SSH:-ssh -i $KEY}"
+DRY=()
+[ "${LIQUIDGOV_DEPLOY_DRY_RUN:-}" = "1" ] && DRY=(--dry-run --itemize-changes)
 
-echo "Syncing $SRC -> $DEST (excluding build/.git/data files)"
-rsync -az -e "ssh -i $KEY" \
+echo "Syncing $SRC -> $DEST (excluding build/.git/data files)${DRY:+ [dry run]}"
+rsync -az --checksum "${DRY[@]}" -e "$SSH_CMD" \
     --exclude build \
     --exclude .git \
     --exclude '*.lgp' \

@@ -19,6 +19,7 @@
 #include <cctype>
 #include <chrono>
 #include <cmath>
+#include <csignal>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -33,6 +34,8 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
+#include <functional>
 #include <thread>
 #include <unordered_map>
 #include <vector>
@@ -44,6 +47,8 @@ constexpr int kPort = 8080;
 // document/PDF/OOXML 25 MiB — see SizeCaps in file_transfer.hpp). The read
 // loop's ceiling has to cover the largest of those plus multipart overhead.
 constexpr std::size_t kMaxBody = 25ull * 1024 * 1024 + 64 * 1024;
+// Room for the multipart wrapping and form fields around a program upload on /mail/big.
+constexpr std::size_t kMultipartRoom = 1024 * 1024;
 std::mutex g_mu;
 
 // --- World: one shared room, connected users see each other move. ---
@@ -793,6 +798,8 @@ std::string css() {
         ".bubtime{display:block;margin-top:.2rem;font-size:.65rem;opacity:.7}"
         ".mailcomposer{padding:.6rem 1.1rem;border-top:1px solid var(--rule)}"
         ".mailattach{max-width:6.5rem;font-size:.7rem;padding:.3rem}"
+        ".mailprog{margin-top:.35rem;padding:.45rem .6rem;border:1px solid var(--rule);border-radius:var(--rsm);"
+        "overflow-wrap:anywhere}.mailprog p{margin:.3rem 0 0;font-size:.8rem}"
         ".badge{display:inline-flex;align-items:center;justify-content:center;min-width:1.3rem;height:1.3rem;"
         "padding:0 .35rem;border-radius:999px;background:var(--accent);color:var(--paper);font-size:.7rem;"
         "margin-left:.25rem;font-variant-numeric:tabular-nums}"
@@ -1848,8 +1855,21 @@ std::string decode_chunked(const std::string& body) {
     return out;
 }
 
-bool read_http_request(int fd, std::string& req) {
+// Reads one request: `req` gets the request line and headers (ending in
+// "\r\n\r\n"), `body` the body, kept apart so a 100 MB upload is held
+// once, not copied into a header+body string and again for handle() (a
+// 0.5 GB server, review 2026-10-27). max_body_for(headers) is this
+// request's body limit (kMaxBody, or a program sender's /mail/big limit,
+// see request_body_limit). Over it, *too_large is set and *declared gets
+// the Content-Length (0 if unknown) so the caller can answer 413 and drain
+// what the client still sends instead of handling a cut-off upload.
+bool read_http_request(int fd, std::string& req, std::string& body,
+                       const std::function<std::size_t(const std::string&)>& max_body_for,
+                       bool* too_large, std::size_t* declared) {
     req.clear();
+    body.clear();
+    *too_large = false;
+    *declared = 0;
     char buf[8192];
     auto more = [&]() -> ssize_t {
         ssize_t n = recv(fd, buf, sizeof(buf), 0);
@@ -1871,14 +1891,40 @@ bool read_http_request(int fd, std::string& req) {
     }
     auto sep = req.find("\r\n\r\n");
     if (sep == std::string::npos) return false;
+    const std::size_t body_start = sep + 4;
     std::string headers = req.substr(0, sep);
-    std::string body = req.substr(sep + 4);
+    const std::size_t max_body = max_body_for(headers);
 
     std::string expect = header_line_value(headers, "Expect");
     std::string te = header_line_value(headers, "Transfer-Encoding");
     std::string cl = header_line_value(headers, "Content-Length");
     for (char& c : te) if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
     bool chunked = te.find("chunked") != std::string::npos;
+
+    body.assign(req, body_start, std::string::npos); // what arrived with the headers (a few KB at most)
+    req.resize(body_start);
+
+    if (!chunked && !cl.empty()) {
+        std::size_t need = 0;
+        try { need = static_cast<std::size_t>(std::stoull(cl)); } catch (...) { need = 0; }
+        if (need > max_body) { *too_large = true; *declared = need; return false; }
+        if (!expect.empty() && body.empty()) {
+            std::string low = expect;
+            for (char& c : low) if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+            if (low.find("100-continue") != std::string::npos) {
+                const char msg[] = "HTTP/1.1 100 Continue\r\n\r\n";
+                send(fd, msg, sizeof(msg) - 1, 0);
+            }
+        }
+        body.reserve(need);
+        while (body.size() < need) {
+            ssize_t n = recv(fd, buf, sizeof(buf), 0);
+            if (n <= 0) break;
+            body.append(buf, static_cast<std::size_t>(n));
+        }
+        if (body.size() > need) body.resize(need);
+        return true;
+    }
 
     if (!expect.empty() && body.empty()) {
         std::string low = expect;
@@ -1894,23 +1940,11 @@ bool read_http_request(int fd, std::string& req) {
             ssize_t n = recv(fd, buf, sizeof(buf), 0);
             if (n <= 0) break;
             body.append(buf, static_cast<std::size_t>(n));
-            if (body.size() > kMaxBody) return false;
+            if (body.size() > max_body) { *too_large = true; return false; } // chunked: no length to drain to
         }
         body = decode_chunked(body);
-        if (body.size() > kMaxBody) return false;
-    } else if (!cl.empty()) {
-        std::size_t need = 0;
-        try { need = static_cast<std::size_t>(std::stoull(cl)); } catch (...) { need = 0; }
-        if (need > kMaxBody) return false;
-        while (body.size() < need) {
-            ssize_t n = recv(fd, buf, sizeof(buf), 0);
-            if (n <= 0) break;
-            body.append(buf, static_cast<std::size_t>(n));
-            if (body.size() > kMaxBody) return false;
-        }
-        if (body.size() > need) body.resize(need);
+        if (body.size() > max_body) { *too_large = true; return false; }
     }
-    req = headers + "\r\n\r\n" + body;
     return true;
 }
 
@@ -1944,9 +1978,11 @@ std::string trim_copy(std::string s) {
     return s.substr(i);
 }
 
-std::optional<std::vector<std::uint8_t>> multipart_file(const std::string& content_type,
-                                                        const std::string& body,
-                                                        const char* field) {
+// The first multipart part named `field`: its header block and its data,
+// as views into `body` -- no copies, since a part can be a 100 MB program.
+struct MultipartPart { std::string_view headers, data; };
+std::optional<MultipartPart> multipart_part(const std::string& content_type, const std::string& body_str,
+                                            const char* field) {
     auto bpos = content_type.find("boundary=");
     if (bpos == std::string::npos) return std::nullopt;
     std::string boundary = trim_copy(content_type.substr(bpos + 9));
@@ -1956,29 +1992,50 @@ std::optional<std::vector<std::uint8_t>> multipart_file(const std::string& conte
     if (boundary.empty()) return std::nullopt;
     const std::string delim = "--" + boundary;
     const std::string needle = std::string("name=\"") + field + "\"";
+    const std::string_view body(body_str);
     std::size_t i = 0;
     while (i < body.size()) {
         auto start = body.find(delim, i);
-        if (start == std::string::npos) break;
+        if (start == std::string_view::npos) break;
         start += delim.size();
         if (start + 1 < body.size() && body[start] == '-' && body[start + 1] == '-') break;
         if (start + 1 < body.size() && body[start] == '\r' && body[start + 1] == '\n') start += 2;
         else if (start < body.size() && body[start] == '\n') start += 1;
         auto next = body.find(delim, start);
-        if (next == std::string::npos) break;
-        std::string part = body.substr(start, next - start);
+        if (next == std::string_view::npos) break;
+        std::string_view part = body.substr(start, next - start);
         while (part.size() >= 2 && part[part.size() - 2] == '\r' && part.back() == '\n')
-            part.resize(part.size() - 2);
+            part.remove_suffix(2);
         auto hdr_end = part.find("\r\n\r\n");
         std::size_t skip = 4;
-        if (hdr_end == std::string::npos) { hdr_end = part.find("\n\n"); skip = 2; }
-        if (hdr_end == std::string::npos) { i = next; continue; }
-        std::string hdrs = part.substr(0, hdr_end);
-        if (hdrs.find(needle) == std::string::npos) { i = next; continue; }
-        std::string file = part.substr(hdr_end + skip);
-        return std::vector<std::uint8_t>(file.begin(), file.end());
+        if (hdr_end == std::string_view::npos) { hdr_end = part.find("\n\n"); skip = 2; }
+        if (hdr_end == std::string_view::npos) { i = next; continue; }
+        std::string_view hdrs = part.substr(0, hdr_end);
+        if (hdrs.find(needle) == std::string_view::npos) { i = next; continue; }
+        return MultipartPart{hdrs, part.substr(hdr_end + skip)};
     }
     return std::nullopt;
+}
+
+std::optional<std::vector<std::uint8_t>> multipart_file(const std::string& content_type,
+                                                        const std::string& body,
+                                                        const char* field) {
+    auto part = multipart_part(content_type, body, field);
+    if (!part) return std::nullopt;
+    return std::vector<std::uint8_t>(part->data.begin(), part->data.end());
+}
+
+// The filename="..." a browser sent with a file part, or "" (no name, or
+// not a file part). Untrusted: sanitize_download_name before keeping it.
+std::string multipart_filename(const std::string& content_type, const std::string& body, const char* field) {
+    auto part = multipart_part(content_type, body, field);
+    if (!part) return {};
+    auto k = part->headers.find("filename=\"");
+    if (k == std::string_view::npos) return {};
+    k += 10;
+    auto end = part->headers.find('"', k);
+    if (end == std::string_view::npos) return {};
+    return std::string(part->headers.substr(k, end - k));
 }
 
 // A multipart text field (not a file) is the same wire shape as a file
@@ -2126,7 +2183,274 @@ std::string attachment_filename_for_mime(const std::string& mime) {
     if (mime == "image/png") return "attachment.png";
     if (mime == "application/pdf") return "attachment.pdf";
     if (mime.rfind("text/plain", 0) == 0) return "attachment.txt";
+    if (const ProgramKindInfo* k = program_kind_by_mime(mime)) return std::string("program") + k->extension;
     return "attachment";
+}
+
+// ---- Programs in mail (archives, installers, executables) ----
+// Operators send every kind up to the server ceiling; anyone else only
+// what an operator granted them on /admin/accounts (FileStore ProgramGrant).
+// The ceiling is the upload protocol's maximum: the whole upload is held in
+// memory while it's checked and stored, and this server has 0.5 GB.
+std::uint64_t program_ceiling_bytes() { return g_mail_caps.protocol_max_bytes; }
+
+std::optional<ProgramPolicy> program_policy_for(const std::string& username) {
+    if (username.empty()) return std::nullopt;
+    if (is_operator(username)) return ProgramPolicy{kAllProgramKinds, program_ceiling_bytes()};
+    auto g = g_store.program_grant(username);
+    if (!g || g->kinds == 0) return std::nullopt;
+    return ProgramPolicy{g->kinds & kAllProgramKinds, std::min<std::uint64_t>(g->max_bytes, program_ceiling_bytes())};
+}
+
+std::string program_kinds_text(std::uint32_t kinds) {
+    std::string out;
+    for (const auto& k : program_kinds()) {
+        if ((kinds & static_cast<std::uint32_t>(k.kind)) == 0) continue;
+        if (!out.empty()) out += ", ";
+        out += k.slug;
+    }
+    return out.empty() ? "none" : out;
+}
+
+std::string fmt_size(std::uint64_t bytes) {
+    char b[32];
+    if (bytes >= 1024ull * 1024) std::snprintf(b, sizeof b, "%.1f MB", static_cast<double>(bytes) / (1024.0 * 1024.0));
+    else if (bytes >= 1024) std::snprintf(b, sizeof b, "%.0f KB", static_cast<double>(bytes) / 1024.0);
+    else std::snprintf(b, sizeof b, "%llu bytes", static_cast<unsigned long long>(bytes));
+    return b;
+}
+
+// A program's download name: the sender's file name without any folder,
+// only [A-Za-z0-9 ._()+-], at most 80 characters, ending in the extension
+// of the kind the content actually is (a disguised .exe still saves as
+// .exe). Safe to put in a Content-Disposition header as-is.
+std::string sanitize_download_name(const std::string& raw, const ProgramKindInfo& kind) {
+    std::string base = raw;
+    auto slash = base.find_last_of("/\\");
+    if (slash != std::string::npos) base = base.substr(slash + 1);
+    std::string name;
+    for (char c : base) {
+        const bool ok = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') ||
+                        c == ' ' || c == '.' || c == '_' || c == '(' || c == ')' || c == '+' || c == '-';
+        if (ok) name += c;
+    }
+    while (!name.empty() && (name.front() == '.' || name.front() == ' ')) name.erase(0, 1);
+    while (!name.empty() && (name.back() == '.' || name.back() == ' ')) name.pop_back();
+    const std::string ext = kind.extension;
+    auto lower = [](std::string s) { for (char& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c))); return s; };
+    const bool has_ext = !ext.empty() && name.size() >= ext.size() &&
+                         lower(name.substr(name.size() - ext.size())) == ext;
+    if (has_ext) name.resize(name.size() - ext.size());
+    if (name.size() > 80 - ext.size()) name.resize(80 - ext.size());
+    if (name.empty()) name = "program";
+    return name + ext;
+}
+
+// How an attachment shows in a mail bubble. A program gets a card with its
+// name, size and who sent it, and a plain warning; anything else keeps the
+// existing "Download attachment" link.
+// `name_key` is the message's attachment_name_key; `sender_label` is how
+// the bubble names the sender.
+std::string mail_attachment_html(const std::string& blob_id, const std::string& mime, const std::string& name_key,
+                                 const std::string& sender_label, bool mine) {
+    const std::string href = "/mail/attachment/" + html_escape(blob_id);
+    const ProgramKindInfo* kind = program_kind_by_mime(mime);
+    if (!kind) return "<div><a href=\"" + href + "\">Download attachment</a></div>";
+    const std::string name = g_store.attachment_name(name_key).value_or(attachment_filename_for_mime(mime));
+    const auto meta = g_blobs.meta(blob_id);
+    std::string html = "<div class=\"mailprog\"><a href=\"" + href + "\" download>"
+                       "<span aria-hidden=\"true\">\xF0\x9F\x93\xA6</span> <strong>" + html_escape(name) + "</strong></a>"
+                       "<span class=\"muted\"> " + html_escape(kind->label) +
+                       (meta ? " \xC2\xB7 " + fmt_size(meta->size) : std::string()) + "</span>";
+    if (!mine) html += "<p class=\"muted\">A program from " + html_escape(sender_label) +
+                       ". Open it only if you trust them and expected it. Windows may warn that it comes from an "
+                       "unknown publisher.</p>";
+    return html + "</div>";
+}
+
+// Error text for a refused mail attachment, shared by 1:1 and group mail.
+std::string mail_attachment_error_html(const std::string& e, const std::string& user) {
+    if (e == "type") return "<p class=\"warn\">That attachment isn't a usable type. Allowed: PNG/JPEG/GIF, PDF, plain text, "
+                            "macro-free Word/Excel/PowerPoint. No SVG.</p>";
+    if (e == "large") {
+        auto policy = program_policy_for(user);
+        return "<p class=\"warn\">That attachment is too large (pictures 10&nbsp;MB, documents 25&nbsp;MB, video 50&nbsp;MB" +
+               (policy ? ", programs " + fmt_size(policy->max_bytes) + " for you" : std::string()) + ").</p>";
+    }
+    if (e == "program") {
+        auto policy = program_policy_for(user);
+        if (!policy) return "<p class=\"warn\">That's a program (an archive, installer or app). Sending programs needs an "
+                            "admin's permission; ask an admin if you need it.</p>";
+        return "<p class=\"warn\">You can send these kinds of programs: " + html_escape(program_kinds_text(policy->kinds)) +
+               ". That file is a different kind; ask an admin to add it.</p>";
+    }
+    if (e == "active") return "<p class=\"warn\">That document was refused: it declares a macro, embedded object, or OLE content.</p>";
+    if (e == "scan") return "<p class=\"warn\">That attachment could not be stored.</p>";
+    return {};
+}
+
+// The composer's file picker: what it offers, plus a line telling a
+// program sender what they may send. `big_action` is the composer's
+// /mail/big door: a program sender's form posts there only while a file
+// over the ordinary limit is attached (second review 2026-10-27: posting
+// every message there refused all mail from a small grant and put chat
+// under the upload rate limit).
+std::string mail_file_input_html(const std::string& user, const std::string& big_action = {}) {
+    std::string accept = "image/png,image/jpeg,image/gif,application/pdf,text/plain,.docx,.xlsx,.pptx";
+    auto policy = program_policy_for(user);
+    // The picked file's name and size show under the composer (.mailfile): the paperclip alone gave no sign a file
+    // was attached (2026-10-27).
+    std::string onchange = " onchange=\"var f=this.files&amp;&amp;this.files[0],F=this.form,s=F.querySelector('.mailfile');"
+                           "if(s)s.textContent=f?'Attached: '+f.name+' ('+(f.size/1048576).toFixed(1)+' MB)':'';";
+    if (policy) {
+        for (const auto& k : program_kinds())
+            if ((policy->kinds & static_cast<std::uint32_t>(k.kind)) && k.extension[0]) accept += std::string(",") + k.extension;
+        if (!big_action.empty()) {
+            const std::size_t ordinary = kMaxBody - kMultipartRoom; // what fits through plain /mail with its form fields
+            onchange += "if(!F.dataset.small)F.dataset.small=F.getAttribute('action');"
+                        "F.setAttribute('action',f&amp;&amp;f.size&gt;" + std::to_string(ordinary) +
+                        "?'" + big_action + "':F.dataset.small);";
+        }
+    }
+    return "<input type=\"file\" name=\"attachment\" accept=\"" + accept + "\"" + onchange + "\">";
+}
+
+// The composer form's onsubmit: Send says "Sending..." and a second press does nothing, on the full mail page
+// (the browser shows the upload's progress) and in the pop-up (which also counts the percent, see its XHR).
+const char* const kComposerOnSubmit =
+    " onsubmit=\"if(this.dataset.sent)return false;this.dataset.sent='1';"
+    "var b=this.querySelector('button[type=submit]');if(b)b.textContent='Sending...';\"";
+// Where the picked file's name shows (filled by the file input's onchange).
+const char* const kComposerFileLine = "<p class=\"muted mailfile\" style=\"margin:.3rem 0 0\"></p>";
+
+std::string mail_program_note_html(const std::string& user) {
+    auto policy = program_policy_for(user);
+    if (!policy) return {};
+    return "<p class=\"muted\" style=\"margin:.2rem 0 0\">You can send programs: " +
+           html_escape(program_kinds_text(policy->kinds)) + ", up to " + fmt_size(policy->max_bytes) + ".</p>";
+}
+
+// A mail send's attachment, taken out of the request: the file bytes and
+// the name the browser gave it. The body is released right after (it held
+// the same bytes), so a 100 MB upload is in memory twice at most, briefly.
+struct MailUpload {
+    std::optional<std::vector<std::uint8_t>> file;
+    std::string filename;
+};
+MailUpload take_mail_upload(const std::string& ctype, std::string& body) {
+    MailUpload up;
+    if (ctype.find("multipart/form-data") == std::string::npos) return up;
+    up.filename = multipart_filename(ctype, body, "attachment");
+    up.file = multipart_file(ctype, body, "attachment");
+    std::string().swap(body);
+    return up;
+}
+
+// Ingest a mail attachment with the sender's program policy. On success
+// `download_name` is the sanitized name for a program ("" otherwise); the
+// caller stores it with set_attachment_name once the message exists.
+// Returns the ?err= code on refusal, "" on success.
+std::string ingest_mail_attachment(const std::string& user, const MailUpload& up, std::optional<std::string>& blob_id,
+                                   std::optional<std::string>& mime, std::string& download_name) {
+    auto policy = program_policy_for(user);
+    auto r = ingest_file(g_blobs, g_mail_scanner, g_mail_caps, *up.file, policy ? &*policy : nullptr);
+    if (r.error != FileTransferError::None || !r.blob_id) {
+        switch (r.error) {
+            case FileTransferError::TooLarge: return "large";
+            case FileTransferError::ActiveContentBlocked: return "active";
+            case FileTransferError::FailedScan: return "scan";
+            case FileTransferError::ProgramNotAllowed: return "program";
+            default: return "type";
+        }
+    }
+    blob_id = r.blob_id;
+    mime = r.stored_mime_type;
+    if (const ProgramKindInfo* kind = program_kind_by_mime(mime.value_or("")))
+        download_name = sanitize_download_name(up.filename, *kind);
+    return {};
+}
+
+// The download of a mail attachment the caller already authorized
+// (`name_key`: that message's attachment_name_key). With
+// LIQUIDGOV_BLOB_ACCEL set to the internal nginx location that maps to the
+// blob folder ("/_lgblob/", deploy/nginx-program-mail.conf) every
+// attachment goes out through nginx, streamed from disk. Without it only
+// files up to 26 MB are sent from here (a 100 MB one would be held about
+// four times on a 0.5 GB server); bigger ones get a 503 (review 2026-10-27).
+std::string mail_attachment_response(const std::string& blob_id, const std::string& mime, const std::string& name_key) {
+    const ProgramKindInfo* kind = program_kind_by_mime(mime);
+    const std::string name = kind ? g_store.attachment_name(name_key).value_or(attachment_filename_for_mime(mime))
+                                  : attachment_filename_for_mime(mime);
+    const std::string extra = "Content-Disposition: attachment; filename=\"" + name + "\"\r\n"
+                              "Cache-Control: private, no-store\r\n";
+    const auto meta = g_blobs.meta(blob_id);
+    if (!meta || blob_id.size() <= 2) return http_raw("404 Not Found", "text/plain; charset=utf-8", "not found");
+    const char* accel = std::getenv("LIQUIDGOV_BLOB_ACCEL");
+    if (accel && accel[0]) {
+        return http_raw("200 OK", mime.c_str(), "",
+                        extra + "X-Accel-Redirect: " + accel + blob_id.substr(0, 2) + "/" + blob_id + "\r\n");
+    }
+    if (meta->size > kMaxBody)
+        return http_raw("503 Service Unavailable", "text/plain; charset=utf-8",
+                        "This file is too big to send without the server's download handoff.");
+    auto bytes = g_blobs.get(blob_id);
+    if (!bytes) return http_raw("404 Not Found", "text/plain; charset=utf-8", "not found");
+    return http_raw("200 OK", mime.c_str(), std::string(bytes->begin(), bytes->end()), extra);
+}
+
+// Big uploads have one door: POST /mail/big (1:1) and /mail/big/g/<id>/send
+// (groups). nginx lets a body over 26 MB through only there, and only after
+// GET /internal/upload-ok said yes for that cookie and Content-Length
+// (deploy/nginx-program-mail.conf), so nobody else can make nginx or this
+// process buffer 100 MB (review 2026-10-27).
+bool is_big_upload_target(const std::string& target) {
+    if (target == "/mail/big") return true;
+    return target.rfind("/mail/big/g/", 0) == 0 && target.size() > 17 &&
+           target.compare(target.size() - 5, 5, "/send") == 0;
+}
+
+// The body limit for a program sender on the big door: their limit plus
+// room for the multipart wrapping; kMaxBody for everyone and everything
+// else. Caller holds g_mu.
+std::size_t program_body_limit_locked(const std::string& headers) {
+    auto sess = g_store.get_session(cookie_of(headers));
+    if (!sess) return kMaxBody;
+    auto acc = g_store.find_by_id(sess->account);
+    if (!acc) return kMaxBody;
+    auto policy = program_policy_for(acc->username);
+    if (!policy) return kMaxBody;
+    return std::max<std::size_t>(kMaxBody, static_cast<std::size_t>(policy->max_bytes) + kMultipartRoom);
+}
+
+// The limit read_http_request enforces, from the headers alone (before the
+// body is read). Doesn't touch the session (handle() does that).
+std::size_t request_body_limit(const std::string& headers) {
+    auto le = headers.find("\r\n");
+    std::istringstream is(headers.substr(0, le));
+    std::string method, target;
+    is >> method >> target;
+    target = target.substr(0, target.find('?'));
+    if (method != "POST" || !is_big_upload_target(target)) return kMaxBody;
+    std::lock_guard<std::mutex> lock(g_mu);
+    return program_body_limit_locked(headers);
+}
+
+// nginx's auth_request for /mail/big: 204 when this cookie's account may
+// send programs and X-Original-Length fits its limit (or the ordinary one,
+// whichever is bigger), 403 otherwise (nginx then never reads the body).
+// No length (a chunked upload) is a no: nginx couldn't hold it to a size.
+// Caller holds g_mu.
+std::string upload_ok_response(const std::string& headers) {
+    std::string uri = header_value(headers, "X-Original-URI");
+    uri = uri.substr(0, uri.find('?'));
+    std::size_t length = 0;
+    try { length = static_cast<std::size_t>(std::stoull(header_value(headers, "X-Original-Length"))); } catch (...) { length = 0; }
+    bool granted = false;
+    if (auto sess = g_store.get_session(cookie_of(headers)))
+        if (auto acc = g_store.find_by_id(sess->account)) granted = program_policy_for(acc->username).has_value();
+    const bool ok = granted && is_big_upload_target(uri) && length > 0 && length <= program_body_limit_locked(headers);
+    return ok ? http_raw("204 No Content", "text/plain; charset=utf-8", "")
+              : http_raw("403 Forbidden", "text/plain; charset=utf-8", "no");
 }
 
 std::string portrait_tag(const std::string& username, const char* cls) {
@@ -2476,11 +2800,8 @@ std::string mail_thread_html(const std::string& user, const std::string& other,
         "<strong><a href=\"/u/"+html_escape(other)+"\">"+html_escape(other)+"</a></strong></div>";
     if (qs.count("err")) {
         const std::string& e = qs.at("err");
-        if (e=="type") html += "<p class=\"warn\">That attachment isn't a usable type. Allowed: PNG/JPEG/GIF, PDF, plain text, macro-free Word/Excel/PowerPoint. No SVG, no archives.</p>";
-        else if (e=="large") html += "<p class=\"warn\">That attachment is too large.</p>";
-        else if (e=="active") html += "<p class=\"warn\">That document was refused: it declares a macro, embedded object, or OLE content.</p>";
-        else if (e=="scan") html += "<p class=\"warn\">That attachment could not be stored.</p>";
-        else if (e=="notfriends") html += "<p class=\"warn\">Mail is friends-only until they accept.</p>";
+        if (e=="notfriends") html += "<p class=\"warn\">Mail is friends-only until they accept.</p>";
+        else html += mail_attachment_error_html(e, user);
     }
     auto thread = g_store.mail_with(user, other);
     html += "<div class=\"msglist\" id=\"msglist\">";
@@ -2490,21 +2811,24 @@ std::string mail_thread_html(const std::string& user, const std::string& other,
         html += "<div class=\"msg "+std::string(mine ? "mine" : "theirs")+"\"><div class=\"bubble\">";
         if (!m.text.empty()) html += html_escape(m.text);
         if (m.attachment_blob_id) {
-            html += "<div><a href=\"/mail/attachment/"+html_escape(*m.attachment_blob_id)+"\">Download attachment</a></div>";
+            html += mail_attachment_html(*m.attachment_blob_id, m.attachment_mime.value_or(""), attachment_name_key(m), m.from, mine);
         }
         html += "<span class=\"bubtime\">"+html_escape(fmt_time(m.ts))+"</span></div></div>";
     }
     html += "</div>"
-        "<form method=\"POST\" action=\"/mail\" enctype=\"multipart/form-data\" class=\"mailcomposer\" id=\"mailcomposer\">"
+        "<form method=\"POST\" action=\"/mail\" enctype=\"multipart/form-data\" class=\"mailcomposer\" id=\"mailcomposer\""
+        + std::string(kComposerOnSubmit) + ">"
         "<input type=\"hidden\" name=\"to\" value=\""+html_escape(other)+"\">"
         "<div class=\"row\" style=\"align-items:flex-end;gap:.4rem;flex-wrap:nowrap\">"
         "<textarea name=\"text\" id=\"mailtext\" maxlength=\"2000\" rows=\"2\" placeholder=\"Message\" "
         "autocomplete=\"off\" style=\"flex:1;min-width:0;min-height:44px;resize:vertical;background:#fff;color:#14110c;caret-color:#14110c\"></textarea>"
         "<label class=\"mailattbtn\" title=\"Attach a file\">"
-        "<input type=\"file\" name=\"attachment\" accept=\"image/png,image/jpeg,image/gif,application/pdf,text/plain,.docx,.xlsx,.pptx\">"
+        + mail_file_input_html(user, "/mail/big") +
         "<span aria-hidden=\"true\">\xF0\x9F\x93\x8E</span></label>"
         "<button type=\"submit\">Send</button></div>"
-        "<p class=\"muted\" style=\"margin:.3rem 0 0\">Enter sends. Shift+Enter is a new line.</p></form></div>"
+        + std::string(kComposerFileLine) +
+        "<p class=\"muted\" style=\"margin:.3rem 0 0\">Enter sends. Shift+Enter is a new line.</p>"
+        + mail_program_note_html(user) + "</form></div>"
         "<script>(function(){"
         "var list=document.getElementById('msglist');if(list)list.scrollTop=list.scrollHeight;"
         "var form=document.getElementById('mailcomposer'),ta=document.getElementById('mailtext');"
@@ -2657,7 +2981,21 @@ std::string mail_widget_script() {
         "if(!form)return;"
         "e.preventDefault();"
         "var fd=new FormData(form);"
-        "fetch('/mail',{method:'POST',body:fd,credentials:'same-origin'}).then(function(){loadMail(activeWith,true);});"
+        // XHR, not fetch, for the upload's progress: the Send button reads "Sending 37%" while a file goes up
+        // (2026-10-27: a 17 MB program looked like nothing was happening, and leaving the panel cancelled it)
+        "var btn=form.querySelector('button[type=submit]');"
+        "if(form.dataset.sending)return;form.dataset.sending='1';if(btn)btn.textContent='Sending...';"
+        "var x=new XMLHttpRequest();"
+        // the form's own action (/mail/big for a program sender); a refusal (?err=, /mail/too-large) is shown as a
+        // page, since the panel reload would drop its message
+        "x.open('POST',form.getAttribute('action')||'/mail');"
+        "x.upload.onprogress=function(p){if(btn&&p.lengthComputable)btn.textContent='Sending '+Math.floor(p.loaded*100/p.total)+'%';};"
+        "x.onload=function(){var u=x.responseURL||'';"
+        "if(/[?&]err=|\\/mail\\/too-large/.test(u)){location.href=u;return;}"
+        // nginx's own refusals of an upload (too large 413, too many at once 429) never reach the app
+        "if(x.status<200||x.status>=300){location.href='/mail/too-large?status='+x.status;return;}loadMail(activeWith,true);};"
+        "x.onerror=function(){location.href='/mail/too-large?status=0';};"
+        "x.send(fd);"
         "});"
         "mailRoot.addEventListener('keydown',function(e){"
         "if(e.key!=='Enter'||e.shiftKey)return;"
@@ -6000,6 +6338,36 @@ std::string admin_overview_page() {
         "<p class=\"muted\">You cannot restart the process from here &mdash; that's still SSH and systemd.</p>";
 }
 
+// The "Programs in mail" cell: what this person may send, and a form to
+// choose the kinds and the size (one person at a time -- each gets their
+// own list and limit). Operators always have every kind up to the ceiling.
+std::string admin_programs_cell(const std::string& username) {
+    const std::uint64_t ceiling_mb = program_ceiling_bytes() / (1024 * 1024);
+    if (is_operator(username))
+        return "<span class=\"muted\">Every kind, up to " + fmt_size(program_ceiling_bytes()) + " (admin)</span>";
+    auto g = g_store.program_grant(username);
+    std::string html = g ? html_escape(program_kinds_text(g->kinds)) + "<br><span class=\"muted\">up to " +
+                               fmt_size(std::min<std::uint64_t>(g->max_bytes, program_ceiling_bytes())) + "</span>"
+                         : std::string("<span class=\"muted\">None</span>");
+    const std::uint64_t cur_mb = g ? std::max<std::uint64_t>(1, std::min<std::uint64_t>(g->max_bytes / (1024 * 1024), ceiling_mb)) : 25;
+    html += "<details><summary class=\"muted\" style=\"cursor:pointer\">" + std::string(g ? "Change&hellip;" : "Allow&hellip;") +
+            "</summary><form method=\"POST\" action=\"/admin/accounts/programs\" style=\"margin-top:.3rem\">"
+            "<input type=\"hidden\" name=\"username\" value=\"" + html_escape(username) + "\">";
+    for (const auto& k : program_kinds()) {
+        const bool on = g && (g->kinds & static_cast<std::uint32_t>(k.kind));
+        html += std::string("<label style=\"display:block\"><input type=\"checkbox\" name=\"k_") + k.slug + "\"" +
+                (on ? " checked" : "") + "> " + html_escape(k.label) + "</label>";
+    }
+    html += "<label style=\"display:block;margin-top:.3rem\">Largest file (MB) "
+            "<input type=\"number\" name=\"max_mb\" min=\"1\" max=\"" + std::to_string(ceiling_mb) +
+            "\" step=\"1\" value=\"" + std::to_string(cur_mb) + "\" style=\"width:5rem\"></label>"
+            "<p class=\"muted\" style=\"margin:.2rem 0\">Server limit " + fmt_size(program_ceiling_bytes()) +
+            ". Untick everything to stop them sending programs. Programs are not virus-checked: allow only people "
+            "you trust, and only the kinds they need.</p>"
+            "<button class=\"ghost\" type=\"submit\">Save</button></form></details>";
+    return html;
+}
+
 std::string admin_accounts_page(const std::string& viewer, const std::string& q) {
     std::string html = admin_header() + admin_nav("accounts") +
         "<form method=\"GET\" action=\"/admin/accounts\" class=\"row\" style=\"margin-bottom:.8rem\">"
@@ -6015,14 +6383,15 @@ std::string admin_accounts_page(const std::string& viewer, const std::string& q)
         return html;
     }
     html += "<div style=\"overflow-x:auto\"><table class=\"register\"><tr>"
-            "<th>Username</th><th>Created</th><th>Locked</th><th>Sessions</th><th>Actions</th></tr>";
+            "<th>Username</th><th>Created</th><th>Locked</th><th>Sessions</th><th>Programs in mail</th><th>Actions</th></tr>";
     for (const auto& a : shown) {
         const bool locked = g_store.is_locked(a.username);
         const bool self = a.username == viewer;
         html += "<tr><td><a href=\"/u/"+html_escape(a.username)+"\">"+html_escape(a.username)+"</a></td>"
                 "<td>"+html_escape(fmt_time(a.created_at))+"</td>"
                 "<td>"+std::string(locked?"Yes":"No")+"</td>"
-                "<td>"+std::to_string(g_store.sessions_for(a.id).size())+"</td><td>";
+                "<td>"+std::to_string(g_store.sessions_for(a.id).size())+"</td>"
+                "<td>"+admin_programs_cell(a.username)+"</td><td>";
         if (self) {
             html += "<span class=\"muted\">(you)</span>";
         } else {
@@ -6910,7 +7279,9 @@ static bool push_subs_upsert(const std::string& user, const std::string& endpoin
     return std::rename("push_subs.txt.tmp", "push_subs.txt") == 0;
 }
 
-std::string handle(const std::string& req, const std::string& peer_ip) {
+// `req` is the request line and headers only; the body arrives on its own
+// (read_http_request keeps them apart so an upload is never copied).
+std::string handle(const std::string& req, const std::string& peer_ip, std::string body) {
     auto line_end=req.find("\r\n");
     if(line_end==std::string::npos) line_end=req.find('\n');
     if(line_end==std::string::npos) return http_ok(wrap("Error","",0,"<p>bad request</p>"));
@@ -6918,11 +7289,11 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
     if (method == "HEAD") method = "GET";
     std::string path = rawpath;
     auto qpos=path.find('?'); if(qpos!=std::string::npos) path=path.substr(0,qpos);
+    // Program uploads come in through /mail/big (nginx lets big bodies only
+    // in there, after asking /internal/upload-ok); past the door they are
+    // the ordinary /mail and /mail/g/<id>/send posts.
+    if (method == "POST" && (path == "/mail/big" || path.rfind("/mail/big/", 0) == 0)) path = "/mail" + path.substr(9);
     auto qs = parse_qs(rawpath);
-    std::string body;
-    auto sep=req.find("\r\n\r\n");
-    if(sep!=std::string::npos) body=req.substr(sep+4);
-    else { sep=req.find("\n\n"); if(sep!=std::string::npos) body=req.substr(sep+2); }
     std::lock_guard<std::mutex> lock(g_mu);
     auto proto = header_value(req, "X-Forwarded-Proto");
     for (char& c : proto) if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
@@ -6947,6 +7318,10 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         return http_code("404 Not Found", wrap("Not found", user, unread,
             "<div class=\"card\"><h1>Not found</h1><p>That page is not here.</p></div>"));
     };
+
+    // nginx's auth_request for the /mail/big upload door (nginx blocks
+    // /internal/ from outside).
+    if (path == "/internal/upload-ok") return upload_ok_response(req);
 
     if (path.size() > 1 && path.back() == '/') {
         std::string dest = path.substr(0, path.size() - 1);
@@ -8282,6 +8657,16 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         return pg("Search", html);
     }
 
+    // Where nginx sends a /mail/big upload it refused before reading it.
+    if(method=="GET"&&path=="/mail/too-large") {
+        std::string why = "That file is bigger than you can send.";
+        if (!acc || !program_policy_for(user)) why = "Only an admin, or someone an admin allowed, can send programs and large files.";
+        if (qs["status"] == "429") why = "Too many uploads at once. Wait a minute, then send it again.";
+        else if (!qs["status"].empty() && qs["status"] != "413") why = "It wasn't sent (the site didn't answer). Try again in a moment.";
+        return pg("Not sent", "<div class=\"card\"><h1>Not sent</h1><p>" + why + "</p>"
+                  "<p><a href=\"/mail\">Back to mail</a></p></div>");
+    }
+
     if(method=="GET"&&path=="/mail") {
         if(!acc) return need_login();
         g_store.mark_notices_read_of_type(user, "message");
@@ -8319,26 +8704,18 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         if (!found) {
             auto gfound = g_store.find_group_attachment(acc->id, blob_id);
             if (!gfound) return http_raw("404 Not Found", "text/plain; charset=utf-8", "not found");
-            auto gbytes = g_blobs.get(blob_id);
-            if (!gbytes) return http_raw("404 Not Found", "text/plain; charset=utf-8", "not found");
-            std::string gdata(gbytes->begin(), gbytes->end());
-            const std::string gmime = gfound->attachment_mime.empty() ? "application/octet-stream" : gfound->attachment_mime;
-            std::string gextra = "Content-Disposition: attachment; filename=\""+attachment_filename_for_mime(gmime)+"\"\r\n"
-                                 "Cache-Control: private, no-store\r\n";
-            return http_raw("200 OK", gmime.c_str(), gdata, gextra);
+            return mail_attachment_response(blob_id,
+                gfound->attachment_mime.empty() ? "application/octet-stream" : gfound->attachment_mime,
+                attachment_name_key(*gfound));
         }
         const std::string other = (found->from == user) ? found->to : found->from;
         // Same gate as the thread view: attachments do not outlive the
         // friendship they were sent inside of. Do not open stranger DMs.
         if (!g_store.are_friends(user, other) || g_store.is_blocked(user, other) || g_store.is_blocked(other, user))
             return http_raw("404 Not Found", "text/plain; charset=utf-8", "not found");
-        const std::string mime = found->attachment_mime.value_or("application/octet-stream");
-        auto bytes = g_blobs.get(blob_id);
-        if (!bytes) return http_raw("404 Not Found", "text/plain; charset=utf-8", "not found");
-        std::string data(bytes->begin(), bytes->end());
-        std::string extra = "Content-Disposition: attachment; filename=\""+attachment_filename_for_mime(mime)+"\"\r\n"
-                             "Cache-Control: private, no-store\r\n";
-        return http_raw("200 OK", mime.c_str(), data, extra);
+        // (the same bytes sent twice under two names: the download is named after the message the store finds)
+        return mail_attachment_response(blob_id, found->attachment_mime.value_or("application/octet-stream"),
+                                        attachment_name_key(*found));
     }
 
     if(method=="GET"&&path.rfind("/mail/g/",0)==0) {
@@ -8361,10 +8738,7 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             "Start a new thread with just them if you still want to talk.</p>";
         if (!qs["skipped"].empty()) html += "<p class=\"warn\">Couldn’t include: "+html_escape(qs["skipped"])+". "
             "Unknown, blocked, and contact-settings conflicts are skipped.</p>";
-        if (qs["err"]=="type") html += "<p class=\"warn\">That attachment isn't a usable type. Allowed: PNG/JPEG/GIF, PDF, plain text, macro-free Word/Excel/PowerPoint. No SVG, no archives.</p>";
-        else if (qs["err"]=="large") html += "<p class=\"warn\">That attachment is too large.</p>";
-        else if (qs["err"]=="active") html += "<p class=\"warn\">That document was refused: it declares a macro, embedded object, or OLE content.</p>";
-        else if (qs["err"]=="scan") html += "<p class=\"warn\">That attachment could not be stored.</p>";
+        if (qs["err"]!="invite") html += mail_attachment_error_html(qs["err"], user);
 
         if (!active) {
             html += "<div class=\"mailpending\"><p><strong>Waiting for you to join.</strong> "
@@ -8388,7 +8762,8 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             } else {
                 if (!m.text.empty()) html += html_escape(m.text);
                 if (!m.attachment_blob_id.empty())
-                    html += "<div><a href=\"/mail/attachment/"+html_escape(m.attachment_blob_id)+"\">Download attachment</a></div>";
+                    html += mail_attachment_html(m.attachment_blob_id, m.attachment_mime, attachment_name_key(m),
+                                                 display_name_for(m.sender), mine);
                 if (m.edited_at>0) html += "<span class=\"muted\"> (edited)</span>";
             }
             html += "<span class=\"bubtime\">"+html_escape(fmt_time(m.sent_at))+"</span></div></div>";
@@ -8396,15 +8771,18 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         if (!any) html += "<p class=\"empty\">No messages yet.</p>";
         html += "</div>";
         if (active) {
-            html += "<form method=\"POST\" action=\""+base+"/send\" enctype=\"multipart/form-data\" class=\"mailcomposer\" id=\"mailcomposer\">"
+            html += "<form method=\"POST\" action=\""+base+"/send\" enctype=\"multipart/form-data\" class=\"mailcomposer\" id=\"mailcomposer\""
+                    + std::string(kComposerOnSubmit) + ">"
                     "<div class=\"row\" style=\"align-items:flex-end;gap:.4rem;flex-wrap:nowrap\">"
                     "<textarea name=\"text\" id=\"mailtext\" maxlength=\"2000\" rows=\"2\" placeholder=\"Message\" "
                     "style=\"flex:1;min-width:0;min-height:44px;resize:vertical\"></textarea>"
                     "<label class=\"mailattbtn\" title=\"Attach a file\">"
-                    "<input type=\"file\" name=\"attachment\" accept=\"image/png,image/jpeg,image/gif,application/pdf,text/plain,.docx,.xlsx,.pptx\">"
+                    + mail_file_input_html(user, "/mail/big/g/" + std::to_string(conv_id) + "/send") +
                     "<span aria-hidden=\"true\">\xF0\x9F\x93\x8E</span></label>"
                     "<button type=\"submit\">Send</button></div>"
-                    "<p class=\"muted\" style=\"margin:.3rem 0 0\">Enter sends. Shift+Enter is a new line.</p></form>";
+                    + std::string(kComposerFileLine) +
+                    "<p class=\"muted\" style=\"margin:.3rem 0 0\">Enter sends. Shift+Enter is a new line.</p>"
+                    + mail_program_note_html(user) + "</form>";
         }
         html += "</div>";
 
@@ -9500,15 +9878,14 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         std::string hdrs = hdr_end==std::string::npos ? req : req.substr(0, hdr_end);
         std::string ctype = header_value(hdrs, "Content-Type");
         std::string to, text;
-        std::optional<std::vector<std::uint8_t>> file;
         if (ctype.find("multipart/form-data") != std::string::npos) {
             to = multipart_field(ctype, body, "to");
             text = multipart_field(ctype, body, "text");
-            file = multipart_file(ctype, body, "attachment");
         } else {
             auto f = parse_form(body);
             to = f["to"]; text = f["text"];
         }
+        const MailUpload up = take_mail_upload(ctype, body); // releases the body
         if(text.size()>2000) text.resize(2000);
         // Do not open stranger DMs: friends-only, both directions unblocked,
         // exactly as before attachments existed.
@@ -9516,22 +9893,22 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             return http_redir("/mail?with="+to+"&err=notfriends");
 
         std::optional<std::string> blob_id, mime;
-        if (file && !file->empty()) {
-            auto r = ingest_file(g_blobs, g_mail_scanner, g_mail_caps, *file);
-            if (r.error != FileTransferError::None || !r.blob_id) {
-                const char* code = "type";
-                switch (r.error) {
-                    case FileTransferError::TooLarge: code = "large"; break;
-                    case FileTransferError::ActiveContentBlocked: code = "active"; break;
-                    case FileTransferError::FailedScan: code = "scan"; break;
-                    default: code = "type"; break;
-                }
-                return http_redir("/mail?with="+to+"&err="+code);
-            }
-            blob_id = r.blob_id;
-            mime = r.stored_mime_type;
+        std::string download_name;
+        if (up.file && !up.file->empty()) {
+            const std::string code = ingest_mail_attachment(user, up, blob_id, mime, download_name);
+            if (!code.empty()) return http_redir("/mail?with="+to+"&err="+code);
         }
-        if (!text.empty() || blob_id) g_store.add_mail(user,to,text,blob_id,mime);
+        if (!text.empty() || blob_id) {
+            g_store.add_mail(user,to,text,blob_id,mime);
+            if (!download_name.empty()) { // named once the message exists (review 2026-10-27)
+                const auto thread = g_store.mail_with(user, to);
+                for (auto it = thread.rbegin(); it != thread.rend(); ++it)
+                    if (it->from == user && it->attachment_blob_id == blob_id) {
+                        g_store.set_attachment_name(attachment_name_key(*it), download_name);
+                        break;
+                    }
+            }
+        }
         return http_redir("/mail?with="+to);
     }
 
@@ -9643,30 +10020,19 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
             std::string hdrs = hdr_end==std::string::npos ? req : req.substr(0, hdr_end);
             std::string ctype = header_value(hdrs, "Content-Type");
             std::string text;
-            std::optional<std::vector<std::uint8_t>> file;
             if (ctype.find("multipart/form-data") != std::string::npos) {
                 text = multipart_field(ctype, body, "text");
-                file = multipart_file(ctype, body, "attachment");
             } else {
                 text = parse_form(body)["text"];
             }
+            const MailUpload up = take_mail_upload(ctype, body); // releases the body
             text = trim_ws(text);
             if (text.size()>2000) text.resize(2000);
             std::optional<std::string> blob_id, mime;
-            if (file && !file->empty()) {
-                auto r = ingest_file(g_blobs, g_mail_scanner, g_mail_caps, *file);
-                if (r.error != FileTransferError::None || !r.blob_id) {
-                    const char* code = "type";
-                    switch (r.error) {
-                        case FileTransferError::TooLarge: code = "large"; break;
-                        case FileTransferError::ActiveContentBlocked: code = "active"; break;
-                        case FileTransferError::FailedScan: code = "scan"; break;
-                        default: code = "type"; break;
-                    }
-                    return http_redir(base+"?err="+code);
-                }
-                blob_id = r.blob_id;
-                mime = r.stored_mime_type;
+            std::string download_name;
+            if (up.file && !up.file->empty()) {
+                const std::string code = ingest_mail_attachment(user, up, blob_id, mime, download_name);
+                if (!code.empty()) return http_redir(base+"?err="+code);
             }
             if (!text.empty() || blob_id) {
                 auto sent = send_message(g_store, acc->id, conv_id, text);
@@ -9676,7 +10042,11 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
                         msg->attachment_blob_id = *blob_id;
                         msg->attachment_mime = mime.value_or("");
                         g_store.update_message(*msg);
+                        if (!download_name.empty()) // named once the message exists (review 2026-10-27)
+                            g_store.set_attachment_name(attachment_name_key(*msg), download_name);
                     }
+                } else if (blob_id) {
+                    g_blobs.release(*blob_id); // not sent (left the group, blocked...): don't keep up to 100 MB for nothing
                 }
             }
             return http_redir(base);
@@ -9873,6 +10243,30 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
         }
         return http_redir("/admin/accounts");
     }
+    if(method=="POST"&&path=="/admin/accounts/programs") {
+        if(!acc) return need_login();
+        if(!is_operator(user)) return admin_404();
+        auto form = parse_form(body);
+        auto target = trim_ws(form["username"]);
+        if (!target.empty() && g_store.find_by_username(target) && !is_operator(target)) {
+            ProgramGrant g;
+            g.username = target;
+            for (const auto& k : program_kinds())
+                if (!form[std::string("k_") + k.slug].empty()) g.kinds |= static_cast<std::uint32_t>(k.kind);
+            std::uint64_t mb = 0;
+            try { mb = std::stoull(trim_ws(form["max_mb"])); } catch (...) { mb = 0; }
+            const std::uint64_t ceiling_mb = program_ceiling_bytes() / (1024 * 1024);
+            mb = std::max<std::uint64_t>(1, std::min<std::uint64_t>(mb, ceiling_mb));
+            g.max_bytes = mb * 1024 * 1024;
+            g.granted_by = user;
+            g.granted_at = now();
+            const bool had = g_store.program_grant(target).has_value();
+            g_store.set_program_grant(g);
+            if (g.kinds) g_store.add_audit_log(user, "programs_grant", target);
+            else if (had) g_store.add_audit_log(user, "programs_revoke", target);
+        }
+        return http_redir("/admin/accounts");
+    }
     if(method=="POST"&&path=="/admin/accounts/unlock") {
         if(!acc) return need_login();
         if(!is_operator(user)) return admin_404();
@@ -9940,6 +10334,14 @@ std::string handle(const std::string& req, const std::string& peer_ip) {
 }
 }
 int main() {
+    // A write to a socket the other side already closed (a /world or jukebox player who just left, a browser
+    // that hung up mid-download) or to the password-reset mail pipe after curl quit raises SIGPIPE, whose
+    // default action kills this whole process -- every route, every connected user, all in-memory room state.
+    // Ignored, that write just fails with EPIPE, which every write here already handles (ws_write_frame returns
+    // false, page sends close the socket, the mail path logs pclose's status). Found by a capacity bench of the
+    // /world room code: 200 players leaving at once killed it with exit 141 (2026-10-30).
+    std::signal(SIGPIPE, SIG_IGN);
+
     // FilesystemBlobStore::get()/meta() both gate on an in-memory refcount
     // entry that ONLY put() or adopt() ever create -- bytes sitting on
     // disk from a previous process are otherwise invisible, not just
@@ -9964,11 +10366,14 @@ int main() {
         g_blobs.adopt(p.attachment_blob_id, p.attachment_mime);
     int fd=socket(AF_INET,SOCK_STREAM,0); if(fd<0) return 1;
     int yes=1; setsockopt(fd,SOL_SOCKET,SO_REUSEADDR,&yes,sizeof(yes));
-    sockaddr_in addr{}; addr.sin_family=AF_INET; addr.sin_port=htons(kPort); addr.sin_addr.s_addr=htonl(INADDR_ANY);
+    // LIQUIDGOV_PORT only for a local test copy (8080 is taken on the dev PC); production leaves it unset.
+    int port = kPort;
+    if (const char* p = std::getenv("LIQUIDGOV_PORT")) { try { port = std::stoi(p); } catch (...) { port = kPort; } }
+    sockaddr_in addr{}; addr.sin_family=AF_INET; addr.sin_port=htons(static_cast<std::uint16_t>(port)); addr.sin_addr.s_addr=htonl(INADDR_ANY);
     if(bind(fd,reinterpret_cast<sockaddr*>(&addr),sizeof(addr))<0){ perror("bind"); return 1; }
     listen(fd,16);
     lglog::emit("boot", "listen");
-    std::cerr<<"LiquidGov http://0.0.0.0:"<<kPort<<" store="<<g_store.path()
+    std::cerr<<"LiquidGov http://0.0.0.0:"<<port<<" store="<<g_store.path()
              <<" blobs="<<blob_path_from_env()<<" (auth.cpp + FileStore LGP1)\n";
     for(;;){
         sockaddr_in peer{}; socklen_t plen=sizeof(peer);
@@ -9976,8 +10381,32 @@ int main() {
         timeval tv{}; tv.tv_sec=30; tv.tv_usec=0;
         setsockopt(c,SOL_SOCKET,SO_RCVTIMEO,&tv,sizeof(tv));
         char ipbuf[INET_ADDRSTRLEN]="0.0.0.0"; inet_ntop(AF_INET,&peer.sin_addr,ipbuf,sizeof(ipbuf));
-        std::string req;
-        read_http_request(c, req);
+        std::string req, body;
+        bool too_large = false;
+        std::size_t declared = 0;
+        read_http_request(c, req, body, request_body_limit, &too_large, &declared);
+        if (too_large) {
+            // Answer instead of handling a cut-off upload, then read and drop what the client is still sending:
+            // closing with unread bytes resets the connection, which nginx reports as a 502, not this page
+            // (review 2026-10-27). Bounded: the declared length, 2 s per read, 15 s in all.
+            std::string resp = http_code("413 Payload Too Large",
+                page_wrap("Too large", nav("",0), "<div class=\"card\"><p>That upload is too large to send. "
+                          "<a href=\"/mail\">Back to mail</a></p></div>"));
+            send(c,resp.data(),resp.size(),0);
+            shutdown(c, SHUT_WR);
+            timeval drain_tv{}; drain_tv.tv_sec = 2;
+            setsockopt(c,SOL_SOCKET,SO_RCVTIMEO,&drain_tv,sizeof(drain_tv));
+            const auto drain_until = std::chrono::steady_clock::now() + std::chrono::seconds(15);
+            char sink[65536];
+            std::size_t drained = 0;
+            while ((declared == 0 || drained < declared) && std::chrono::steady_clock::now() < drain_until) {
+                ssize_t n = recv(c, sink, sizeof(sink), 0);
+                if (n <= 0) break;
+                drained += static_cast<std::size_t>(n);
+            }
+            close(c);
+            continue;
+        }
 
         // /world/ws is the one route that doesn't get the ordinary
         // request/response treatment: a successful upgrade hands the fd to
@@ -10079,7 +10508,7 @@ int main() {
 
         std::string resp;
         try {
-            resp = handle(req,ipbuf);
+            resp = handle(req, ipbuf, std::move(body));
             lglog::access(req, resp);
         } catch (const std::exception& e) {
             lglog::emit("error", e.what());

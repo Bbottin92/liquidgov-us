@@ -1,0 +1,351 @@
+  :root{
+    --ink:#1a1814;
+    --paper:#f7f1e4;
+  }
+  html,body{
+    margin:0; padding:0; width:100%; height:100%; overflow:hidden;
+    background:#0c0b09; color:var(--ink);
+    font-family:"Segoe UI",system-ui,-apple-system,sans-serif;
+  }
+  #stage{
+    position:fixed; inset:0;
+    display:flex; align-items:center; justify-content:center;
+  }
+  #game{
+    image-rendering:pixelated;
+    image-rendering:crisp-edges;
+    background:#000;
+  }
+  #nameOverlay{
+    position:fixed; inset:0; z-index:20;
+    background:rgba(12,11,9,.92);
+    display:flex; align-items:center; justify-content:center;
+  }
+  #nameCard{
+    background:var(--paper); color:var(--ink);
+    border:1px solid rgba(26,24,20,.25);
+    border-radius:8px; padding:1.2rem 1.4rem;
+    width:min(20rem,88vw); text-align:center;
+  }
+  #nameCard h1{
+    font-size:1.05rem; margin:0 0 .6rem; font-weight:700;
+  }
+  #nameCard p{
+    font-size:.8rem; margin:0 0 .8rem; color:#6b6458;
+  }
+  #nameInput{
+    width:100%; box-sizing:border-box; font-size:1rem;
+    padding:.5rem .6rem; border:1px solid rgba(26,24,20,.3);
+    border-radius:6px; margin-bottom:.7rem; background:#fff;
+  }
+  #nameGo{
+    width:100%; font-size:.95rem; padding:.55rem 0;
+    border:1px solid var(--ink); border-radius:6px;
+    background:var(--ink); color:var(--paper); cursor:pointer;
+  }
+  #nameCard .toSite{
+    margin:.75rem 0 0; font-size:.75rem;
+  }
+  #nameCard .toSite a{ color:#6b6458; }
+  #siteLink{
+    position:fixed;
+    top:calc(.55rem + env(safe-area-inset-top,0px));
+    right:calc(.6rem + env(safe-area-inset-right,0px));
+    z-index:14;
+    padding:.28rem .7rem; border:1px solid var(--ink); border-radius:999px;
+    background:var(--paper); color:var(--ink);
+    font-size:.75rem; line-height:1.2; font-weight:600;
+    text-decoration:none;
+    box-shadow:0 1px 4px rgba(26,24,20,.35);
+  }
+  /* "Reconnecting…": top centre, well away from the bottom-anchored d-pad and Enter button, above them (15) but under the
+     name overlay (20). Empty = hidden (netStatusTick writes the text only while the problem lasts); it never takes a tap. */
+  #connStatus{
+    position:fixed; top:calc(.6rem + env(safe-area-inset-top,0px)); left:50%; transform:translateX(-50%);
+    z-index:15; max-width:calc(100% - 2rem);
+    padding:.3rem .8rem; border:1px solid var(--ink); border-radius:999px;
+    background:var(--paper); color:var(--ink);
+    font-size:.85rem; line-height:1.2; white-space:nowrap;
+    box-shadow:0 1px 4px rgba(26,24,20,.35);
+    pointer-events:none; user-select:none; -webkit-user-select:none;
+  }
+  #connStatus:empty{ display:none; }
+  /* What you hold used to be a strip of chips here. The backpack is that list,
+     so this node stays empty and hidden. The Bag button is the widget toggle. */
+  #invHud{ display:none; }
+  /* BUILD backpack: the Bag button sits under the LiquidGov link, top-right.
+     Always shown -- an empty pack can still be opened. */
+  #bagBtn{
+    position:fixed; top:calc(2.4rem + env(safe-area-inset-top,0px)); right:calc(.6rem + env(safe-area-inset-right,0px));
+    z-index:14; padding:.3rem .8rem; border:1px solid var(--ink); border-radius:999px;
+    background:rgba(247,241,228,.88); color:var(--ink);
+    font-size:.75rem; font-weight:700; line-height:1.2; cursor:pointer;
+    user-select:none; -webkit-user-select:none;
+    box-shadow:0 1px 4px rgba(26,24,20,.35);
+  }
+  #bagBtn[hidden]{ display:none; }
+  /* The shared tooltip bubble (decision 4) -- one node, positioned in JS above whichever chip was
+     hovered/tapped, in the strip or the backpack grid. */
+  #itemTip{
+    position:fixed; z-index:40; max-width:min(14rem, 70vw);
+    padding:.3rem .6rem; border:1px solid var(--ink); border-radius:6px;
+    background:var(--paper); color:var(--ink);
+    font-size:.72rem; line-height:1.3;
+    box-shadow:0 1px 4px rgba(26,24,20,.35);
+    pointer-events:none; user-select:none; -webkit-user-select:none;
+  }
+  #itemTip[hidden]{ display:none; }
+  /* Toasts used to be 8px canvas text on the grass. Same paper pill as the
+     reconnect badge, bottom-centre, above the d-pad. Empty = hidden. */
+  #toast{
+    position:fixed; left:50%; transform:translateX(-50%);
+    bottom:calc(8.4rem + env(safe-area-inset-bottom,0px));
+    z-index:15; max-width:calc(100% - 2rem);
+    padding:.3rem .85rem; border:1px solid var(--ink); border-radius:999px;
+    background:var(--paper); color:var(--ink);
+    font-size:.8rem; line-height:1.2; white-space:nowrap;
+    box-shadow:0 1px 4px rgba(26,24,20,.35);
+    pointer-events:none; user-select:none; -webkit-user-select:none;
+  }
+  #toast:empty{ display:none; }
+  /* FireRed-style place banner. Names used to be ink stamped on the grass
+     (a P0 debug leftover). Empty = hidden. Sits under the reconnect badge. */
+  #placeName{
+    position:fixed; left:50%; transform:translateX(-50%);
+    top:calc(.6rem + env(safe-area-inset-top,0px));
+    z-index:14; max-width:calc(100% - 2rem);
+    padding:.28rem .9rem; border:1px solid var(--ink); border-radius:6px;
+    background:var(--paper); color:var(--ink);
+    font-size:.82rem; font-weight:700; letter-spacing:.03em; line-height:1.2;
+    white-space:nowrap;
+    box-shadow:0 1px 4px rgba(26,24,20,.35);
+    pointer-events:none; user-select:none; -webkit-user-select:none;
+  }
+  #placeName:empty{ display:none; }
+  #connStatus:not(:empty) ~ #placeName{
+    top:calc(2.6rem + env(safe-area-inset-top,0px));
+  }
+  /* "A batch is ready.": same pill family as #placeName/#connStatus, its own fixed slot so it never
+     has to juggle the same sibling math those two already share. Empty = hidden. */
+  #batchReady{
+    position:fixed; left:50%; transform:translateX(-50%);
+    top:calc(4.6rem + env(safe-area-inset-top,0px));
+    z-index:14; max-width:calc(100% - 2rem);
+    padding:.28rem .9rem; border:1px solid var(--ink); border-radius:6px;
+    background:var(--paper); color:var(--ink);
+    font-size:.82rem; font-weight:700; letter-spacing:.03em; line-height:1.2;
+    white-space:nowrap;
+    box-shadow:0 1px 4px rgba(26,24,20,.35);
+    pointer-events:none; user-select:none; -webkit-user-select:none;
+  }
+  #batchReady:empty{ display:none; }
+  #dpad{
+    position:fixed; left:0; right:0;
+    bottom:calc(.8rem + env(safe-area-inset-bottom,0px));
+    z-index:10;
+    display:grid;
+    grid-template-columns:44px 44px 44px;
+    grid-template-rows:44px 44px 44px;
+    gap:4px;
+    width:136px; margin:0 auto;
+    user-select:none; -webkit-user-select:none;
+    touch-action:none;
+  }
+  #dpad button{
+    grid-column:var(--c); grid-row:var(--r);
+    border:1px solid rgba(26,24,20,.55);
+    background:rgba(247,241,228,.28);
+    color:var(--paper);
+    border-radius:8px;
+    font-size:1.1rem;
+    display:flex; align-items:center; justify-content:center;
+    padding:0;
+  }
+  #dpad button:active{ background:rgba(247,241,228,.55); }
+  #dUp{ --c:2; --r:1; }
+  #dLeft{ --c:1; --r:2; }
+  #dRight{ --c:3; --r:2; }
+  #dDown{ --c:2; --r:3; }
+  #interactBtn{
+    position:fixed;
+    right:calc(.9rem + env(safe-area-inset-right,0px));
+    bottom:calc(1.6rem + env(safe-area-inset-bottom,0px));
+    z-index:11;
+    width:64px; height:64px; border-radius:50%;
+    border:1px solid rgba(26,24,20,.55);
+    background:rgba(196,165,116,.55);
+    color:var(--ink);
+    font-size:.85rem; font-weight:700;
+    display:none; align-items:center; justify-content:center;
+    user-select:none; -webkit-user-select:none;
+    touch-action:none;
+  }
+  #interactBtn.show{ display:flex; }
+  #interactBtn:active{ background:rgba(196,165,116,.85); }
+  /* Keyboard has arrows, so the thumb pad stays hidden. The round Enter
+     button was hidden too, which meant a keyboard showed no prompt at all:
+     you had to already know to press Enter. On a fine pointer the same
+     button becomes a label under the map. It does not take clicks. */
+  @media (hover: hover) and (pointer: fine) {
+    #dpad{ display:none; }
+    #interactBtn.show{
+      display:block;
+      left:50%; right:auto; transform:translateX(-50%);
+      bottom:calc(1.2rem + env(safe-area-inset-bottom,0px));
+      width:auto; height:auto; min-width:0;
+      padding:.3rem .85rem; border-radius:999px;
+      border:1px solid var(--ink);
+      background:var(--paper); color:var(--ink);
+      font-size:.8rem; font-weight:700;
+      pointer-events:none;
+      box-shadow:0 1px 4px rgba(26,24,20,.35);
+    }
+    #toast{ bottom:calc(3.2rem + env(safe-area-inset-bottom,0px)); }
+  }
+
+  /* Easel, bench and notebook are full-screen overlays: a 160x240 portrait crop
+     cannot hold those tools. The backpack is not one of them -- it is a corner
+     widget, the same idea as the juketube panel, and the map stays visible. */
+  #easel, #bench, #notebook{
+    position:fixed; inset:0; z-index:30;
+    display:none; flex-direction:column;
+    background:#14120f; color:#f2ead8;
+    padding:calc(.6rem + env(safe-area-inset-top,0px)) .6rem calc(.6rem + env(safe-area-inset-bottom,0px));
+    box-sizing:border-box; gap:.45rem;
+    overflow-y:auto; -webkit-overflow-scrolling:touch;
+    font-family:"Segoe UI",system-ui,sans-serif;
+  }
+  #easel.open, #bench.open, #notebook.open, #backpack.open, #whereList.open{ display:flex; }
+  #easelTitle, #benchTitle, #notebookTitle, #backpackTitle{ margin:0; font-size:.95rem; letter-spacing:.04em; }
+  #easelStage{
+    flex:1 1 auto; min-height:0;
+    display:flex; align-items:center; justify-content:center;
+  }
+  #easelCanvas{
+    width:min(92vw, calc(100dvh - 16.5rem), 32rem); max-width:100%; height:auto; aspect-ratio:1 / 1;
+    image-rendering:pixelated; image-rendering:crisp-edges;
+    background:#efe6d4; touch-action:none;
+    border:2px solid #c4a574;
+  }
+  #easelTools, #easelPalette, #easelActions,
+  #benchMixChips, #benchActions, #notebookActions{
+    display:flex; flex-wrap:wrap; gap:6px; align-items:center;
+  }
+  #easel button, #bench button, #notebook button, #backpack button, #whereList button{
+    min-height:44px; min-width:44px;
+    padding:0 .7rem; border-radius:8px;
+    border:1px solid #c4a574; background:#1b1813; color:#f2ead8;
+    font-size:.9rem;
+  }
+  #easel button.on, #bench button.on{ background:#c4a574; color:#14120f; }
+  #easel .swatch{ padding:0 .55rem; }
+  #easel .swatch i{
+    display:inline-block; width:14px; height:14px; margin-right:.35rem;
+    vertical-align:-2px; border:1px solid #f2ead8;
+  }
+  #easelNote, #benchNote, #benchGuestNote, #notebookGuestNote{ margin:0; min-height:1.2em; font-size:.8rem; color:#a89c88; }
+  /* Bench: an open-batch row (name + countdown, Collect once ready), a makeable-recipe row (name,
+     Start), and the side-mix chip strip -- CLAUDE_STUDIO_3.md's "up to 4 held items, button Try". */
+  #benchBatches, #benchRecipes{ display:flex; flex-direction:column; gap:4px; }
+  /* BUILD backpack decision 6: section headers so the three lists read as sections, not one run-on block. */
+  .benchSection{
+    margin:.3rem 0 0; font-size:.72rem; font-weight:700; letter-spacing:.06em;
+    text-transform:uppercase; color:#c4a574;
+  }
+  .benchRow{
+    display:flex; align-items:center; justify-content:space-between; gap:.5rem;
+    padding:.3rem .5rem; border:1px solid rgba(196,165,116,.4); border-radius:6px;
+    font-size:.85rem;
+  }
+  .benchRow > span:first-of-type{ flex:none; }
+  .benchRow .bpIcon{ flex:none; display:block; image-rendering:pixelated; border-radius:3px; }
+  /* A batch's countdown keeps its exact minutes/hours text (CLAUDE_STUDIO_3.md: "Names and waiting," not
+     a mystery meter) -- the bar is an addition alongside it, not a replacement. */
+  .benchProgress{
+    flex:1 1 auto; height:6px; min-width:2rem; border-radius:3px;
+    background:rgba(196,165,116,.22); overflow:hidden;
+  }
+  .benchProgress i{ display:block; height:100%; background:#c4a574; }
+  .benchEmpty{ margin:0; font-size:.8rem; color:#a89c88; }
+  .benchChip{ font-size:.8rem; padding:0 .5rem; }
+  /* Side-mixing reads as "more of the same list" without this -- CLAUDE_STUDIO_3.md was explicit that a
+     mix Try is a different, lesser action than starting a real batch. */
+  #benchMix{
+    padding:.5rem; border-radius:8px; background:rgba(196,165,116,.1);
+    border:1px solid rgba(196,165,116,.25);
+  }
+  /* The notebook: one line per discovery, then a "?" line per bench recipe not yet collected --
+     CLAUDE_STUDIO_3.md: "No free text." */
+  #notebookLines{ display:flex; flex-direction:column; gap:6px; overflow-y:auto; }
+  .notebookLine{ margin:0; font-size:.85rem; line-height:1.35; }
+  .notebookUnknown{ color:#a89c88; }
+  /* Corner widget, not a full-screen overlay. Opens under the Bag button.
+     The grid scrolls inside the panel; the map around it stays on screen. */
+  #backpack{
+    position:fixed;
+    top:calc(4.7rem + env(safe-area-inset-top,0px));
+    right:calc(.6rem + env(safe-area-inset-right,0px));
+    z-index:30;
+    display:none;
+    flex-direction:column;
+    width:min(20rem, calc(100vw - 1.2rem));
+    max-height:min(26rem, calc(100dvh - 6.2rem));
+    overflow:hidden;
+    background:#14120f; color:#f2ead8;
+    border:1px solid #c4a574; border-radius:10px;
+    padding:.55rem .6rem .6rem;
+    box-sizing:border-box; gap:.35rem;
+    box-shadow:0 6px 24px rgba(0,0,0,.45);
+    font-family:"Segoe UI",system-ui,sans-serif;
+  }
+  .bpHead{ display:flex; align-items:center; justify-content:space-between; gap:.4rem; }
+  .bpHead #backpackClose, .bpHead #whereClose{ min-height:32px; }
+  #backpackEmpty{ margin:0; font-size:.8rem; color:#a89c88; }
+  #backpackGrid{
+    flex:1 1 auto; min-height:0; overflow-y:auto;
+    display:grid; grid-template-columns:repeat(auto-fill, minmax(4.6rem, 1fr)); gap:.5rem;
+    align-content:start;
+  }
+  .bpChip{
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:.25rem;
+    padding:.5rem .3rem; text-align:center;
+  }
+  .bpChip canvas{ image-rendering:pixelated; border-radius:3px; }
+  .bpChip span{ font-size:.72rem; line-height:1.2; }
+  .bpChip em{ font-style:normal; font-size:.7rem; color:#a89c88; }
+  .bpChip.held{ border-color:#c4a574; box-shadow:0 0 0 1px #c4a574; }
+  /* The gate's question. Not a full-screen page: the path stays visible behind it.
+     Not in the #easel, #bench, #notebook, #backpack fullscreen group. */
+  #whereList{
+    position:fixed;
+    left:50%;
+    bottom:calc(4.2rem + env(safe-area-inset-bottom,0px));
+    transform:translateX(-50%);
+    z-index:30;
+    display:none;
+    flex-direction:column;
+    width:min(16rem, calc(100vw - 1.2rem));
+    max-height:min(16rem, calc(100dvh - 8rem));
+    overflow:hidden;
+    background:#14120f; color:#f2ead8;
+    border:1px solid #c4a574; border-radius:10px;
+    padding:.55rem .6rem .6rem;
+    box-sizing:border-box; gap:.35rem;
+    box-shadow:0 6px 24px rgba(0,0,0,.45);
+    font-family:"Segoe UI",system-ui,sans-serif;
+  }
+  #whereLines{ display:flex; flex-direction:column; gap:6px; overflow-y:auto; }
+  #whereLines button{ width:100%; }
+  @media (max-width: 480px) {
+    #easelCanvas{ width:min(100%, calc(100vw - 1.2rem), calc(100dvh - 16.5rem)); }
+    #easel, #bench, #notebook{ gap:.35rem; }
+  }
+  @media (max-height: 500px) and (orientation: landscape) {
+    #easel{ flex-direction:row; flex-wrap:wrap; align-items:stretch; }
+    #easelTitle{ flex:1 1 100%; }
+    #easelStage{ flex:1 1 auto; }
+    #easelCanvas{ width:auto; height:min(92vh, 70vw); }
+    #easelTools, #easelPalette, #easelActions, #easelNote{
+      flex:1 1 8rem; align-content:flex-start;
+    }
+  }

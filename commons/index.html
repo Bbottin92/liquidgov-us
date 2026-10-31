@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>The Commons</title>
+<meta name="description" content="This is YOUR government! Represent yourself — a voluntary association, not a replacement for the one you already live under.">
+<meta name="theme-color" content="#0c0b09">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="LiquidGov.US">
+<meta property="og:url" content="https://liquidgov.us/commons/">
+<meta property="og:title" content="The Commons — LiquidGov.US">
+<meta property="og:description" content="This is YOUR government! Represent yourself — a voluntary association, not a replacement for the one you already live under.">
+<meta property="og:image" content="https://liquidgov.us/assets/og-image-v4.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="The Commons — LiquidGov.US">
+<meta name="twitter:description" content="This is YOUR government! Represent yourself — a voluntary association, not a replacement for the one you already live under.">
+<meta name="twitter:image" content="https://liquidgov.us/assets/og-image-v4.jpg">
+<link rel="icon" href="/favicon.svg">
+<link rel="manifest" href="/commons/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/commons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="The Commons">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="stage"><canvas id="game"></canvas></div>
+<div id="connStatus" role="status" aria-live="polite" title="Can't reach the Square. You can keep walking, but others can't see you until it reconnects."></div>
+<div id="invHud" aria-label="What you are holding"></div>
+<button id="bagBtn" type="button" aria-expanded="false" aria-controls="backpack">Bag</button>
+<div id="toast" role="status" aria-live="polite"></div>
+<div id="placeName"></div>
+<div id="batchReady" role="status" aria-live="polite"></div>
+<div id="itemTip" role="tooltip" hidden></div>
+
+<div id="dpad">
+  <button id="dUp" type="button" tabindex="-1" aria-label="Up">&#9650;</button>
+  <button id="dLeft" type="button" tabindex="-1" aria-label="Left">&#9664;</button>
+  <button id="dRight" type="button" tabindex="-1" aria-label="Right">&#9654;</button>
+  <button id="dDown" type="button" tabindex="-1" aria-label="Down">&#9660;</button>
+</div>
+<button id="interactBtn" type="button" tabindex="-1" aria-label="Interact">Enter</button>
+<a id="siteLink" href="/">LiquidGov</a>
+
+<div id="easel" role="dialog" aria-modal="true" aria-label="Easel" hidden>
+  <p id="easelTitle">A small portrait</p>
+  <div id="easelStage"><canvas id="easelCanvas" width="32" height="32"></canvas></div>
+  <div id="easelTools">
+    <button type="button" data-tool="pen" class="on">Pen</button>
+    <button type="button" data-tool="smudge">Smudge</button>
+    <button type="button" data-tool="erase">Eraser</button>
+    <button type="button" id="easelUndo">Undo</button>
+  </div>
+  <div id="easelPalette"></div>
+  <p id="easelNote"></p>
+  <div id="easelActions">
+    <button type="button" id="easelSave">Save</button>
+    <button type="button" id="easelWear">Wear</button>
+    <button type="button" id="easelWearDefault">Default</button>
+    <button type="button" id="easelClose">Close</button>
+  </div>
+</div>
+
+<div id="bench" role="dialog" aria-modal="true" aria-label="Bench" hidden>
+  <p id="benchTitle">The bench</p>
+  <p id="benchNote">Names and waiting. Not a recipe to follow at home.</p>
+  <p id="benchGuestNote"></p>
+  <div id="benchBatches"></div>
+  <div id="benchRecipes"></div>
+  <div id="benchMix"></div>
+  <div id="benchActions">
+    <button type="button" id="benchClose">Close</button>
+  </div>
+</div>
+
+<div id="notebook" role="dialog" aria-modal="true" aria-label="Notebook" hidden>
+  <p id="notebookTitle">The notebook</p>
+  <p id="notebookGuestNote"></p>
+  <div id="notebookLines"></div>
+  <div id="notebookActions">
+    <button type="button" id="notebookClose">Close</button>
+  </div>
+</div>
+
+<div id="backpack" role="dialog" aria-modal="false" aria-label="Backpack" hidden>
+  <div class="bpHead">
+    <p id="backpackTitle">Backpack</p>
+    <button type="button" id="backpackClose">Close</button>
+  </div>
+  <p id="backpackEmpty"></p>
+  <div id="backpackGrid"></div>
+</div>
+
+<div id="whereList" role="dialog" aria-modal="false" aria-label="Where" hidden>
+  <div class="bpHead">
+    <p id="whereTitle">Where</p>
+    <button type="button" id="whereClose">Close</button>
+  </div>
+  <div id="whereLines"></div>
+</div>
+
+<div id="nameOverlay">
+  <div id="nameCard">
+    <h1>Welcome to the Square</h1>
+    <p>Pick a name for this visit. If you're signed in on LiquidGov, the game uses that name instead.</p>
+    <input id="nameInput" type="text" maxlength="20" placeholder="A throwaway name" autocomplete="off">
+    <button id="nameGo" type="button">Walk in</button>
+    <p class="toSite"><a href="/">Back to LiquidGov</a></p>
+  </div>
+</div>
+
+<!-- Classic scripts sharing ONE global scope, in exactly this order. A file can only see what has already loaded, and the
+     load-time code in world.js, sprites.js and actors.js depends on that. No defer / async / type=module: the order must
+     match the old single inline script. tests/test_client_files.sh loads them in this order and fails on any ReferenceError. -->
+<script src="js/world.js"></script>
+<script src="js/interiors.js"></script>
+<script src="js/sprites.js"></script>
+<script src="js/actors.js"></script>
+<script src="js/net.js"></script>
+<script src="js/input.js"></script>
+<script src="js/interact.js"></script>
+<script src="js/main.js"></script>
+<script src="js/easel.js"></script>
+<script src="js/studio.js"></script>
+<script src="js/backpack.js"></script>
+</body>
+</html>

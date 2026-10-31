@@ -1,0 +1,162 @@
+# orphan reap — built, local-tested, not deployed
+
+Brandon: "BUILD orphans reap", after reading the first log-only list
+(`orphans-built.md`: `persistverify9`, `vtowner`, `invverify1`, `ptvisitor`, all
+throwaway accounts deleted through `/settings/delete`; his real `Bbottin` was not
+on it). **Daemon only.** No civic, client, nginx or schema change. No deploy. This is
+the first build that **deletes rows**, so the valves are the whole point.
+
+## What it does
+
+The existing ~10-minute orphan pass, when a name qualifies, now deletes that name's
+game rows instead of only logging them.
+
+**Still required before anything is deleted (all of the log-only rules, unchanged):**
+civic must answer an explicit `{"exists":false}` (anything else, including civic
+down or slow, is "don't know" and forgets the streak); the name must be gone on
+**two consecutive passes**; **at most 3 per pass** (the rest wait for the next);
+anyone currently in the game is skipped; and the suspect guard (every known
+account "gone" counts nothing) still applies.
+
+**New, before each delete:**
+1. **An online backup first, automatically.** `Database::backup_to` (the SQLite backup
+   API, never a file copy) writes `<db dir>/backups/commons.sqlite.pre-reap-<UTC
+   stamp>` and verifies it with `integrity_check`. **No backup, no reap:** if it
+   fails the pass logs `BACKUP FAILED; reaping nothing this pass` and touches nothing.
+   (One backup per pass that reaps.)
+2. **One last look:** just before deleting a name, civic is asked **again**; it must
+   still say gone and the player must not have come online since the pass began,
+   otherwise `NOT reaping ...` and the streak is dropped.
+3. **One transaction per name** (`HouseStore::reap_orphan`, `sqlx::Tx`): that
+   player's `inventory` rows, every `placed` row in their house, their `players`
+   row, then their house's `map_instances` row **only if it is owned by them**;
+   any stale `last_instance_id` pointing at that house is cleared first. It **rolls
+   back whole** on any failure (logged, nothing changes for that name). Nothing else
+   in any table is touched; demo/lab/mine are RAM-only and were never rows.
+4. **Kill switch:** `COMMONS_ORPHAN_REAP=0` (or `off`/`false`) in the daemon's
+   environment puts it back to log-only. Default is ON, as requested.
+
+Logs: `orphan watch is REAPING (...)` at start; `backup taken before reaping: <path>`;
+`REAPED '<name>': N inventory rows, M placed rows, house row removed, players row
+removed (gone for K passes)`; `NOT reaping ...`; `BACKUP FAILED`; `reap of '<name>'
+FAILED and was rolled back`; `deferred by the cap`.
+
+## Tested (local, real civic, real deleted accounts, 1s test tick)
+
+Seven accounts each with a house, two lookups and a wall item.
+1. Everyone exists: passes run; **zero** reaps, **no** backup taken.
+2. Four deleted (`usera`..`userd`), three alive (`keepr`, `usere`, `userf`): one
+   backup, then `usera`/`userb`/`userc` reaped (2 inventory + 1 placed + house row +
+   players row each), `1 more deferred by the cap`; the next pass takes a **second**
+   backup and reaps `userd`. **The living three are untouched** (`keepr`'s rows are
+   byte-for-byte the baseline). Totals 7/9/7/14 -> 3/5/3/6 players/instances/placed/
+   inventory, `integrity_check` ok. **Each backup is a valid DB that still holds the
+   pre-reap rows** (7 players/14 inventory, then 4/8).
+3. **The inheritance hole is closed:** a new owner registers the name `usera`: their
+   house wall is empty, their inventory `[]`, a fresh house instance.
+4. **Civic frozen (SIGSTOP) the instant after a delete:** the row is still there after
+   6s and nothing is reaped; unfrozen, the streak was forgotten and it is reaped only
+   after two fresh passes. (A first version of this phase froze civic too late; the
+   two 1-second passes had already run. Redone correctly.)
+5. **No backup, no reap:** the backups dir made unwritable: `BACKUP FAILED; reaping
+   nothing`, the row survives; dir writable again, it is reaped.
+6. **Suspect:** every known account gone -> `SUSPECT`, nothing reaped.
+7. **Kill switch:** `COMMONS_ORPHAN_REAP=0`: the deleted account's rows stay, only
+   `would reap` is logged (`REAPED` count 0); switch removed, the same row is reaped.
+8. A living player who is *online* while others are deleted: the deleted are reaped,
+   no false SUSPECT.
+Regressions passing: the ~30s snapshot test (kill -9), open houses (lots, blocks,
+fail-closed), visiting, persist-house, rebind. (My first reap run used one-letter
+usernames that civic rejects, so it exercised nothing; the count of `REAPED` lines was
+0, no rows were harmed, and I redid it with valid names before trusting any result.)
+
+## Deploy (when Brandon says `deploy`, after Grok's review)
+
+**Daemon only.** Take the usual manual online SQLite copy first as well (belt on top of
+the automatic per-pass backup). `-j1` build, no reconfigure, restart; the journal
+should say `orphan watch is REAPING`.
+
+**What will happen, and when:** the restart resets the RAM streaks, so the first pass
+(~10 min after start) only logs `is gone (1st pass)` for the four; the second pass
+(~20 min) backs up, then **reaps `persistverify9`, `vtowner` and `invverify1`** (cap 3),
+and the next pass (~30 min) reaps **`ptvisitor`**. **`Bbottin` is not touched** (civic
+says it exists). Watch with `journalctl -u commons-daemon | grep 'orphan watch'`;
+`/var/lib/commons/backups/commons.sqlite.pre-reap-*` will hold the pre-reap copies.
+After it: `players` should be exactly `Bbottin`. To stop it at any point, set
+`COMMONS_ORPHAN_REAP=0` and restart.
+
+## Not here
+
+Any other cleanup (guest data, unused house rows for live accounts): unchanged.
+
+## Deployed (2026-09-19 11:30:28Z, Brandon: "deploy"; Grok accepted in `GROK_ORPHAN_REAP_REVIEW.md`)
+
+Daemon only. Civic, client and nginx untouched (`liquidgov.service` not restarted).
+(WSL failed to start twice with `HCS 0x800705aa` right before this and cleared on
+its own; nothing was changed while it was down.)
+
+1. **Drift check:** exactly this round's five daemon files (`db.cpp/.hpp`,
+   `house.cpp/.hpp`, `main.cpp`); civic and client dry-runs empty.
+2. **Manual online SQLite copy first:**
+   `/var/lib/commons/backups/commons.sqlite.pre-reap-manual-20260919T112956Z`,
+   `integrity_check` ok. Baseline: items 3, recipes 3, maps 14, map_instances 6,
+   players 5, placed 3, inventory 4. The players table at that moment:
+   `persistverify9` (house 3, 0 inv, 1 placed), `vtowner` (house 4, 0, 1),
+   `invverify1` (house 5, 2 inv, 1), `Bbottin` (no house, 2 inv), `ptvisitor`
+   (house 6, 0, 0). On the box, civic answered `Bbottin` -> exists, `persistverify9` ->
+   gone. The backups directory is owned by `liquidgov` (the daemon's user), so the
+   automatic per-pass backup can write there.
+3. Synced, `-j1` build with no reconfigure, restarted at **11:30:28Z**. The journal
+   says `orphan watch is REAPING (every 600s, needs 2 consecutive explicit civic
+   negatives, cap 3 per pass, online backup first)`. Live DB read-only: integrity ok,
+   counts identical to the baseline (nothing reaped yet). Through nginx: lots, `1,1`,
+   house `/placed/` 200; public `/internal/user-exists/x` 404; no failures;
+   `NRestarts=0`; no `COMMONS_ORPHAN_REAP` override in the unit (reap is on).
+
+**Timeline (the restart reset the RAM streaks):** first pass ~11:40:28Z logs `is
+gone (1st pass)` for the four; the second pass ~11:50:28Z takes an automatic backup
+and reaps `persistverify9`, `vtowner`, `invverify1` (cap 3); the third ~12:00:28Z
+reaps `ptvisitor`. `Bbottin` is never touched (civic says it exists).
+Stop at any time: set `COMMONS_ORPHAN_REAP=0` in the unit and restart.
+
+## The reap ran (2026-09-19, read 11:55Z and 12:20Z; nothing restarted, nothing touched)
+
+Read-only both times (journal, directory listing, `mode=ro` queries). The first read
+was at 11:55Z, before the ~12:01 mark Grok asked for, because Brandon said "read it";
+it wrote nothing. (Opening the 11:50 backup read-only for its integrity check left an
+empty `-wal`/`-shm` beside that backup file: harmless, and a restore copies the main
+file only.)
+
+**Journal:**
+- 11:40Z first pass: `persistverify9`, `vtowner`, `invverify1`, `ptvisitor` each `gone
+  from civic (1st pass; needs 2 in a row)`.
+- **11:50:26Z** second pass: `backup taken before reaping:
+  .../commons.sqlite.pre-reap-20260919T115026Z`, then
+  - `REAPED 'persistverify9'`: 0 inventory, 1 placed, house row and players row removed
+  - `REAPED 'vtowner'`: 0 inventory, 1 placed, house row and players row removed
+  - `REAPED 'invverify1'`: 2 inventory, 1 placed, house row and players row removed
+  - `1 more deferred by the cap of 3 per pass`
+- **12:00:27Z** third pass: `backup taken before reaping:
+  .../commons.sqlite.pre-reap-20260919T120027Z`, then `REAPED 'ptvisitor'`: 0
+  inventory, 0 placed, house row and players row removed (gone for 3 passes).
+
+**Live DB after:** `integrity_check` ok; `foreign_key_check` 0 rows; nothing dangling
+(no placed row without its instance, no inventory row without its player, no player
+pointing at a missing house). items 3, recipes 3, maps 14 unchanged;
+`map_instances` 6 -> 2 (the two shared ones with no owner, demo and lab),
+`players` 5 -> **1**, `placed` 3 -> 0, `inventory` 4 -> 2.
+`players` is exactly `Bbottin` (visit_policy `friends`, 2 inventory rows, no house
+instance): **untouched, because civic answers `{"exists":true}` for it, not because of
+any hardcoded name.** Civic still answers `exists:false` for the four reaped names.
+
+**Backups (all `integrity_check` ok):** manual `pre-reap-manual-20260919T112956Z`
+(the pre-deploy copy), automatic `pre-reap-20260919T115026Z` (holds all **5** players,
+4 inventory rows: the full pre-reap state) and `pre-reap-20260919T120027Z` (2 players,
+2 inventory). No failures, `NRestarts=0`, `/`, lots and presence all 200 throughout.
+
+**What it closed:** deleted LiquidGov usernames can no longer be re-registered by
+someone else and inherit the old player's house, wall item or inventory: the watch
+removes the game rows once civic says the account is gone (two passes, last look,
+backup first, cap 3). The watch keeps running every ~10 minutes; from here it only
+acts when a real account is deleted. Stop at any time with `COMMONS_ORPHAN_REAP=0`
+and a restart.

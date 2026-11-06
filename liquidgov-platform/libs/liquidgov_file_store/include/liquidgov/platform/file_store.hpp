@@ -908,6 +908,8 @@ public:
     std::optional<JukeboxPos> jukebox_pos(const std::string& station) const;
     void set_jukebox_pos(const std::string& station, const std::string& video_id,
                           std::int64_t offset_sec, std::int64_t updated_at);
+    // Drops the saved resume point. The next join must not start that video again.
+    void clear_jukebox_pos(const std::string& station);
 
     const std::string& path() const { return path_; }
 

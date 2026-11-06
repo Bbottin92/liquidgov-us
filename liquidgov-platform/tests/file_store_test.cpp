@@ -612,6 +612,22 @@ int main() {
         assert(found);
         std::cout << "officials poff survives reload\n";
     }
+    {
+        FileStore store(path);
+        assert(!store.jukebox_pos("site"));
+        store.set_jukebox_pos("site", "abcdefghijk", 100, 50);
+        auto p = store.jukebox_pos("site");
+        assert(p && p->video_id == "abcdefghijk" && p->offset_sec == 100);
+        store.clear_jukebox_pos("site");
+        assert(!store.jukebox_pos("site"));
+        store.clear_jukebox_pos("site");
+        std::cout << "jpos set/clear ok\n";
+    }
+    {
+        FileStore store(path);
+        assert(!store.jukebox_pos("site"));
+        std::cout << "jpos clear survives reload\n";
+    }
 
     unlink(path.c_str());
     unlink((path + ".tmp").c_str());

@@ -121,6 +121,10 @@ std::map<std::string, std::int64_t> g_community_last_flush_by_station;
 // tracklist resetting across a restart is an honest, low-risk trade-off
 // for not touching the LGP file format for this.
 constexpr std::size_t kCommunityHistoryCap = 15;
+// A saved spot past this is not resumed. The client used to restart it at
+// 0:00, so the track never reached its end and every later click was queued
+// behind it. Three hours matches the old client cap.
+constexpr std::int64_t kJukeboxResumeMaxSec = 3 * 3600;
 std::map<std::string, std::deque<CommunityTrack>> g_community_history_by_station;
 
 // Caller must hold g_community_mu.
@@ -4232,11 +4236,15 @@ void run_community_session(int fd, const std::string& username, const std::strin
         ++count;
         if (was_zero) {
             if (auto pos = g_store.jukebox_pos(station)) {
-                auto& np = g_community_now_by_station[station];
-                np.video_id = pos->video_id;
-                np.frozen_offset = pos->offset_sec;
-                np.resumed_at = now;
-                np.active = true;
+                if (pos->offset_sec > kJukeboxResumeMaxSec) {
+                    g_store.clear_jukebox_pos(station);
+                } else {
+                    auto& np = g_community_now_by_station[station];
+                    np.video_id = pos->video_id;
+                    np.frozen_offset = pos->offset_sec;
+                    np.resumed_at = now;
+                    np.active = true;
+                }
             } else if (g_community_now_by_station[station].active) {
                 g_community_now_by_station[station].resumed_at = now;
             }
@@ -4266,23 +4274,23 @@ void run_community_session(int fd, const std::string& username, const std::strin
                         }
                     }
                 } else if (auto raw = extract_json_string_field(s, "\"play\"")) {
-                    // Bug (Brandon: "I shouldn't be able to skip videos on public juketube
-                    // channels"): this used to overwrite g_community_now_by_station
-                    // unconditionally, so ANY connected member clicking any search result
-                    // instantly hijacked what the whole station was playing for everyone --
-                    // a full track-interrupt with none of the posture the Skip button
-                    // enforces (isShared() client-side, and there was never a server-side
-                    // check here either). "play" now does exactly what "add" already does:
-                    // start immediately only if the station is idle, otherwise queue. A
-                    // station with nothing playing still starts right away, so clicking a
-                    // result still feels instant when there's nothing to interrupt.
+                    // A click starts the video when this listener is the only one
+                    // connected, or when the station is idle. With someone else
+                    // listening, it queues, so one person cannot skip the room.
                     if (auto id = extract_youtube_id(trim_ws(*raw))) {
                         const auto now = std::chrono::duration_cast<std::chrono::seconds>(
                             std::chrono::system_clock::now().time_since_epoch()).count();
                         std::lock_guard<std::mutex> lock(g_community_mu);
                         auto& now_playing = g_community_now_by_station[station];
                         auto& upcoming = g_community_upcoming_by_station[station];
-                        if (!now_playing.active && upcoming.empty()) {
+                        const int listeners = g_community_listeners_by_station[station];
+                        const bool alone = listeners <= 1;
+                        if (alone || (!now_playing.active && upcoming.empty())) {
+                            if (now_playing.active && now_playing.video_id != *id) {
+                                auto& hist = g_community_history_by_station[station];
+                                hist.push_back(CommunityTrack{now_playing.video_id, now_playing.queued_by});
+                                if (hist.size() > kCommunityHistoryCap) hist.pop_front();
+                            }
                             now_playing = CommunityNowPlaying{*id, username, 0, now, true};
                             g_store.set_jukebox_pos(station, *id, 0, now);
                             g_community_last_flush_by_station[station] = now;
@@ -4309,6 +4317,7 @@ void run_community_session(int fd, const std::string& username, const std::strin
                         community_advance_locked(station, now);
                         const auto& np = g_community_now_by_station[station];
                         if (np.active) g_store.set_jukebox_pos(station, np.video_id, 0, now);
+                        else g_store.clear_jukebox_pos(station);
                         g_community_last_flush_by_station[station] = now;
                     }
                 }
@@ -4341,6 +4350,7 @@ void run_community_session(int fd, const std::string& username, const std::strin
             } else {
                 os << "\"now\":null";
             }
+            os << ",\"listeners\":" << g_community_listeners_by_station[station];
             os << ",\"upcoming\":" << g_community_upcoming_by_station[station].size();
             os << ",\"queue\":[";
             {
@@ -4376,8 +4386,13 @@ void run_community_session(int fd, const std::string& username, const std::strin
         int& count = g_community_listeners_by_station[station];
         if (count > 0) --count;
         if (count == 0 && np.active) {
-            np.frozen_offset = elapsed;
-            g_store.set_jukebox_pos(station, np.video_id, elapsed, now);
+            if (elapsed > kJukeboxResumeMaxSec) {
+                np = CommunityNowPlaying{};
+                g_store.clear_jukebox_pos(station);
+            } else {
+                np.frozen_offset = elapsed;
+                g_store.set_jukebox_pos(station, np.video_id, elapsed, now);
+            }
         }
     }
     close(fd);

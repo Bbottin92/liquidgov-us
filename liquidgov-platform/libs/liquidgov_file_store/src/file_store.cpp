@@ -2789,6 +2789,11 @@ void FileStore::set_jukebox_pos(const std::string& station, const std::string& v
     flush();
 }
 
+void FileStore::clear_jukebox_pos(const std::string& station) {
+    if (!jukebox_pos_.erase(station)) return;
+    flush();
+}
+
 std::vector<Avatar> FileStore::all_avatars() const {
     std::vector<Avatar> out;
     out.reserve(avatars_.size());

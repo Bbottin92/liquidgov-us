@@ -258,6 +258,7 @@
   var nowTitle = "";
   var holdId = "";
   var holdUntil = 0;
+  var stationListeners = 0;
 
   function personalOwner() {
     return stationId.indexOf("u:") === 0 ? stationId.slice(2) : null;
@@ -274,8 +275,7 @@
     elapsed = Number(elapsed);
     duration = Number(duration);
     if (!isFinite(elapsed) || elapsed < 0) return 0;
-    if (elapsed > 3 * 3600) return 0;
-    if (isFinite(duration) && duration > 1 && elapsed >= duration - 1) return 0;
+    if (isFinite(duration) && duration > 1 && elapsed >= duration - 1) return elapsed;
     return elapsed;
   }
   function stationName(id) {
@@ -474,6 +474,7 @@
 
   function applySnapshot(data) {
     if (!data) return;
+    if (typeof data.listeners === "number") stationListeners = data.listeners;
     if (holdId && Date.now() < holdUntil) {
       if (!data.now || data.now.video_id !== holdId) return;
       holdId = "";
@@ -670,20 +671,27 @@
     if (!id || id.length < 8) return;
     var url = ytUrl(id);
     rememberTitle(id, (it && it.title) || (it && it.snippet && it.snippet.title));
-    nowTitle = labelOf(id);
-    localQueue = [];
     resultsEl.textContent = "";
     gen++;
     if (t) clearTimeout(t);
     try { search.blur(); } catch (e) {}
-    holdId = id;
-    holdUntil = Date.now() + 4000;
     lgBeacon("play", id);
-    renderNow();
-    renderQueue();
-    fillTitle(id);
-    loadTrack(id, 0);
     var owner = personalOwner();
+    var queueOnly = !owner && stationListeners > 1 && lastId && lastId !== id;
+    if (queueOnly) {
+      localQueue.push({ id: id, title: labelOf(id) });
+      renderQueue();
+      fillTitle(id);
+    } else {
+      nowTitle = labelOf(id);
+      localQueue = [];
+      holdId = id;
+      holdUntil = Date.now() + 4000;
+      renderNow();
+      renderQueue();
+      fillTitle(id);
+      loadTrack(id, 0);
+    }
     if (owner) {
       fetch("/u/" + encodeURIComponent(owner) + "/jukebox/add", {
         method: "POST",

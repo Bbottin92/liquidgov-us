@@ -1476,7 +1476,6 @@ std::string page_wrap(const std::string& title, const std::string& navhtml, cons
            // <details><summary> pattern this file already uses for "Delete…" (see e.g. the post-menu one above) --
            // closed by default, one click to reveal, not a routine nav item.
            "<footer class=\"site\"><a href=\"/\">Genesis</a> · <a href=\"/laws\">Laws</a> · "
-           "<a href=\"/commons/\">The Commons</a> · "
            "<a href=\"/install\">Install this as an app</a> · "
            "<a href=\"/privacy\">Privacy</a> · "
            "<details style=\"display:inline-block\"><summary class=\"muted\" style=\"cursor:pointer;display:inline\">Disclaimer</summary> "
@@ -1497,7 +1496,6 @@ std::string nav(const std::string& user, int unread) {
         // "Who holds control" is reachable from here too, but as a closed disclosure, not a top-level nav item --
         // same reasoning and the same <details><summary> pattern as the footer's, just below.
         return burger+"<nav><a href=\"/\">Genesis</a><a href=\"/laws\">Laws</a>"
-               "<a href=\"/commons/\">The Commons</a>"
                "<details style=\"display:inline-block\"><summary class=\"muted\" style=\"cursor:pointer;display:inline;min-height:44px;align-items:center\">Disclaimer</summary>"
                "<a href=\"/control\">Who holds control</a></details>"
                "<a href=\"/apps\">App</a>"
@@ -1566,7 +1564,6 @@ std::string nav(const std::string& user, int unread) {
         "<a href=\"/communities\">Groups</a>"
         "<a href=\"/proposals\">Proposals</a>"
         "<a href=\"/officials\">Officials</a>"
-        "<a href=\"/commons/\">The Commons</a>"
         "<a href=\"/laws\">Laws</a>"
         "<a href=\"/logout\">Log out</a>"
         "</nav>";
@@ -5669,26 +5666,8 @@ std::string genesis_body() {
         "</div>"
         "<p class=\"muted\" style=\"text-align:center;max-width:22rem;margin:.7rem auto 0\">"
         "Three rules hold. Whoever you are, wherever you're starting from, the rest is your call.</p>";
-    // "What is inside" -- Live rooms is The Commons. Guests walk; the
-    // old Quad (/world) is no longer the door.
-    std::string liveRoomsIcon =
-        "<svg viewBox=\"0 0 24 24\" width=\"19\" height=\"19\" fill=\"none\" style=\"stroke:var(--accent)\" "
-        "stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\">"
-        "<rect x=\"3.2\" y=\"4.8\" width=\"17.6\" height=\"14.4\" rx=\"2.2\"/>"
-        "<circle cx=\"9.2\" cy=\"11.4\" r=\"1.7\" style=\"fill:var(--accent)\" stroke=\"none\"/>"
-        "<circle cx=\"15\" cy=\"15.2\" r=\"1.7\" style=\"fill:var(--accent)\" stroke=\"none\"/>"
-        "</svg>";
-    // Live rooms is The Commons (the Square), not The Quad. Guests can
-    // walk; do not put a login wall in front of a guest-playable plaza.
-    std::string inside =
-        "<p class=\"eyebrow\" style=\"color:var(--accent)\">What is inside</p>"
-        "<div class=\"card\" style=\"display:flex;gap:.8rem;align-items:flex-start\">"
-        "<div style=\"width:2.2rem;height:2.2rem;border-radius:.5rem;background:var(--paper);"
-        "border:1px solid var(--rule);display:flex;align-items:center;justify-content:center;flex-shrink:0\">" +
-        liveRoomsIcon + "</div>"
-        "<div><strong>Live rooms</strong>"
-        "<p class=\"muted\" style=\"margin:.3rem 0 0\">The Commons is a shared plaza. "
-        "<a href=\"/commons/\">Walk in</a>.</p></div></div>";
+    // The Commons is closed until it is built. No walk-in on this page.
+    std::string inside;
     // Real recorded narration (Helios), served from /assets/chapter1.mp3.
     // The latest file already starts on the first sentence (no spoken
     // title), so no #t= skip is needed anymore. No native <audio controls>
@@ -5776,7 +5755,7 @@ std::string genesis_body() {
            "<div class=\"clocks\">"
            "<div class=\"card\"><h2>Two clocks</h2><p><strong>Site control</strong> ends when a working election exists among enrolled citizens.</p>"
            "<p><strong>Governmental authority</strong> stays a later landslide — more than half of the eligible citizen population. However long that takes.</p></div>"
-           "<div class=\"card\"><h2>This website is the door</h2><p>The Commons, feed, friends, mail, and communities live here. "
+           "<div class=\"card\"><h2>This website is the door</h2><p>Feed, friends, mail, and communities live here. "
            "Voting weight, offices, land, and judgments live in a separate governance kernel. "
            "A platform account is not a citizen identity. Combined verification for civic acts is not live.</p></div>"
            "</div>" +
@@ -5794,16 +5773,8 @@ std::string home_dashboard(const std::string& user) {
     const auto friends = g_store.friends_of(user).size();
     const auto committees = g_store.communities_of(user);
 
-    // The lead card used to be The Quad (/world) with a live occupant
-    // count from g_world_players. Brandon replaced that door with The
-    // Commons. Do not show Quad occupancy here -- that count is the old
-    // room. Commons presence is the daemon; civic does not read it.
-    std::string quadCard =
-        "<a class=\"card quadcard\" href=\"/commons/\">"
-        "<p class=\"eyebrow\" style=\"color:var(--accent)\">The Commons</p>"
-        "<p class=\"quadhead\">Walk the Square.</p>"
-        "<p class=\"muted\">A shared plaza. Guests can walk. Your house opens when you are signed in.</p>"
-        "<span class=\"btn\" style=\"margin-top:.6rem\">Walk in &rarr;</span></a>";
+    // The Commons walk-in card stays off until Brandon says the game is built.
+    std::string quadCard;
 
     std::string rooms;
     for (const auto& c : committees) {
@@ -6231,10 +6202,10 @@ std::string privacy_body() {
            "<div class=\"card\"><h2>Sign-in</h2>"
            "<p>Username and password. A phone is bound at signup so a deleted account cannot immediately reopen under the same number. "
            "The number itself is not kept &mdash; only a fingerprint.</p>"
-           "<p>A session cookie (<code>lg_session</code>) keeps you signed in. The Commons uses that same cookie when you are signed in, so your house is yours. Guests can walk the plaza without an account.</p></div>"
+           "<p>A session cookie (<code>lg_session</code>) keeps you signed in.</p></div>"
            "<div class=\"card\"><h2>What you put here</h2>"
-           "<p>Posts, mail, drawings, and things you place in your house stay until you delete them, or until an operator removes spam. "
-           "Friends are mutual accept. A block hides you from that person on civic pages and on The Commons wall.</p>"
+           "<p>Posts, mail, and drawings stay until you delete them, or until an operator removes spam. "
+           "Friends are mutual accept. A block hides you from that person on civic pages.</p>"
            "<p>Sign in to <a href=\"/login?next=/export\">export</a> or delete from <a href=\"/login?next=/settings\">Settings</a>.</p></div>"
            "<p class=\"muted\">The operator of this copy is named on <a href=\"/control\">who holds control</a>.</p>";
 }
@@ -8028,8 +7999,7 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
     }
 
     if(method=="GET"&&path=="/world") {
-        // The Quad is no longer the public walk-in. Bookmarks and old
-        // login?next=/world land in The Commons.
+        // Old Quad bookmarks land on the closed Commons page.
         return http_redir("/commons/");
     }
     if(method=="GET"&&path=="/me/canvas") {
@@ -8086,12 +8056,7 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         if(!acc) return need_login();
         std::string html = "<h1>Proposals</h1>"
             "<p class=\"muted\">Unofficial straw polls &mdash; a way to gauge how people feel about "
-            "something not yet decided. Not a CitizenId vote, not binding, not this platform's Phase 2.</p>"
-            // The Hall door in the Commons opens this page. This is the way back, onto the path
-            // tile in front of that door (commons actors.js applyHallReturn), not the Square spawn
-            // the footer link uses.
-            "<div class=\"card\"><a class=\"btn\" href=\"/commons/?at=hall\">Hall door</a>"
-            "<p class=\"muted\" style=\"margin:.6rem 0 0\">Back into the Commons, on the path in front of this door.</p></div>";
+            "something not yet decided. Not a CitizenId vote, not binding, not this platform's Phase 2.</p>";
         html += flash_error(qs);
         html += "<div class=\"card\"><form method=\"POST\" action=\"/proposals\">"
                 "<label>Title</label><input name=\"title\" maxlength=\"140\" required>"

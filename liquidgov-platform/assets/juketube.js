@@ -70,10 +70,10 @@
     '<button type="button" id="jbpause">Play</button>' +
     '<button type="button" id="jbskip">Skip</button>' +
     '<button type="button" id="jbmute">Mute</button>' +
-    '<input id="jbvol" type="range" min="0" max="100" value="80" aria-label="Volume">' +
     '<button type="button" id="jbcc">CC</button>' +
     '<button type="button" id="jbfs">Full</button>' +
     '<button type="button" id="jbcopy">Copy URL</button>' +
+    '<input id="jbvol" type="range" min="0" max="100" value="80" aria-label="Volume">' +
     "</div>" +
     '<div id="jbupcoming"></div>' +
     "</div>";
@@ -329,6 +329,7 @@
           onStateChange: function (e) {
             if (e.data === YT.PlayerState.PLAYING) {
               pauseBtn.textContent = "Pause";
+              applySound();
               try {
                 var d = ytPlayer.getDuration();
                 if (d > 1) lastDuration = d;
@@ -582,10 +583,18 @@
 
   function isShared() { return stationId !== ("u:" + me); }
   function applySound() {
-    if (!ytPlayer) return;
+    if (!ytPlayer || typeof ytPlayer.setVolume !== "function") return;
+    var level = Math.max(0, Math.min(100, Math.round(Number(vol.value) || 0)));
     try {
-      ytPlayer.setVolume(Number(vol.value) || 0);
-      if (muted) ytPlayer.mute(); else ytPlayer.unMute();
+      // unMute puts back the volume from the last mute. Set the level after
+      // it, or a slider move is thrown away and the sound never changes.
+      if (muted || level === 0) {
+        ytPlayer.setVolume(level);
+        ytPlayer.mute();
+        return;
+      }
+      ytPlayer.unMute();
+      ytPlayer.setVolume(level);
     } catch (e) {}
   }
   function applyChrome() {

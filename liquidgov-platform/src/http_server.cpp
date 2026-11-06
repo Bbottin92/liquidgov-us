@@ -1414,6 +1414,7 @@ std::string page_wrap(const std::string& title, const std::string& navhtml, cons
            // element's safe-area term (jbtoggle, jbpanel, jbhint,
            // lgioshint) has silently been adding zero this whole time.
            "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1,viewport-fit=cover\">"
+           "<meta name=\"referrer\" content=\"strict-origin-when-cross-origin\">"
            "<title>"+full_title+"</title>"
            "<meta property=\"og:type\" content=\"website\">"
            "<meta property=\"og:site_name\" content=\"LiquidGov.US\">"

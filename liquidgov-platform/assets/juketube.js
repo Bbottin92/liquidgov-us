@@ -67,7 +67,7 @@
     '<div id="jbnow"><span class="muted">Connecting…</span></div>' +
     '<div id="jbtube-wrap"><div id="jbtube-player"></div><div id="jbtube-block" hidden></div></div>' +
     '<div class="jb-controls">' +
-    '<button type="button" id="jbpause">Pause</button>' +
+    '<button type="button" id="jbpause">Play</button>' +
     '<button type="button" id="jbskip">Skip</button>' +
     '<button type="button" id="jbmute">Mute</button>' +
     '<input id="jbvol" type="range" min="0" max="100" value="80" aria-label="Volume">' +
@@ -118,6 +118,27 @@
   var followInput = document.getElementById("jbfollow");
   var followBtn = document.getElementById("jbfollowbtn");
   var followErr = document.getElementById("jbfollowerr");
+  var wrapEl = document.getElementById("jbtube-wrap");
+  var wrapSlot = document.createElement("div");
+  wrapSlot.id = "jbtube-slot";
+  wrapEl.parentNode.insertBefore(wrapSlot, wrapEl);
+
+  // The panel is display:none while it is closed. A YouTube iframe inside
+  // that panel never reaches ENDED, so a shared station sits on one track.
+  // Park the player off-screen, still laid out, for as long as the panel
+  // is closed or the keyboard has covered it.
+  function parkPlayer() {
+    wrapEl.classList.add("jb-parked");
+    if (wrapEl.parentNode !== root) root.appendChild(wrapEl);
+  }
+  function dockPlayer() {
+    wrapEl.classList.remove("jb-parked");
+    if (wrapEl.parentNode !== wrapSlot) wrapSlot.appendChild(wrapEl);
+  }
+  function placePlayer() {
+    if (panel.classList.contains("open") && !panel.classList.contains("kb")) dockPlayer();
+    else parkPlayer();
+  }
 
   if (localStorage.getItem("lg-jb-hint") === "1") hint.style.display = "none";
 
@@ -131,6 +152,7 @@
     document.documentElement.style.setProperty("--kb", kb + "px");
     document.documentElement.style.setProperty("--vvh", vvh + "px");
     panel.classList.toggle("kb", kb > 60);
+    placePlayer();
   }
   if (window.visualViewport) {
     visualViewport.addEventListener("resize", syncViewport);
@@ -143,6 +165,7 @@
     panel.classList.toggle("open", open);
     panel.style.display = open ? "flex" : "none";
     toggle.setAttribute("aria-expanded", open ? "true" : "false");
+    placePlayer();
     if (open) {
       hint.style.display = "none";
       localStorage.setItem("lg-jb-hint", "1");
@@ -216,6 +239,9 @@
   var ignoreEndedUntil = 0;
   var loadedAt = 0;
   var seekedOnce = false;
+  var endedSentFor = "";
+  var retriedFor = "";
+  var pendingEnded = false;
   var emptyTimer = null;
   var ws = null;
   var pollTimer = null;
@@ -306,7 +332,10 @@
               try {
                 var d = ytPlayer.getDuration();
                 if (d > 1) lastDuration = d;
-                if (!seekedOnce && lastElapsed > 2) {
+                if (d > 1 && lastElapsed >= d - 1) {
+                  seekedOnce = true;
+                  reportEnded({ force: true });
+                } else if (!seekedOnce && lastElapsed > 2) {
                   var tgt = saneStart(lastElapsed, lastDuration);
                   var cur = ytPlayer.getCurrentTime() || 0;
                   if (tgt > 2 && lastDuration > 1 && tgt < lastDuration - 1.5 && Math.abs(cur - tgt) > 2) {
@@ -321,23 +350,44 @@
             }
             if (e.data === YT.PlayerState.PAUSED) pauseBtn.textContent = "Play";
             if (e.data === YT.PlayerState.ENDED) reportEnded();
+          },
+          onError: function (e) {
+            var code = e && e.data;
+            lgBeacon("yt-error", code == null ? "" : String(code));
+            if (code === 5 && retriedFor !== lastId) {
+              retriedFor = lastId;
+              try { ytPlayer.loadVideoById({ videoId: lastId, startSeconds: 0 }); } catch (err) {}
+              return;
+            }
+            if (code === 2 || code === 5 || code === 100 || code === 101 || code === 150) {
+              nowEl.textContent = "That video cannot play here. Skipping.";
+              reportEnded({ force: true });
+              return;
+            }
+            if (code === 153) nowEl.textContent = "The player was blocked. Tap Play.";
           }
         }
       });
     });
   }
 
-  function reportEnded() {
-    if (Date.now() < ignoreEndedUntil) return;
+  function reportEnded(opts) {
+    opts = opts || {};
+    if (!lastId || endedSentFor === lastId) return;
     var d = 0, t = 0;
     try {
       d = ytPlayer.getDuration() || 0;
       t = ytPlayer.getCurrentTime() || 0;
     } catch (e) {}
     if (d > 1) lastDuration = d;
-    if (d < 1 || t < Math.max(2, d - 1.5) || Date.now() - loadedAt < 4000) return;
+    var atEnd = d > 1 && t >= d - 1.5;
+    if (!opts.force && !atEnd) {
+      if (Date.now() < ignoreEndedUntil) return;
+      if (d < 1 || t < Math.max(2, d - 1.5) || Date.now() - loadedAt < 4000) return;
+    }
     var endedId = lastId;
     var owner = personalOwner();
+    endedSentFor = lastId;
     if (owner && endedId) {
       fetch("/u/" + encodeURIComponent(owner) + "/jukebox/complete", {
         method: "POST",
@@ -348,6 +398,7 @@
       return;
     }
     if (ws && ws.readyState === 1) ws.send(JSON.stringify({ ended: true }));
+    else { pendingEnded = true; connectWs(); }
   }
 
   function loadTrack(id, elapsed) {
@@ -494,6 +545,10 @@
     var path = stationId ? "/c/" + encodeURIComponent(stationId) + "/jukebox/ws" : "/community/ws";
     ws = new WebSocket(proto + "//" + location.host + path);
     ws.onopen = function () {
+      if (pendingEnded && endedSentFor === lastId) {
+        pendingEnded = false;
+        ws.send(JSON.stringify({ ended: true }));
+      }
       if (pendingPlay) {
         ws.send(JSON.stringify({ play: pendingPlay }));
         pendingPlay = null;
@@ -662,7 +717,6 @@
   }
 
   pauseBtn.addEventListener("click", function () {
-    if (isShared()) return;
     if (!ytPlayer) return;
     try {
       var st = ytPlayer.getPlayerState();

@@ -15,4 +15,5 @@ echo "$out" | sed 's/^/     /'
 assert_eq "no pwa check failed (python's exit code)" "0" "$rc"
 assert_contains "and the checker's own summary says 0 failed" "$out" " checks, 0 failed"
 n="$(sed -n 's/^pwa_check: \([0-9]*\) checks.*/\1/p' <<<"$out")"
-[ "${n:-0}" -ge 60 ] && _ok "at least 60 checks executed ($n)" || _bad "at least 60 checks executed" "$n"
+# 43 since there is one app (2026-11-06): the three Messages/Social/Civic manifest blocks (about 30 checks) went.
+[ "${n:-0}" -ge 40 ] && _ok "at least 40 checks executed ($n)" || _bad "at least 40 checks executed" "$n"

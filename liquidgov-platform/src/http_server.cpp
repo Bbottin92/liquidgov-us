@@ -1139,6 +1139,15 @@ const char* groups_svg() {
 // threaded synchronous entry point), read here at render time.
 thread_local std::string g_theme_mode;
 thread_local bool g_https = false;
+// True when this page is loading inside the map's right-hand field (the
+// browser sends Sec-Fetch-Dest: iframe, also on redirects and clicks inside
+// it; ?embed=1 forces it for tests). wrap() then drops the site header,
+// footer and jukebox so the page fits the field. Set per request in handle().
+thread_local bool g_embed = false;
+// People whose last public words contained crisis language ("I wish I wasn't
+// here"). The pain-point feature stores nothing for them; their next page
+// shows the 988 line once. In memory only, never written to disk.
+std::set<std::string> g_care_notice;
 
 std::string set_cookie(const std::string& sid) {
     std::string o = "Set-Cookie: lg_session="+sid+"; HttpOnly; Path=/; SameSite=Lax; Max-Age=2592000";
@@ -1442,12 +1451,18 @@ std::string page_wrap(const std::string& title, const std::string& navhtml, cons
            // its own "Add to Home Screen" (Share sheet) works from nothing
            // more than the page itself, which is why /install still needs
            // to spell that path out separately.
-           "<link rel=\"manifest\" href=\""+(title=="Messages"?"/manifest-mail.webmanifest":title=="Social"?"/manifest-social.webmanifest":title=="Civic"?"/manifest-civic.webmanifest":"/manifest.webmanifest")+"\">"
+           // One app (Brandon 2026-11-06: "lets get rid of the multiple app
+           // icons thing. that was a bad idea"): every page offers the same
+           // manifest, icon and name, so Add to Home Screen always gives the
+           // one LiquidGov icon. The old Messages/Social/Civic manifests and
+           // icons are still served (icons already on phones keep working,
+           // and deploy/nginx-www-apex.sh checks one) but nothing links them.
+           "<link rel=\"manifest\" href=\"/manifest.webmanifest\">"
            "<meta name=\"apple-mobile-web-app-capable\" content=\"yes\">"
            "<meta name=\"mobile-web-app-capable\" content=\"yes\">"
-           "<meta name=\"apple-mobile-web-app-title\" content=\""+html_escape(title)+"\">"
-           "<link rel=\"apple-touch-icon\" href=\""+(title=="Messages"?"/icon-mail.png":title=="Social"?"/icon-social.png":title=="Civic"?"/icon-civic.png":"/apple-touch-icon.png")+"\">"
-           "<meta name=\"theme-color\" content=\""+(title=="Messages"?"#d1a85c":title=="Social"?"#c17a4a":title=="Civic"?"#6b7d5a":"#8a6620")+"\">"
+           "<meta name=\"apple-mobile-web-app-title\" content=\"LiquidGov\">"
+           "<link rel=\"apple-touch-icon\" href=\"/apple-touch-icon.png\">"
+           "<meta name=\"theme-color\" content=\"#8a6620\">"
            "<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">"
            "<link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>"
            "<link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&display=swap\">"
@@ -1566,6 +1581,7 @@ std::string nav(const std::string& user, int unread) {
         "<hr>"
         "<a href=\"/feed\">Feed</a>"
         "<a href=\"/friends\">People</a>"
+        "<a href=\"/map\">Map</a>"
         "<a href=\"/communities\">Groups</a>"
         "<a href=\"/proposals\">Proposals</a>"
         "<a href=\"/officials\">Officials</a>"
@@ -1714,14 +1730,20 @@ std::optional<PlatformAccount> account_from_req(const std::string& headers) {
     g_store.touch_session(sid);
     return g_store.find_by_id(sess->account);
 }
+// Any page loaded into a frame (g_embed: Sec-Fetch-Dest: iframe) may be framed
+// only by liquidgov.us itself -- the map's right-hand field. Another site's
+// frame is refused, so nobody can disguise our buttons (clickjacking).
+std::string frame_guard() {
+    return g_embed ? "Content-Security-Policy: frame-ancestors 'self'\r\nX-Frame-Options: SAMEORIGIN\r\n" : "";
+}
 std::string http_ok(const std::string& body, const std::string& extra={}) {
     std::ostringstream o;
-    o<<"HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nX-Content-Type-Options: nosniff\r\nConnection: close\r\nContent-Length: "<<body.size()<<"\r\n"<<extra<<"\r\n"<<body;
+    o<<"HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nX-Content-Type-Options: nosniff\r\nConnection: close\r\nContent-Length: "<<body.size()<<"\r\n"<<frame_guard()<<extra<<"\r\n"<<body;
     return o.str();
 }
 std::string http_raw(const char* status, const char* ctype, const std::string& body, const std::string& extra={}) {
     std::ostringstream o;
-    o<<"HTTP/1.1 "<<status<<"\r\nContent-Type: "<<ctype<<"\r\nX-Content-Type-Options: nosniff\r\nConnection: close\r\nContent-Length: "<<body.size()<<"\r\n"<<extra<<"\r\n"<<body;
+    o<<"HTTP/1.1 "<<status<<"\r\nContent-Type: "<<ctype<<"\r\nX-Content-Type-Options: nosniff\r\nConnection: close\r\nContent-Length: "<<body.size()<<"\r\n"<<frame_guard()<<extra<<"\r\n"<<body;
     return o.str();
 }
 std::string http_code(const char* status, const std::string& body) {
@@ -1729,7 +1751,7 @@ std::string http_code(const char* status, const std::string& body) {
 }
 std::string http_redir(const std::string& loc, const std::string& extra={}) {
     std::ostringstream o;
-    o<<"HTTP/1.1 303 See Other\r\nLocation: "<<loc<<"\r\nContent-Length: 0\r\nConnection: close\r\n"<<extra<<"\r\n";
+    o<<"HTTP/1.1 303 See Other\r\nLocation: "<<loc<<"\r\nContent-Length: 0\r\nConnection: close\r\n"<<frame_guard()<<extra<<"\r\n";
     return o.str();
 }
 
@@ -1957,7 +1979,26 @@ std::string wrap(const std::string& title, const std::string& user, int unread, 
     // plain first-time-only (localStorage) behavior, same as before this
     // setting existed.
     const bool intro_always_play = show_intro && !user.empty() && g_store.prefs_of(user).intro_every_visit;
-    std::string page = page_wrap(title, nav(user, unread), body, show_intro, intro_always_play);
+    if (g_embed) {
+        // Inside the map's right-hand field: the page alone, no header,
+        // footer, intro or jukebox. Links and forms keep working in the field.
+        std::string page = page_wrap(title, "", body, false, false);
+        const std::string fit =
+            "<style>header.top,footer.site{display:none!important}"
+            "main.wrap{padding-top:.75rem;padding-bottom:1.5rem}</style>";
+        auto head = page.find("</head>");
+        if (head != std::string::npos) page.insert(head, fit);
+        return page;
+    }
+    std::string care;
+    if (!user.empty() && g_care_notice.erase(user)) {
+        care = "<div class=\"card\" role=\"note\" style=\"border-left:4px solid var(--accent)\">"
+               "<p><strong>If things feel heavy right now, you don't have to carry it alone.</strong> "
+               "In the US you can call or text <a href=\"tel:988\"><strong>988</strong></a> "
+               "(Suicide &amp; Crisis Lifeline) any time. It's free and confidential.</p>"
+               "<p class=\"muted\">Crisis words are not saved as a problem, and nobody is told.</p></div>";
+    }
+    std::string page = page_wrap(title, nav(user, unread), care + body, show_intro, intro_always_play);
     // Widget goes *after* </main>, not inside it: soft-navigation (see
     // jukebox_script's nav-interception) only ever replaces <main>'s
     // contents, so a sibling widget's live WebSocket/YT player survive a
@@ -1966,7 +2007,7 @@ std::string wrap(const std::string& title, const std::string& user, int unread, 
         std::string widget =
             "<link rel=\"stylesheet\" href=\"/assets/juketube.css\">"
             "<div id=\"juketube-root\"></div>"
-            "<script src=\"/assets/juketube.js\" defer></script><script src=\"/assets/push.js?v=2\" defer></script>";
+            "<script src=\"/assets/juketube.js\" defer></script><script src=\"/assets/push.js?v=4\" defer></script>";
         auto pos = page.find("</main>");
         if (pos != std::string::npos) page.insert(pos + 7, widget);
     }
@@ -2177,6 +2218,796 @@ std::string community_subcats_js() {
     os << "}";
     return os.str();
 }
+
+// "/city/<key>" for a group's city text, percent-encoded (keys can hold
+// UTF-8). Empty when the text has no city key.
+std::string city_href(const std::string& city) {
+    const std::string key = city_key(city);
+    return key.empty() ? std::string() : "/city/" + url_encode(key);
+}
+
+// <datalist id="citylist"> of every city already in use, so "Fresno, CA"
+// isn't split three ways by spelling (same idea as the subcategory list).
+std::string city_datalist_html() {
+    std::string html = "<datalist id=\"citylist\">";
+    for (const auto& cu : g_store.cities_in_use()) html += "<option value=\"" + html_escape(cu.name) + "\">";
+    return html + "</datalist>";
+}
+
+// ---- Wishes and pain points (first slice, per Grok's review) ------------
+// One text this person wrote. Returns how many new suggestions were stored.
+// The switch, an empty user, or empty text stores nothing. Crisis words
+// store nothing from this text and arm the 988 note; later texts still run.
+// Callers pass this person's own words: posts, proposals, proposal
+// comments, and messages they sent. Not the other person's messages.
+int notice_pains_added(const std::string& user, const std::string& text, const std::string& source) {
+    if (user.empty() || text.empty() || !g_store.map_prefs_of(user).pains) return 0;
+    const PainScan scan = find_pain_points(text);
+    if (scan.crisis) { g_care_notice.insert(user); return 0; }
+    int n = 0;
+    for (const auto& hit : scan.hits)
+        if (g_store.add_pain_suggestion(user, hit, source)) ++n;
+    return n;
+}
+void notice_pains(const std::string& user, const std::string& text, const std::string& source) {
+    notice_pains_added(user, text, source);
+}
+
+// A public source can be Flowed. Friends posts, group posts, and messages
+// you sent use another prefix and stay on your map only.
+bool pain_can_flow(const std::string& source) {
+    return source.rfind("post:", 0) == 0 || source.rfind("prop:", 0) == 0 || source.rfind("prply:", 0) == 0;
+}
+std::string post_pain_source(const Post& post) {
+    if (post.audience == PostAudience::Anybody)
+        return "post:" + std::to_string(post.id);
+    const bool grouped = post.audience == PostAudience::GroupsOnly || !post.community.empty() || !post.extra_groups.empty();
+    return (grouped ? "gpost:" : "fpost:") + std::to_string(post.id);
+}
+
+// "Look at what I've written": the same read, for writing already saved.
+// Own posts (not reposts), proposals they wrote (not an office race),
+// proposal comments they wrote, messages they sent, and group messages
+// they sent. Never the other person's messages. Returns -1 when the
+// switch is off, so the page does not say the scan was empty.
+int look_public_words(const std::string& user) {
+    if (user.empty() || !g_store.map_prefs_of(user).pains) return -1;
+    int n = 0;
+    for (const auto& post : g_store.posts_by(user)) {
+        if (post.author != user) continue;
+        if (!post.repost_of_author.empty() || post.repost_of_id != 0) continue;
+        n += notice_pains_added(user, post.text, post_pain_source(post));
+    }
+    for (const auto& pr : g_store.all_proposals()) {
+        if (pr.author == user && !pr.is_office)
+            n += notice_pains_added(user, pr.title + ". " + pr.body, "prop:" + std::to_string(pr.id));
+        for (const auto& r : g_store.proposal_replies_of(pr.id)) {
+            if (r.author != user) continue;
+            n += notice_pains_added(user, r.text, "prply:" + std::to_string(r.id));
+        }
+    }
+    for (const auto& m : g_store.mail_sent_by(user)) {
+        if (m.from != user || m.text.empty()) continue;
+        n += notice_pains_added(user, m.text, "mail:" + std::to_string(m.ts) + ":" + m.to);
+    }
+    if (auto who = g_store.find_by_username(user)) {
+        for (const auto& conv : g_store.conversations_for(who->id)) {
+            for (const auto& m : g_store.messages_in(conv.id)) {
+                if (m.sender != who->id || m.text.empty()) continue;
+                if (m.deletion != DeletionState::NotDeleted) continue;
+                n += notice_pains_added(user, m.text, "gmsg:" + std::to_string(m.id));
+            }
+        }
+    }
+    return n;
+}
+
+// What a kept pain point could connect to, in the cities this person is in
+// (a group there, or listed there) plus sitewide proposals: departments whose
+// name shares a word, proposals whose title does, groups whose name, about or
+// subcategory does. No overlap = no suggestion (a wrong label is worse).
+struct PainMatches {
+    std::vector<std::pair<std::string, std::string>> depts; // city key, tag
+    std::vector<Proposal> props;
+    std::vector<Community> groups;
+    std::string city_key;   // first city they are in, to prefill "Start a proposal"
+    std::string city_name;
+};
+PainMatches pain_matches(const PainPoint& p) {
+    constexpr std::size_t kCap = 5;
+    PainMatches m;
+    const auto kw = pain_keywords(p.phrase);
+    std::vector<std::string> keys;
+    for (const auto& cu : g_store.cities_in_use()) {
+        if (!g_store.in_city(cu.key, p.owner) && !g_store.is_city_listed(cu.key, p.owner)) continue;
+        keys.push_back(cu.key);
+        if (m.city_key.empty()) { m.city_key = cu.key; m.city_name = cu.name; }
+    }
+    std::set<std::uint64_t> seen_props;
+    for (const auto& key : keys) {
+        for (const auto& t : g_store.city_tags(key))
+            if (m.depts.size() < kCap && pain_words_overlap(kw, t)) m.depts.push_back({key, t});
+        for (const auto& pr : g_store.proposals_in_city(key))
+            if (m.props.size() < kCap && pain_words_overlap(kw, pr.title) && seen_props.insert(pr.id).second) m.props.push_back(pr);
+        for (const auto& c : g_store.communities_in_city(key))
+            if (m.groups.size() < kCap && pain_words_overlap(kw, c.name + " " + c.about + " " + c.subcategory)) m.groups.push_back(c);
+    }
+    for (const auto& pr : g_store.all_proposals())
+        if (m.props.size() < kCap && pr.city.empty() && pain_words_overlap(kw, pr.title) && seen_props.insert(pr.id).second)
+            m.props.push_back(pr);
+    return m;
+}
+
+// ---- Map privacy rules, shared by every map view ------------------------
+// May `viewer` see person `u` as a box on the map? Never someone blocked
+// either way; never someone who turned "Show me on the map" off or whose
+// profile is hidden from this viewer. You always see yourself.
+bool map_person_ok(const std::string& u, const std::string& viewer) {
+    if (u.empty()) return false;
+    if (u == viewer) return true;
+    if (!g_store.find_by_username(u)) return false; // deleted account
+    if (!viewer.empty() && (g_store.is_blocked(viewer, u) || g_store.is_blocked(u, viewer))) return false;
+    if (!g_store.map_prefs_of(u).show) return false;
+    return visible_to(g_store.prefs_of(u).profile_visibility, false, !viewer.empty(),
+                      !viewer.empty() && g_store.are_friends(viewer, u));
+}
+
+// The viewer has Flowed this same subject on a box of their own.
+// Anyone who has not gets no match list: the subject can be visible
+// without turning it into a directory of who else shares it.
+bool viewer_flowed_subject(const std::string& viewer, const std::string& phrase) {
+    const std::string key = pain_subject_key(phrase);
+    if (key.empty() || viewer.empty()) return false;
+    for (const auto& p : g_store.pains_of(viewer))
+        if (p.kept && p.flowed && pain_subject_key(p.phrase) == key) return true;
+    return false;
+}
+
+// Other people who Flowed this subject and whom the viewer may see.
+// One row per person. The viewer and this box's owner are left out.
+// Empty unless the viewer Flowed it too. No count is returned.
+std::vector<PainPoint> subject_matches(const std::string& viewer, const PainPoint& p) {
+    std::vector<PainPoint> out;
+    if (!p.kept || !p.flowed || !viewer_flowed_subject(viewer, p.phrase)) return out;
+    std::set<std::string> seen;
+    seen.insert(viewer);
+    seen.insert(p.owner);
+    for (const auto& q : g_store.flowed_with_subject(p.phrase)) {
+        if (!seen.insert(q.owner).second) continue;
+        if (!map_person_ok(q.owner, viewer)) continue;
+        out.push_back(q);
+        if (out.size() >= 20) break; // leftover names are omitted, never counted
+    }
+    return out;
+}
+
+std::string also_flowed_html(const std::vector<PainPoint>& people) {
+    if (people.empty()) return {};
+    std::string h = "<p class=\"muted\">Also flowed by ";
+    for (std::size_t i = 0; i < people.size(); ++i) {
+        if (i) h += ", ";
+        h += "<a href=\"/u/" + html_escape(people[i].owner) + "\">" + html_escape(people[i].owner) + "</a>";
+    }
+    h += ".</p>";
+    return h;
+}
+
+// May `viewer` see this post as a box? The same audience rules as the
+// author's profile page, plus the author's "Show my posts" map setting.
+bool map_post_ok(const Post& p, const std::string& viewer) {
+    if (p.author == viewer) return true;
+    if (!map_person_ok(p.author, viewer) || !g_store.map_prefs_of(p.author).posts) return false;
+    switch (p.audience) {
+        case PostAudience::Anybody:
+            return std::find(p.exceptions.begin(), p.exceptions.end(), viewer) == p.exceptions.end();
+        case PostAudience::GroupsOnly: {
+            if (!p.community.empty() && g_store.is_member(p.community, viewer)) return true;
+            for (const auto& g : p.extra_groups) if (g_store.is_member(g, viewer)) return true;
+            return false;
+        }
+        default: { // Friends
+            if (!g_store.are_friends(viewer, p.author)) return false;
+            if (g_store.prefs_of(p.author).posts_visibility == Visibility::OnlyMe) return false;
+            return p.friend_allowlist.empty() ||
+                   std::find(p.friend_allowlist.begin(), p.friend_allowlist.end(), viewer) != p.friend_allowlist.end();
+        }
+    }
+}
+
+// ---- The interactive map's data: one box and its connections ------------
+// Box ids: root, sitewide, city:<key>, group:<slug>, user:<name>,
+// dept:<key>|<tag>, prop:<id>, post:<id>, pain:<id>. /map/node?n=<id> answers with the
+// box and every box it connects to that this viewer may see, as JSON. The
+// "page" of a box is what the right-hand field shows.
+struct GNode { std::string id, label, kind, page; };
+struct GLink { GNode to; std::string edge; };
+
+std::optional<GNode> map_gnode(const std::string& id, const std::string& viewer) {
+    auto colon = id.find(':');
+    const std::string type = colon == std::string::npos ? id : id.substr(0, colon);
+    const std::string rest = colon == std::string::npos ? "" : id.substr(colon + 1);
+    auto as_u64 = [](const std::string& s) -> std::optional<std::uint64_t> {
+        if (s.empty() || s.size() > 19) return std::nullopt;
+        for (char c : s) if (c < '0' || c > '9') return std::nullopt;
+        return std::stoull(s);
+    };
+    if (id == "root") return GNode{"root", "Main Stream", "root", ""};
+    if (id == "sitewide") return GNode{"sitewide", "Sitewide", "sitewide", "/proposals"};
+    if (type == "city") {
+        if (rest.empty() || city_key(rest) != rest) return std::nullopt;
+        std::string name;
+        for (const auto& cu : g_store.cities_in_use()) if (cu.key == rest) name = cu.name;
+        if (name.empty() && g_store.proposals_in_city(rest).empty()) return std::nullopt;
+        return GNode{id, name.empty() ? rest : name, "city", "/city/" + url_encode(rest)};
+    }
+    if (type == "group") {
+        auto c = g_store.community(rest);
+        if (!c) return std::nullopt;
+        return GNode{id, c->name, "group", "/c/" + url_encode(c->slug)};
+    }
+    if (type == "user") {
+        if (!map_person_ok(rest, viewer)) return std::nullopt;
+        return GNode{id, rest, "person", "/u/" + url_encode(rest)};
+    }
+    if (type == "dept") {
+        auto bar = rest.find('|');
+        if (bar == std::string::npos) return std::nullopt;
+        const std::string key = rest.substr(0, bar), tag = rest.substr(bar + 1);
+        for (const auto& t : g_store.city_tags(key))
+            if (t == tag) return GNode{id, tag, "dept", "/proposals?city=" + url_encode(key)};
+        return std::nullopt;
+    }
+    if (type == "prop") {
+        auto n = as_u64(rest);
+        if (!n) return std::nullopt;
+        auto p = g_store.proposal_by_id(*n);
+        if (!p) return std::nullopt;
+        return GNode{id, p->title, "prop", "/proposals?id=" + std::to_string(p->id)};
+    }
+    if (type == "pain") { // a kept wish or pain point. Private until its owner Flows it.
+        auto n = as_u64(rest);
+        if (!n || viewer.empty()) return std::nullopt;
+        auto p = g_store.pain_by_id(*n);
+        if (!p || !p->kept) return std::nullopt;
+        if (p->owner == viewer)
+            return GNode{id, p->phrase, "pain", "/problems#pain" + std::to_string(p->id)};
+        // Other people see the subject only. The href is not the owner's list.
+        if (!p->flowed || !map_person_ok(p->owner, viewer)) return std::nullopt;
+        return GNode{id, p->phrase, "pain", "/pain/" + std::to_string(p->id)};
+    }
+    if (type == "post") {
+        auto n = as_u64(rest);
+        if (!n) return std::nullopt;
+        auto p = g_store.post_by_id(*n);
+        if (!p || !map_post_ok(*p, viewer)) return std::nullopt;
+        std::string label = p->text.empty() ? "(attachment)" : p->text;
+        for (char& ch : label) if (ch == '\n' || ch == '\r' || ch == '\t') ch = ' ';
+        return GNode{id, label, "post", "/post/" + std::to_string(p->id)};
+    }
+    return std::nullopt;
+}
+
+std::vector<GLink> map_links(const std::string& id, const std::string& viewer) {
+    constexpr std::size_t kMax = 40; // per kind, newest first where it matters
+    std::vector<GLink> out;
+    std::set<std::string> seen;
+    auto link = [&](const std::string& to, const std::string& edge) {
+        if (to == id || seen.count(to)) return;
+        auto n = map_gnode(to, viewer);
+        if (!n) return;
+        seen.insert(to);
+        out.push_back({*n, edge});
+    };
+    auto person_groups_ok = [&](const std::string& u) { return u == viewer || g_store.map_prefs_of(u).groups; };
+    auto person_comments_ok = [&](const std::string& u) { return u == viewer || g_store.map_prefs_of(u).comments; };
+    auto prop_links = [&](const Proposal& p) {
+        if (!p.city.empty()) link("city:" + p.city, "in");
+        for (const auto& t : p.tags) link("dept:" + p.city + "|" + t, "touches");
+        link("user:" + p.author, "wrote");
+        for (const auto& r : g_store.proposal_replies_of(p.id))
+            if (person_comments_ok(r.author)) link("user:" + r.author, "commented");
+    };
+    auto colon = id.find(':');
+    const std::string type = colon == std::string::npos ? id : id.substr(0, colon);
+    const std::string rest = colon == std::string::npos ? "" : id.substr(colon + 1);
+
+    if (id == "root") {
+        for (const auto& cu : g_store.cities_in_use()) link("city:" + cu.key, "in");
+        link("sitewide", "in");
+    } else if (id == "sitewide") {
+        auto props = g_store.all_proposals();
+        std::reverse(props.begin(), props.end());
+        std::size_t n = 0;
+        for (const auto& p : props) if (p.city.empty() && n++ < kMax) link("prop:" + std::to_string(p.id), "in");
+        n = 0;
+        for (const auto& c : g_store.all_communities()) if (c.city.empty() && n++ < kMax) link("group:" + c.slug, "in");
+    } else if (type == "city") {
+        link("root", "in");
+        for (const auto& c : g_store.communities_in_city(rest)) link("group:" + c.slug, "in");
+        for (const auto& t : g_store.city_tags(rest)) link("dept:" + rest + "|" + t, "in");
+        auto props = g_store.proposals_in_city(rest);
+        std::reverse(props.begin(), props.end());
+        for (std::size_t i = 0; i < props.size() && i < kMax; ++i)
+            if (props[i].tags.empty()) link("prop:" + std::to_string(props[i].id), "in");
+        for (const auto& u : g_store.people_listed_in_city(rest)) link("user:" + u, "lives");
+    } else if (type == "group") {
+        auto c = g_store.community(rest);
+        if (!c) return out;
+        link(c->city.empty() ? std::string("sitewide") : "city:" + city_key(c->city), "in");
+        for (const auto& m : g_store.members_of(rest)) if (person_groups_ok(m)) link("user:" + m, "member");
+        auto posts = g_store.posts_in(rest, kMax);
+        for (const auto& p : posts) if (map_post_ok(p, viewer)) link("post:" + std::to_string(p.id), "posted");
+    } else if (type == "user") {
+        if (!map_person_ok(rest, viewer)) return out;
+        if (person_groups_ok(rest))
+            for (const auto& c : g_store.communities_of(rest)) link("group:" + c.slug, "member");
+        for (const auto& cu : g_store.cities_in_use())
+            if (g_store.is_city_listed(cu.key, rest)) link("city:" + cu.key, "lives");
+        for (const auto& p : g_store.all_proposals()) {
+            if (p.author == rest) link("prop:" + std::to_string(p.id), "wrote");
+            else if (person_comments_ok(rest))
+                for (const auto& r : g_store.proposal_replies_of(p.id))
+                    if (r.author == rest) { link("prop:" + std::to_string(p.id), "commented"); break; }
+        }
+        auto posts = g_store.posts_by(rest);
+        std::reverse(posts.begin(), posts.end());
+        std::size_t n = 0;
+        for (const auto& p : posts) if (n < kMax && map_post_ok(p, viewer)) { link("post:" + std::to_string(p.id), "posted"); ++n; }
+        // Kept boxes on this person. Theirs are all visible to them. Anyone
+        // else's map shows a box only after that person Flows it (map_gnode
+        // also applies the block and show-me gates).
+        for (const auto& p : g_store.pains_of(rest)) {
+            if (!p.kept) continue;
+            if (rest != viewer && !p.flowed) continue;
+            link("pain:" + std::to_string(p.id), "noticed");
+        }
+        // Friends: you always see your own; anyone else's only when both agreed.
+        for (const auto& f : g_store.friends_of(rest)) {
+            const bool mine = rest == viewer || f == viewer;
+            if (mine || (g_store.map_prefs_of(rest).friends && g_store.map_prefs_of(f).friends)) link("user:" + f, "friends");
+        }
+    } else if (type == "dept") {
+        auto bar = rest.find('|');
+        if (bar == std::string::npos) return out;
+        const std::string key = rest.substr(0, bar), tag = rest.substr(bar + 1);
+        link("city:" + key, "in");
+        for (const auto& p : g_store.proposals_in_city(key))
+            if (std::find(p.tags.begin(), p.tags.end(), tag) != p.tags.end()) link("prop:" + std::to_string(p.id), "touches");
+    } else if (type == "prop") {
+        auto n = map_gnode(id, viewer);
+        if (!n) return out;
+        auto p = g_store.proposal_by_id(std::stoull(rest));
+        if (!p) return out;
+        if (p->city.empty()) link("sitewide", "in");
+        prop_links(*p);
+    } else if (type == "pain") {
+        if (!map_gnode(id, viewer)) return out; // private, hidden, or missing
+        auto p = g_store.pain_by_id(std::stoull(rest));
+        if (!p) return out;
+        link("user:" + p->owner, "noticed");
+        // Departments, proposals and groups stay on the owner's own view.
+        if (viewer == p->owner) {
+            const auto m = pain_matches(*p);
+            for (const auto& [key, tag] : m.depts) link("dept:" + key + "|" + tag, "could-act");
+            for (const auto& pr : m.props) link("prop:" + std::to_string(pr.id), "about");
+            for (const auto& c : m.groups) link("group:" + c.slug, "working-on");
+        }
+        // Same subject, only for someone who Flowed it themselves. A person
+        // who can see the box but did not Flow it gets no match edges.
+        // Hidden people fail map_gnode and are skipped. No edge carries a count.
+        if (p->kept && p->flowed && viewer_flowed_subject(viewer, p->phrase)) {
+            std::set<std::string> owners;
+            owners.insert(p->owner);
+            std::size_t n = 0;
+            for (const auto& q : g_store.flowed_with_subject(p->phrase)) {
+                if (n >= 8) break;
+                if (!owners.insert(q.owner).second) continue;
+                const auto before = out.size();
+                link("pain:" + std::to_string(q.id), "same subject");
+                if (out.size() > before) ++n;
+            }
+        }
+    } else if (type == "post") {
+        auto n = map_gnode(id, viewer);
+        if (!n) return out;
+        auto p = g_store.post_by_id(std::stoull(rest));
+        if (!p) return out;
+        link("user:" + p->author, "posted");
+        if (!p->community.empty()) link("group:" + p->community, "posted");
+        for (const auto& g : p->extra_groups) link("group:" + g, "posted");
+        if (p->repost_of_id) link("post:" + std::to_string(p->repost_of_id), "shared");
+    }
+    return out;
+}
+
+// ---- How relevant a box is to the person looking (Brandon 2026-11-06) ----
+// 1 = something you are in or did (green), about .5 = near you (yellow),
+// 0 = far from you (red). Built only from the viewer's own involvement, and
+// only shown to that viewer: their groups, their cities (a group there, or
+// listed there), their friends, proposals they wrote, voted on, reacted to or
+// commented on (and those proposals' departments), and the words of their
+// kept problems and wants.
+struct MapCtx {
+    std::string me;
+    std::set<std::string> groups, cities, friends, depts; // depts as "<key>|<tag>"
+    std::set<std::uint64_t> props;
+    std::vector<std::string> keywords;
+};
+MapCtx map_ctx(const std::string& me) {
+    MapCtx c;
+    c.me = me;
+    if (me.empty()) return c;
+    for (const auto& g : g_store.communities_of(me)) {
+        c.groups.insert(g.slug);
+        const auto k = city_key(g.city);
+        if (!k.empty()) c.cities.insert(k);
+    }
+    for (const auto& cu : g_store.cities_in_use()) if (g_store.is_city_listed(cu.key, me)) c.cities.insert(cu.key);
+    for (const auto& f : g_store.friends_of(me)) c.friends.insert(f);
+    for (const auto& p : g_store.all_proposals()) {
+        bool mine = p.author == me || g_store.proposal_vote_of(p.id, me).has_value() ||
+                    g_store.ballot_value_of(p.id, me).has_value() || g_store.proposal_reaction_of(p.id, me).has_value();
+        if (!mine) for (const auto& r : g_store.proposal_replies_of(p.id)) if (r.author == me) { mine = true; break; }
+        if (!mine) continue;
+        c.props.insert(p.id);
+        for (const auto& t : p.tags) c.depts.insert(p.city + "|" + t);
+    }
+    for (const auto& pp : g_store.pains_of(me))
+        if (pp.kept) for (const auto& k : pain_keywords(pp.phrase)) c.keywords.push_back(k);
+    return c;
+}
+// -1 = not scored (the Main Stream itself).
+double map_relevance(const GNode& n, const MapCtx& c) {
+    auto colon = n.id.find(':');
+    const std::string rest = colon == std::string::npos ? "" : n.id.substr(colon + 1);
+    auto words = [&](const std::string& text) { return pain_words_overlap(c.keywords, text) ? 0.2 : 0.0; };
+    auto clamp = [](double v) { return v < 0 ? 0.0 : v > 1 ? 1.0 : v; };
+    if (n.kind == "root") return -1;
+    if (n.kind == "pain") {
+        std::uint64_t id = 0;
+        try { id = std::stoull(rest); } catch (...) { return 0.35; }
+        auto p = g_store.pain_by_id(id);
+        if (p && p->owner == c.me) return 1; // their own box
+        return 0.35;                         // someone else's flowed subject
+    }
+    if (n.kind == "sitewide") return 0.5;
+    if (n.kind == "city") return c.cities.count(rest) ? 1.0 : 0.15;
+    if (n.kind == "person") {
+        if (rest == c.me) return 1;
+        if (c.friends.count(rest)) return 0.9;
+        for (const auto& g : c.groups) if (g_store.is_member(g, rest)) return 0.75;
+        for (const auto& k : c.cities) if (g_store.is_city_listed(k, rest) || g_store.in_city(k, rest)) return 0.6;
+        return 0.2;
+    }
+    if (n.kind == "group") {
+        if (c.groups.count(rest)) return 1;
+        auto g = g_store.community(rest);
+        if (!g) return 0.2;
+        const double w = words(g->name + " " + g->about + " " + g->subcategory);
+        if (!g->city.empty() && c.cities.count(city_key(g->city))) return clamp(0.65 + w);
+        return clamp((g->city.empty() ? 0.35 : 0.15) + w);
+    }
+    if (n.kind == "dept") {
+        if (c.depts.count(rest)) return 0.95;
+        auto bar = rest.find('|');
+        const std::string key = bar == std::string::npos ? rest : rest.substr(0, bar);
+        const std::string tag = bar == std::string::npos ? "" : rest.substr(bar + 1);
+        return clamp((c.cities.count(key) ? 0.65 : 0.15) + words(tag));
+    }
+    if (n.kind == "prop") {
+        std::uint64_t id = 0;
+        try { id = std::stoull(rest); } catch (...) { return 0.2; }
+        if (c.props.count(id)) return 1;
+        auto p = g_store.proposal_by_id(id);
+        if (!p) return 0.2;
+        const double w = words(p->title);
+        if (!p->city.empty() && c.cities.count(p->city)) return clamp(0.6 + w);
+        return clamp((p->city.empty() ? 0.4 : 0.15) + w);
+    }
+    if (n.kind == "post") {
+        std::uint64_t id = 0;
+        try { id = std::stoull(rest); } catch (...) { return 0.3; }
+        auto p = g_store.post_by_id(id);
+        if (!p) return 0.3;
+        if (p->author == c.me) return 1;
+        if (c.friends.count(p->author)) return 0.85;
+        if (!p->community.empty() && c.groups.count(p->community)) return 0.75;
+        for (const auto& g : p->extra_groups) if (c.groups.count(g)) return 0.75;
+        return clamp(0.3 + words(p->text));
+    }
+    return 0.3;
+}
+
+std::string map_node_json(const GNode& n, double rel = -1) {
+    char buf[16];
+    std::snprintf(buf, sizeof buf, "%.2f", rel);
+    return "{\"id\":\"" + json_escape(n.id) + "\",\"label\":\"" + json_escape(n.label) + "\",\"kind\":\"" +
+           json_escape(n.kind) + "\",\"page\":\"" + json_escape(n.page) + "\"" +
+           (rel < 0 ? std::string() : std::string(",\"rel\":") + buf) + "}";
+}
+
+// ---- City map view (city proposals, slice 6) ----------------------------
+// A picture of one city, drawn by the server as SVG (no framework): People
+// here | Groups | the city | Departments and councils | Proposals, with lines
+// for who is in which group, which proposal touches which department, and how
+// listed people are tied to proposals (wrote, commented; never reacted, which is
+// only ever shown as a count). Only what
+// the city page already shows: people appear only if they chose to be listed,
+// and people blocked either way are left out, same as "People here".
+
+// First `max` characters (UTF-8 code points) of s, with "..." when cut.
+std::string map_label(const std::string& s, std::size_t max) {
+    std::size_t chars = 0, i = 0;
+    while (i < s.size()) {
+        if (chars == max) return s.substr(0, i) + "...";
+        unsigned char c = static_cast<unsigned char>(s[i]);
+        std::size_t len = c < 0x80 ? 1 : (c >> 5) == 0x6 ? 2 : (c >> 4) == 0xE ? 3 : (c >> 3) == 0x1E ? 4 : 1;
+        i += len;
+        ++chars;
+    }
+    return s;
+}
+
+struct MapNode {
+    std::string id;     // "c", "g0", "u0", "d0", "p0", or "more-..."
+    std::string label;
+    std::string title;  // full text for the hover tooltip
+    std::string href;   // empty: not a link
+    std::string kind;   // city, group, person, dept, prop, more
+    int col = 0;
+    int row = 0;
+};
+struct MapEdge { std::string a, b, kind; }; // kind: in, member, touches, wrote, commented, reacted
+
+std::string city_map_svg(const std::string& key, const std::string& name, const std::string& viewer) {
+    constexpr std::size_t kCap = 20; // boxes per column before "+N more"
+    std::vector<MapNode> nodes;
+    std::vector<MapEdge> edges;
+    std::map<std::string, std::string> group_id, person_id, dept_id; // value -> node id
+    std::map<std::uint64_t, std::string> prop_id;
+    int rows[5] = {0, 0, 0, 0, 0};
+    auto add = [&](int col, const std::string& id, const std::string& label, const std::string& title,
+                   const std::string& href, const std::string& kind) {
+        MapNode n{id, map_label(label, 22), title, href, kind, col, rows[col]++};
+        nodes.push_back(n);
+    };
+    auto more = [&](int col, std::size_t extra, const std::string& href) {
+        if (extra == 0) return;
+        add(col, "more-" + std::to_string(col), "+" + std::to_string(extra) + " more", "", href, "more");
+    };
+    const std::string city_href_str = "/city/" + url_encode(key);
+
+    add(2, "c", name, name, city_href_str, "city");
+
+    auto groups = g_store.communities_in_city(key);
+    for (std::size_t i = 0; i < groups.size() && i < kCap; ++i) {
+        const auto& c = groups[i];
+        group_id[c.slug] = "g" + std::to_string(i);
+        add(1, group_id[c.slug], c.name, c.name + " (/" + c.slug + ")", "/c/" + url_encode(c.slug), "group");
+        edges.push_back({"c", group_id[c.slug], "in"});
+    }
+    more(1, groups.size() > kCap ? groups.size() - kCap : 0, city_href_str);
+
+    std::vector<std::string> people;
+    for (const auto& n : g_store.people_listed_in_city(key))
+        if (map_person_ok(n, viewer)) people.push_back(n); // blocks, "Show me on the map", profile visibility
+    for (std::size_t i = 0; i < people.size() && i < kCap; ++i) {
+        person_id[people[i]] = "u" + std::to_string(i);
+        add(0, person_id[people[i]], people[i], people[i], "/u/" + url_encode(people[i]), "person");
+        if (people[i] != viewer && !g_store.map_prefs_of(people[i]).groups) continue; // "Show the groups I'm in"
+        for (const auto& [slug, gid] : group_id)
+            if (g_store.is_member(slug, people[i])) edges.push_back({person_id[people[i]], gid, "member"});
+    }
+    more(0, people.size() > kCap ? people.size() - kCap : 0, city_href_str);
+
+    auto tags = g_store.city_tags(key);
+    for (std::size_t i = 0; i < tags.size() && i < kCap; ++i) {
+        dept_id[tags[i]] = "d" + std::to_string(i);
+        add(3, dept_id[tags[i]], tags[i], tags[i], "", "dept");
+        edges.push_back({"c", dept_id[tags[i]], "in"});
+    }
+    more(3, tags.size() > kCap ? tags.size() - kCap : 0, city_href_str);
+
+    auto props = g_store.proposals_in_city(key);
+    std::reverse(props.begin(), props.end()); // newest first, so the cap keeps recent ones
+    const std::string props_href = "/proposals?city=" + url_encode(key);
+    for (std::size_t i = 0; i < props.size() && i < kCap; ++i) {
+        const auto& p = props[i];
+        const std::string pid = "p" + std::to_string(i);
+        prop_id[p.id] = pid;
+        add(4, pid, p.title, "Proposal " + std::to_string(p.id) + ": " + p.title, props_href, "prop");
+        bool tagged = false;
+        for (const auto& t : p.tags) {
+            auto d = dept_id.find(t);
+            if (d != dept_id.end()) { edges.push_back({d->second, pid, "touches"}); tagged = true; }
+        }
+        if (!tagged) edges.push_back({"c", pid, "in"});
+        // One line per listed person: wrote beats commented. Reactions are NOT
+        // drawn: proposal pages show them only as counts, so who reacted is not
+        // public, and the map must not make it so.
+        std::map<std::string, std::string> role;
+        for (const auto& r : g_store.proposal_replies_of(p.id))
+            if (person_id.count(r.author) && (r.author == viewer || g_store.map_prefs_of(r.author).comments))
+                role[r.author] = "commented";
+        if (person_id.count(p.author)) role[p.author] = "wrote";
+        for (const auto& [who, kind] : role) edges.push_back({person_id[who], pid, kind});
+    }
+    more(4, props.size() > kCap ? props.size() - kCap : 0, props_href);
+
+    // Geometry: five columns in a 1100-wide viewBox; the city sits mid-height.
+    constexpr int kColX[5] = {20, 240, 470, 700, 910};
+    constexpr int kBoxW[5] = {170, 180, 160, 170, 170};
+    constexpr int kRowH = 46, kBoxH = 34, kTop = 56;
+    int max_rows = 1;
+    for (int r : rows) max_rows = std::max(max_rows, r);
+    const int height = std::max(300, kTop + max_rows * kRowH + 20);
+    auto node_y = [&](const MapNode& n) {
+        const int col_h = rows[n.col] * kRowH;
+        const int start = kTop + (max_rows * kRowH - col_h) / 2; // centre each column
+        return start + n.row * kRowH;
+    };
+    std::map<std::string, const MapNode*> by_id;
+    for (const auto& n : nodes) by_id[n.id] = &n;
+
+    std::ostringstream os;
+    os << "<div class=\"cmapwrap\"><svg class=\"cmap\" viewBox=\"0 0 1100 " << height
+       << "\" role=\"img\" aria-label=\"Map of " << html_escape(name) << "\" xmlns=\"http://www.w3.org/2000/svg\">";
+    const char* heads[5] = {"People here", "Groups", "City", "Departments and councils", "Proposals"};
+    for (int c = 0; c < 5; ++c)
+        os << "<text class=\"cmaph\" x=\"" << kColX[c] + kBoxW[c] / 2 << "\" y=\"28\">" << heads[c] << "</text>";
+    os << "<g class=\"cmapedges\">";
+    for (const auto& e : edges) {
+        auto ia = by_id.find(e.a), ib = by_id.find(e.b);
+        if (ia == by_id.end() || ib == by_id.end()) continue;
+        const MapNode* a = ia->second; const MapNode* b = ib->second;
+        if (a->col > b->col) std::swap(a, b);
+        const int x1 = kColX[a->col] + kBoxW[a->col], y1 = node_y(*a) + kBoxH / 2;
+        const int x2 = kColX[b->col], y2 = node_y(*b) + kBoxH / 2;
+        const int dx = std::max(30, (x2 - x1) / 2);
+        os << "<path class=\"ce ce-" << e.kind << "\" data-a=\"" << e.a << "\" data-b=\"" << e.b << "\" d=\"M" << x1 << " " << y1
+           << " C" << x1 + dx << " " << y1 << " " << x2 - dx << " " << y2 << " " << x2 << " " << y2 << "\"/>";
+    }
+    os << "</g>";
+    for (const auto& n : nodes) {
+        const int x = kColX[n.col], y = node_y(n), w = kBoxW[n.col];
+        if (!n.href.empty()) os << "<a href=\"" << html_escape(n.href) << "\">";
+        os << "<g class=\"cn cn-" << n.kind << "\" data-n=\"" << n.id << "\">";
+        if (!n.title.empty()) os << "<title>" << html_escape(n.title) << "</title>";
+        os << "<rect x=\"" << x << "\" y=\"" << y << "\" width=\"" << w << "\" height=\"" << kBoxH << "\" rx=\"8\"/>"
+           << "<text x=\"" << x + w / 2 << "\" y=\"" << y + kBoxH / 2 + 5 << "\">" << html_escape(n.label) << "</text></g>";
+        if (!n.href.empty()) os << "</a>";
+    }
+    if (rows[0] == 0)
+        os << "<text class=\"cmapnote\" x=\"" << kColX[0] + kBoxW[0] / 2 << "\" y=\"" << kTop + 20 << "\">Nobody listed yet</text>";
+    os << "</svg></div>";
+    return os.str();
+}
+
+// The root of the map (Brandon 2026-11-06: "a MAINstream Media Map and then things
+// branch off from there"): Main Stream -> each city's Current -> a few of its groups
+// and proposals, plus a Sitewide branch for proposals with no city. Clicking a city
+// opens its own map (city_map_svg). Only groups and proposals, which every signed-in
+// member can already see; no people at this level.
+std::string main_stream_svg() {
+    constexpr std::size_t kCities = 30, kLeaves = 3, kSitewide = 5;
+    struct Leaf { std::string label, title, href, kind; };
+    struct Branch { std::string label, title, href, kind; std::vector<Leaf> leaves; };
+    std::vector<Branch> branches;
+    auto cities = g_store.cities_in_use();
+    for (std::size_t i = 0; i < cities.size() && i < kCities; ++i) {
+        const auto& cu = cities[i];
+        const std::string map_href = "/city/" + url_encode(cu.key) + "/map";
+        Branch b{cu.name, cu.name + "'s Current", map_href, "city", {}};
+        auto groups = g_store.communities_in_city(cu.key);
+        for (std::size_t g = 0; g < groups.size() && g < kLeaves; ++g)
+            b.leaves.push_back({groups[g].name, "Group: " + groups[g].name, "/c/" + url_encode(groups[g].slug), "group"});
+        auto props = g_store.proposals_in_city(cu.key);
+        std::reverse(props.begin(), props.end());
+        for (std::size_t p = 0; p < props.size() && p < kLeaves; ++p)
+            b.leaves.push_back({props[p].title, "Proposal: " + props[p].title, "/proposals?city=" + url_encode(cu.key), "prop"});
+        const std::size_t extra = (groups.size() > kLeaves ? groups.size() - kLeaves : 0) +
+                                  (props.size() > kLeaves ? props.size() - kLeaves : 0);
+        if (extra) b.leaves.push_back({"+" + std::to_string(extra) + " more in " + cu.name, "", map_href, "more"});
+        branches.push_back(std::move(b));
+    }
+    if (cities.size() > kCities)
+        branches.push_back({"+" + std::to_string(cities.size() - kCities) + " more cities", "", "/communities", "more", {}});
+    {
+        Branch s{"Sitewide", "Proposals not about any one city", "/proposals", "dept", {}};
+        std::vector<Proposal> sitewide;
+        for (const auto& p : g_store.all_proposals()) if (p.city.empty() && !p.is_office) sitewide.push_back(p);
+        std::reverse(sitewide.begin(), sitewide.end());
+        for (std::size_t i = 0; i < sitewide.size() && i < kSitewide; ++i)
+            s.leaves.push_back({sitewide[i].title, "Proposal: " + sitewide[i].title, "/proposals", "prop"});
+        if (sitewide.size() > kSitewide)
+            s.leaves.push_back({"+" + std::to_string(sitewide.size() - kSitewide) + " more", "", "/proposals", "more"});
+        branches.push_back(std::move(s));
+    }
+
+    // Geometry: root | branches | leaves. Each branch gets as many rows as it has
+    // leaves (at least one) and sits centred on them.
+    constexpr int kX[3] = {20, 250, 540}, kW[3] = {170, 210, 300};
+    constexpr int kRowH = 42, kBoxH = 32, kTop = 52;
+    int total_rows = 0;
+    for (const auto& b : branches) total_rows += std::max<int>(1, static_cast<int>(b.leaves.size()));
+    const int height = std::max(260, kTop + total_rows * kRowH + 20);
+    std::ostringstream edges, boxes;
+    auto box = [&](int col, int y, const std::string& id, const std::string& label, const std::string& title,
+                   const std::string& href, const std::string& kind) {
+        const int x = kX[col], w = kW[col];
+        if (!href.empty()) boxes << "<a href=\"" << html_escape(href) << "\">";
+        boxes << "<g class=\"cn cn-" << kind << "\" data-n=\"" << id << "\">";
+        if (!title.empty()) boxes << "<title>" << html_escape(title) << "</title>";
+        boxes << "<rect x=\"" << x << "\" y=\"" << y << "\" width=\"" << w << "\" height=\"" << kBoxH << "\" rx=\"8\"/>"
+              << "<text x=\"" << x + w / 2 << "\" y=\"" << y + kBoxH / 2 + 5 << "\">"
+              << html_escape(map_label(label, col == 2 ? 38 : 26)) << "</text></g>";
+        if (!href.empty()) boxes << "</a>";
+    };
+    auto edge = [&](int c1, int y1, int c2, int y2, const std::string& a, const std::string& b, const std::string& kind) {
+        const int x1 = kX[c1] + kW[c1], x2 = kX[c2], dx = (x2 - x1) / 2;
+        y1 += kBoxH / 2; y2 += kBoxH / 2;
+        edges << "<path class=\"ce ce-" << kind << "\" data-a=\"" << a << "\" data-b=\"" << b << "\" d=\"M" << x1 << " " << y1
+              << " C" << x1 + dx << " " << y1 << " " << x2 - dx << " " << y2 << " " << x2 << " " << y2 << "\"/>";
+    };
+    const int root_y = kTop + (total_rows * kRowH) / 2 - kRowH / 2;
+    int row = 0;
+    for (std::size_t i = 0; i < branches.size(); ++i) {
+        const auto& b = branches[i];
+        const int n = std::max<int>(1, static_cast<int>(b.leaves.size()));
+        const int by = kTop + row * kRowH + (n - 1) * kRowH / 2;
+        const std::string bid = "b" + std::to_string(i);
+        box(1, by, bid, b.label, b.title, b.href, b.kind);
+        edge(0, root_y, 1, by, "root", bid, "in");
+        for (std::size_t j = 0; j < b.leaves.size(); ++j) {
+            const auto& l = b.leaves[j];
+            const int ly = kTop + (row + static_cast<int>(j)) * kRowH;
+            const std::string lid = bid + "-" + std::to_string(j);
+            box(2, ly, lid, l.label, l.title, l.href, l.kind);
+            edge(1, by, 2, ly, bid, lid, l.kind == "prop" ? "touches" : "in");
+        }
+        row += n;
+    }
+    box(0, root_y, "root", "Main Stream", "Main Stream", "", "city");
+    std::ostringstream os;
+    os << "<div class=\"cmapwrap\"><svg class=\"cmap\" viewBox=\"0 0 860 " << height
+       << "\" role=\"img\" aria-label=\"Main Stream map\" xmlns=\"http://www.w3.org/2000/svg\">"
+       << "<text class=\"cmaph\" x=\"" << kX[1] + kW[1] / 2 << "\" y=\"26\">Currents</text>"
+       << "<text class=\"cmaph\" x=\"" << kX[2] + kW[2] / 2 << "\" y=\"26\">Groups and proposals</text>"
+       << "<g class=\"cmapedges\">" << edges.str() << "</g>" << boxes.str() << "</svg></div>";
+    return os.str();
+}
+
+// Styles and the hover script for the map: point at a box and its lines light up.
+const char* kCityMapStyle =
+    "<style>"
+    ".cmapwrap{overflow-x:auto;border:1px solid var(--rule);border-radius:var(--rmd,10px);background:var(--panel)}"
+    ".cmap{display:block;min-width:820px;width:100%;height:auto;font-family:var(--body,inherit)}"
+    ".cmaph{font-size:13px;font-weight:600;fill:var(--stone);text-anchor:middle}"
+    ".cmapnote{font-size:12px;fill:var(--stone);text-anchor:middle;font-style:italic}"
+    ".cn rect{fill:var(--paper);stroke:var(--rule);stroke-width:1.5}"
+    ".cn text{font-size:13px;fill:var(--ink);text-anchor:middle;pointer-events:none}"
+    ".cn-city rect{fill:var(--accent);stroke:var(--accent)}.cn-city text{fill:var(--paper);font-weight:700;font-size:15px}"
+    ".cn-group rect{stroke:var(--accent)}.cn-person rect{stroke:var(--ok)}.cn-dept rect{stroke:#8a5cc2}"
+    ".cn-prop rect{stroke:var(--warn)}.cn-more rect{stroke-dasharray:4 3}"
+    ".cn{cursor:pointer}.cn:hover rect,.cn:focus rect{stroke-width:3}"
+    ".ce{fill:none;stroke:var(--rule);stroke-width:1.5;opacity:.75;transition:opacity .15s}"
+    ".ce-member{stroke:var(--ok)}.ce-touches{stroke:#8a5cc2}.ce-wrote{stroke:var(--warn);stroke-width:2}"
+    ".ce-commented{stroke:var(--warn);stroke-dasharray:6 4}.ce-reacted{stroke:var(--warn);stroke-dasharray:2 4}"
+    ".cmap.focus .ce{opacity:.08}.cmap.focus .ce.hi{opacity:1;stroke-width:3}"
+    ".cmaplegend{display:flex;flex-wrap:wrap;gap:.4rem 1rem;margin:.6rem 0 0;font-size:.85rem}"
+    ".cmaplegend span::before{content:'';display:inline-block;width:22px;height:0;margin-right:.35rem;vertical-align:middle;border-top:3px solid var(--rule)}"
+    ".lg-member::before{border-color:var(--ok)!important}.lg-touches::before{border-color:#8a5cc2!important}"
+    ".lg-wrote::before{border-color:var(--warn)!important}.lg-commented::before{border-top-style:dashed!important;border-color:var(--warn)!important}"
+    ".lg-reacted::before{border-top-style:dotted!important;border-color:var(--warn)!important}"
+    "</style>"
+    "<script>(function(){var s=document.querySelector('.cmap');if(!s)return;"
+    "function on(id){s.classList.add('focus');s.querySelectorAll('.ce').forEach(function(e){"
+    "if(e.getAttribute('data-a')===id||e.getAttribute('data-b')===id)e.classList.add('hi');});}"
+    "function off(){s.classList.remove('focus');s.querySelectorAll('.ce.hi').forEach(function(e){e.classList.remove('hi');});}"
+    "s.querySelectorAll('.cn').forEach(function(n){var id=n.getAttribute('data-n');"
+    "var t=n.parentNode&&n.parentNode.tagName.toLowerCase()==='a'?n.parentNode:n;"
+    "t.addEventListener('mouseenter',function(){on(id);});t.addEventListener('mouseleave',off);"
+    "t.addEventListener('focus',function(){on(id);});t.addEventListener('blur',off);});})();</script>";
 
 // Suggested download name only (the browser lets the user rename); no
 // original filename is stored, so this is derived from the mime that
@@ -5250,7 +6081,7 @@ std::string global_jukebox_widget(const std::string& yt_key, const std::string& 
     (void)yt_key; (void)user;
     return "<link rel=\"stylesheet\" href=\"/assets/juketube.css?v=14\">"
            "<div id=\"juketube-root\"></div>"
-           "<script src=\"/assets/juketube.js?v=14\" defer></script><script src=\"/assets/push.js?v=2\" defer></script>";
+           "<script src=\"/assets/juketube.js?v=14\" defer></script><script src=\"/assets/push.js?v=4\" defer></script>";
 }
 
 std::string jukebox_standalone_page(const std::string& yt_key, const std::string& user) {
@@ -6650,7 +7481,12 @@ std::string fmt_ballot_num(double v) {
     return o.str();
 }
 
-std::string proposal_block(const Proposal& p, const std::string& viewer) {
+std::string proposal_talk(const Proposal& p, const std::string& viewer, const std::string& next_in);
+
+std::string proposal_block(const Proposal& p, const std::string& viewer, const std::string& next = "") {
+    const std::string back = safe_next_path(next);
+    const std::string next_in = back.empty() ? std::string()
+        : "<input type=\"hidden\" name=\"next\" value=\""+html_escape(back)+"\">";
     std::string kindEyebrow;
     switch (p.ballot.kind) {
         case BallotKind::YesNo: kindEyebrow = "Yes / No"; break;
@@ -6678,6 +7514,7 @@ std::string proposal_block(const Proposal& p, const std::string& viewer) {
                 const bool active = my_vote.has_value() && *my_vote == v;
                 return "<form class=\"inline\" method=\"POST\" action=\"/proposals/vote\">"
                        "<input type=\"hidden\" name=\"id\" value=\""+std::to_string(p.id)+"\">"
+                       + next_in +
                        "<input type=\"hidden\" name=\"choice\" value=\""+std::to_string(static_cast<int>(v))+"\">"
                        "<button class=\""+std::string(active ? "" : "ghost")+"\" type=\"submit\">"+label+
                        (active ? " &#10003;" : "")+"</button></form>";
@@ -6705,6 +7542,7 @@ std::string proposal_block(const Proposal& p, const std::string& viewer) {
             if (!viewer.empty()) {
                 list += "<form class=\"inline\" method=\"POST\" action=\"/proposals/vote\">"
                         "<input type=\"hidden\" name=\"id\" value=\""+std::to_string(p.id)+"\">"
+                        + next_in +
                         "<input type=\"hidden\" name=\"value\" value=\""+std::to_string(i)+"\">"
                         "<button class=\""+std::string(active ? "" : "ghost")+"\" type=\"submit\">"+
                         html_escape(p.ballot.options[i])+" · "+std::to_string(n)+
@@ -6721,6 +7559,7 @@ std::string proposal_block(const Proposal& p, const std::string& viewer) {
             if (can_add) {
                 list += "<form method=\"POST\" action=\"/proposals/option\" style=\"margin-top:.7rem\">"
                         "<input type=\"hidden\" name=\"id\" value=\""+std::to_string(p.id)+"\">"
+                        + next_in +
                         "<label>Add a choice"
                         + std::string(viewer == p.author ? "" : " <span class=\"muted\">(one per person)</span>")
                         + "</label>"
@@ -6759,7 +7598,8 @@ std::string proposal_block(const Proposal& p, const std::string& viewer) {
         std::string voteForm;
         if (!viewer.empty()) {
             voteForm = "<form method=\"POST\" action=\"/proposals/vote\">"
-                       "<input type=\"hidden\" name=\"id\" value=\""+std::to_string(p.id)+"\">";
+                       "<input type=\"hidden\" name=\"id\" value=\""+std::to_string(p.id)+"\">"
+                       + next_in;
             if (p.ballot.kind == BallotKind::Date) {
                 voteForm += "<label>Your date</label><input type=\"date\" name=\"value\" required";
                 if (mine) voteForm += " value=\""+html_escape(*mine)+"\"";
@@ -6784,11 +7624,95 @@ std::string proposal_block(const Proposal& p, const std::string& viewer) {
         body = summary + voteForm;
     }
     std::string when = fmt_time(p.ts);
+    std::string place;
+    if (!p.city.empty() || !p.who_acts.empty()) {
+        place = "<p class=\"muted\">";
+        if (!p.city.empty()) {
+            std::string name = p.city;
+            for (const auto& cu : g_store.cities_in_use()) if (cu.key == p.city) { name = cu.name; break; }
+            place += "City: <a href=\"/city/"+url_encode(p.city)+"\">"+html_escape(name)+"</a>";
+        }
+        if (!p.who_acts.empty()) {
+            if (!p.city.empty()) place += " · ";
+            place += "Who could act: "+html_escape(p.who_acts);
+        }
+        place += "</p>";
+        if (!p.tags.empty()) {
+            place += "<p class=\"muted\">";
+            bool first_tag = true;
+            for (const auto& tag : p.tags) {
+                if (!first_tag) place += " · ";
+                first_tag = false;
+                place += html_escape(tag);
+            }
+            place += "</p>";
+        }
+        if (!p.city.empty())
+            place += "<p class=\"muted\">Discussion only. Nothing is sent to the city.</p>";
+    }
     return "<p class=\"muted eyebrow\">Proposal "+std::to_string(p.id)+" · "+kindEyebrow+"</p>"
            "<h3 style=\"margin:.1rem 0\">"+html_escape(p.title)+"</h3>"
            "<p class=\"muted\">by <a href=\"/u/"+html_escape(p.author)+"\">"+html_escape(p.author)+"</a>"+
            (when.empty()?"":" · "+html_escape(when))+"</p>"
-           "<p style=\"white-space:pre-wrap\">"+html_escape(p.body)+"</p>"+body;
+           + place +
+           "<p style=\"white-space:pre-wrap\">"+html_escape(p.body)+"</p>"+body
+           + proposal_talk(p, viewer, next_in);
+}
+
+// Comments and one reaction per person. A reaction is not a vote.
+// Clicking the reaction you already have removes it.
+std::string proposal_talk(const Proposal& p, const std::string& viewer, const std::string& next_in) {
+    auto label_of = [](const std::string& kind) {
+        if (kind.empty()) return kind;
+        std::string s = kind;
+        if (s[0] >= 'a' && s[0] <= 'z') s[0] = static_cast<char>(s[0] - 'a' + 'A');
+        return s;
+    };
+    const auto counts = g_store.proposal_reaction_counts(p.id);
+    auto mine = viewer.empty() ? std::optional<std::string>{} : g_store.proposal_reaction_of(p.id, viewer);
+    std::string row = "<div class=\"row\" style=\"flex-wrap:wrap;gap:.4rem;margin-top:.6rem\">";
+    for (const auto& item : counts) {
+        const std::string& kind = item.first;
+        const int n = item.second;
+        const bool active = mine && *mine == kind;
+        const std::string label = label_of(kind);
+        if (!viewer.empty()) {
+            row += "<form class=\"inline\" method=\"POST\" action=\"/proposals/react\">"
+                   "<input type=\"hidden\" name=\"id\" value=\""+std::to_string(p.id)+"\">"
+                   + next_in +
+                   "<input type=\"hidden\" name=\"kind\" value=\""+html_escape(kind)+"\">"
+                   "<button class=\""+std::string(active ? "" : "ghost")+"\" type=\"submit\">"+
+                   html_escape(label)+" · "+std::to_string(n)+
+                   (active ? " &#10003;" : "")+"</button></form>";
+        } else if (n > 0) {
+            row += "<span class=\"muted\">"+html_escape(label)+" · "+std::to_string(n)+"</span>";
+        }
+    }
+    row += "</div><p class=\"muted\">A reaction is not a vote.</p>";
+    auto replies = g_store.proposal_replies_of(p.id);
+    std::string list;
+    for (const auto& r : replies) {
+        list += "<div class=\"who\" style=\"margin:.5rem 0\">"+portrait_tag(r.author,"sm")+
+                "<div><a href=\"/u/"+html_escape(r.author)+"\"><strong>"+html_escape(r.author)+
+                "</strong></a> <span class=\"muted\">"+html_escape(fmt_time(r.ts))+"</span>"
+                "<p style=\"margin:.2rem 0 0\">"+html_escape(r.text)+"</p></div></div>";
+    }
+    std::string replyForm;
+    if (!viewer.empty()) {
+        replyForm = "<form method=\"POST\" action=\"/proposals/reply\" style=\"margin-top:.3rem\">"
+                    "<input type=\"hidden\" name=\"id\" value=\""+std::to_string(p.id)+"\">"
+                    + next_in +
+                    "<textarea name=\"text\" maxlength=\"1000\" placeholder=\"Write a comment\"></textarea>"
+                    "<button class=\"ghost\" type=\"submit\">Comment</button></form>";
+    }
+    std::string repliesBlock;
+    if (!replies.empty() || !viewer.empty()) {
+        repliesBlock = "<details style=\"margin-top:.4rem\"><summary class=\"muted\" style=\"cursor:pointer\">"+
+            std::to_string(replies.size())+(replies.size()==1?" comment":" comments")+"</summary>"
+            "<div style=\"padding-left:.8rem;border-left:2px solid var(--rule);margin-top:.3rem\">"+
+            list+replyForm+"</div></details>";
+    }
+    return row + repliesBlock;
 }
 
 // Shared by every post composer (/me/post, /feed, /c/<slug>): pulls the
@@ -6869,6 +7793,11 @@ std::string flash_error(const std::map<std::string,std::string>& qs) {
     if (e=="invite") return "<p class=\"warn\">Conflicts with another member’s contact settings.</p>";
     if (e=="address") return "<p class=\"warn\">Need a free address: letters, numbers, dots, underscores, hyphens.</p>";
     if (e=="subcategory") return "<p class=\"warn\">Pick or name a subcategory.</p>";
+    if (e=="city") return "<p class=\"warn\">Only the person who started this group can change its city.</p>";
+    if (e=="list") return "<p class=\"warn\">Join a group in this city before you list yourself here.</p>";
+    if (e=="pcity") return "<p class=\"warn\">Name a city that a group already uses, or leave the city blank.</p>";
+    if (e=="ctag") return "<p class=\"warn\">Join a group in this city before you add a department or council.</p>";
+    if (e=="ctagname") return "<p class=\"warn\">Name a department or council.</p>";
     if (e=="password") return "<p class=\"warn\">Could not change password. Check the current one.</p>";
     if (e=="short") return "<p class=\"warn\">New password needs at least eight characters.</p>";
     if (e=="delete") return "<p class=\"warn\">Type your username to delete.</p>";
@@ -7285,6 +8214,12 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
     auto proto = header_value(req, "X-Forwarded-Proto");
     for (char& c : proto) if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
     g_https = (proto == "https");
+    {
+        auto dest = header_value(req, "Sec-Fetch-Dest");
+        for (char& c : dest) if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+        auto eq = qs.find("embed");
+        g_embed = dest == "iframe" || (eq != qs.end() && eq->second == "1");
+    }
     const std::string ip = forwarded_ip(req, peer_ip);
     g_theme_mode = theme_of(req);
     auto acc = account_from_req(req);
@@ -7953,18 +8888,11 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         std::ifstream in("assets/apps.html"); std::ostringstream body; if(in) body<<in.rdbuf();
         return pg("Get the app", body.str());
     }
-    if(method=="GET"&&path=="/app/mail") {
-        std::ifstream in("assets/app-mail.html"); std::ostringstream body; if(in) body<<in.rdbuf();
-        return pg("Messages", body.str());
-    }
-    if(method=="GET"&&path=="/app/social") {
-        std::ifstream in("assets/app-social.html"); std::ostringstream body; if(in) body<<in.rdbuf();
-        return pg("Social", body.str());
-    }
-    if(method=="GET"&&path=="/app/civic") {
-        std::ifstream in("assets/app-civic.html"); std::ostringstream body; if(in) body<<in.rdbuf();
-        return pg("Civic", body.str());
-    }
+    // The separate Messages/Social/Civic apps are gone (one app now). Their old
+    // install pages send people to the real page those apps opened.
+    if(method=="GET"&&path=="/app/mail") return http_redir("/mail");
+    if(method=="GET"&&path=="/app/social") return http_redir("/feed");
+    if(method=="GET"&&path=="/app/civic") return http_redir("/proposals");
     if(method=="GET"&&path=="/signup") return http_ok(signup_page(user, unread, "", SignupDraft{}));
     if(method=="GET"&&path=="/login") {
         // Deliberately one generic message for bad-username and
@@ -8070,12 +8998,60 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
 
     if(method=="GET"&&path=="/proposals") {
         if(!acc) return need_login();
+        // /proposals?id=N: one proposal on its own (the map's right-hand field
+        // opens this), with its vote, reactions and comments.
+        if (qs.count("id")) {
+            std::uint64_t pid = 0;
+            try { pid = std::stoull(qs.at("id")); } catch (...) { pid = 0; }
+            auto one = pid ? g_store.proposal_by_id(pid) : std::nullopt;
+            if (!one) return http_code("404 Not Found", wrap("Not found", user, unread,
+                "<div class=\"card\"><p>No such proposal.</p><p><a href=\"/proposals\">Proposals</a></p></div>"));
+            const std::string self = "/proposals?id=" + std::to_string(one->id);
+            return pg(one->title, "<p class=\"muted\"><a href=\"/proposals\">All proposals</a></p>"
+                      "<div class=\"card\">" + proposal_block(*one, user, self) + "</div>");
+        }
+        std::string filter_key;
+        if (qs.count("city")) {
+            const std::string raw = qs.at("city");
+            const std::string key = city_key(raw);
+            if (!raw.empty() && key.empty()) return http_redir("/proposals");
+            if (!key.empty() && key != raw) return http_redir("/proposals?city="+url_encode(key));
+            filter_key = key;
+        }
+        std::string city_value;
+        if (!filter_key.empty()) {
+            std::string name = filter_key;
+            for (const auto& cu : g_store.cities_in_use()) if (cu.key == filter_key) { name = cu.name; break; }
+            city_value = " value=\""+html_escape(name)+"\"";
+        }
+        const std::string list_next = filter_key.empty() ? std::string("/proposals")
+            : "/proposals?city="+url_encode(filter_key);
+        std::string tag_fields;
+        if (!filter_key.empty()) {
+            for (const auto& tag : g_store.city_tags(filter_key)) {
+                tag_fields += "<label class=\"row\" style=\"gap:.4rem;align-items:center\">"
+                              "<input type=\"checkbox\" name=\"tag\" value=\"" + html_escape(tag) + "\"> "
+                              + html_escape(tag) + "</label>";
+            }
+            if (!tag_fields.empty())
+                tag_fields = "<label>Departments and councils</label>" + tag_fields;
+        }
         std::string html = "<h1>Proposals</h1>"
             "<p class=\"muted\">Unofficial straw polls &mdash; a way to gauge how people feel about "
-            "something not yet decided. Not a CitizenId vote, not binding, not this platform's Phase 2.</p>";
+            "something not yet decided. Not a CitizenId vote, not binding, not this platform's Phase 2. "
+            "Discussion only. Nothing is sent to the city.</p>";
+        if (!filter_key.empty()) {
+            std::string name = filter_key;
+            for (const auto& cu : g_store.cities_in_use()) if (cu.key == filter_key) { name = cu.name; break; }
+            html += "<p class=\"muted\">Showing proposals for <a href=\"/city/"+url_encode(filter_key)+"\">"
+                    +html_escape(name)+"</a>. <a href=\"/proposals\">All proposals</a></p>";
+        }
         html += flash_error(qs);
-        html += "<div class=\"card\"><form method=\"POST\" action=\"/proposals\">"
-                "<label>Title</label><input name=\"title\" maxlength=\"140\" required>"
+        // ?title= prefills the title ("Start a proposal about this" from /problems). Never posts by itself.
+        std::string title_prefill = qs.count("title") ? trim_ws(qs.at("title")) : std::string();
+        if (title_prefill.size() > 140) title_prefill.resize(140);
+        html += "<div class=\"card\" id=\"new\"><form method=\"POST\" action=\"/proposals\">"
+                "<label>Title</label><input name=\"title\" maxlength=\"140\" required value=\""+html_escape(title_prefill)+"\">"
                 "<label>What's being proposed</label>"
                 "<textarea name=\"body\" maxlength=\"4000\" required placeholder=\"Plain text.\"></textarea>"
                 "<label>How should people answer?</label>"
@@ -8102,7 +9078,14 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
                 "<label>Left label</label><input name=\"left\" maxlength=\"40\" placeholder=\"Too little\">"
                 "<label>Right label</label><input name=\"right\" maxlength=\"40\" placeholder=\"Too much\">"
                 "</div>"
+                "<label>City (optional)</label>"
+                "<input name=\"city\" list=\"citylist\" maxlength=\"80\" autocomplete=\"off\" placeholder=\"Fresno, CA\""
+                + city_value + ">"
+                "<label>Who could act on it (optional)</label>"
+                "<input name=\"who\" maxlength=\"80\" placeholder=\"The city council\">"
+                + tag_fields +
                 "<button>Open for votes</button></form>"
+                + city_datalist_html() +
                 "<script>"
                 "(function(){var s=document.getElementById('bkind');if(!s)return;"
                 "function show(){var v=s.value;"
@@ -8111,12 +9094,12 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
                 "document.getElementById('bscale').hidden=(v!=='4');}"
                 "s.addEventListener('change',show);show();})();"
                 "</script></div>";
-        auto all = g_store.all_proposals();
+        auto all = filter_key.empty() ? g_store.all_proposals() : g_store.proposals_in_city(filter_key);
         std::reverse(all.begin(), all.end());
         if (all.empty()) html += "<div class=\"card\"><p class=\"empty\">None open.</p>"
             "<p class=\"muted\">The form above starts an unofficial straw poll. Not a binding vote.</p></div>";
         for (const auto& p : all) {
-            html += "<div class=\"card\">"+proposal_block(p, user)+"</div>";
+            html += "<div class=\"card\">"+proposal_block(p, user, list_next)+"</div>";
         }
         return pg("Proposals", html);
     }
@@ -8662,12 +9645,8 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         if (qs["skipped"].size()) html += "<p class=\"warn\">Couldn’t include: "+html_escape(qs["skipped"])+
             ". Unknown, blocked, and contact-settings conflicts are skipped — start a new thread with just them if you still want to talk.</p>";
         html += "<div class=\"card mailwidget\">"+thread+mail_inbox_html(user, acc->id)+"</div>";
-        // title "Messages" (not "Mail") is what makes page_wrap emit the
-        // Messages apple-touch-icon/theme-color/manifest branch above --
-        // this is the one page that combination is for. The install hint
-        // goes in the body, not wrap()'s site-wide chrome, so /app/mail,
-        // /apps, and everywhere else stays untouched.
-        html += mail_install_hint();
+        // No separate "Messages" app any more (one app), so no "add Messages
+        // to your Home Screen" nudge here; mail_install_hint() is unused.
         return pg("Messages", html);
     }
     if(method=="GET"&&path=="/mail/panel") {
@@ -8810,6 +9789,17 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
             }
             html += "</ul></div>";
         }
+        auto cities = g_store.cities_in_use();
+        if (!cities.empty()) {
+            html += "<div class=\"card\"><h2>Cities</h2>"
+                    "<p class=\"muted\">Groups that name the same city are listed together, so people there can find each other. "
+                    "<a href=\"/map\">See them on the Main Stream map</a>.</p><p>";
+            for (const auto& cu : cities) {
+                html += "<a class=\"chip\" href=\"/city/"+url_encode(cu.key)+"\" style=\"text-decoration:none\">"+
+                        html_escape(cu.name)+" &middot; "+std::to_string(cu.groups)+"</a> ";
+            }
+            html += "</p></div>";
+        }
         html += "<div class=\"card\"><h2>Find a group</h2>"
             "<input id=\"commfilter\" type=\"search\" placeholder=\"Search by name or address\" "
             "oninput=\"var q=this.value.toLowerCase();document.querySelectorAll('.commrow').forEach(function(el){"
@@ -8828,10 +9818,12 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
                     html += "<div style=\"margin:.5rem 0 .5rem 1rem\">"
                             "<p class=\"eyebrow\">"+html_escape(subcat.empty() ? "General" : subcat)+"</p><ul class=\"plain\">";
                     for (auto& c : list) {
-                        std::string q = c.name + " " + c.slug + " " + c.about + " " + c.subcategory;
+                        std::string q = c.name + " " + c.slug + " " + c.about + " " + c.subcategory + " " + c.city;
                         for (char& ch : q) if (ch >= 'A' && ch <= 'Z') ch = static_cast<char>(ch - 'A' + 'a');
+                        const std::string chref = city_href(c.city);
                         html += "<li class=\"commrow\" data-q=\""+html_escape(q)+"\"><a href=\"/c/"+html_escape(c.slug)+"\"><strong>"+
-                                html_escape(c.name)+"</strong></a> <span class=\"muted\">/"+html_escape(c.slug)+"</span>"
+                                html_escape(c.name)+"</strong></a> <span class=\"muted\">/"+html_escape(c.slug)+"</span>"+
+                                (chref.empty() ? std::string() : " <a class=\"muted\" href=\""+chref+"\">"+html_escape(c.city)+"</a>")+
                                 "<p class=\"muted\">"+html_escape(c.about)+"</p></li>";
                     }
                     html += "</ul></div>";
@@ -8839,7 +9831,11 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
                 html += "</details>";
             }
         }
-        html += "</div><div class=\"card\"><details><summary>Start a group</summary>"
+        // /communities?city=<text> (the city page's "Start a group here")
+        // opens the form with the city filled in.
+        auto city_qs = qs.find("city");
+        const std::string city_prefill = city_qs == qs.end() ? std::string() : clean_city(city_qs->second);
+        html += "</div><div class=\"card\"><details"+std::string(city_prefill.empty() ? "" : " open")+"><summary>Start a group</summary>"
             "<form method=\"POST\" action=\"/communities\" style=\"margin-top:.7rem\">"
             "<label>Name</label><input name=\"name\" required maxlength=\"80\" placeholder=\"Neighborhood watch\">"
             "<label>Link</label><input name=\"slug\" required maxlength=\"32\" pattern=\"[A-Za-z0-9._-]+\" placeholder=\"watch\">"
@@ -8854,6 +9850,11 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
             "placeholder=\"e.g. Neighborhood Watch\" autocomplete=\"off\">"
             "<datalist id=\"subcatlist\"></datalist>"
             "<p class=\"muted\" style=\"margin-top:-.3rem\">Pick an existing one, or type a new one.</p>"
+            "<label>City <span class=\"muted\">(optional)</span></label>"
+            "<input name=\"city\" maxlength=\"80\" list=\"citylist\" placeholder=\"e.g. Fresno, CA\" autocomplete=\"off\" value=\""+
+            html_escape(city_prefill)+"\">"+city_datalist_html()+
+            "<p class=\"muted\" style=\"margin-top:-.3rem\">Groups that name the same city are listed together. "
+            "Pick an existing spelling if yours is there. A city here is a label, not a government.</p>"
             "<label>About</label><textarea name=\"about\" maxlength=\"2000\" placeholder=\"What this group is for.\"></textarea>"
             "<button>Create</button></form>"
             "<script>(function(){"
@@ -8889,7 +9890,9 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         std::string html = "<h1>"+html_escape(c->name)+"</h1>"
             "<p class=\"muted\">"+html_escape(category_label(c->category))+" &middot; "+
             html_escape(c->subcategory.empty() ? "General" : c->subcategory)+
-            " · /"+html_escape(c->slug)+" · started by <a href=\"/u/"+html_escape(c->owner)+"\">"+html_escape(c->owner)+"</a></p>";
+            " · /"+html_escape(c->slug)+" · started by <a href=\"/u/"+html_escape(c->owner)+"\">"+html_escape(c->owner)+"</a>"+
+            (city_href(c->city).empty() ? std::string()
+                : " · <a href=\""+city_href(c->city)+"\">"+html_escape(c->city)+"</a>")+"</p>";
         html += flash_error(qs);
         html += "<div class=\"card\"><p>"+html_escape(c->about.empty()?"No description yet.":c->about)+"</p>";
         if (!member) {
@@ -8899,6 +9902,13 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         } else {
             html += "<form method=\"POST\" action=\"/c/"+html_escape(slug)+"/delete\" onsubmit=\"return confirm('Delete this group and its posts?');\">"
                     "<button class=\"ghost\">Delete group</button></form>";
+            html += "<details style=\"margin-top:.6rem\"><summary>"+
+                    std::string(c->city.empty() ? "Add a city" : "Change city")+"</summary>"
+                    "<form method=\"POST\" action=\"/c/"+html_escape(slug)+"/city\" style=\"margin-top:.5rem\">"
+                    "<div class=\"row\"><input name=\"city\" maxlength=\"80\" list=\"citylist\" placeholder=\"e.g. Fresno, CA\" "
+                    "autocomplete=\"off\" value=\""+html_escape(c->city)+"\"><button>Save</button></div>"+city_datalist_html()+
+                    "<p class=\"muted\">Groups that name the same city are listed together so people there can find each other. "
+                    "Leave it empty to remove the city.</p></form></details>";
         }
         html += "</div>";
         if (member) {
@@ -8927,6 +9937,412 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         }
         html += "</details></div>";
         return pg(c->name, html);
+    }
+
+    // /city/<key>: every group that names this city (city proposals build
+    // plan, slice 1). A city is a label people chose, not an AVND locality.
+    // Map view (slice 6): /map is the Main Stream; /city/<key>/map is one city's branch.
+    if(method=="GET"&&path=="/map") {
+        if(!acc) return need_login();
+        // Interactive map (assets/lgmap.js): click a box and its connections
+        // grow out of it; its page opens in the field on the right, which can
+        // fill the window; MAINstream shrinks it back. <noscript> keeps the
+        // plain drawing for browsers without JavaScript.
+        std::string focus;
+        if (qs.count("focus") && map_gnode(qs.at("focus"), user)) focus = qs.at("focus");
+        std::string html =
+            "<link rel=\"stylesheet\" href=\"/assets/lgmap.css?v=2\">"
+            "<div id=\"lgmap\" class=\"lgmap\" data-focus=\""+html_escape(focus)+"\" data-me=\""+html_escape(user)+"\">"
+            "<div class=\"lgmap-bar\">"
+            "<button type=\"button\" id=\"lgm-main\" class=\"lgm-main\" title=\"Back to the Main Stream; shrinks the field\">MAINstream</button>"
+            "<span class=\"lgm-hint muted\">Click a box to grow its connections and open it on the right.</span>"
+            "<span id=\"lgm-status\" class=\"lgm-status\" role=\"status\"></span>"
+            "<a class=\"lgm-privacy\" href=\"/settings#map-privacy\">Map privacy</a></div>"
+            "<div class=\"lgmap-body\">"
+            "<div class=\"lgmap-canvas\"><svg id=\"lgm-svg\" xmlns=\"http://www.w3.org/2000/svg\" aria-label=\"Map\">"
+            "<g id=\"lgm-view\"><g id=\"lgm-edges\"></g><g id=\"lgm-nodes\"></g></g></svg></div>"
+            "<aside id=\"lgm-panel\" class=\"lgmap-panel\" hidden>"
+            "<div class=\"lgm-ptop\"><strong id=\"lgm-ptitle\"></strong>"
+            "<button type=\"button\" id=\"lgm-expand\" title=\"Fill the window\">Expand</button>"
+            "<a id=\"lgm-open\" href=\"#\" target=\"_top\">Open page</a>"
+            "<button type=\"button\" id=\"lgm-close\" aria-label=\"Close\">&times;</button></div>"
+            "<iframe id=\"lgm-frame\" title=\"Selected item\"></iframe></aside></div>"
+            "<noscript>"+main_stream_svg()+kCityMapStyle+"</noscript>"
+            "<div class=\"lgm-legend muted\">"
+            "<span class=\"lgm-scale\">Far from you <i aria-hidden=\"true\"></i> Close to you</span>"
+            "<span>Thicker lines: paths you use often (kept on this device only)</span>"
+            "<button type=\"button\" id=\"lgm-forget\" class=\"ghost\">Forget my visits</button></div>"
+            "<p class=\"muted lgm-foot\">Colours come from what you're in and have done; only you see them. "
+            "Cities are labels people chose, not governments. You only see what people have made visible.</p></div>"
+            "<script src=\"/assets/lgmap.js?v=2\" defer></script>";
+        return pg("Map", html);
+    }
+    // Your own wishes and pain points. Owner only; nobody else has a way in.
+    if(method=="GET"&&path=="/problems") {
+        if(!acc) return need_login();
+        const bool on = g_store.map_prefs_of(user).pains;
+        std::string html = "<h1>Your problems and solutions</h1>"
+            "<p class=\"lede\">Things you said you wish for or are tired of, so you can find what and who could help. "
+            "Only you can see this page. Flow puts one kept subject on the map for people who can see you. "
+            "Flowing it also shows you who else Flowed that same subject.</p>";
+        const bool looked_none = on && qs.count("looked") && qs.at("looked") == "none";
+        if (!on) html += "<div class=\"card\"><p>This is turned off, so nothing is being noticed. "
+                         "<a href=\"/settings#map-privacy\">Turn it on in Settings</a>.</p></div>";
+        else {
+            html += "<p class=\"muted\">It reads your new posts, proposals, proposal comments, and messages you sent. "
+                    "<a href=\"/settings#map-privacy\">Change this</a></p>";
+            html += "<form method=\"POST\" action=\"/problems/look\">"
+                    "<button type=\"submit\">Look at what I've written</button></form>";
+            html += "<p class=\"muted\">This reads posts, proposals, proposal comments, and messages you already wrote. "
+                    "Each one is offered here as Keep or Forget before it is a box. "
+                    "Friends posts, group posts, and messages stay on your map only. "
+                    "It does not read the other person's messages, or reposts.</p>";
+            if (looked_none) html += "<p class=\"muted\">Nothing new in what you've written.</p>";
+        }
+        auto all = g_store.pains_of(user);
+        auto source_link = [](const PainPoint& p) -> std::string {
+            auto post_href = [](const std::string& source, std::size_t skip, const char* label) {
+                return " <a class=\"muted\" href=\"/post/" + html_escape(source.substr(skip)) + "\">" + label + "</a>";
+            };
+            if (p.source.rfind("post:", 0) == 0) return post_href(p.source, 5, "from your post");
+            if (p.source.rfind("fpost:", 0) == 0) return post_href(p.source, 6, "from a friends post");
+            if (p.source.rfind("gpost:", 0) == 0) return post_href(p.source, 6, "from a group post");
+            if (p.source.rfind("prop:", 0) == 0) return " <a class=\"muted\" href=\"/proposals?id=" + html_escape(p.source.substr(5)) + "\">from your proposal</a>";
+            if (p.source.rfind("mail:", 0) == 0) return " <span class=\"muted\">from a message you sent</span>";
+            if (p.source.rfind("gmsg:", 0) == 0) return " <span class=\"muted\">from a group message you sent</span>";
+            return " <span class=\"muted\">from your comment</span>";
+        };
+        auto label = [](const PainPoint& p) { return std::string(p.kind == "wish" ? "Want" : "Problem"); };
+        auto button = [](const char* action, std::uint64_t id, const char* text, bool ghost) {
+            return std::string("<form method=\"POST\" action=\"/problems/") + action + "\" style=\"display:inline\">"
+                   "<input type=\"hidden\" name=\"id\" value=\"" + std::to_string(id) + "\"><button" +
+                   (ghost ? " class=\"ghost\"" : "") + ">" + text + "</button></form> ";
+        };
+        std::string sugg, kept;
+        for (const auto& p : all) {
+            if (!p.kept) {
+                sugg += "<li style=\"margin:.6rem 0\"><span class=\"eyebrow\">" + label(p) + "</span> <strong>" +
+                        html_escape(p.phrase) + "</strong>" + source_link(p) + "<div style=\"margin-top:.3rem\">" +
+                        button("keep", p.id, "Keep", false) + button("forget", p.id, "Forget", true) + "</div></li>";
+                continue;
+            }
+            const auto m = pain_matches(p);
+            std::string body;
+            if (!m.depts.empty()) {
+                body += "<p class=\"muted\" style=\"margin:.4rem 0 .1rem\">Who could act</p><p>";
+                for (const auto& [key, tag] : m.depts)
+                    body += "<a class=\"chip\" href=\"/proposals?city=" + url_encode(key) + "\">" + html_escape(tag) + "</a> ";
+                body += "</p>";
+            }
+            if (!m.props.empty()) {
+                body += "<p class=\"muted\" style=\"margin:.4rem 0 .1rem\">Proposals about it</p><ul class=\"plain\">";
+                for (const auto& pr : m.props)
+                    body += "<li><a href=\"/proposals?id=" + std::to_string(pr.id) + "\">" + html_escape(pr.title) + "</a></li>";
+                body += "</ul>";
+            }
+            if (!m.groups.empty()) {
+                body += "<p class=\"muted\" style=\"margin:.4rem 0 .1rem\">Groups working on it</p><p>";
+                for (const auto& c : m.groups)
+                    body += "<a class=\"chip\" href=\"/c/" + url_encode(c.slug) + "\">" + html_escape(c.name) + "</a> ";
+                body += "</p>";
+            }
+            if (body.empty()) body = "<p class=\"muted\">No possible solutions on the site yet. You could start one.</p>";
+            else body = "<p class=\"eyebrow\" style=\"margin-top:.6rem\">Possible solutions</p>" + body;
+            const std::string start = "/proposals?title=" + url_encode(p.phrase) +
+                                      (m.city_key.empty() ? std::string() : "&city=" + url_encode(m.city_key)) + "#new";
+            const bool shareable = pain_can_flow(p.source);
+            const std::string flow_note = !shareable
+                ? std::string("This stays on your map. Other people do not see it.")
+                : p.flowed
+                    ? std::string("This subject is on the map for people who can see you.")
+                    : std::string("Flow puts this subject on the map for people who can see you.");
+            const std::string flow_btn = !shareable ? std::string()
+                : p.flowed ? button("still", p.id, "Still", true)
+                           : button("flow", p.id, "Flow", false);
+            const std::string also = also_flowed_html(subject_matches(user, p));
+            kept += "<div class=\"card\" id=\"pain" + std::to_string(p.id) + "\"><span class=\"eyebrow\">" + label(p) +
+                    "</span><h3 style=\"margin:.1rem 0\">" + html_escape(p.phrase) + "</h3>" + source_link(p) + body +
+                    "<p style=\"margin-top:.6rem\"><a href=\"" + html_escape(start) + "\">Start a proposal about this</a> &middot; "
+                    "<a href=\"/map?focus=pain:" + std::to_string(p.id) + "\">See it on your map</a></p>" +
+                    "<p class=\"muted\">" + flow_note + "</p>" + also +
+                    flow_btn + button("forget", p.id, "Forget", true) + "</div>";
+        }
+        if (!sugg.empty())
+            html += "<div class=\"card\"><h2>Noticed</h2><p class=\"muted\">Keep the ones that are real. "
+                    "Ones you don't keep disappear after 30 days.</p><ul class=\"plain\">" + sugg + "</ul></div>";
+        if (!kept.empty()) html += "<h2>Kept</h2>" + kept;
+        if (all.empty() && on && !looked_none)
+            html += "<div class=\"card\"><p class=\"empty\">Nothing yet.</p><p class=\"muted\">When you write something like "
+                    "&ldquo;I wish the buses ran later&rdquo; in a public post, a proposal or a comment, it shows up here.</p></div>";
+        return pg("Problems and solutions", html);
+    }
+    if(method=="POST"&&(path=="/problems/keep"||path=="/problems/forget"||path=="/problems/flow"||path=="/problems/still")) {
+        if(!acc) return need_login();
+        auto f = parse_form(body);
+        std::uint64_t id = 0;
+        const std::string raw = f["id"];
+        if (!raw.empty() && raw.size() <= 19 && raw.find_first_not_of("0123456789") == std::string::npos)
+            try { id = std::stoull(raw); } catch (...) { id = 0; }
+        // Owner-only checks live in the store; someone else's id just does nothing.
+        if (id && path == "/problems/keep") g_store.keep_pain(user, id);
+        else if (id && path == "/problems/forget") g_store.forget_pain(user, id);
+        else if (id && path == "/problems/flow") {
+            auto owned = g_store.pain_by_id(id);
+            if (owned && owned->owner == user && pain_can_flow(owned->source)) g_store.flow_pain(user, id, true);
+        }
+        else if (id && path == "/problems/still") g_store.flow_pain(user, id, false);
+        const bool stay = id && path != "/problems/forget";
+        return http_redir(stay ? "/problems#pain" + std::to_string(id) : std::string("/problems"));
+    }
+    // Older public writing, only when this person asks. Same Keep/Forget
+    // suggestions as a new post. A switch that is off reads nothing.
+    if(method=="POST"&&path=="/problems/look") {
+        if(!acc) return need_login();
+        const int added = look_public_words(user);
+        if (added < 0 || added > 0) return http_redir("/problems");
+        return http_redir("/problems?looked=none");
+    }
+    // One flowed subject. The owner is sent back to their private list.
+    // Anyone else sees the phrase and who flowed it, and only when that
+    // person is visible to them. A Still box looks the same as a missing one.
+    if(method=="GET"&&path.rfind("/pain/",0)==0&&path.size()>6&&path.find('/',6)==std::string::npos) {
+        if(!acc) return need_login();
+        std::uint64_t id = 0;
+        const std::string digits = path.substr(6);
+        if (digits.size() <= 19 && digits.find_first_not_of("0123456789") == std::string::npos)
+            try { id = std::stoull(digits); } catch (...) { id = 0; }
+        auto p = id ? g_store.pain_by_id(id) : std::nullopt;
+        auto missing = [&]() {
+            return http_code("404 Not Found", wrap("Not found", user, unread,
+                "<div class=\"card\"><p>No such subject.</p></div>"));
+        };
+        if (!p) return missing();
+        if (p->owner == user) return http_redir("/problems#pain" + std::to_string(p->id));
+        if (!p->kept || !p->flowed || !map_person_ok(p->owner, user)) return missing();
+        const std::string eyebrow = p->kind == "wish" ? std::string("Want") : std::string("Problem");
+        std::string html = "<div class=\"card\"><span class=\"eyebrow\">" + eyebrow +
+            "</span><h1 style=\"margin:.1rem 0\">" + html_escape(p->phrase) + "</h1>"
+            "<p>Flowed by <a href=\"/u/" + html_escape(p->owner) + "\">" + html_escape(p->owner) + "</a>.</p>";
+        html += also_flowed_html(subject_matches(user, *p));
+        html += "<p class=\"muted\">This is the subject they chose to show.</p>"
+            "<p><a href=\"/map?focus=pain:" + std::to_string(p->id) + "\">See it on the map</a></p></div>";
+        return pg(p->phrase, html);
+    }
+    // One box and its connections, as JSON, for assets/lgmap.js.
+    if(method=="GET"&&path=="/map/node") {
+        if(!acc) return http_raw("401 Unauthorized","application/json; charset=utf-8","{\"error\":\"login\"}");
+        const std::string id = qs.count("n") ? qs.at("n") : std::string("root");
+        auto n = map_gnode(id, user);
+        if (!n) return http_raw("404 Not Found","application/json; charset=utf-8","{\"error\":\"not found\"}");
+        const MapCtx ctx = map_ctx(user); // relevance colours, for this viewer only
+        std::string out = "{\"node\":" + map_node_json(*n, map_relevance(*n, ctx)) + ",\"links\":[";
+        bool first = true;
+        for (const auto& l : map_links(id, user)) {
+            if (!first) out += ",";
+            first = false;
+            out += "{\"node\":" + map_node_json(l.to, map_relevance(l.to, ctx)) + ",\"edge\":\"" + json_escape(l.edge) + "\"}";
+        }
+        out += "]}";
+        return http_raw("200 OK","application/json; charset=utf-8", out, "Cache-Control: no-store\r\n");
+    }
+    if(method=="GET"&&(path=="/assets/lgmap.js"||path=="/assets/lgmap.css")) {
+        const bool js = path=="/assets/lgmap.js";
+        std::ifstream in(js ? "assets/lgmap.js" : "assets/lgmap.css", std::ios::binary);
+        if(!in) return http_raw("404 Not Found","text/plain; charset=utf-8","not found");
+        std::ostringstream ss; ss << in.rdbuf();
+        return http_raw("200 OK", js ? "text/javascript; charset=utf-8" : "text/css; charset=utf-8", ss.str(),
+                        "Cache-Control: no-store\r\n");
+    }
+    // One post on its own (the map's right-hand field opens this). Same
+    // audience rules as the author's profile, via map_post_ok.
+    if(method=="GET"&&path.rfind("/post/",0)==0&&path.size()>6&&path.find('/',6)==std::string::npos) {
+        if(!acc) return need_login();
+        std::uint64_t pid = 0;
+        const std::string digits = path.substr(6);
+        if (digits.size() <= 19 && digits.find_first_not_of("0123456789") == std::string::npos)
+            try { pid = std::stoull(digits); } catch (...) { pid = 0; }
+        auto p = pid ? g_store.post_by_id(pid) : std::nullopt;
+        if (!p || !map_post_ok(*p, user))
+            return http_code("404 Not Found", wrap("Not found", user, unread, "<div class=\"card\"><p>No such post.</p></div>"));
+        return pg("Post", "<div class=\"card\">" + post_block(*p, user) + "</div>");
+    }
+    if(method=="GET"&&path.rfind("/city/",0)==0&&path.size()>10&&path.compare(path.size()-4,4,"/map")==0) {
+        if(!acc) return need_login();
+        const std::string raw = url_decode(path.substr(6, path.size()-6-4));
+        const std::string key = city_key(raw);
+        if (key.empty()) return http_redir("/map");
+        if (key != raw) return http_redir("/city/"+url_encode(key)+"/map");
+        auto groups = g_store.communities_in_city(key);
+        if (groups.empty() && g_store.proposals_in_city(key).empty())
+            return http_code("404 Not Found", wrap("No map here yet", user, unread,
+                "<h1>Nothing names this city yet</h1><div class=\"card\"><p><a href=\"/map\">Main Stream</a></p></div>"));
+        std::string name = groups.empty() ? key : groups.front().city;
+        for (const auto& cu : g_store.cities_in_use()) if (cu.key == key) { name = cu.name; break; }
+        std::string html = "<p class=\"muted\"><a href=\"/map\">Main Stream</a> &rsaquo; "+html_escape(name)+"</p>"
+            "<h1>"+html_escape(name)+"</h1>"
+            "<p class=\"lede\">Point at a box to light up its lines. Click it to open it. "
+            "<a href=\"/city/"+url_encode(key)+"\">List view</a></p>"
+            + city_map_svg(key, name, user) + kCityMapStyle +
+            "<p class=\"cmaplegend\"><span class=\"lg-in\">in this city</span><span class=\"lg-member\">member of</span>"
+            "<span class=\"lg-touches\">touches</span><span class=\"lg-wrote\">wrote</span>"
+            "<span class=\"lg-commented\">commented</span></p>"
+            "<p class=\"muted\">Only people who chose to be listed here appear. A city on LiquidGov is a label, not a government.</p>";
+        return pg(name+" map", html);
+    }
+    if(method=="GET"&&path=="/city") return http_redir("/communities"); // the city list lives on Groups
+    if(method=="GET"&&path.rfind("/city/",0)==0) {
+        if(!acc) return need_login();
+        const std::string raw = url_decode(path.substr(6));
+        const std::string key = city_key(raw);
+        if (key.empty()) return http_redir("/communities");
+        if (key != raw) return http_redir("/city/"+url_encode(key)); // /city/Fresno,%20CA -> /city/fresno-ca
+        auto groups = g_store.communities_in_city(key);
+        if (groups.empty()) {
+            // Proposals and tags for a city are kept while no group names it
+            // (Brandon 2026-11-06), so point to them instead of hiding them.
+            const auto kept = g_store.proposals_in_city(key).size();
+            std::string kept_html;
+            if (kept > 0) {
+                kept_html = "<p>"+std::to_string(kept)+(kept==1?" proposal is":" proposals are")+
+                    " still about this city. <a href=\"/proposals?city="+url_encode(key)+"\">See "+
+                    (kept==1?"it":"them")+"</a>. They show here again once a group names the city.</p>";
+            }
+            return http_code(kept > 0 ? "200 OK" : "404 Not Found", wrap("No groups here yet", user, unread,
+                "<h1>No groups name this city yet</h1><div class=\"card\">"
+                "<p>Anyone can start one. Give it a city when you do, and it shows up here.</p>"+kept_html+
+                "<p><a href=\"/communities\">Groups</a></p></div>"));
+        }
+        std::string name = groups.front().city;
+        for (const auto& cu : g_store.cities_in_use()) if (cu.key == key) { name = cu.name; break; }
+        std::set<std::string> people;
+        for (const auto& c : groups) for (const auto& m : g_store.members_of(c.slug)) people.insert(m);
+        std::string html = "<h1>"+html_escape(name)+"</h1>"
+            "<p class=\"lede\">People here started these groups. A city on LiquidGov is a label, not a government.</p>"
+            "<p><a href=\"/city/"+url_encode(key)+"/map\">Map view</a> &middot; <a href=\"/map\">Main Stream</a></p>"
+            + flash_error(qs) +
+            "<p class=\"muted\">"+std::to_string(groups.size())+(groups.size()==1?" group":" groups")+" &middot; "+
+            std::to_string(people.size())+(people.size()==1?" person":" people")+" in them</p>"
+            "<div class=\"card\"><ul class=\"plain\">";
+        for (const auto& c : groups) {
+            const auto members = g_store.members_of(c.slug).size();
+            html += "<li style=\"margin:.6rem 0\"><a href=\"/c/"+html_escape(c.slug)+"\"><strong>"+html_escape(c.name)+"</strong></a> "
+                    "<span class=\"muted\">/"+html_escape(c.slug)+" &middot; "+html_escape(category_label(c.category))+
+                    (c.subcategory.empty() ? std::string() : " &middot; "+html_escape(c.subcategory))+" &middot; "+
+                    std::to_string(members)+(members==1?" member":" members")+
+                    (g_store.is_member(c.slug, user) ? " &middot; you're in" : "")+"</span>"+
+                    (c.about.empty() ? std::string() : "<p class=\"muted\">"+html_escape(c.about)+"</p>")+"</li>";
+        }
+        html += "</ul></div>";
+        {
+            const auto tags = g_store.city_tags(key);
+            bool viewer_in_city = false;
+            for (const auto& c : groups) if (g_store.is_member(c.slug, user)) { viewer_in_city = true; break; }
+            html += "<div class=\"card\"><h2>Departments and councils</h2>"
+                    "<p class=\"muted\">Named by people in this city's groups. A proposal can say which ones it touches. "
+                    "Nothing here is sent to the city.</p>";
+            if (viewer_in_city) {
+                html += "<form method=\"POST\" action=\"/city/"+url_encode(key)+"/tag\">"
+                        "<label>Add one</label><div class=\"row\">"
+                        "<input name=\"tag\" maxlength=\"80\" required placeholder=\"Parks, city council\">"
+                        "<button>Add</button></div></form>";
+            } else {
+                html += "<p class=\"muted\">Join a group in this city to add one.</p>";
+            }
+            if (tags.empty()) html += "<p class=\"empty\">None named yet.</p>";
+            else {
+                html += "<ul class=\"plain\">";
+                for (const auto& tag : tags) html += "<li>"+html_escape(tag)+"</li>";
+                html += "</ul>";
+            }
+            html += "</div>";
+
+            auto city_props = g_store.proposals_in_city(key);
+            std::reverse(city_props.begin(), city_props.end());
+            const std::string back = "/city/"+url_encode(key);
+            html += "<div class=\"card\"><h2>Proposals</h2>"
+                    "<p class=\"muted\">Unofficial straw poll. Discussion only. Nothing is sent to the city.</p>";
+            if (city_props.empty()) html += "<p class=\"empty\">None for this city yet.</p>";
+            else {
+                auto carries = [](const Proposal& p, const std::string& tag) {
+                    for (const auto& have : p.tags) if (have == tag) return true;
+                    return false;
+                };
+                for (const auto& tag : tags) {
+                    std::vector<Proposal> bucket;
+                    for (const auto& p : city_props) if (carries(p, tag)) bucket.push_back(p);
+                    if (bucket.empty()) continue;
+                    html += "<h3>"+html_escape(tag)+"</h3>";
+                    for (const auto& p : bucket) html += proposal_block(p, user, back);
+                }
+                std::vector<Proposal> untagged;
+                for (const auto& p : city_props) if (p.tags.empty()) untagged.push_back(p);
+                if (!untagged.empty()) {
+                    html += "<h3>Not tagged</h3>";
+                    for (const auto& p : untagged) html += proposal_block(p, user, back);
+                }
+            }
+            html += "<p><a href=\"/proposals?city="+url_encode(key)+"\">Open a proposal for this city</a></p></div>";
+        }
+        html += "<div class=\"card\"><h2>People here</h2>"
+                "<p class=\"muted\">People in these groups who chose to be listed. Nobody is listed unless they ask.</p>";
+        bool viewer_in = false;
+        for (const auto& c : groups) if (g_store.is_member(c.slug, user)) { viewer_in = true; break; }
+        if (viewer_in) {
+            const bool listed = g_store.is_city_listed(key, user);
+            html += "<form method=\"POST\" action=\"/city/"+url_encode(key)+"/list\" style=\"margin:.4rem 0\">"
+                    "<input type=\"hidden\" name=\"on\" value=\""+std::string(listed ? "0" : "1")+"\">"
+                    "<button>"+std::string(listed ? "Stop listing me" : "List me here")+"</button></form>";
+        } else {
+            html += "<p class=\"muted\">Join a group in this city to be listed here.</p>";
+        }
+        auto listed = g_store.people_listed_in_city(key);
+        if (listed.empty()) html += "<p class=\"empty\">Nobody has chosen to be listed yet.</p>";
+        else {
+            html += "<ul class=\"plain\">";
+            for (const auto& name : listed) {
+                if (name != user && (g_store.is_blocked(user, name) || g_store.is_blocked(name, user))) continue;
+                html += "<li class=\"who\" style=\"margin:.4rem 0\">"+portrait_tag(name, "sm")+
+                        "<div><a href=\"/u/"+html_escape(name)+"\">"+html_escape(name)+"</a>";
+                if (name == user) html += " <span class=\"muted\">you</span>";
+                else if (g_store.are_friends(user, name)) html += " <span class=\"muted\">Friends</span>";
+                else {
+                    html += "<form class=\"inline\" method=\"POST\" action=\"/friends\">"
+                            "<input type=\"hidden\" name=\"who\" value=\""+html_escape(name)+"\">"
+                            "<input type=\"hidden\" name=\"next\" value=\""+html_escape("/city/"+url_encode(key))+"\">"
+                            "<button type=\"submit\">Add friend</button></form>";
+                }
+                html += "</div></li>";
+            }
+            html += "</ul>";
+        }
+        html += "</div><div class=\"card\"><p><a href=\"/communities?city="+url_encode(name)+"\">Start a group in "+
+                html_escape(name)+"</a></p><p class=\"muted\">Anyone can start one. There's no minimum size.</p></div>";
+        return pg(name, html);
+    }
+
+    if (method=="POST" && path.rfind("/city/", 0)==0 && path.size() > 11
+        && path.compare(path.size()-5, 5, "/list")==0) {
+        if (!acc) return need_login();
+        const std::string raw = url_decode(path.substr(6, path.size() - 6 - 5));
+        const std::string key = city_key(raw);
+        if (key.empty()) return http_redir("/communities");
+        const bool on = parse_form(body)["on"] != "0";
+        if (!g_store.set_city_listed(key, user, on))
+            return http_redir("/city/"+url_encode(key)+"?err=list");
+        return http_redir("/city/"+url_encode(key));
+    }
+
+    if (method=="POST" && path.rfind("/city/", 0)==0 && path.size() > 10
+        && path.compare(path.size()-4, 4, "/tag")==0) {
+        if (!acc) return need_login();
+        const std::string raw = url_decode(path.substr(6, path.size() - 6 - 4));
+        const std::string key = city_key(raw);
+        if (key.empty()) return http_redir("/communities");
+        const std::string dest = "/city/"+url_encode(key);
+        if (!g_store.in_city(key, user)) return http_redir(dest+"?err=ctag");
+        if (!g_store.add_city_tag(key, user, parse_form(body)["tag"]))
+            return http_redir(dest+"?err=ctagname");
+        return http_redir(dest);
     }
 
     if(method=="GET"&&path=="/notices") {
@@ -8984,6 +10400,33 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         html += "<form method=\"POST\" action=\"/settings/logout-all\" style=\"margin-top:1rem\">"
                 "<button class=\"danger\" type=\"submit\">Log out other devices</button></form></div>";
 
+        {
+            // Map and connections (slice 6): what /map may show about you.
+            const auto mp = g_store.map_prefs_of(user);
+            auto box = [](const char* name, bool on, const char* label, const char* help) {
+                return std::string("<label class=\"row\" style=\"gap:.5rem;align-items:flex-start;margin:.45rem 0\">"
+                       "<input type=\"checkbox\" name=\"") + name + "\" value=\"1\"" + (on ? " checked" : "") + "> <span><strong>" +
+                       label + "</strong><br><span class=\"muted\">" + help + "</span></span></label>";
+            };
+            html += "<div class=\"card\" id=\"map-privacy\"><h2>Map and connections</h2>"
+                    "<p class=\"muted\">The <a href=\"/map\">Map</a> connects people, groups, cities and proposals so you can find "
+                    "the people worth talking to. Choose what it shows about you. You always see your own.</p>"
+                    "<form method=\"POST\" action=\"/settings/map\">"
+                    + box("show", mp.show, "Show me on the map", "Off hides you everywhere on the map, even in groups and cities.")
+                    + box("groups", mp.groups, "Show the groups I'm in", "Lines from you to your groups.")
+                    + box("posts", mp.posts, "Show my posts", "Posts others can already see, as boxes on the map.")
+                    + box("comments", mp.comments, "Show what I commented on", "Lines from you to proposals you commented on.")
+                    + box("friends", mp.friends, "Show my friends", "Off by default. A friendship shows to others only when both of you turn this on.")
+                    + box("pains", mp.pains, "Notice my problems and wants",
+                          "Reads your new posts, proposals, proposal comments, and messages you sent for phrases like "
+                          "&ldquo;I wish&hellip;&rdquo; or &ldquo;I hate when&hellip;&rdquo;, and suggests them to you. "
+                          "Friends posts, group posts, and messages stay on your map only. The other person's messages are not read. "
+                          "On your problems page, Look at what I've written reads older writing of those same kinds when you ask. "
+                          "Only you see the private ones. Turning this off deletes everything it found. "
+                          "Note: the site's operator can read what is stored on the server.")
+                    + "<p class=\"muted\"><a href=\"/problems\">See your problems and solutions</a></p>"
+                    + "<button>Save map settings</button></form></div>";
+        }
         html += std::string("<div class=\"card\"><h2>Privacy</h2><form method=\"POST\" action=\"/settings/privacy\">")
             + "<label>Who can find you</label>"
             + "<p class=\"muted\">One axis, three states. Each level includes the one above it.</p>"
@@ -9667,8 +11110,18 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
             const PostAudience audience = anybody ? PostAudience::Anybody
                 : (groups_on && !friends_on) ? PostAudience::GroupsOnly
                 : PostAudience::Friends;
-            g_store.add_post(user, text, community, "", 0, c.attachment_blob_id, c.attachment_mime,
+            const auto new_post = g_store.add_post(user, text, community, "", 0, c.attachment_blob_id, c.attachment_mime,
                               audience, exceptions, friend_allowlist, extra_groups);
+            // Reposts are someone else's words. Anything else this person
+            // wrote is noticed: Anybody can be Flowed; the rest stay private.
+            if (new_post) {
+                Post noted;
+                noted.id = new_post;
+                noted.audience = audience;
+                noted.community = community;
+                noted.extra_groups = extra_groups;
+                notice_pains(user, text, post_pain_source(noted));
+            }
         }
         return http_redir("/feed");
     }
@@ -9708,8 +11161,21 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
             auto right = trim_ws(f["right"]);
             spec.options = {left, right};
         }
+        const std::string city_text = trim_ws(f["city"]);
+        const std::string who_text = trim_ws(f["who"]);
+        std::string city_key_chosen;
+        if (!city_text.empty()) {
+            city_key_chosen = city_key(clean_city(city_text));
+            if (city_key_chosen.empty() || g_store.communities_in_city(city_key_chosen).empty())
+                return http_redir("/proposals?err=pcity");
+        }
         auto id = g_store.add_proposal(user, title, ptext, spec);
         if (id == 0) return http_redir("/proposals?err=range");
+        notice_pains(user, title + ". " + ptext, "prop:" + std::to_string(id));
+        if (!city_key_chosen.empty()) g_store.set_proposal_city(id, city_text);
+        if (!who_text.empty()) g_store.set_proposal_actor(id, who_text);
+        if (!city_key_chosen.empty()) g_store.set_proposal_tags(id, parse_form_multi(body, "tag"));
+        if (!city_key_chosen.empty()) return http_redir("/proposals?city="+url_encode(city_key_chosen));
         return http_redir("/proposals");
     }
     if(method=="POST"&&path=="/proposals/option") {
@@ -9719,7 +11185,9 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         try { id = std::stoull(f["id"]); } catch (...) { return http_redir("/proposals"); }
         if (!g_store.add_proposal_option(id, user, trim_ws(f["label"])))
             return http_redir("/proposals?err=option");
-        return http_redir("/proposals");
+        auto dest = safe_next_path(trim_ws(f["next"]));
+        if (dest.empty()) dest = "/proposals";
+        return http_redir(dest);
     }
     if(method=="GET"&&path=="/officials") {
         std::string cards;
@@ -9746,6 +11214,9 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
                          "<div class=\"row\"><input name=\"label\" maxlength=\"80\" placeholder=\"Add a candidate\">"
                          "<button type=\"submit\">Add</button></div></form>";
             }
+            const std::string next_in = user.empty() ? std::string()
+                : "<input type=\"hidden\" name=\"next\" value=\"/officials\">";
+            cards += proposal_talk(pr, user, next_in);
             cards += "</div>";
         }
         if (cards.empty()) cards = "<p class=\"muted\">No races yet.</p>";
@@ -9793,6 +11264,35 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
             return http_redir("/officials");
         return http_redir("/officials");
     }
+    if(method=="POST"&&path=="/proposals/reply") {
+        if(!acc) return need_login();
+        auto f = parse_form(body);
+        std::uint64_t id = 0;
+        try { id = std::stoull(f["id"]); } catch (...) { return http_redir("/proposals"); }
+        if (!g_store.proposal_by_id(id)) return http_redir("/proposals");
+        auto text = trim_ws(f["text"]);
+        if (!text.empty()) {
+            const auto rid = g_store.add_proposal_reply(id, user, text);
+            if (rid) notice_pains(user, text, "prply:" + std::to_string(rid));
+        }
+        auto dest = safe_next_path(trim_ws(f["next"]));
+        if (!dest.empty()) return http_redir(dest);
+        return http_redir("/proposals");
+    }
+    if(method=="POST"&&path=="/proposals/react") {
+        if(!acc) return need_login();
+        auto f = parse_form(body);
+        std::uint64_t id = 0;
+        try { id = std::stoull(f["id"]); } catch (...) { return http_redir("/proposals"); }
+        if (!g_store.proposal_by_id(id)) return http_redir("/proposals");
+        const std::string kind = trim_ws(f["kind"]);
+        auto cur = g_store.proposal_reaction_of(id, user);
+        if (kind.empty() || (cur && *cur == kind)) g_store.set_proposal_reaction(id, user, "");
+        else g_store.set_proposal_reaction(id, user, kind);
+        auto dest = safe_next_path(trim_ws(f["next"]));
+        if (!dest.empty()) return http_redir(dest);
+        return http_redir("/proposals");
+    }
     if(method=="POST"&&path=="/proposals/vote") {
         if(!acc) return need_login();
         auto f = parse_form(body);
@@ -9808,6 +11308,8 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         } else {
             g_store.cast_ballot_value(id, user, trim_ws(f["value"]));
         }
+        auto dest = safe_next_path(trim_ws(f["next"]));
+        if (!dest.empty()) return http_redir(dest);
         if (p->is_office) return http_redir("/officials");
         return http_redir("/proposals");
     }
@@ -9881,6 +11383,15 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         }
         if (!text.empty() || blob_id) {
             g_store.add_mail(user,to,text,blob_id,mime);
+            if (!text.empty()) {
+                const auto thread = g_store.mail_with(user, to);
+                for (auto it = thread.rbegin(); it != thread.rend(); ++it) {
+                    if (it->from == user && it->text == text) {
+                        notice_pains(user, text, "mail:" + std::to_string(it->ts) + ":" + to);
+                        break;
+                    }
+                }
+            }
             if (!download_name.empty()) { // named once the message exists (review 2026-10-27)
                 const auto thread = g_store.mail_with(user, to);
                 for (auto it = thread.rbegin(); it != thread.rend(); ++it)
@@ -10017,6 +11528,8 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
             }
             if (!text.empty() || blob_id) {
                 auto sent = send_message(g_store, acc->id, conv_id, text);
+                if (sent.message_id && !text.empty())
+                    notice_pains(user, text, "gmsg:" + std::to_string(*sent.message_id));
                 if (sent.message_id && blob_id) {
                     auto msg = g_store.get_message(*sent.message_id);
                     if (msg) {
@@ -10068,6 +11581,7 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         c.slug = slug; c.name = name.empty()?slug:name; c.owner = user; c.about = about; c.created_at = now();
         c.category = static_cast<CommunityCategory>(cat);
         c.subcategory = subcategory;
+        c.city = f["city"]; // optional; FileStore tidies it (clean_city) and drops text with no letters
         if (!g_store.create_community(c)) return http_redir("/communities?err=address");
         return http_redir("/c/"+slug);
     }
@@ -10080,6 +11594,12 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         else { slug = rest.substr(0,slash); action = rest.substr(slash+1); }
         if (!g_store.community(slug)) return http_redir("/communities");
         if (action=="join") { g_store.join_community(slug, user); return http_redir("/c/"+slug); }
+        if (action=="city") {
+            // Owner only (set_community_city checks); empty clears it.
+            auto f=parse_form(body);
+            if (!g_store.set_community_city(slug, user, f["city"])) return http_redir("/c/"+slug+"?err=city");
+            return http_redir("/c/"+slug);
+        }
         if (action=="leave") { g_store.leave_community(slug, user); return http_redir("/c/"+slug); }
         if (action=="delete") { g_store.delete_community(slug, user); return http_redir("/communities"); }
         if (action=="invite") {
@@ -10094,8 +11614,10 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
             auto c = read_composer_post(hdrs, body);
             if (!c.ok) return http_redir("/c/"+slug+"?err="+c.err);
             auto text = trim_ws(c.text);
-            if (!text.empty() || !c.attachment_blob_id.empty())
-                g_store.add_post(user, text, slug, "", 0, c.attachment_blob_id, c.attachment_mime);
+            if (!text.empty() || !c.attachment_blob_id.empty()) {
+                const auto gid = g_store.add_post(user, text, slug, "", 0, c.attachment_blob_id, c.attachment_mime);
+                if (gid) notice_pains(user, text, "gpost:" + std::to_string(gid));
+            }
             return http_redir("/c/"+slug);
         }
         return http_redir("/c/"+slug);
@@ -10135,6 +11657,19 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
             return http_redir("/settings?err=password");
         g_store.set_password_hash(acc->id, hash_password(f["next"]));
         return http_redir("/settings?ok=password");
+    }
+    if(method=="POST"&&path=="/settings/map") {
+        if(!acc) return need_login();
+        auto f=parse_form(body);
+        MapPrefs mp;
+        mp.show = f["show"] == "1";
+        mp.groups = f["groups"] == "1";
+        mp.posts = f["posts"] == "1";
+        mp.comments = f["comments"] == "1";
+        mp.friends = f["friends"] == "1";
+        mp.pains = f["pains"] == "1";
+        g_store.set_map_prefs(user, mp); // pains off deletes what it found
+        return http_redir("/settings#map-privacy");
     }
     if(method=="POST"&&path=="/settings/privacy") {
         if(!acc) return need_login();

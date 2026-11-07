@@ -76,54 +76,25 @@ check(len(ex) >= 1, "and it lists its excludes (%s)" % ex)
 for n in ("manifest.webmanifest", "apple-touch-icon.png", "icon-192.png", "icon-512.png"):
     check(not any(fnmatch.fnmatch(n, e.strip("/")) for e in ex), "the client sync does not exclude %s (client excludes: %s)" % (n, ex))
 apps = rd("liquidgov-platform/assets/apps.html")
-m = re.search(r'<img class="mark" src="(/commons/[^"]+)"[^>]*>\s*<h2[^>]*>The Commons</h2>', apps)
-check(m is not None and png_info(os.path.join(CM, m.group(1)[len("/commons/"):])) is not None, "the /apps Commons tile shows the Commons icon (not the Genesis one): %s" % (m and m.group(1)))
+# The Commons is closed until it is built (Brandon, 280bf60): /apps must not offer a walk-in.
+check("The Commons" not in apps and "/commons/" not in apps, "the /apps page does not offer the closed Commons")
 
-# ================================================================= civic: Social / Civic (and Mail, as the control)
+# ================================================================= one app (Brandon 2026-11-06:
+# "lets get rid of the multiple app icons thing. that was a bad idea")
 src = rd("liquidgov-platform/src/http_server.cpp")
-def manifest_of(name):
-    i = src.find('path=="/manifest-%s.webmanifest"' % name)
-    if i < 0: return None
-    j = src.find("}\n", i)              # the route's closing brace
-    block = src[i:j]
-    lits = re.findall(r'"((?:[^"\\]|\\.)*)"', block.split("http_raw(", 1)[1])
-    lits = lits[2:]                     # drop the status ("200 OK") and content-type literals: what is left is the JSON
-    text = "".join(bytes(l, "utf-8").decode("unicode_escape") for l in lits)
-    try: return json.loads(text)
-    except Exception as e: return "BAD JSON: %s | %s" % (e, text[:80])
-def theme_for(title): return (re.search(r'title=="%s"\?"(#[0-9a-fA-F]{6})"' % title, src) or [None, None])[1]
-def icon_route_ok(path): return ('path=="%s"' % path) in src
-shell = {"social": ("app-social.html", "Social", "/icon-social"), "civic": ("app-civic.html", "Civic", "/icon-civic"), "mail": (None, "Messages", "/icon-mail")}
-picker = re.search(r'<link rel=\\"manifest\\" href=\\""\+\((.*?)\)\+"\\">', src)
-check(picker is not None, "page_wrap's manifest picker was found in the source")
-for name, (shellfile, title, iconbase) in shell.items():
-    m = manifest_of(name)
-    check(isinstance(m, dict), "the %s manifest route exists and its JSON parses: %s" % (name, m if not isinstance(m, dict) else "ok"))
-    if not isinstance(m, dict): continue
-    check(m.get("name") == title and m.get("short_name") == title, "%s: name/short_name are '%s'" % (name, title))
-    check(m.get("display") == "standalone", "%s: display standalone" % name)
-    check(re.fullmatch(r"#[0-9a-fA-F]{6}", m.get("background_color", "")) is not None, "%s: background_color is hex" % name)
-    check(m.get("theme_color") == theme_for(title) and theme_for(title) is not None, "%s: theme_color %s is the colour page_wrap already uses for '%s' (%s)" % (name, m.get("theme_color"), title, theme_for(title)))
-    if shellfile:   # social/civic: start_url is exactly where the install shell sends a standalone launch
-        target = re.search(r"location\.replace\('([^']+)'\)", rd("liquidgov-platform/assets/" + shellfile)).group(1)
-        check(m.get("start_url") == target, "%s: start_url %s is where %s redirects a standalone launch (%s)" % (name, m.get("start_url"), shellfile, target))
-    else:
-        check(m.get("start_url") == "/mail", "mail (control): start_url /mail")
-    srcs = {i["sizes"]: i["src"] for i in m.get("icons", [])}
-    check(set(srcs) == {"192x192", "512x512"}, "%s: icons are 192 and 512" % name)
-    for sz, s in srcs.items():
-        n = int(sz.split("x")[0]); f = os.path.join(ROOT, "liquidgov-platform/assets", s.lstrip("/"))
-        info = png_info(f) if os.path.exists(f) else None
-        check(info is not None and info[0] == n and info[1] == n, "%s: %s exists as a %s PNG (got %s)" % (name, s, sz, info))
-        check(icon_route_ok(s), "%s: civic actually serves %s (it is in the icon route's allow-list)" % (name, s))
-    if picker:
-        want = "/manifest-%s.webmanifest" % ("mail" if name == "mail" else name)
-        check(('title=="%s"?"%s"' % (title, want)) in picker.group(1), "page_wrap links %s for a page titled '%s'" % (want, title))
-check(picker is not None and picker.group(1).rstrip().endswith('"/manifest.webmanifest"'), "every other page still gets the Genesis manifest (the default)")
-check(len(re.findall(r'title=="(?:Messages|Social|Civic)"', picker.group(1))) == 3 if picker else False, "the picker has exactly the three app branches")
-# the titles the shells render with are the ones the picker keys on
-for path, title in (("/app/social", "Social"), ("/app/civic", "Civic"), ("/app/mail", "Messages")):
-    check(re.search(r'path=="%s"\)\s*\{[^}]*pg\("%s"' % (re.escape(path), title), src, re.S) is not None, "%s renders with the title '%s' the picker keys on" % (path, title))
+check('"<link rel=\\"manifest\\" href=\\"/manifest.webmanifest\\">"' in src, "page_wrap links the one LiquidGov manifest on every page")
+check('apple-touch-icon\\" href=\\"/apple-touch-icon.png\\"' in src, "page_wrap links the one LiquidGov icon on every page")
+check('apple-mobile-web-app-title\\" content=\\"LiquidGov\\"' in src, "the home-screen name is LiquidGov on every page")
+check(re.search(r'title=="(?:Messages|Social|Civic)"\?"/(?:manifest-|icon-)', src) is None, "no page picks a separate Messages/Social/Civic manifest or icon")
+for path, dest in (("/app/social", "/feed"), ("/app/civic", "/proposals"), ("/app/mail", "/mail")):
+    check(re.search(r'path=="%s"\)\s*return http_redir\("%s"\)' % (re.escape(path), re.escape(dest)), src) is not None,
+          "%s sends an old install to %s" % (path, dest))
+check(not any(s in apps for s in ("Get Social", "Get Civic", "Get Messages")), "/apps offers one app, not three")
+for f in ("app-social.html", "app-civic.html", "app-mail.html"):
+    check(not os.path.exists(os.path.join(ROOT, "liquidgov-platform/assets", f)), "the old %s install shell is gone" % f)
+# Kept on purpose: icons already on phones, and deploy/nginx-www-apex.sh checks manifest-social.
+for name in ("mail", "social", "civic"):
+    check(('path=="/manifest-%s.webmanifest"' % name) in src, "the old %s manifest still answers for icons already installed" % name)
 
 print("pwa_check: %d checks, %d failed" % (checks, failed))
 sys.exit(1 if failed else 0)

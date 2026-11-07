@@ -1,20 +1,47 @@
 (function () {
+  // The alerts prompt is an ordinary strip at the top of the page content, not
+  // a floating button, so it can never cover anything. It has a close button
+  // that hides it for a week, and status notes ("Alerts on") fade after a
+  // moment. Brandon 2026-11-06: "the turn on alerts thing is covering something".
+  var HIDE_KEY = 'lg.alerts.hiddenUntil';
+  function hiddenByUser() {
+    try { return Number(localStorage.getItem(HIDE_KEY) || 0) > Date.now(); } catch (e) { return false; }
+  }
   function banner(text, clickable) {
     var old = document.getElementById('lgpushask');
     if (old) old.remove();
+    if (clickable && hiddenByUser()) return;
+    var wrap = document.createElement('div');
+    wrap.id = 'lgpushask';
+    wrap.style.cssText = 'display:flex;align-items:center;gap:.25rem;width:fit-content;max-width:100%;margin:0 0 .75rem;border-radius:8px;background:#8a6620;color:#f7f1e4;font:600 .9rem sans-serif';
     var b = document.createElement('button');
-    b.id = 'lgpushask';
     b.type = 'button';
     b.textContent = text;
-    b.style.cssText = 'position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 4.2rem);transform:translateX(-50%);z-index:90;padding:.7rem 1.1rem;border:0;border-radius:8px;background:#8a6620;color:#f7f1e4;font:600 .95rem sans-serif;max-width:92vw';
+    b.style.cssText = 'flex:1;padding:.55rem .8rem;border:0;background:none;color:inherit;font:inherit;text-align:left;cursor:' + (clickable ? 'pointer' : 'default');
+    wrap.appendChild(b);
+    var x = document.createElement('button');
+    x.type = 'button';
+    x.textContent = '×';
+    x.setAttribute('aria-label', 'Hide');
+    x.style.cssText = 'padding:.4rem .65rem;border:0;background:none;color:inherit;font:700 1.1rem sans-serif;cursor:pointer;opacity:.85';
+    x.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (clickable) { try { localStorage.setItem(HIDE_KEY, String(Date.now() + 7 * 864e5)); } catch (err) {} }
+      wrap.remove();
+    });
+    wrap.appendChild(x);
     if (clickable) {
       b.addEventListener('click', function (e) {
         e.preventDefault();
         e.stopPropagation();
-        if (clickable()) b.remove();
+        if (clickable()) wrap.remove();
       });
+    } else {
+      setTimeout(function () { if (wrap.parentNode) wrap.remove(); }, 5000);
     }
-    document.body.appendChild(b);
+    var main = document.querySelector('main');
+    if (main) main.insertBefore(wrap, main.firstChild); else document.body.insertBefore(wrap, document.body.firstChild);
   }
   function b64urlToUint8(b64) {
     b64 = (b64 || '').replace(/-/g, '+').replace(/_/g, '/');

@@ -58,6 +58,7 @@
   width:100%;box-sizing:border-box;min-height:40px;
   border:1px solid var(--rule);border-radius:var(--rsm);
   background:var(--paper);color:var(--ink);padding:.4rem .55rem;font:inherit;
+  font-size:16px; /* under 16px iOS Safari zooms the page in on focus and leaves it zoomed (2026-11-07 sweep) */
 }
 .jb-bar select{flex:1;min-width:0}
 .jb-searchwrap{position:relative;flex:0 0 auto;display:flex;flex-direction:column;z-index:5}
@@ -118,6 +119,12 @@
   background:var(--parchment);border:1px solid var(--rule);
   border-radius:var(--rmd);font-size:.8rem;color:var(--ink);
   box-shadow:0 4px 16px rgba(0,0,0,.2);
+  display:flex;align-items:flex-start;gap:.3rem;
+}
+/* a real <button>, 32px, so an iPhone tap lands (div-as-button taps are unreliable on iOS) */
+#jbhintclose{
+  flex-shrink:0;min-width:32px;min-height:32px;margin:-.3rem -.4rem -.3rem 0;padding:0;
+  border:0;background:none;color:var(--stone);font-size:1.1rem;line-height:1;cursor:pointer;
 }
 @media (max-width:700px){
   #jbpanel{

@@ -61,11 +61,45 @@
 //          Separate tag: pbk is exact 7 fields (loader throws otherwise).
 //   pba    <proposal_id> <index> <username>     // who added that pbo row. No row = creator-seeded.
 //   poff   <proposal_id> <jurisdiction>         // Officials race. Absence = ordinary proposal.
+//   pcity  <proposal_id> <city-key>             // optional city this proposal is about.
+//          The key is city_key() of a city some group already names. Absence = not
+//          tied to a city. Kept even while no group names that city (it shows
+//          again once one does; Brandon 2026-11-06). Not poff.
+//   pwho   <proposal_id> <text>                 // "who could act on it", free text.
+//          Absence = blank. Not the officials jurisdiction.
+//   ctag   <city-key> <tag>                     // a department or council members of
+//          that city named. Cap 80, same tidy as a city name. A second tag that
+//          differs only by letter case is not stored. Kept even while no group
+//          names that city (Brandon 2026-11-06).
+//   ptag   <proposal_id> <tag>                  // one of its city's tags this proposal
+//          picks. A tag the city does not have, or a proposal with no city, is dropped.
+//   prply  <id> <proposal_id> <author> <ts> <text>  // a comment, same shape as reply.
+//          As public as the proposal. A comment whose proposal is gone is dropped.
+//   prpln  <next_proposal_reply_id>
+//   prx    <proposal_id> <username> <kind>     // one reaction per person. kind is
+//          support, oppose, question, or noted. A later row for the same person
+//          replaces the earlier one. Absence = none. A bad kind or a missing
+//          proposal is dropped. Not a vote. Posts do not use this tag.
 //   comm   <slug> <name> <owner> <about> <created_at> [<category 0-10> <subcategory>]
 //          -- trailing two fields optional; an older 6-token line means category
 //          General (10) and an empty subcategory
 //   cm     <slug> <username>
-//   blk    <blocker> <blocked> [<at> <reason>]  // trailing two fields optional -- an
+//   ccity  <slug> <city>   // the city a group says it is in (Community.city). A
+//          label, not an AVND locality: it confers no standing. Absence = no city.
+//          Separate tag so comm keeps its frozen shape; a ccity whose comm is
+//          missing is dropped on load.
+//   pain   <id> <owner> <wish|pain> <kept 0|1> <ts> <source> <phrase>  // a wish or
+//          pain point noticed in the owner's own public words (PainPoint). Private
+//          to the owner. Source is post:<id>, prop:<id> or prply:<id>; a row whose
+//          source is gone, or an unkept one older than 30 days, is dropped.
+//   painn  <next_pain_id>
+//   mapp   <username> <show> <groups> <posts> <comments> <friends> [<pains>]  // each 0|1:
+//          what the map may show about this person (MapPrefs). Absence = the
+//          defaults (all on except friends). Separate tag so pref keeps its shape.
+//   clist  <city-key> <username>  // this person chose to be listed on that
+//          city's page. Absence = not listed. A row whose person is not a
+//          member of a group in that city is dropped on load.
+//   blk   <blocker> <blocked> [<at> <reason>]  // trailing two fields optional -- an
 //          older 3-token line means an unknown time (0) and no reason
 //   inner  <owner> <friend>
 //   pref   <username> <findability 0-2> ...
@@ -365,6 +399,78 @@ struct Community {
     // whatever's already in use under a category so a new community can
     // reuse an existing name instead of always minting a new one.
     std::string subcategory;
+    // Free text the group's starter typed, e.g. "Fresno, CA". Empty = no
+    // city. A city on LiquidGov is a label people chose so neighbours can
+    // find each other, not a government or an AVND locality. Groups with
+    // the same city_key() are listed together on /city/<key>.
+    std::string city;
+};
+
+// Tidied city text as stored: control characters dropped, runs of
+// whitespace collapsed to one space, trimmed, cut to 80 bytes (never in the
+// middle of a UTF-8 character). Empty when nothing usable is left.
+std::string clean_city(const std::string& raw);
+// The key cities are grouped and linked by: ASCII letters lowercased,
+// every run of other ASCII characters (spaces, commas, dots...) turned into
+// one '-', leading/trailing '-' dropped; non-ASCII bytes kept as they are.
+// "Fresno, CA" and "fresno ca" both give "fresno-ca". Empty when the city
+// has no letters or digits. No geocoding and no official list.
+std::string city_key(const std::string& city);
+
+// What one person lets the map (/map) show about them. Everything that was
+// already public is on by default (Brandon: "I want people to network, not
+// isolate"); friendships were never public, so that one starts off, and a
+// friendship shows to others only when BOTH friends turn it on (Brandon
+// 2026-11-06). You always see your own. Stored in the mapp tag.
+struct MapPrefs {
+    bool show = true;      // appear on the map at all
+    bool groups = true;    // lines to the groups you are in
+    bool posts = true;     // your posts as boxes
+    bool comments = true;  // lines to proposals you commented on
+    bool friends = false;  // lines to your friends (both must agree)
+    bool pains = true;     // notice wishes and pain points in your new public words
+};
+
+// ---- Wishes and pain points (Brandon 2026-11-06; first slice per Grok's review) ----
+// The site notices "I wish ...", "I hate when ...", "I'm tired of ..." in a
+// person's OWN new public words (Anybody posts, proposals, proposal comments),
+// and offers each as a suggestion they Keep or Forget. Kept ones become private
+// boxes on their own map, connected to departments, proposals and groups whose
+// words overlap. Only the owner ever sees them. Nothing is sent to an outside
+// AI. Only a short phrase and the source id are stored, never a copy of the text.
+struct PainHit {
+    std::string kind;    // "wish" or "pain"
+    std::string phrase;  // the clause after the trigger, <= 12 words / 80 bytes
+};
+struct PainScan {
+    std::vector<PainHit> hits;
+    bool crisis = false; // words like "I wish I wasn't here": store nothing, show 988
+};
+// Pure function, no I/O. At most 3 hits. Skips text inside quotes and lines
+// starting with '>'. "someone should" / "why can't" are deliberately not
+// triggers (they match sarcasm and debate).
+PainScan find_pain_points(const std::string& text);
+// Lowercase words of 4+ letters that are not filler, for matching a phrase to
+// departments, proposals and groups ("buses" also matches "bus").
+std::vector<std::string> pain_keywords(const std::string& phrase);
+// True when any keyword appears as a word in `text` (case-folded; a simple
+// plural rule so "buses" matches "bus" and "trees" matches "tree").
+bool pain_words_overlap(const std::vector<std::string>& keywords, const std::string& text);
+
+struct PainPoint {
+    std::uint64_t id = 0;
+    std::string owner;
+    std::string kind;    // wish | pain
+    std::string phrase;
+    std::string source;  // post:<id> | prop:<id> | prply:<id>
+    std::int64_t ts = 0;
+    bool kept = false;   // false = a suggestion; unkept ones expire after 30 days
+};
+
+struct CityUse {
+    std::string key;
+    std::string name;   // the spelling most of its groups use (ties: first A-Z)
+    std::size_t groups = 0;
 };
 
 enum class BallotKind : int {
@@ -398,7 +504,20 @@ struct Proposal {
     std::string body;
     BallotSpec ballot;
     bool is_office = false;
-    std::string jurisdiction;
+    std::string jurisdiction; // /officials only. A city's proposal does not use this.
+    std::string city;         // city_key, empty when the proposal names no city
+    std::string who_acts;     // "who could act on it"; empty when the author left it blank
+    std::vector<std::string> tags; // department/council spellings from that city's list
+};
+
+// A comment on a proposal. Same fields as a post reply. Public to every
+// signed-in member, which is who can see proposals.
+struct ProposalReply {
+    std::uint64_t id = 0;
+    std::uint64_t proposal_id = 0;
+    std::string author;
+    std::int64_t ts = 0;
+    std::string text;
 };
 
 enum class ProposalVote : int {
@@ -690,6 +809,17 @@ public:
 
     AccountPrefs prefs_of(const std::string& username) const;
     void set_prefs(const std::string& username, const AccountPrefs& p);
+    MapPrefs map_prefs_of(const std::string& username) const;
+    // Turning MapPrefs::pains off deletes every pain point the person had.
+    void set_map_prefs(const std::string& username, const MapPrefs& p);
+    // A new suggestion; 0 when the owner/phrase/source is empty or the same
+    // owner+phrase+source is already there.
+    std::uint64_t add_pain_suggestion(const std::string& owner, const PainHit& hit, const std::string& source);
+    std::vector<PainPoint> pains_of(const std::string& owner) const; // newest first
+    std::optional<PainPoint> pain_by_id(std::uint64_t id) const;
+    bool keep_pain(const std::string& owner, std::uint64_t id);   // owner only
+    bool forget_pain(const std::string& owner, std::uint64_t id); // owner only; deletes it
+    void clear_pains(const std::string& owner);
 
     bool is_findable_exact(const std::string& requester, const std::string& target) const;
     std::vector<std::string> typeahead(const std::string& requester, const std::string& prefix) const;
@@ -748,6 +878,8 @@ public:
                                BallotSpec spec = {});
     std::vector<Proposal> all_proposals() const; // oldest first, same as posts_by
     std::optional<Proposal> proposal_by_id(std::uint64_t id) const;
+    // Proposals whose city key equals `key`, oldest first.
+    std::vector<Proposal> proposals_in_city(const std::string& key) const;
     // Casting again overwrites the voter's own prior choice on this
     // proposal -- one live vote per (proposal, voter), not a running log.
     void cast_proposal_vote(std::uint64_t proposal_id, const std::string& voter, ProposalVote choice);
@@ -762,6 +894,32 @@ public:
     // on this proposal, and only if open_choice. Not a vote. Duplicate/empty = false.
     bool add_proposal_option(std::uint64_t proposal_id, const std::string& username, const std::string& label);
     bool mark_proposal_office(std::uint64_t proposal_id, const std::string& jurisdiction);
+    // Tie a proposal to a city groups already name, or clear it (empty text).
+    // Stores the city key. A city no group uses is refused and not written.
+    bool set_proposal_city(std::uint64_t proposal_id, const std::string& city);
+    // Set or clear the "who could act on it" line. Same tidy rules as a city name.
+    bool set_proposal_actor(std::uint64_t proposal_id, const std::string& who);
+    // Add a department or council to a city. The actor must be a member of one
+    // of that city's groups. Empty text is refused. A case-only repeat is kept
+    // as the first spelling and still returns true.
+    bool add_city_tag(const std::string& key, const std::string& actor, const std::string& tag);
+    std::vector<std::string> city_tags(const std::string& key) const;
+    // Keep the wanted tags that this proposal's city actually has, in city-list
+    // order. Unknown tags are dropped. A proposal with no city keeps none.
+    bool set_proposal_tags(std::uint64_t proposal_id, const std::vector<std::string>& tags);
+    // Comment. Empty text or a missing proposal returns 0. Text is trimmed,
+    // other control characters dropped, and cut at 1000 bytes on a UTF-8 boundary.
+    std::uint64_t add_proposal_reply(std::uint64_t proposal_id, const std::string& author,
+                                     const std::string& text);
+    std::vector<ProposalReply> proposal_replies_of(std::uint64_t proposal_id) const;
+    // One reaction per person. Empty kind removes. Unknown kind returns false
+    // and changes nothing. The set is support, oppose, question, noted.
+    bool set_proposal_reaction(std::uint64_t proposal_id, const std::string& user,
+                               const std::string& kind);
+    std::optional<std::string> proposal_reaction_of(std::uint64_t proposal_id,
+                                                    const std::string& user) const;
+    // Always the four kinds, in that order, with a count (zero included).
+    std::vector<std::pair<std::string, int>> proposal_reaction_counts(std::uint64_t proposal_id) const;
 
     bool create_community(const Community& c);
     std::optional<Community> community(const std::string& slug) const;
@@ -771,6 +929,22 @@ public:
     // creating the next community there instead of always minting a new
     // subcategory name for the same idea.
     std::vector<std::string> subcategories_of(CommunityCategory category) const;
+    // Every city at least one group names, one entry per city_key(), sorted
+    // by name -- for the city typeahead and the Groups page's city list.
+    std::vector<CityUse> cities_in_use() const;
+    // Groups whose city_key() equals `key`, sorted by name.
+    std::vector<Community> communities_in_city(const std::string& key) const;
+    // Set or clear (empty) a group's city. Only the group's owner may. The
+    // text goes through clean_city(); text with no letters or digits clears.
+    bool set_community_city(const std::string& slug, const std::string& actor, const std::string& city);
+    // True when `username` is a member of at least one group whose city_key is `key`.
+    bool in_city(const std::string& key, const std::string& username) const;
+    // Opt in or out of the city's "People here" list. Only a current member
+    // of one of that city's groups can opt in. Absence is not listed.
+    bool set_city_listed(const std::string& key, const std::string& username, bool on);
+    bool is_city_listed(const std::string& key, const std::string& username) const;
+    // Members of this city's groups who opted in, sorted by username.
+    std::vector<std::string> people_listed_in_city(const std::string& key) const;
     bool is_member(const std::string& slug, const std::string& username) const;
     bool join_community(const std::string& slug, const std::string& username);
     bool invite_community(const std::string& slug, const std::string& actor, const std::string& target);
@@ -953,16 +1127,29 @@ private:
     std::map<std::pair<std::string, std::string>, BlockEntry> block_meta_;
     std::map<std::string, std::set<std::string>> inner_;
     std::map<std::string, AccountPrefs> prefs_;
+    std::map<std::string, MapPrefs> map_prefs_; // absent = MapPrefs{} defaults
     std::vector<Post> posts_;
     std::uint64_t next_reply_id_ = 1;
     std::vector<PostReply> replies_;
     std::set<std::pair<std::uint64_t, std::string>> seconds_;
     std::uint64_t next_proposal_id_ = 1;
     std::vector<Proposal> proposals_;
+    std::uint64_t next_proposal_reply_id_ = 1;
+    std::vector<ProposalReply> proposal_replies_;
+    std::vector<PainPoint> pains_;
+    std::uint64_t next_pain_id_ = 1;
+    void prune_pains(); // expired suggestions, and ones whose source is gone
+    // proposal id -> username -> kind
+    std::map<std::uint64_t, std::map<std::string, std::string>> proposal_reactions_;
     std::map<std::uint64_t, std::map<std::string, ProposalVote>> proposal_votes_;
     std::map<std::uint64_t, std::map<std::string, std::string>> ballot_values_;
     std::map<std::string, Community> communities_;
     std::map<std::string, std::set<std::string>> members_;
+    // city_key -> usernames who asked to be listed on that city's page.
+    std::map<std::string, std::set<std::string>> city_listed_;
+    // city_key -> department/council tags, first spelling, insertion order.
+    bool remember_city_tag(const std::string& key, const std::string& raw);
+    std::map<std::string, std::vector<std::string>> city_tags_;
     std::vector<Notice> notices_;
     std::map<AccountId, Avatar> avatars_;
     std::map<std::string, std::vector<JukeboxTrack>> jukebox_;

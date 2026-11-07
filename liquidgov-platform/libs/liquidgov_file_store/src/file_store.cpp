@@ -225,6 +225,38 @@ std::string lower_copy(std::string s) {
     return s;
 }
 
+bool proposal_reaction_kind(const std::string& kind) {
+    return kind == "support" || kind == "oppose" || kind == "question" || kind == "noted";
+}
+
+// A proposal comment: keep newlines, drop other controls, trim, cap at 1000
+// bytes without splitting a UTF-8 character. Empty when nothing is left.
+std::string clean_comment(const std::string& raw) {
+    std::string out;
+    out.reserve(raw.size());
+    for (unsigned char ch : raw) {
+        if (ch == '\t' || ch == '\n' || ch == '\r') {
+            out += static_cast<char>(ch);
+            continue;
+        }
+        if (ch < 0x20 || ch == 0x7f) continue;
+        out += static_cast<char>(ch);
+    }
+    auto is_ws = [](char c) { return c == ' ' || c == '\t' || c == '\n' || c == '\r'; };
+    std::size_t a = 0;
+    std::size_t b = out.size();
+    while (a < b && is_ws(out[a])) ++a;
+    while (b > a && is_ws(out[b - 1])) --b;
+    out = out.substr(a, b - a);
+    if (out.size() > 1000) {
+        std::size_t cut = 1000;
+        while (cut > 0 && (static_cast<unsigned char>(out[cut]) & 0xC0) == 0x80) --cut;
+        out.resize(cut);
+        while (!out.empty() && is_ws(out.back())) out.pop_back();
+    }
+    return out;
+}
+
 bool starts_with_ci(const std::string& s, const std::string& prefix) {
     if (prefix.size() > s.size()) return false;
     for (std::size_t i = 0; i < prefix.size(); ++i) {
@@ -825,6 +857,242 @@ void FileStore::set_prefs(const std::string& username, const AccountPrefs& p) {
     flush();
 }
 
+MapPrefs FileStore::map_prefs_of(const std::string& username) const {
+    auto it = map_prefs_.find(username);
+    return it == map_prefs_.end() ? MapPrefs{} : it->second;
+}
+
+void FileStore::set_map_prefs(const std::string& username, const MapPrefs& p) {
+    if (username.empty()) return;
+    map_prefs_[username] = p;
+    if (!p.pains) // off deletes everything it collected
+        pains_.erase(std::remove_if(pains_.begin(), pains_.end(),
+                                    [&](const PainPoint& x) { return x.owner == username; }), pains_.end());
+    flush();
+}
+
+// ---- Wishes and pain points ----------------------------------------------
+namespace {
+std::string pain_lower(const std::string& s) {
+    std::string o = s;
+    for (char& c : o) if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+    return o;
+}
+bool pain_alnum(unsigned char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c >= 0x80; }
+// Curly quotes/apostrophes to plain ones, so "I’m tired of" matches.
+std::string pain_normalize(const std::string& s) {
+    std::string o;
+    for (std::size_t i = 0; i < s.size(); ++i) {
+        if (i + 2 < s.size() && static_cast<unsigned char>(s[i]) == 0xE2 && static_cast<unsigned char>(s[i + 1]) == 0x80) {
+            const unsigned char c = static_cast<unsigned char>(s[i + 2]);
+            if (c == 0x98 || c == 0x99) { o += '\''; i += 2; continue; }
+            if (c == 0x9C || c == 0x9D) { o += '"'; i += 2; continue; }
+        }
+        o += s[i];
+    }
+    return o;
+}
+std::string pain_stem(std::string w) {
+    const auto ends = [&](const char* suf) {
+        const std::size_t n = std::strlen(suf);
+        return w.size() > n && w.compare(w.size() - n, n, suf) == 0;
+    };
+    if (w.size() > 4 && (ends("ses") || ends("xes") || ends("ches") || ends("shes"))) w.resize(w.size() - 2);
+    else if (w.size() > 3 && ends("s") && !ends("ss")) w.resize(w.size() - 1);
+    return w;
+}
+std::vector<std::string> pain_words(const std::string& text) {
+    std::vector<std::string> out;
+    std::string cur;
+    for (unsigned char c : pain_lower(text)) {
+        if (pain_alnum(c) || c == '\'') { if (c != '\'') cur += static_cast<char>(c); }
+        else if (!cur.empty()) { out.push_back(cur); cur.clear(); }
+    }
+    if (!cur.empty()) out.push_back(cur);
+    return out;
+}
+} // namespace
+
+std::vector<std::string> pain_keywords(const std::string& phrase) {
+    static const std::set<std::string> kFiller = {
+        "that", "this", "with", "when", "what", "were", "they", "them", "then", "than", "have", "just", "like",
+        "really", "would", "could", "should", "there", "their", "about", "always", "never", "every", "because",
+        "from", "into", "more", "much", "some", "still", "very", "been", "being", "make", "makes", "made", "feel",
+        "want", "wish", "hate", "tired", "only", "people", "thing", "things", "stuff", "time", "times", "also",
+        "even", "dont", "doesnt", "didnt", "isnt", "arent", "wasnt", "cant", "wont", "your", "mine", "yours",
+        "ours", "here", "where", "which", "while", "other", "again", "going", "gets", "getting", "happen",
+        "happens", "actually", "someone", "something", "anyone", "everyone", "nobody", "everything", "anything",
+        "kind", "sort", "lot", "lots", "yeah", "okay", "gonna", "wanna", "great", "good", "better", "best", "worse"};
+    std::vector<std::string> out;
+    for (const auto& w : pain_words(phrase)) {
+        if (w.size() < 4 || kFiller.count(w)) continue;
+        if (std::find(out.begin(), out.end(), w) == out.end()) out.push_back(w);
+    }
+    return out;
+}
+
+bool pain_words_overlap(const std::vector<std::string>& keywords, const std::string& text) {
+    if (keywords.empty()) return false;
+    std::set<std::string> have;
+    for (const auto& w : pain_words(text)) have.insert(pain_stem(w));
+    for (const auto& k : keywords) if (have.count(pain_stem(k))) return true;
+    return false;
+}
+
+PainScan find_pain_points(const std::string& raw) {
+    PainScan scan;
+    const std::string norm = pain_normalize(raw);
+    const std::string low_all = pain_lower(norm);
+    // Crisis words anywhere (quotes included): never store, never connect.
+    static const char* kCrisis[] = {
+        "wasn't here", "wasnt here", "weren't here", "werent here", "not be here anymore", "not wake up",
+        "kill myself", "killing myself", "end my life", "end it all", "want to die", "wanna die",
+        "wish i was dead", "wish i were dead", "suicid", "hurt myself", "harm myself", "self harm", "self-harm",
+        "no reason to live", "better off without me", "better off dead", "disappear forever"};
+    for (const char* c : kCrisis)
+        if (low_all.find(c) != std::string::npos) { scan.crisis = true; return scan; }
+
+    // Blank out quoted text and quoted lines ('>'), keeping byte positions.
+    std::string text = norm;
+    bool in_quote = false, line_start = true, quoted_line = false;
+    for (char& ch : text) {
+        if (line_start) { quoted_line = ch == '>'; line_start = false; }
+        if (ch == '\n') { line_start = true; quoted_line = false; in_quote = false; continue; }
+        if (ch == '"') { in_quote = !in_quote; ch = ' '; continue; }
+        if (in_quote || quoted_line) ch = ' ';
+    }
+    const std::string low = pain_lower(text);
+    struct Trig { std::string words; const char* kind; };
+    // "I wish", and the same with one softener: "I really wish", "I'm so tired of".
+    static const std::vector<Trig> kTrig = [] {
+        std::vector<Trig> t = {{"it would be great if", "wish"}, {"it'd be great if", "wish"}, {"if only", "wish"}};
+        const char* soft[] = {"", "really ", "just ", "so ", "truly ", "honestly ", "totally ", "really really "};
+        for (const char* s : soft) {
+            const std::string m = s;
+            t.push_back({"i " + m + "wish", "wish"});
+            t.push_back({"i " + m + "hate it when", "pain"});
+            t.push_back({"i " + m + "hate when", "pain"});
+            t.push_back({"i " + m + "hate that", "pain"});
+            for (const char* who : {"i'm ", "im ", "i am "}) t.push_back({std::string(who) + m + "tired of", "pain"});
+        }
+        return t;
+    }();
+    std::vector<std::pair<std::size_t, const Trig*>> found;
+    for (const auto& t : kTrig) {
+        const std::size_t n = t.words.size();
+        for (std::size_t at = low.find(t.words); at != std::string::npos; at = low.find(t.words, at + 1)) {
+            const bool left_ok = at == 0 || (!pain_alnum(static_cast<unsigned char>(low[at - 1])) && low[at - 1] != '\'');
+            const bool right_ok = at + n >= low.size() || !pain_alnum(static_cast<unsigned char>(low[at + n]));
+            if (left_ok && right_ok) found.push_back({at, &t});
+        }
+    }
+    std::sort(found.begin(), found.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+    std::size_t covered = 0;
+    for (const auto& [at, t] : found) {
+        if (scan.hits.size() >= 3) break;
+        if (at < covered) continue; // one hit per clause
+        std::size_t i = at + t->words.size();
+        std::size_t end = i;
+        while (end < text.size() && std::strchr(".!?;\n", text[end]) == nullptr) ++end;
+        covered = end;
+        std::string clause = text.substr(i, end - i);
+        // At most 12 words.
+        std::size_t words = 0, k = 0;
+        bool in_word = false;
+        for (; k < clause.size(); ++k) {
+            const bool sp = clause[k] == ' ' || clause[k] == '\t' || clause[k] == '\r';
+            if (!sp && !in_word) { if (++words > 12) break; }
+            in_word = !sp;
+        }
+        clause = clause.substr(0, k);
+        clause = clean_city(clause); // whitespace tidy + 80-byte UTF-8-safe cut
+        while (!clause.empty() && std::strchr(",:-( ", clause.back())) clause.pop_back();
+        while (!clause.empty() && std::strchr(",:- ", clause.front())) clause.erase(0, 1);
+        const std::string first = pain_words(clause).empty() ? "" : pain_words(clause).front();
+        if (std::string(t->kind) == "wish" && (first == "you" || first == "u" || first == "everyone" || first == "all"))
+            continue; // "I wish you a happy birthday"
+        if (pain_keywords(clause).empty()) continue; // no subject after the phrase
+        bool dup = false;
+        for (const auto& h : scan.hits) if (pain_lower(h.phrase) == pain_lower(clause)) dup = true;
+        if (!dup) scan.hits.push_back({t->kind, clause});
+    }
+    return scan;
+}
+
+std::uint64_t FileStore::add_pain_suggestion(const std::string& owner, const PainHit& hit, const std::string& source) {
+    if (owner.empty() || hit.phrase.empty() || source.empty()) return 0;
+    if (hit.kind != "wish" && hit.kind != "pain") return 0;
+    for (const auto& p : pains_)
+        if (p.owner == owner && p.source == source && pain_lower(p.phrase) == pain_lower(hit.phrase)) return 0;
+    PainPoint p;
+    p.id = next_pain_id_++;
+    p.owner = owner;
+    p.kind = hit.kind;
+    p.phrase = hit.phrase;
+    p.source = source;
+    p.ts = now();
+    pains_.push_back(p);
+    flush();
+    return p.id;
+}
+
+std::vector<PainPoint> FileStore::pains_of(const std::string& owner) const {
+    std::vector<PainPoint> out;
+    for (auto it = pains_.rbegin(); it != pains_.rend(); ++it) if (it->owner == owner) out.push_back(*it);
+    return out;
+}
+
+std::optional<PainPoint> FileStore::pain_by_id(std::uint64_t id) const {
+    for (const auto& p : pains_) if (p.id == id) return p;
+    return std::nullopt;
+}
+
+bool FileStore::keep_pain(const std::string& owner, std::uint64_t id) {
+    for (auto& p : pains_) {
+        if (p.id != id) continue;
+        if (p.owner != owner) return false;
+        if (!p.kept) { p.kept = true; flush(); }
+        return true;
+    }
+    return false;
+}
+
+bool FileStore::forget_pain(const std::string& owner, std::uint64_t id) {
+    for (auto it = pains_.begin(); it != pains_.end(); ++it) {
+        if (it->id != id) continue;
+        if (it->owner != owner) return false;
+        pains_.erase(it);
+        flush();
+        return true;
+    }
+    return false;
+}
+
+void FileStore::clear_pains(const std::string& owner) {
+    const auto before = pains_.size();
+    pains_.erase(std::remove_if(pains_.begin(), pains_.end(), [&](const PainPoint& p) { return p.owner == owner; }),
+                 pains_.end());
+    if (pains_.size() != before) flush();
+}
+
+void FileStore::prune_pains() {
+    const std::int64_t cutoff = now() - 30LL * 24 * 3600;
+    auto source_alive = [&](const std::string& src) {
+        auto colon = src.find(':');
+        if (colon == std::string::npos) return false;
+        const std::string type = src.substr(0, colon), num = src.substr(colon + 1);
+        if (num.empty() || num.size() > 19 || num.find_first_not_of("0123456789") != std::string::npos) return false;
+        const std::uint64_t id = std::stoull(num);
+        if (type == "post") { for (const auto& p : posts_) if (p.id == id) return true; return false; }
+        if (type == "prop") { for (const auto& p : proposals_) if (p.id == id) return true; return false; }
+        if (type == "prply") { for (const auto& r : proposal_replies_) if (r.id == id) return true; return false; }
+        return false;
+    };
+    pains_.erase(std::remove_if(pains_.begin(), pains_.end(), [&](const PainPoint& p) {
+        return (!p.kept && p.ts < cutoff) || !source_alive(p.source) || !find_by_username(p.owner);
+    }), pains_.end());
+}
+
 bool FileStore::is_findable_exact(const std::string& requester, const std::string& target) const {
     if (requester.empty() || target.empty()) return false;
     if (!username_exists(target)) return false;
@@ -1117,6 +1385,151 @@ bool FileStore::mark_proposal_office(std::uint64_t proposal_id, const std::strin
     return false;
 }
 
+bool FileStore::set_proposal_city(std::uint64_t proposal_id, const std::string& city) {
+    Proposal* found = nullptr;
+    for (auto& p : proposals_) {
+        if (p.id == proposal_id) { found = &p; break; }
+    }
+    if (!found) return false;
+    const std::string key = city_key(clean_city(city));
+    if (key.empty()) {
+        if (found->city.empty() && found->tags.empty()) return true;
+        found->city.clear();
+        found->tags.clear();
+        flush();
+        return true;
+    }
+    if (communities_in_city(key).empty()) return false;
+    if (found->city == key) return true;
+    found->city = key;
+    found->tags.clear();
+    flush();
+    return true;
+}
+
+bool FileStore::set_proposal_actor(std::uint64_t proposal_id, const std::string& who) {
+    Proposal* found = nullptr;
+    for (auto& p : proposals_) {
+        if (p.id == proposal_id) { found = &p; break; }
+    }
+    if (!found) return false;
+    const std::string cleaned = clean_city(who);
+    if (found->who_acts == cleaned) return true;
+    found->who_acts = cleaned;
+    flush();
+    return true;
+}
+
+bool FileStore::remember_city_tag(const std::string& key, const std::string& raw) {
+    const std::string tag = clean_city(raw);
+    if (key.empty() || tag.empty()) return false;
+    auto& list = city_tags_[key];
+    const std::string fold = lower_copy(tag);
+    for (const auto& have : list)
+        if (lower_copy(have) == fold) return false;
+    list.push_back(tag);
+    return true;
+}
+
+bool FileStore::add_city_tag(const std::string& key, const std::string& actor, const std::string& tag) {
+    if (!in_city(key, actor) || clean_city(tag).empty()) return false;
+    if (!remember_city_tag(key, tag)) return true;
+    flush();
+    return true;
+}
+
+std::vector<std::string> FileStore::city_tags(const std::string& key) const {
+    auto it = city_tags_.find(key);
+    if (it == city_tags_.end()) return {};
+    return it->second;
+}
+
+bool FileStore::set_proposal_tags(std::uint64_t proposal_id, const std::vector<std::string>& tags) {
+    Proposal* found = nullptr;
+    for (auto& p : proposals_) {
+        if (p.id == proposal_id) { found = &p; break; }
+    }
+    if (!found) return false;
+    std::vector<std::string> next;
+    if (!found->city.empty()) {
+        for (const auto& tag : city_tags(found->city)) {
+            const std::string fold = lower_copy(tag);
+            for (const auto& wanted : tags)
+                if (lower_copy(clean_city(wanted)) == fold) { next.push_back(tag); break; }
+        }
+    }
+    if (next == found->tags) return true;
+    found->tags = std::move(next);
+    flush();
+    return true;
+}
+
+std::uint64_t FileStore::add_proposal_reply(std::uint64_t proposal_id, const std::string& author,
+                                            const std::string& text) {
+    if (author.empty() || !proposal_by_id(proposal_id)) return 0;
+    const std::string cleaned = clean_comment(text);
+    if (cleaned.empty()) return 0;
+    ProposalReply r;
+    r.id = next_proposal_reply_id_++;
+    r.proposal_id = proposal_id;
+    r.author = author;
+    r.ts = now();
+    r.text = cleaned;
+    proposal_replies_.push_back(r);
+    flush();
+    return r.id;
+}
+
+std::vector<ProposalReply> FileStore::proposal_replies_of(std::uint64_t proposal_id) const {
+    std::vector<ProposalReply> out;
+    for (const auto& r : proposal_replies_)
+        if (r.proposal_id == proposal_id) out.push_back(r);
+    return out;
+}
+
+bool FileStore::set_proposal_reaction(std::uint64_t proposal_id, const std::string& user,
+                                      const std::string& kind) {
+    if (user.empty() || !proposal_by_id(proposal_id)) return false;
+    if (!kind.empty() && !proposal_reaction_kind(kind)) return false;
+    auto& mine = proposal_reactions_[proposal_id];
+    if (kind.empty()) mine.erase(user);
+    else mine[user] = kind;
+    if (mine.empty()) proposal_reactions_.erase(proposal_id);
+    flush();
+    return true;
+}
+
+std::optional<std::string> FileStore::proposal_reaction_of(std::uint64_t proposal_id,
+                                                           const std::string& user) const {
+    auto it = proposal_reactions_.find(proposal_id);
+    if (it == proposal_reactions_.end()) return std::nullopt;
+    auto u = it->second.find(user);
+    if (u == it->second.end()) return std::nullopt;
+    return u->second;
+}
+
+std::vector<std::pair<std::string, int>> FileStore::proposal_reaction_counts(
+        std::uint64_t proposal_id) const {
+    static const char* kinds[] = {"support", "oppose", "question", "noted"};
+    std::vector<std::pair<std::string, int>> out;
+    auto it = proposal_reactions_.find(proposal_id);
+    for (const char* kind : kinds) {
+        int n = 0;
+        if (it != proposal_reactions_.end())
+            for (const auto& [user, k] : it->second) if (k == kind) ++n;
+        out.emplace_back(kind, n);
+    }
+    return out;
+}
+
+std::vector<Proposal> FileStore::proposals_in_city(const std::string& key) const {
+    std::vector<Proposal> out;
+    if (key.empty()) return out;
+    for (const auto& p : proposals_)
+        if (p.city == key) out.push_back(p);
+    return out;
+}
+
 std::vector<Proposal> FileStore::all_proposals() const {
     return proposals_;
 }
@@ -1224,7 +1637,10 @@ BallotTally FileStore::value_tally_of(std::uint64_t proposal_id) const {
 bool FileStore::create_community(const Community& c) {
     if (!valid_username(c.slug)) return false;
     if (communities_.count(c.slug)) return false;
-    communities_[c.slug] = c;
+    Community stored = c;
+    stored.city = clean_city(c.city);
+    if (city_key(stored.city).empty()) stored.city.clear();
+    communities_[c.slug] = stored;
     members_[c.slug].insert(c.owner);
     flush();
     return true;
@@ -1248,6 +1664,134 @@ std::vector<std::string> FileStore::subcategories_of(CommunityCategory category)
         if (c.category == category && !c.subcategory.empty()) seen.insert(c.subcategory);
     }
     return std::vector<std::string>(seen.begin(), seen.end());
+}
+
+std::string clean_city(const std::string& raw) {
+    std::string out;
+    bool pending_space = false;
+    for (unsigned char ch : raw) {
+        if (ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' || ch == '\f' || ch == '\v') {
+            pending_space = true;
+            continue;
+        }
+        if (ch < 0x20 || ch == 0x7f) continue; // other control characters
+        if (pending_space && !out.empty()) out += ' ';
+        pending_space = false;
+        out += static_cast<char>(ch);
+    }
+    if (out.size() > 80) {
+        std::size_t cut = 80;
+        // Step back off UTF-8 continuation bytes so no character is split.
+        while (cut > 0 && (static_cast<unsigned char>(out[cut]) & 0xC0) == 0x80) --cut;
+        out.resize(cut);
+        while (!out.empty() && out.back() == ' ') out.pop_back();
+    }
+    return out;
+}
+
+std::string city_key(const std::string& city) {
+    std::string key;
+    bool pending_dash = false;
+    bool has_word = false;
+    for (unsigned char ch : city) {
+        const bool ascii_alnum = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9');
+        if (ascii_alnum || ch >= 0x80) {
+            if (pending_dash && !key.empty()) key += '-';
+            pending_dash = false;
+            key += (ch >= 'A' && ch <= 'Z') ? static_cast<char>(ch - 'A' + 'a') : static_cast<char>(ch);
+            has_word = true;
+        } else {
+            pending_dash = true;
+        }
+    }
+    return has_word ? key : std::string();
+}
+
+std::vector<CityUse> FileStore::cities_in_use() const {
+    // key -> spelling -> number of groups using that spelling
+    std::map<std::string, std::map<std::string, std::size_t>> spellings;
+    for (const auto& [slug, c] : communities_) {
+        if (c.city.empty()) continue;
+        const std::string key = city_key(c.city);
+        if (key.empty()) continue;
+        ++spellings[key][c.city];
+    }
+    std::vector<CityUse> out;
+    for (const auto& [key, names] : spellings) {
+        CityUse u;
+        u.key = key;
+        std::size_t best = 0;
+        for (const auto& [name, n] : names) {
+            u.groups += n;
+            if (n > best) { best = n; u.name = name; } // map order: ties keep the first A-Z
+        }
+        out.push_back(u);
+    }
+    std::sort(out.begin(), out.end(), [](const CityUse& a, const CityUse& b) {
+        return a.name != b.name ? a.name < b.name : a.key < b.key;
+    });
+    return out;
+}
+
+std::vector<Community> FileStore::communities_in_city(const std::string& key) const {
+    std::vector<Community> out;
+    if (key.empty()) return out;
+    for (const auto& [slug, c] : communities_) {
+        if (!c.city.empty() && city_key(c.city) == key) out.push_back(c);
+    }
+    std::sort(out.begin(), out.end(), [](const Community& a, const Community& b) {
+        return a.name != b.name ? a.name < b.name : a.slug < b.slug;
+    });
+    return out;
+}
+
+bool FileStore::in_city(const std::string& key, const std::string& username) const {
+    if (key.empty() || username.empty()) return false;
+    for (const auto& [slug, c] : communities_) {
+        if (city_key(c.city) == key && is_member(slug, username)) return true;
+    }
+    return false;
+}
+
+bool FileStore::set_city_listed(const std::string& key, const std::string& username, bool on) {
+    if (key.empty() || !valid_username(username)) return false;
+    if (on && !in_city(key, username)) return false;
+    auto& names = city_listed_[key];
+    bool changed = false;
+    if (on) {
+        changed = names.insert(username).second;
+    } else {
+        changed = names.erase(username) > 0;
+        if (names.empty()) city_listed_.erase(key);
+    }
+    if (changed) flush();
+    return true;
+}
+
+bool FileStore::is_city_listed(const std::string& key, const std::string& username) const {
+    auto it = city_listed_.find(key);
+    if (it == city_listed_.end() || !it->second.count(username)) return false;
+    return in_city(key, username);
+}
+
+std::vector<std::string> FileStore::people_listed_in_city(const std::string& key) const {
+    std::vector<std::string> out;
+    auto it = city_listed_.find(key);
+    if (it == city_listed_.end()) return out;
+    for (const auto& name : it->second)
+        if (in_city(key, name)) out.push_back(name);
+    return out;
+}
+
+bool FileStore::set_community_city(const std::string& slug, const std::string& actor, const std::string& city) {
+    auto it = communities_.find(slug);
+    if (it == communities_.end()) return false;
+    if (actor.empty() || it->second.owner != actor) return false;
+    std::string cleaned = clean_city(city);
+    if (city_key(cleaned).empty()) cleaned.clear();
+    it->second.city = cleaned;
+    flush();
+    return true;
 }
 
 bool FileStore::is_member(const std::string& slug, const std::string& username) const {
@@ -1524,6 +2068,9 @@ bool FileStore::delete_account(AccountId id) {
     }
     jukebox_subs_.swap(keep_jsub);
     prefs_.erase(name);
+    map_prefs_.erase(name);
+    pains_.erase(std::remove_if(pains_.begin(), pains_.end(), [&](const PainPoint& p) { return p.owner == name; }),
+                 pains_.end());
     for (auto& [slug, set] : members_) set.erase(name);
     std::vector<Post> keep_posts;
     for (auto& p : posts_) {
@@ -1535,6 +2082,10 @@ bool FileStore::delete_account(AccountId id) {
     for (auto& r : replies_) {
         if (r.author == name) r.author = "[deleted account]";
     }
+    for (auto& r : proposal_replies_) {
+        if (r.author == name) r.author = "[deleted account]";
+    }
+    for (auto& [pid, reactions] : proposal_reactions_) reactions.erase(name);
     std::set<std::pair<std::uint64_t, std::string>> keep_seconds;
     for (const auto& s : seconds_) {
         if (s.second == name) continue;
@@ -1574,6 +2125,7 @@ void FileStore::load() {
     next_post_id_ = 1;
     next_reply_id_ = 1;
     next_proposal_id_ = 1;
+    next_proposal_reply_id_ = 1;
     next_note_id_ = 1;
     next_conv_id_ = 1;
     next_message_id_ = 1;
@@ -1601,6 +2153,8 @@ void FileStore::load() {
     replies_.clear();
     seconds_.clear();
     proposals_.clear();
+    proposal_replies_.clear();
+    proposal_reactions_.clear();
     proposal_votes_.clear();
     ballot_values_.clear();
     communities_.clear();
@@ -1644,10 +2198,18 @@ void FileStore::load() {
     std::set<std::uint64_t> pending_popen;
     std::map<std::uint64_t, std::vector<std::pair<int, std::string>>> pending_pba;
     std::map<std::uint64_t, std::string> pending_poff;
+    std::map<std::uint64_t, std::string> pending_pcity;
+    std::map<std::uint64_t, std::string> pending_pwho;
+    std::map<std::string, std::vector<std::string>> pending_ctag;
+    std::map<std::uint64_t, std::vector<std::string>> pending_ptag;
+    std::vector<ProposalReply> pending_prply;
+    std::map<std::uint64_t, std::map<std::string, std::string>> pending_prx;
     std::map<std::uint64_t, PostAudience> pending_audience;
     std::map<std::uint64_t, std::vector<std::string>> pending_exceptions;
     std::map<std::uint64_t, std::vector<std::string>> pending_friend_allowlist;
     std::map<std::uint64_t, std::vector<std::string>> pending_extra_groups;
+    std::map<std::string, std::string> pending_city; // slug -> city (ccity)
+    std::map<std::string, std::set<std::string>> pending_clist; // city key -> usernames (clist)
     while (std::getline(in, line)) {
         if (!line.empty() && line.back() == '\r') line.pop_back();
         if (line.empty()) continue;
@@ -1868,6 +2430,43 @@ void FileStore::load() {
         } else if (tag == "cm") {
             if (f.size() != 3) throw std::runtime_error("LGP1: bad cm record");
             members_[pct_decode(f[1])].insert(pct_decode(f[2]));
+        } else if (tag == "ccity") {
+            if (f.size() != 3) throw std::runtime_error("LGP1: bad ccity record");
+            pending_city[pct_decode(f[1])] = pct_decode(f[2]);
+        } else if (tag == "mapp") {
+            if (f.size() != 7 && f.size() != 8) throw std::runtime_error("LGP1: bad mapp record");
+            const std::string who = pct_decode(f[1]);
+            auto bit = [&](const std::string& v) {
+                if (v != "0" && v != "1") throw std::runtime_error("LGP1: bad mapp flag");
+                return v == "1";
+            };
+            MapPrefs mp;
+            mp.show = bit(f[2]); mp.groups = bit(f[3]); mp.posts = bit(f[4]);
+            mp.comments = bit(f[5]); mp.friends = bit(f[6]);
+            if (f.size() == 8) mp.pains = bit(f[7]); // 7 fields: written before pains existed, default on
+            if (!who.empty()) map_prefs_[who] = mp;
+        } else if (tag == "pain") {
+            if (f.size() != 8) throw std::runtime_error("LGP1: bad pain record");
+            PainPoint p;
+            p.id = parse_u64(f[1], "pain id");
+            p.owner = pct_decode(f[2]);
+            p.kind = pct_decode(f[3]);
+            if (f[4] != "0" && f[4] != "1") throw std::runtime_error("LGP1: bad pain kept flag");
+            p.kept = f[4] == "1";
+            p.ts = parse_i64(f[5], "pain ts");
+            p.source = pct_decode(f[6]);
+            p.phrase = pct_decode(f[7]);
+            if (!p.owner.empty() && !p.phrase.empty() && (p.kind == "wish" || p.kind == "pain")) {
+                pains_.push_back(p);
+                if (p.id >= next_pain_id_) next_pain_id_ = p.id + 1;
+            }
+        } else if (tag == "painn") {
+            if (f.size() != 2) throw std::runtime_error("LGP1: bad painn record");
+            const auto n = parse_u64(f[1], "next_pain_id");
+            if (n > next_pain_id_) next_pain_id_ = n;
+        } else if (tag == "clist") {
+            if (f.size() != 3) throw std::runtime_error("LGP1: bad clist record");
+            pending_clist[pct_decode(f[1])].insert(pct_decode(f[2]));
         } else if (tag == "blk") {
             if (f.size() != 3 && f.size() != 5) throw std::runtime_error("LGP1: bad blk record");
             BlockEntry b;
@@ -2127,11 +2726,51 @@ void FileStore::load() {
         } else if (tag == "poff") {
             if (f.size() != 3) throw std::runtime_error("LGP1: bad poff record");
             pending_poff[parse_u64(f[1], "poff proposal id")] = pct_decode(f[2]);
+        } else if (tag == "pcity") {
+            if (f.size() != 3) throw std::runtime_error("LGP1: bad pcity record");
+            pending_pcity[parse_u64(f[1], "pcity proposal id")] = pct_decode(f[2]);
+        } else if (tag == "pwho") {
+            if (f.size() != 3) throw std::runtime_error("LGP1: bad pwho record");
+            pending_pwho[parse_u64(f[1], "pwho proposal id")] = pct_decode(f[2]);
+        } else if (tag == "ctag") {
+            if (f.size() != 3) throw std::runtime_error("LGP1: bad ctag record");
+            pending_ctag[pct_decode(f[1])].push_back(pct_decode(f[2]));
+        } else if (tag == "ptag") {
+            if (f.size() != 3) throw std::runtime_error("LGP1: bad ptag record");
+            pending_ptag[parse_u64(f[1], "ptag proposal id")].push_back(pct_decode(f[2]));
+        } else if (tag == "prply") {
+            if (f.size() != 6) throw std::runtime_error("LGP1: bad prply record");
+            ProposalReply r;
+            r.id = parse_u64(f[1], "prply id");
+            r.proposal_id = parse_u64(f[2], "prply proposal id");
+            r.author = pct_decode(f[3]);
+            r.ts = parse_i64(f[4], "prply ts");
+            r.text = pct_decode(f[5]);
+            pending_prply.push_back(std::move(r));
+        } else if (tag == "prpln") {
+            if (f.size() != 2) throw std::runtime_error("LGP1: bad prpln record");
+            next_proposal_reply_id_ = parse_u64(f[1], "next_proposal_reply_id");
+            if (next_proposal_reply_id_ == 0) next_proposal_reply_id_ = 1;
+        } else if (tag == "prx") {
+            if (f.size() != 4) throw std::runtime_error("LGP1: bad prx record");
+            const auto pid = parse_u64(f[1], "prx proposal id");
+            const auto who = pct_decode(f[2]);
+            const auto kind = pct_decode(f[3]);
+            if (!who.empty() && proposal_reaction_kind(kind)) pending_prx[pid][who] = kind;
         } else {
             throw std::runtime_error("LGP1: unknown record type '" + tag + "'");
         }
     }
     prune_attachment_names(); // names whose mail was purged since the last run
+    for (const auto& [slug, city] : pending_city) {
+        auto cit = communities_.find(slug);
+        if (cit != communities_.end()) cit->second.city = city; // orphan ccity rows are dropped
+    }
+    for (const auto& [key, names] : pending_clist) {
+        if (key.empty()) continue;
+        for (const auto& name : names)
+            if (!name.empty() && in_city(key, name)) city_listed_[key].insert(name);
+    }
     for (auto& p : posts_) {
         auto rit = pending_reposts.find(p.id);
         if (rit != pending_reposts.end()) {
@@ -2153,6 +2792,12 @@ void FileStore::load() {
         if (pgit != pending_extra_groups.end()) p.extra_groups = pgit->second;
     }
 
+    // Kept even while no group names the city (Brandon 2026-11-06, "keep it"):
+    // the last group leaving or re-spelling its city must not erase them.
+    for (const auto& [key, tags] : pending_ctag) {
+        if (key.empty()) continue;
+        for (const auto& tag : tags) remember_city_tag(key, tag);
+    }
     for (auto& p : proposals_) {
         auto bit = pending_bk.find(p.id);
         if (bit != pending_bk.end()) {
@@ -2179,6 +2824,21 @@ void FileStore::load() {
             p.is_office = true;
             p.jurisdiction = off->second;
         }
+        auto pcit = pending_pcity.find(p.id);
+        if (pcit != pending_pcity.end()) {
+            const std::string key = city_key(clean_city(pcit->second));
+            if (!key.empty()) p.city = key; // kept even while no group names it
+        }
+        auto pwit = pending_pwho.find(p.id);
+        if (pwit != pending_pwho.end()) p.who_acts = clean_city(pwit->second);
+        auto ptit = pending_ptag.find(p.id);
+        if (ptit != pending_ptag.end() && !p.city.empty()) {
+            for (const auto& tag : city_tags(p.city)) {
+                const std::string fold = lower_copy(tag);
+                for (const auto& wanted : ptit->second)
+                    if (lower_copy(clean_city(wanted)) == fold) { p.tags.push_back(tag); break; }
+            }
+        }
         auto ait = pending_pba.find(p.id);
         if (ait != pending_pba.end()) {
             if (p.ballot.option_authors.size() != p.ballot.options.size())
@@ -2188,6 +2848,17 @@ void FileStore::load() {
                     p.ballot.option_authors[static_cast<std::size_t>(item.first)] = item.second;
             }
         }
+    }
+    std::set<std::uint64_t> proposal_ids;
+    for (const auto& p : proposals_) proposal_ids.insert(p.id);
+    for (const auto& r : pending_prply) {
+        if (!proposal_ids.count(r.proposal_id) || r.author.empty() || r.text.empty()) continue;
+        proposal_replies_.push_back(r);
+        if (r.id >= next_proposal_reply_id_) next_proposal_reply_id_ = r.id + 1;
+    }
+    for (const auto& [pid, reactions] : pending_prx) {
+        if (!proposal_ids.count(pid)) continue;
+        proposal_reactions_[pid] = reactions;
     }
 }
 
@@ -2289,10 +2960,28 @@ void FileStore::flush() {
     for (const auto& s : seconds_) {
         body << "sec\t" << s.first << "\t" << pct_encode(s.second) << "\n";
     }
+    // A city's tags and its proposals' city stay even while no group names
+    // that city; they show again once a group does (Brandon 2026-11-06).
+    for (auto& p : proposals_) {
+        if (p.city.empty()) { p.tags.clear(); continue; }
+        std::vector<std::string> keep;
+        auto tags = city_tags_.find(p.city);
+        if (tags != city_tags_.end()) {
+            for (const auto& tag : tags->second) {
+                for (const auto& have : p.tags)
+                    if (lower_copy(have) == lower_copy(tag)) { keep.push_back(tag); break; }
+            }
+        }
+        p.tags = std::move(keep);
+    }
     body << "propn\t" << next_proposal_id_ << "\n";
     for (const auto& p : proposals_) {
         body << "prop\t" << p.id << "\t" << pct_encode(p.author) << "\t" << p.ts << "\t"
              << pct_encode(p.title) << "\t" << pct_encode(p.body) << "\n";
+        if (!p.city.empty()) body << "pcity\t" << p.id << "\t" << pct_encode(p.city) << "\n";
+        if (!p.who_acts.empty()) body << "pwho\t" << p.id << "\t" << pct_encode(p.who_acts) << "\n";
+        for (const auto& tag : p.tags)
+            body << "ptag\t" << p.id << "\t" << pct_encode(tag) << "\n";
     }
     for (const auto& [pid, votes] : proposal_votes_) {
         for (const auto& [voter, choice] : votes) {
@@ -2321,10 +3010,65 @@ void FileStore::flush() {
             body << "pbv\t" << pid << "\t" << pct_encode(voter) << "\t" << pct_encode(payload) << "\n";
         }
     }
+    {
+        std::set<std::uint64_t> live;
+        for (const auto& p : proposals_) live.insert(p.id);
+        proposal_replies_.erase(std::remove_if(proposal_replies_.begin(), proposal_replies_.end(),
+            [&](const ProposalReply& r) {
+                return !live.count(r.proposal_id) || r.author.empty() || r.text.empty();
+            }), proposal_replies_.end());
+        for (auto it = proposal_reactions_.begin(); it != proposal_reactions_.end(); ) {
+            if (!live.count(it->first)) { it = proposal_reactions_.erase(it); continue; }
+            for (auto u = it->second.begin(); u != it->second.end(); ) {
+                if (u->first.empty() || !proposal_reaction_kind(u->second)) u = it->second.erase(u);
+                else ++u;
+            }
+            if (it->second.empty()) it = proposal_reactions_.erase(it);
+            else ++it;
+        }
+    }
+    body << "prpln\t" << next_proposal_reply_id_ << "\n";
+    for (const auto& r : proposal_replies_) {
+        body << "prply\t" << r.id << "\t" << r.proposal_id << "\t" << pct_encode(r.author) << "\t"
+             << r.ts << "\t" << pct_encode(r.text) << "\n";
+    }
+    for (const auto& [pid, reactions] : proposal_reactions_) {
+        for (const auto& [who, kind] : reactions) {
+            body << "prx\t" << pid << "\t" << pct_encode(who) << "\t" << pct_encode(kind) << "\n";
+        }
+    }
     for (const auto& [slug, c] : communities_) {
         body << "comm\t" << pct_encode(c.slug) << "\t" << pct_encode(c.name) << "\t"
              << pct_encode(c.owner) << "\t" << pct_encode(c.about) << "\t" << c.created_at << "\t"
              << static_cast<int>(c.category) << "\t" << pct_encode(c.subcategory) << "\n";
+        if (!c.city.empty()) body << "ccity\t" << pct_encode(c.slug) << "\t" << pct_encode(c.city) << "\n";
+    }
+    for (auto it = city_listed_.begin(); it != city_listed_.end(); ) {
+        for (auto name = it->second.begin(); name != it->second.end(); ) {
+            if (!in_city(it->first, *name)) name = it->second.erase(name);
+            else ++name;
+        }
+        if (it->second.empty()) it = city_listed_.erase(it);
+        else ++it;
+    }
+    for (const auto& [key, names] : city_listed_) {
+        for (const auto& name : names)
+            body << "clist\t" << pct_encode(key) << "\t" << pct_encode(name) << "\n";
+    }
+    for (const auto& [who, mp] : map_prefs_) {
+        body << "mapp\t" << pct_encode(who) << "\t" << (mp.show ? 1 : 0) << "\t" << (mp.groups ? 1 : 0) << "\t"
+             << (mp.posts ? 1 : 0) << "\t" << (mp.comments ? 1 : 0) << "\t" << (mp.friends ? 1 : 0) << "\t"
+             << (mp.pains ? 1 : 0) << "\n";
+    }
+    prune_pains();
+    body << "painn\t" << next_pain_id_ << "\n";
+    for (const auto& p : pains_) {
+        body << "pain\t" << p.id << "\t" << pct_encode(p.owner) << "\t" << pct_encode(p.kind) << "\t" << (p.kept ? 1 : 0)
+             << "\t" << p.ts << "\t" << pct_encode(p.source) << "\t" << pct_encode(p.phrase) << "\n";
+    }
+    for (const auto& [key, tags] : city_tags_) {
+        for (const auto& tag : tags)
+            body << "ctag\t" << pct_encode(key) << "\t" << pct_encode(tag) << "\n";
     }
     for (const auto& [slug, set] : members_) {
         for (const auto& u : set) {

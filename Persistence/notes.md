@@ -18,6 +18,7 @@ Not bug classes. Not “what is live on the droplet.”
 
 ## Shared pad
 
+- **2026-11-07 -- Test names, ports, and the retired checks.** Brandon handed this to Grok. `problems.sh`, `pwa_check.py`, and `test_pwa.sh` are retired. The Commons icons and the old Mail/Social/Civic manifests that still answer live in `pwa_files_check.py`. `city_flow.sh` uses port 18093, `city_match.sh` 18094, `city_look.sh` 18095. New files follow `naming.toml`, checked by `naming_check.py` at commit, push, and in `drift_audit.py`. Nothing here was deployed.
 - **2026-11-07 03:10 PT -- Merged and pushed; only committed code goes live from now on.** Claude committed what liquidgov.us runs (Flow and matching had been deployed from uncommitted files) together with the not-yet-live Look slice as `a8080ee` on `city-slice1`, merged it into master as `55264f6`, and pushed both (Brandon: commit, push, merge, push). The pwa_check fix makes GitHub's master CI expect the closed Commons and one app.
   - `deploy/sync-to-droplet.sh` now refuses a real sync from an uncommitted tree and prints the commit it deploys. Dry runs still work; `LIQUIDGOV_DEPLOY_ALLOW_DIRTY="<reason>"` overrides.
   - The mapp and pain loaders keep a newer version's extra fields and write them back.

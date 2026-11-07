@@ -28,6 +28,11 @@ target_link_libraries(liquidgov_platform_auth_test PRIVATE liquidgov_auth)
 add_executable(liquidgov_platform_file_store_test tests/file_store_test.cpp)
 target_link_libraries(liquidgov_platform_file_store_test PRIVATE liquidgov_auth liquidgov_file_store)
 
+# City features, map privacy, problems and solutions, forward-compatible records (2026-11-06/07): their own file,
+# since committed tests stay frozen and a new check goes in a new test file (hard rules #6847b, #1bcfd).
+add_executable(liquidgov_platform_city_store_test tests/city_store_test.cpp)
+target_link_libraries(liquidgov_platform_city_store_test PRIVATE liquidgov_auth liquidgov_file_store)
+
 add_executable(liquidgov_platform_blob_test tests/blob_test.cpp)
 target_link_libraries(liquidgov_platform_blob_test PRIVATE liquidgov_blob liquidgov_image)
 

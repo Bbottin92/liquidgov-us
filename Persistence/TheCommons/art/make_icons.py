@@ -15,7 +15,7 @@ Full-bleed (no transparency, no rounded corners: the phone rounds it), and every
 import os, struct, sys, zlib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-# default: the repo's commons/ ; an optional argument redirects the output (tests/pwa_check.py regenerates into a temp dir to
+# default: the repo's commons/ ; an optional argument redirects the output (commons-daemon/tests/pwa_files_check.py regenerates into a temp dir to
 # prove the committed PNGs are exactly what this script makes)
 OUT = os.path.abspath(sys.argv[1]) if len(sys.argv) > 1 else os.path.abspath(os.path.join(HERE, "..", "..", "..", "commons"))
 N = 24   # the icon is an N x N grid of pixels

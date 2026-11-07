@@ -2,13 +2,13 @@
 # People who Flowed the same subject (local only). The subject is the phrase,
 # case-folded. A shared word is not enough. You see those people only after
 # you Flow your own box, and only when map_person_ok already allows them.
-# No count. Throwaway store, port 18087. Never touches the live site or port 8080.
+# No count. Throwaway store, port 18094. Never touches the live site or port 8080.
 # Usage: bash city_match.sh <path to liquidgov_http> <path to liquidgov_e2e_seed>
 set -u
 BIN=$(readlink -f "$1"); SEED=$(readlink -f "$2")
 HERE=$(cd "$(dirname "$0")/../.." && pwd)
 W=/tmp/lg-city-match; rm -rf "$W"; mkdir -p "$W/blobs"
-PORT=18087; URL=http://127.0.0.1:$PORT
+PORT=18094; URL=http://127.0.0.1:$PORT
 fails=0; passes=0
 ok()  { echo "PASS $1"; passes=$((passes+1)); }
 bad() { echo "FAIL $1"; fails=$((fails+1)); }

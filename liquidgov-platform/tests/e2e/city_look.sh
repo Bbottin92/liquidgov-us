@@ -4,14 +4,14 @@
 # offers each find as Keep or Forget. Friends posts, group posts, and
 # messages stay on their map only: they cannot be Flowed, and other people
 # do not see them. It does not read the other person's messages, reposts,
-# comments on ordinary posts, or office races. Throwaway store, port 18088.
+# comments on ordinary posts, or office races. Throwaway store, port 18095.
 # Never touches the live site or port 8080.
 # Usage: bash city_look.sh <path to liquidgov_http> <path to liquidgov_e2e_seed>
 set -u
 BIN=$(readlink -f "$1"); SEED=$(readlink -f "$2")
 HERE=$(cd "$(dirname "$0")/../.." && pwd)
 W=/tmp/lg-city-look; rm -rf "$W"; mkdir -p "$W/blobs"
-PORT=18088; URL=http://127.0.0.1:$PORT
+PORT=18095; URL=http://127.0.0.1:$PORT
 fails=0; passes=0
 ok()  { echo "PASS $1"; passes=$((passes+1)); }
 bad() { echo "FAIL $1"; fails=$((fails+1)); }

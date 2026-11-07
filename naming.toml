@@ -1,0 +1,43 @@
+# Naming standard (Brandon 2026-11-07). naming_check.py reads this file.
+# A new file must match its pattern. A path listed under grandfather keeps its old name.
+# Frozen on purpose, never renamed: LGP1 store tags (lgp1_consistency.py), the asset URLs
+# below, the MAINstream button, and the grandfathered test names.
+
+[e2e]
+root = "liquidgov-platform/tests/e2e"
+pattern = "^[a-z0-9]+_[a-z0-9_]+\\.sh$"
+port_min = 18080
+port_max = 18099
+
+[cpp]
+root = "liquidgov-platform/tests"
+pattern = "^[a-z0-9_]+_test\\.cpp$"
+
+[ci_sh]
+root = "commons-daemon/tests"
+pattern = "^test_[a-z0-9_]+\\.sh$"
+
+[ci_py]
+root = "commons-daemon/tests"
+pattern = "^[a-z0-9_]+_check\\.py$"
+
+[deploy]
+root = "deploy"
+pattern = "^[a-z0-9]+(?:-[a-z0-9]+)+\\.sh$"
+restart_pattern = "^([a-z0-9]+)-remote\\.sh$"
+
+[branches]
+pattern = "^wip/[0-9]+-[a-z0-9-]+$"
+
+[grandfather]
+e2e = []
+cpp = []
+ci_sh = ["lib.sh", "run_all.sh", "nginx_www_behavior.sh"]
+ci_py = ["civic_stub.py", "lgp1_consistency.py", "prune_backups_unit.py"]
+deploy = []
+branches = ["master", "city-slice1", "wip/program-messaging", "wip/sigpipe-guard"]
+
+[frozen]
+button = "MAINstream</button>"
+store_tags_check = "commons-daemon/tests/lgp1_consistency.py"
+assets = ["/manifest.webmanifest", "/manifest-mail.webmanifest", "/manifest-social.webmanifest", "/manifest-civic.webmanifest", "/apple-touch-icon.png", "/icon-192.png", "/icon-512.png", "/icon-mail-192.png", "/icon-mail-512.png", "/icon-social-192.png", "/icon-social-512.png", "/icon-civic-192.png", "/icon-civic-512.png"]

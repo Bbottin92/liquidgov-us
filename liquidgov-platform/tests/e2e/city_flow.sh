@@ -4,12 +4,12 @@
 # may see the owner. Still puts it back. Someone who has not Flowed
 # the same subject gets no match list and no count.
 # Usage: bash city_flow.sh <path to liquidgov_http> <path to liquidgov_e2e_seed>
-# Throwaway store, port 18086. Never touches the live site or port 8080.
+# Throwaway store, port 18093. Never touches the live site or port 8080.
 set -u
 BIN=$(readlink -f "$1"); SEED=$(readlink -f "$2")
 HERE=$(cd "$(dirname "$0")/../.." && pwd)
 W=/tmp/lg-city-flow; rm -rf "$W"; mkdir -p "$W/blobs"
-PORT=18086; URL=http://127.0.0.1:$PORT
+PORT=18093; URL=http://127.0.0.1:$PORT
 fails=0; passes=0
 ok()  { echo "PASS $1"; passes=$((passes+1)); }
 bad() { echo "FAIL $1"; fails=$((fails+1)); }

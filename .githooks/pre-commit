@@ -1,0 +1,7 @@
+#!/usr/bin/env sh
+# LiquidGov pre-commit: the same dependency checks as pre-push (lgp1_consistency.py, one_app_check.py), at commit time,
+# so a change that leaves its dependents behind is caught before it is even saved, by any agent.
+# Why (2026-11-07): side agents caught at least seven missed consequences in one session (the reacted lines,
+# clickjacking, undo dropping privacy settings, the shared worktree, the rollback trap, uncommitted live code, and a
+# restored test blocking pushes). Three sightings is a pattern, and a pattern needs a check (decision 2026-10-26).
+exec sh "$(dirname "$0")/pre-push"

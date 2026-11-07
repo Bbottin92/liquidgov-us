@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 # LiquidGov pre-push: binds EVERY agent that pushes (Claude, Grok, Grok Bot, Brandon), not just one agent's harness.
 # Refuses the push if the store/undo/docs/assets have drifted apart (lgp1_consistency.py) or the app wiring is off
-# (pwa_check.py). Both read files only, take about a second, and need no server.
+# (one_app_check.py). Both read files only, take about a second, and need no server.
 # Why (2026-11-07): changes kept landing without their dependents (undo lists, CI checks, rollback binaries), and
 # Brandon asked that "when one thing changes, everything thats effected by that change is also changed accordingly".
 # Enable once per clone (worktrees share it):  git config core.hooksPath .githooks
@@ -19,7 +19,9 @@ if [ -z "$PY" ]; then
   exit 1
 fi
 fail=0
-for check in lgp1_consistency.py pwa_check.py; do
+# one_app_check.py is the one-app wiring. pwa_files_check.py keeps the Commons icons and the old
+# manifests. naming_check.py reads naming.toml. The retired pwa_check.py is not here (#6847b).
+for check in lgp1_consistency.py one_app_check.py pwa_files_check.py naming_check.py; do
   out="$("$PY" "$ROOT/commons-daemon/tests/$check" "$ROOT" 2>&1)"; rc=$?
   echo "$out" | tail -1
   if [ $rc -ne 0 ]; then

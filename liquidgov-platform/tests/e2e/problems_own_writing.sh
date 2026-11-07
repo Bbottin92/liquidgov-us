@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
+# Problems and solutions AFTER Brandon's 2026-11-07 decision: your own friends-only posts, group posts and
+# messages you sent are read onto YOUR map (the other person's words never are). This is the version Grok
+# updated in place; it lives here because committed tests stay frozen (#6847b). The original problems.sh is retired.
 # Problems and solutions (first slice, per Grok's review): noticing wants and
 # problems in a person's OWN new public words, Keep/Forget, possible solutions,
 # private map boxes, the crisis 988 note, and the off switch.
-# Usage: bash problems.sh <path to liquidgov_http> <path to liquidgov_e2e_seed>
-# Throwaway store, port 18091. Never touches the live site.
+# Usage: bash problems_own_writing.sh <path to liquidgov_http> <path to liquidgov_e2e_seed>
+# Throwaway store, port 18092. Never touches the live site.
 set -u
 BIN=$(readlink -f "$1"); SEED=$(readlink -f "$2")
 HERE=$(cd "$(dirname "$0")/../.." && pwd)
-W=/tmp/lg-problems; rm -rf "$W"; mkdir -p "$W/blobs"
-PORT=18091; URL=http://127.0.0.1:$PORT
+W=/tmp/lg-problems-own; rm -rf "$W"; mkdir -p "$W/blobs"
+PORT=18092; URL=http://127.0.0.1:$PORT
 fails=0; passes=0
 ok()  { echo "PASS $1"; passes=$((passes+1)); }
 bad() { echo "FAIL $1"; fails=$((fails+1)); }

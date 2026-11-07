@@ -14,6 +14,9 @@ echo "$out" | sed 's/^/     /'
 assert_eq "the self-test exits 0 only after both bad cases failed" "0" "$rc"
 assert_contains "and it says the bad name failed" "$out" "bad-name fail=True"
 assert_contains "and it says the shared port failed" "$out" "port-clash fail=True"
+assert_contains "and a one-word cpp pattern fails city_store_test.cpp" "$out" "cpp-underscore fail=True"
+assert_contains "and a second restart of liquidgov fails" "$out" "extra-restart fail=True"
+assert_contains "and a test file in a subdirectory fails" "$out" "nested-hide fail=True"
 
 echo "-- this repo matches naming.toml (naming_check.py)"
 "$PY" "$TESTS_DIR/naming_check.py" "$REPO" > "$WORK/naming.out" 2>&1; rc=$?

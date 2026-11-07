@@ -88,10 +88,13 @@
 //          label, not an AVND locality: it confers no standing. Absence = no city.
 //          Separate tag so comm keeps its frozen shape; a ccity whose comm is
 //          missing is dropped on load.
-//   pain   <id> <owner> <wish|pain> <kept 0|1> <ts> <source> <phrase>  // a wish or
-//          pain point noticed in the owner's own public words (PainPoint). Private
-//          to the owner. Source is post:<id>, prop:<id> or prply:<id>; a row whose
-//          source is gone, or an unkept one older than 30 days, is dropped.
+//   pain   <id> <owner> <wish|pain> <kept 0|1> <ts> <source> <phrase> [<flowed 1>]
+//          a wish or pain point noticed in the owner's own public words (PainPoint).
+//          Private to the owner until they Flow a kept one. The 9th field is written
+//          only when flowed is true, so a Still row stays 8 fields and an older
+//          binary can still open it. A 9th field of 0 is accepted and then omitted.
+//          Source is post:<id>, prop:<id> or prply:<id>; a row whose source is gone,
+//          or an unkept one older than 30 days, is dropped.
 //   painn  <next_pain_id>
 //   mapp   <username> <show> <groups> <posts> <comments> <friends> [<pains>]  // each 0|1:
 //          what the map may show about this person (MapPrefs). Absence = the
@@ -429,15 +432,20 @@ struct MapPrefs {
     bool comments = true;  // lines to proposals you commented on
     bool friends = false;  // lines to your friends (both must agree)
     bool pains = true;     // notice wishes and pain points in your new public words
+    // Fields a NEWER version wrote after these, kept verbatim and written back,
+    // so rolling back one version never drops (or breaks on) a newer setting.
+    // Any new field must default to the privacy-safe value when absent.
+    std::vector<std::string> extra_fields;
 };
 
 // ---- Wishes and pain points (Brandon 2026-11-06; first slice per Grok's review) ----
 // The site notices "I wish ...", "I hate when ...", "I'm tired of ..." in a
 // person's OWN new public words (Anybody posts, proposals, proposal comments),
-// and offers each as a suggestion they Keep or Forget. Kept ones become private
-// boxes on their own map, connected to departments, proposals and groups whose
-// words overlap. Only the owner ever sees them. Nothing is sent to an outside
-// AI. Only a short phrase and the source id are stored, never a copy of the text.
+// and offers each as a suggestion they Keep or Forget. A kept one starts as a
+// private box on their own map. Flow shows that one subject to people who may
+// see them; Still makes it private again. The list itself stays the owner's.
+// Nothing is sent to an outside AI. Only a short phrase and the source id are
+// stored, never a copy of the text.
 struct PainHit {
     std::string kind;    // "wish" or "pain"
     std::string phrase;  // the clause after the trigger, <= 12 words / 80 bytes
@@ -453,6 +461,9 @@ PainScan find_pain_points(const std::string& text);
 // Lowercase words of 4+ letters that are not filler, for matching a phrase to
 // departments, proposals and groups ("buses" also matches "bus").
 std::vector<std::string> pain_keywords(const std::string& phrase);
+// The subject two Flowed boxes share: case-folded, with whitespace runs
+// collapsed. Punctuation stays, so a shared word is not the same subject.
+std::string pain_subject_key(const std::string& phrase);
 // True when any keyword appears as a word in `text` (case-folded; a simple
 // plural rule so "buses" matches "bus" and "trees" matches "tree").
 bool pain_words_overlap(const std::vector<std::string>& keywords, const std::string& text);
@@ -465,6 +476,8 @@ struct PainPoint {
     std::string source;  // post:<id> | prop:<id> | prply:<id>
     std::int64_t ts = 0;
     bool kept = false;   // false = a suggestion; unkept ones expire after 30 days
+    bool flowed = false; // true only after the owner Flows a kept box
+    std::vector<std::string> extra_fields; // a newer version's fields after flowed, kept verbatim (see MapPrefs)
 };
 
 struct CityUse {
@@ -817,7 +830,13 @@ public:
     std::uint64_t add_pain_suggestion(const std::string& owner, const PainHit& hit, const std::string& source);
     std::vector<PainPoint> pains_of(const std::string& owner) const; // newest first
     std::optional<PainPoint> pain_by_id(std::uint64_t id) const;
+    // Kept and Flowed rows with this subject, newest first. Still rows and
+    // suggestions are left out. This is not a count.
+    std::vector<PainPoint> flowed_with_subject(const std::string& phrase) const;
     bool keep_pain(const std::string& owner, std::uint64_t id);   // owner only
+    // Flow (on) or Still (!on). Owner only, and only a kept box. A suggestion
+    // stays private. The same call again changes nothing.
+    bool flow_pain(const std::string& owner, std::uint64_t id, bool on);
     bool forget_pain(const std::string& owner, std::uint64_t id); // owner only; deletes it
     void clear_pains(const std::string& owner);
 

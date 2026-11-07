@@ -27,9 +27,19 @@ Run from the PC with Claude's own key (`ssh -i C:\Users\Brandon\.ssh\id_ed25519_
 1. Clean build plus all suites on the exact commit: `scratchpad/verify_all.sh` (unit tests, slices 1-5, keep, map, map data, problems, undo).
 2. Sync dry run: `LIQUIDGOV_DEPLOY_DRY_RUN=1 deploy/sync-to-droplet.sh`. Read the list. It must not contain any `.lgp`, blob or `.env` file.
    Expected: source, test and asset changes, plus new `assets/lgmap.js` and `lgmap.css`. The three deleted `app-*.html` files stay on the server; the script doesn't delete, and nothing serves them.
-3. **Show Brandon steps 0-1 and wait for go.**
+3. **Show Brandon what the restart will do, in that same message, and wait for go.** As soon as the restart and the public checks finish, tell him. Do not sleep in the session for the later journal. That wait is what produced "wait what?" on 2026-11-07: the deploy had already finished.
+
+### Preflight evidence (Grok, 2026-11-07, read-only)
+
+Live sources match `6ab8234`. The service user is `liquidgov`. The unit's env file does not set `LIQUIDGOV_STORE`, so the store is the code default: `/opt/liquidgov/liquidgov_accounts.lgp` (17,412 bytes, last change 2026-11-07 04:59 UTC, no `.tmp` beside it). Saves write a temp file, fsync, then rename, so a copy is a whole file. Blobs are 32M and stay out of the sync.
+
+The dry run would send 18 files. Another 188 lines start with a dot and include `t`, `o`, and `g`: the data stays, and rsync would still set the time, owner, and group. Chown to `liquidgov` immediately after the real sync is required on this run. No `.lgp`, blob directory, or `.env.local` is in the list.
 
 ## 2. Live (after go; about 4 minutes, with a short outage only at the restart)
+
+This deploy ran on 2026-11-07 08:43 UTC from the scratch copy of the runner. The service is PID 747871. The store backup is `liquidgov_accounts.lgp.pre-city-20261107T083911Z`. The old binary is `/opt/liquidgov/liquidgov_http.pre-city`. A second `city-go.sh go` stops on purpose, because that rollback binary is already there.
+
+The runner for a later city deploy is `deploy/city-go.sh`. It exits unless the argument is `go` and `LIQUIDGOV_DEPLOY_KEY` is set to that agent's own key. Run it from WSL. Windows `scp.exe` and `ssh.exe` get Windows paths (`C:/...`), never `/mnt/c/...`. The public checks are `deploy/city-live-check.py` (Python, no curl). A later journal is `deploy/city-status.sh`, which does not sleep.
 
 1. **Back up the store:** `cp -p <store> <store>.pre-city-<UTC>` and check that both sizes match.
 2. **Keep the old binary:** `cp -p /opt/liquidgov/build/liquidgov_http /opt/liquidgov/liquidgov_http.pre-city`.
@@ -46,7 +56,7 @@ Run from the PC with Claude's own key (`ssh -i C:\Users\Brandon\.ssh\id_ed25519_
 - A framed request (`Sec-Fetch-Dest: iframe`) carries `X-Frame-Options: SAMEORIGIN`; a normal page doesn't.
 - Store: the new records only appear once people use the features; the first save keeps every old record. Compare the record counts per tag before and after.
 - **Brandon clicks through on his own account:** Map, Settings > Map and connections, one Problems post.
-- Journal again after 10 minutes.
+- Later, when you next look: `deploy/city-status.sh`. It reads the error journal and the city tag counts. It does not sleep and it does not change the server.
 
 ## 4. If it has to come out (rollback, no full rewind)
 

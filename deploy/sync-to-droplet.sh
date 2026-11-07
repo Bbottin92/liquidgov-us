@@ -31,6 +31,48 @@ SSH_CMD="${LIQUIDGOV_DEPLOY_SSH:-ssh -i $KEY}"
 DRY=()
 [ "${LIQUIDGOV_DEPLOY_DRY_RUN:-}" = "1" ] && DRY=(--dry-run --itemize-changes)
 
+# Only committed code goes live (2026-11-07). On 2026-11-07 the Flow and
+# subject-match slices were synced from an uncommitted working tree, so
+# liquidgov.us ran code that existed in no commit: the old "live ahead of
+# GitHub" problem again. A real sync now refuses unless the tree is clean,
+# and prints the commit it deploys (put that in `ctx log ... --ref`).
+# Dry runs still work on a dirty tree. LIQUIDGOV_DEPLOY_ALLOW_DIRTY="<why>"
+# overrides, loudly. This worktree's .git points at a Windows path WSL git
+# cannot read, so git.exe (Windows git through WSL interop) is tried next;
+# if neither can say whether the tree is clean, the sync refuses.
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+git_in_repo() {
+    local out
+    if out="$(git -C "$REPO" "$@" 2>/dev/null)"; then printf '%s' "$out"; return 0; fi
+    if command -v git.exe >/dev/null 2>&1 && command -v wslpath >/dev/null 2>&1; then
+        local wp; wp="$(wslpath -w "$REPO" 2>/dev/null)" || return 1
+        out="$(git.exe -C "$wp" "$@" 2>/dev/null)" || return 1
+        printf '%s' "${out//$'\r'/}"; return 0
+    fi
+    return 1
+}
+if ! COMMIT="$(git_in_repo rev-parse --short HEAD)"; then
+    COMMIT=""
+fi
+if ! DIRTY="$(git_in_repo status --porcelain)"; then
+    DIRTY="(could not read git status for $REPO)"
+fi
+if [ -n "$DIRTY" ] || [ -z "$COMMIT" ]; then
+    if [ ${#DRY[@]} -gt 0 ]; then
+        echo "WARNING: uncommitted changes; fine for a dry run, but a real sync will refuse:"
+        printf '%s\n' "$DIRTY" | head -20
+    elif [ -n "${LIQUIDGOV_DEPLOY_ALLOW_DIRTY:-}" ]; then
+        echo "WARNING: deploying UNCOMMITTED changes on top of ${COMMIT:-unknown} because: $LIQUIDGOV_DEPLOY_ALLOW_DIRTY"
+        printf '%s\n' "$DIRTY" | head -20
+    else
+        echo "Refusing: only committed code goes live. Commit first (git is the record of what runs on liquidgov.us)."
+        printf '%s\n' "$DIRTY" | head -20
+        echo "To override on purpose: LIQUIDGOV_DEPLOY_ALLOW_DIRTY=\"<reason>\" $0 $*"
+        exit 3
+    fi
+fi
+echo "Deploying commit ${COMMIT:-unknown}${DIRTY:+ (plus uncommitted changes)}"
+
 echo "Syncing $SRC -> $DEST (excluding build/.git/data files)${DRY:+ [dry run]}"
 rsync -az --checksum "${DRY[@]}" -e "$SSH_CMD" \
     --exclude build \

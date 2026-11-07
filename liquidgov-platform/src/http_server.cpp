@@ -1996,7 +1996,7 @@ std::string wrap(const std::string& title, const std::string& user, int unread, 
                "<p><strong>If things feel heavy right now, you don't have to carry it alone.</strong> "
                "In the US you can call or text <a href=\"tel:988\"><strong>988</strong></a> "
                "(Suicide &amp; Crisis Lifeline) any time. It's free and confidential.</p>"
-               "<p class=\"muted\">Nothing from what you wrote was saved as a problem, and nobody was told.</p></div>";
+               "<p class=\"muted\">Crisis words are not saved as a problem, and nobody is told.</p></div>";
     }
     std::string page = page_wrap(title, nav(user, unread), care + body, show_intro, intro_always_play);
     // Widget goes *after* </main>, not inside it: soft-navigation (see
@@ -2235,15 +2235,71 @@ std::string city_datalist_html() {
 }
 
 // ---- Wishes and pain points (first slice, per Grok's review) ------------
-// Called after a person's own NEW public words are saved: Anybody posts,
-// proposals, proposal comments. Never DMs, friends-only or group-only posts,
-// and never old writing. Only when their "Notice my problems and wants"
-// switch is on. Crisis words store nothing and show the 988 line instead.
-void notice_pains(const std::string& user, const std::string& text, const std::string& source) {
-    if (user.empty() || text.empty() || !g_store.map_prefs_of(user).pains) return;
+// One text this person wrote. Returns how many new suggestions were stored.
+// The switch, an empty user, or empty text stores nothing. Crisis words
+// store nothing from this text and arm the 988 note; later texts still run.
+// Callers pass this person's own words: posts, proposals, proposal
+// comments, and messages they sent. Not the other person's messages.
+int notice_pains_added(const std::string& user, const std::string& text, const std::string& source) {
+    if (user.empty() || text.empty() || !g_store.map_prefs_of(user).pains) return 0;
     const PainScan scan = find_pain_points(text);
-    if (scan.crisis) { g_care_notice.insert(user); return; }
-    for (const auto& hit : scan.hits) g_store.add_pain_suggestion(user, hit, source);
+    if (scan.crisis) { g_care_notice.insert(user); return 0; }
+    int n = 0;
+    for (const auto& hit : scan.hits)
+        if (g_store.add_pain_suggestion(user, hit, source)) ++n;
+    return n;
+}
+void notice_pains(const std::string& user, const std::string& text, const std::string& source) {
+    notice_pains_added(user, text, source);
+}
+
+// A public source can be Flowed. Friends posts, group posts, and messages
+// you sent use another prefix and stay on your map only.
+bool pain_can_flow(const std::string& source) {
+    return source.rfind("post:", 0) == 0 || source.rfind("prop:", 0) == 0 || source.rfind("prply:", 0) == 0;
+}
+std::string post_pain_source(const Post& post) {
+    if (post.audience == PostAudience::Anybody)
+        return "post:" + std::to_string(post.id);
+    const bool grouped = post.audience == PostAudience::GroupsOnly || !post.community.empty() || !post.extra_groups.empty();
+    return (grouped ? "gpost:" : "fpost:") + std::to_string(post.id);
+}
+
+// "Look at what I've written": the same read, for writing already saved.
+// Own posts (not reposts), proposals they wrote (not an office race),
+// proposal comments they wrote, messages they sent, and group messages
+// they sent. Never the other person's messages. Returns -1 when the
+// switch is off, so the page does not say the scan was empty.
+int look_public_words(const std::string& user) {
+    if (user.empty() || !g_store.map_prefs_of(user).pains) return -1;
+    int n = 0;
+    for (const auto& post : g_store.posts_by(user)) {
+        if (post.author != user) continue;
+        if (!post.repost_of_author.empty() || post.repost_of_id != 0) continue;
+        n += notice_pains_added(user, post.text, post_pain_source(post));
+    }
+    for (const auto& pr : g_store.all_proposals()) {
+        if (pr.author == user && !pr.is_office)
+            n += notice_pains_added(user, pr.title + ". " + pr.body, "prop:" + std::to_string(pr.id));
+        for (const auto& r : g_store.proposal_replies_of(pr.id)) {
+            if (r.author != user) continue;
+            n += notice_pains_added(user, r.text, "prply:" + std::to_string(r.id));
+        }
+    }
+    for (const auto& m : g_store.mail_sent_by(user)) {
+        if (m.from != user || m.text.empty()) continue;
+        n += notice_pains_added(user, m.text, "mail:" + std::to_string(m.ts) + ":" + m.to);
+    }
+    if (auto who = g_store.find_by_username(user)) {
+        for (const auto& conv : g_store.conversations_for(who->id)) {
+            for (const auto& m : g_store.messages_in(conv.id)) {
+                if (m.sender != who->id || m.text.empty()) continue;
+                if (m.deletion != DeletionState::NotDeleted) continue;
+                n += notice_pains_added(user, m.text, "gmsg:" + std::to_string(m.id));
+            }
+        }
+    }
+    return n;
 }
 
 // What a kept pain point could connect to, in the cities this person is in
@@ -2296,6 +2352,46 @@ bool map_person_ok(const std::string& u, const std::string& viewer) {
                       !viewer.empty() && g_store.are_friends(viewer, u));
 }
 
+// The viewer has Flowed this same subject on a box of their own.
+// Anyone who has not gets no match list: the subject can be visible
+// without turning it into a directory of who else shares it.
+bool viewer_flowed_subject(const std::string& viewer, const std::string& phrase) {
+    const std::string key = pain_subject_key(phrase);
+    if (key.empty() || viewer.empty()) return false;
+    for (const auto& p : g_store.pains_of(viewer))
+        if (p.kept && p.flowed && pain_subject_key(p.phrase) == key) return true;
+    return false;
+}
+
+// Other people who Flowed this subject and whom the viewer may see.
+// One row per person. The viewer and this box's owner are left out.
+// Empty unless the viewer Flowed it too. No count is returned.
+std::vector<PainPoint> subject_matches(const std::string& viewer, const PainPoint& p) {
+    std::vector<PainPoint> out;
+    if (!p.kept || !p.flowed || !viewer_flowed_subject(viewer, p.phrase)) return out;
+    std::set<std::string> seen;
+    seen.insert(viewer);
+    seen.insert(p.owner);
+    for (const auto& q : g_store.flowed_with_subject(p.phrase)) {
+        if (!seen.insert(q.owner).second) continue;
+        if (!map_person_ok(q.owner, viewer)) continue;
+        out.push_back(q);
+        if (out.size() >= 20) break; // leftover names are omitted, never counted
+    }
+    return out;
+}
+
+std::string also_flowed_html(const std::vector<PainPoint>& people) {
+    if (people.empty()) return {};
+    std::string h = "<p class=\"muted\">Also flowed by ";
+    for (std::size_t i = 0; i < people.size(); ++i) {
+        if (i) h += ", ";
+        h += "<a href=\"/u/" + html_escape(people[i].owner) + "\">" + html_escape(people[i].owner) + "</a>";
+    }
+    h += ".</p>";
+    return h;
+}
+
 // May `viewer` see this post as a box? The same audience rules as the
 // author's profile page, plus the author's "Show my posts" map setting.
 bool map_post_ok(const Post& p, const std::string& viewer) {
@@ -2320,7 +2416,7 @@ bool map_post_ok(const Post& p, const std::string& viewer) {
 
 // ---- The interactive map's data: one box and its connections ------------
 // Box ids: root, sitewide, city:<key>, group:<slug>, user:<name>,
-// dept:<key>|<tag>, prop:<id>, post:<id>. /map/node?n=<id> answers with the
+// dept:<key>|<tag>, prop:<id>, post:<id>, pain:<id>. /map/node?n=<id> answers with the
 // box and every box it connects to that this viewer may see, as JSON. The
 // "page" of a box is what the right-hand field shows.
 struct GNode { std::string id, label, kind, page; };
@@ -2368,12 +2464,16 @@ std::optional<GNode> map_gnode(const std::string& id, const std::string& viewer)
         if (!p) return std::nullopt;
         return GNode{id, p->title, "prop", "/proposals?id=" + std::to_string(p->id)};
     }
-    if (type == "pain") { // a kept wish or pain point: its owner's eyes only
+    if (type == "pain") { // a kept wish or pain point. Private until its owner Flows it.
         auto n = as_u64(rest);
         if (!n || viewer.empty()) return std::nullopt;
         auto p = g_store.pain_by_id(*n);
-        if (!p || !p->kept || p->owner != viewer) return std::nullopt;
-        return GNode{id, p->phrase, "pain", "/problems#pain" + std::to_string(p->id)};
+        if (!p || !p->kept) return std::nullopt;
+        if (p->owner == viewer)
+            return GNode{id, p->phrase, "pain", "/problems#pain" + std::to_string(p->id)};
+        // Other people see the subject only. The href is not the owner's list.
+        if (!p->flowed || !map_person_ok(p->owner, viewer)) return std::nullopt;
+        return GNode{id, p->phrase, "pain", "/pain/" + std::to_string(p->id)};
     }
     if (type == "post") {
         auto n = as_u64(rest);
@@ -2453,10 +2553,14 @@ std::vector<GLink> map_links(const std::string& id, const std::string& viewer) {
         std::reverse(posts.begin(), posts.end());
         std::size_t n = 0;
         for (const auto& p : posts) if (n < kMax && map_post_ok(p, viewer)) { link("post:" + std::to_string(p.id), "posted"); ++n; }
-        // Your own kept wishes and pain points, on your own box only.
-        if (rest == viewer)
-            for (const auto& p : g_store.pains_of(viewer))
-                if (p.kept) link("pain:" + std::to_string(p.id), "noticed");
+        // Kept boxes on this person. Theirs are all visible to them. Anyone
+        // else's map shows a box only after that person Flows it (map_gnode
+        // also applies the block and show-me gates).
+        for (const auto& p : g_store.pains_of(rest)) {
+            if (!p.kept) continue;
+            if (rest != viewer && !p.flowed) continue;
+            link("pain:" + std::to_string(p.id), "noticed");
+        }
         // Friends: you always see your own; anyone else's only when both agreed.
         for (const auto& f : g_store.friends_of(rest)) {
             const bool mine = rest == viewer || f == viewer;
@@ -2477,14 +2581,32 @@ std::vector<GLink> map_links(const std::string& id, const std::string& viewer) {
         if (p->city.empty()) link("sitewide", "in");
         prop_links(*p);
     } else if (type == "pain") {
-        if (!map_gnode(id, viewer)) return out; // not yours: nothing
+        if (!map_gnode(id, viewer)) return out; // private, hidden, or missing
         auto p = g_store.pain_by_id(std::stoull(rest));
         if (!p) return out;
         link("user:" + p->owner, "noticed");
-        const auto m = pain_matches(*p);
-        for (const auto& [key, tag] : m.depts) link("dept:" + key + "|" + tag, "could-act");
-        for (const auto& pr : m.props) link("prop:" + std::to_string(pr.id), "about");
-        for (const auto& c : m.groups) link("group:" + c.slug, "working-on");
+        // Departments, proposals and groups stay on the owner's own view.
+        if (viewer == p->owner) {
+            const auto m = pain_matches(*p);
+            for (const auto& [key, tag] : m.depts) link("dept:" + key + "|" + tag, "could-act");
+            for (const auto& pr : m.props) link("prop:" + std::to_string(pr.id), "about");
+            for (const auto& c : m.groups) link("group:" + c.slug, "working-on");
+        }
+        // Same subject, only for someone who Flowed it themselves. A person
+        // who can see the box but did not Flow it gets no match edges.
+        // Hidden people fail map_gnode and are skipped. No edge carries a count.
+        if (p->kept && p->flowed && viewer_flowed_subject(viewer, p->phrase)) {
+            std::set<std::string> owners;
+            owners.insert(p->owner);
+            std::size_t n = 0;
+            for (const auto& q : g_store.flowed_with_subject(p->phrase)) {
+                if (n >= 8) break;
+                if (!owners.insert(q.owner).second) continue;
+                const auto before = out.size();
+                link("pain:" + std::to_string(q.id), "same subject");
+                if (out.size() > before) ++n;
+            }
+        }
     } else if (type == "post") {
         auto n = map_gnode(id, viewer);
         if (!n) return out;
@@ -2541,7 +2663,13 @@ double map_relevance(const GNode& n, const MapCtx& c) {
     auto words = [&](const std::string& text) { return pain_words_overlap(c.keywords, text) ? 0.2 : 0.0; };
     auto clamp = [](double v) { return v < 0 ? 0.0 : v > 1 ? 1.0 : v; };
     if (n.kind == "root") return -1;
-    if (n.kind == "pain") return 1;
+    if (n.kind == "pain") {
+        std::uint64_t id = 0;
+        try { id = std::stoull(rest); } catch (...) { return 0.35; }
+        auto p = g_store.pain_by_id(id);
+        if (p && p->owner == c.me) return 1; // their own box
+        return 0.35;                         // someone else's flowed subject
+    }
     if (n.kind == "sitewide") return 0.5;
     if (n.kind == "city") return c.cities.count(rest) ? 1.0 : 0.15;
     if (n.kind == "person") {
@@ -9855,15 +9983,33 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         const bool on = g_store.map_prefs_of(user).pains;
         std::string html = "<h1>Your problems and solutions</h1>"
             "<p class=\"lede\">Things you said you wish for or are tired of, so you can find what and who could help. "
-            "Only you can see this page.</p>";
+            "Only you can see this page. Flow puts one kept subject on the map for people who can see you. "
+            "Flowing it also shows you who else Flowed that same subject.</p>";
+        const bool looked_none = on && qs.count("looked") && qs.at("looked") == "none";
         if (!on) html += "<div class=\"card\"><p>This is turned off, so nothing is being noticed. "
                          "<a href=\"/settings#map-privacy\">Turn it on in Settings</a>.</p></div>";
-        else html += "<p class=\"muted\">It reads only your new public posts, proposals and proposal comments. "
-                     "<a href=\"/settings#map-privacy\">Change this</a></p>";
+        else {
+            html += "<p class=\"muted\">It reads your new posts, proposals, proposal comments, and messages you sent. "
+                    "<a href=\"/settings#map-privacy\">Change this</a></p>";
+            html += "<form method=\"POST\" action=\"/problems/look\">"
+                    "<button type=\"submit\">Look at what I've written</button></form>";
+            html += "<p class=\"muted\">This reads posts, proposals, proposal comments, and messages you already wrote. "
+                    "Each one is offered here as Keep or Forget before it is a box. "
+                    "Friends posts, group posts, and messages stay on your map only. "
+                    "It does not read the other person's messages, or reposts.</p>";
+            if (looked_none) html += "<p class=\"muted\">Nothing new in what you've written.</p>";
+        }
         auto all = g_store.pains_of(user);
         auto source_link = [](const PainPoint& p) -> std::string {
-            if (p.source.rfind("post:", 0) == 0) return " <a class=\"muted\" href=\"/post/" + html_escape(p.source.substr(5)) + "\">from your post</a>";
+            auto post_href = [](const std::string& source, std::size_t skip, const char* label) {
+                return " <a class=\"muted\" href=\"/post/" + html_escape(source.substr(skip)) + "\">" + label + "</a>";
+            };
+            if (p.source.rfind("post:", 0) == 0) return post_href(p.source, 5, "from your post");
+            if (p.source.rfind("fpost:", 0) == 0) return post_href(p.source, 6, "from a friends post");
+            if (p.source.rfind("gpost:", 0) == 0) return post_href(p.source, 6, "from a group post");
             if (p.source.rfind("prop:", 0) == 0) return " <a class=\"muted\" href=\"/proposals?id=" + html_escape(p.source.substr(5)) + "\">from your proposal</a>";
+            if (p.source.rfind("mail:", 0) == 0) return " <span class=\"muted\">from a message you sent</span>";
+            if (p.source.rfind("gmsg:", 0) == 0) return " <span class=\"muted\">from a group message you sent</span>";
             return " <span class=\"muted\">from your comment</span>";
         };
         auto label = [](const PainPoint& p) { return std::string(p.kind == "wish" ? "Want" : "Problem"); };
@@ -9904,22 +10050,33 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
             else body = "<p class=\"eyebrow\" style=\"margin-top:.6rem\">Possible solutions</p>" + body;
             const std::string start = "/proposals?title=" + url_encode(p.phrase) +
                                       (m.city_key.empty() ? std::string() : "&city=" + url_encode(m.city_key)) + "#new";
+            const bool shareable = pain_can_flow(p.source);
+            const std::string flow_note = !shareable
+                ? std::string("This stays on your map. Other people do not see it.")
+                : p.flowed
+                    ? std::string("This subject is on the map for people who can see you.")
+                    : std::string("Flow puts this subject on the map for people who can see you.");
+            const std::string flow_btn = !shareable ? std::string()
+                : p.flowed ? button("still", p.id, "Still", true)
+                           : button("flow", p.id, "Flow", false);
+            const std::string also = also_flowed_html(subject_matches(user, p));
             kept += "<div class=\"card\" id=\"pain" + std::to_string(p.id) + "\"><span class=\"eyebrow\">" + label(p) +
                     "</span><h3 style=\"margin:.1rem 0\">" + html_escape(p.phrase) + "</h3>" + source_link(p) + body +
                     "<p style=\"margin-top:.6rem\"><a href=\"" + html_escape(start) + "\">Start a proposal about this</a> &middot; "
                     "<a href=\"/map?focus=pain:" + std::to_string(p.id) + "\">See it on your map</a></p>" +
-                    button("forget", p.id, "Forget", true) + "</div>";
+                    "<p class=\"muted\">" + flow_note + "</p>" + also +
+                    flow_btn + button("forget", p.id, "Forget", true) + "</div>";
         }
         if (!sugg.empty())
             html += "<div class=\"card\"><h2>Noticed</h2><p class=\"muted\">Keep the ones that are real. "
                     "Ones you don't keep disappear after 30 days.</p><ul class=\"plain\">" + sugg + "</ul></div>";
         if (!kept.empty()) html += "<h2>Kept</h2>" + kept;
-        if (all.empty() && on)
+        if (all.empty() && on && !looked_none)
             html += "<div class=\"card\"><p class=\"empty\">Nothing yet.</p><p class=\"muted\">When you write something like "
                     "&ldquo;I wish the buses ran later&rdquo; in a public post, a proposal or a comment, it shows up here.</p></div>";
         return pg("Problems and solutions", html);
     }
-    if(method=="POST"&&(path=="/problems/keep"||path=="/problems/forget")) {
+    if(method=="POST"&&(path=="/problems/keep"||path=="/problems/forget"||path=="/problems/flow"||path=="/problems/still")) {
         if(!acc) return need_login();
         auto f = parse_form(body);
         std::uint64_t id = 0;
@@ -9928,8 +10085,48 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
             try { id = std::stoull(raw); } catch (...) { id = 0; }
         // Owner-only checks live in the store; someone else's id just does nothing.
         if (id && path == "/problems/keep") g_store.keep_pain(user, id);
-        else if (id) g_store.forget_pain(user, id);
-        return http_redir(path == "/problems/keep" && id ? "/problems#pain" + std::to_string(id) : std::string("/problems"));
+        else if (id && path == "/problems/forget") g_store.forget_pain(user, id);
+        else if (id && path == "/problems/flow") {
+            auto owned = g_store.pain_by_id(id);
+            if (owned && owned->owner == user && pain_can_flow(owned->source)) g_store.flow_pain(user, id, true);
+        }
+        else if (id && path == "/problems/still") g_store.flow_pain(user, id, false);
+        const bool stay = id && path != "/problems/forget";
+        return http_redir(stay ? "/problems#pain" + std::to_string(id) : std::string("/problems"));
+    }
+    // Older public writing, only when this person asks. Same Keep/Forget
+    // suggestions as a new post. A switch that is off reads nothing.
+    if(method=="POST"&&path=="/problems/look") {
+        if(!acc) return need_login();
+        const int added = look_public_words(user);
+        if (added < 0 || added > 0) return http_redir("/problems");
+        return http_redir("/problems?looked=none");
+    }
+    // One flowed subject. The owner is sent back to their private list.
+    // Anyone else sees the phrase and who flowed it, and only when that
+    // person is visible to them. A Still box looks the same as a missing one.
+    if(method=="GET"&&path.rfind("/pain/",0)==0&&path.size()>6&&path.find('/',6)==std::string::npos) {
+        if(!acc) return need_login();
+        std::uint64_t id = 0;
+        const std::string digits = path.substr(6);
+        if (digits.size() <= 19 && digits.find_first_not_of("0123456789") == std::string::npos)
+            try { id = std::stoull(digits); } catch (...) { id = 0; }
+        auto p = id ? g_store.pain_by_id(id) : std::nullopt;
+        auto missing = [&]() {
+            return http_code("404 Not Found", wrap("Not found", user, unread,
+                "<div class=\"card\"><p>No such subject.</p></div>"));
+        };
+        if (!p) return missing();
+        if (p->owner == user) return http_redir("/problems#pain" + std::to_string(p->id));
+        if (!p->kept || !p->flowed || !map_person_ok(p->owner, user)) return missing();
+        const std::string eyebrow = p->kind == "wish" ? std::string("Want") : std::string("Problem");
+        std::string html = "<div class=\"card\"><span class=\"eyebrow\">" + eyebrow +
+            "</span><h1 style=\"margin:.1rem 0\">" + html_escape(p->phrase) + "</h1>"
+            "<p>Flowed by <a href=\"/u/" + html_escape(p->owner) + "\">" + html_escape(p->owner) + "</a>.</p>";
+        html += also_flowed_html(subject_matches(user, *p));
+        html += "<p class=\"muted\">This is the subject they chose to show.</p>"
+            "<p><a href=\"/map?focus=pain:" + std::to_string(p->id) + "\">See it on the map</a></p></div>";
+        return pg(p->phrase, html);
     }
     // One box and its connections, as JSON, for assets/lgmap.js.
     if(method=="GET"&&path=="/map/node") {
@@ -10221,10 +10418,12 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
                     + box("comments", mp.comments, "Show what I commented on", "Lines from you to proposals you commented on.")
                     + box("friends", mp.friends, "Show my friends", "Off by default. A friendship shows to others only when both of you turn this on.")
                     + box("pains", mp.pains, "Notice my problems and wants",
-                          "Reads only your new public posts, proposals and proposal comments for phrases like "
+                          "Reads your new posts, proposals, proposal comments, and messages you sent for phrases like "
                           "&ldquo;I wish&hellip;&rdquo; or &ldquo;I hate when&hellip;&rdquo;, and suggests them to you. "
-                          "Never your messages, friends-only or group-only posts, or anything you wrote before. Only you see them. "
-                          "Turning this off deletes everything it found. Note: the site's operator can read what is stored on the server.")
+                          "Friends posts, group posts, and messages stay on your map only. The other person's messages are not read. "
+                          "On your problems page, Look at what I've written reads older writing of those same kinds when you ask. "
+                          "Only you see the private ones. Turning this off deletes everything it found. "
+                          "Note: the site's operator can read what is stored on the server.")
                     + "<p class=\"muted\"><a href=\"/problems\">See your problems and solutions</a></p>"
                     + "<button>Save map settings</button></form></div>";
         }
@@ -10913,8 +11112,16 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
                 : PostAudience::Friends;
             const auto new_post = g_store.add_post(user, text, community, "", 0, c.attachment_blob_id, c.attachment_mime,
                               audience, exceptions, friend_allowlist, extra_groups);
-            // Only posts anyone can see; friends-only and group-only stay unread.
-            if (new_post && audience == PostAudience::Anybody) notice_pains(user, text, "post:" + std::to_string(new_post));
+            // Reposts are someone else's words. Anything else this person
+            // wrote is noticed: Anybody can be Flowed; the rest stay private.
+            if (new_post) {
+                Post noted;
+                noted.id = new_post;
+                noted.audience = audience;
+                noted.community = community;
+                noted.extra_groups = extra_groups;
+                notice_pains(user, text, post_pain_source(noted));
+            }
         }
         return http_redir("/feed");
     }
@@ -11176,6 +11383,15 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         }
         if (!text.empty() || blob_id) {
             g_store.add_mail(user,to,text,blob_id,mime);
+            if (!text.empty()) {
+                const auto thread = g_store.mail_with(user, to);
+                for (auto it = thread.rbegin(); it != thread.rend(); ++it) {
+                    if (it->from == user && it->text == text) {
+                        notice_pains(user, text, "mail:" + std::to_string(it->ts) + ":" + to);
+                        break;
+                    }
+                }
+            }
             if (!download_name.empty()) { // named once the message exists (review 2026-10-27)
                 const auto thread = g_store.mail_with(user, to);
                 for (auto it = thread.rbegin(); it != thread.rend(); ++it)
@@ -11312,6 +11528,8 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
             }
             if (!text.empty() || blob_id) {
                 auto sent = send_message(g_store, acc->id, conv_id, text);
+                if (sent.message_id && !text.empty())
+                    notice_pains(user, text, "gmsg:" + std::to_string(*sent.message_id));
                 if (sent.message_id && blob_id) {
                     auto msg = g_store.get_message(*sent.message_id);
                     if (msg) {
@@ -11396,8 +11614,10 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
             auto c = read_composer_post(hdrs, body);
             if (!c.ok) return http_redir("/c/"+slug+"?err="+c.err);
             auto text = trim_ws(c.text);
-            if (!text.empty() || !c.attachment_blob_id.empty())
-                g_store.add_post(user, text, slug, "", 0, c.attachment_blob_id, c.attachment_mime);
+            if (!text.empty() || !c.attachment_blob_id.empty()) {
+                const auto gid = g_store.add_post(user, text, slug, "", 0, c.attachment_blob_id, c.attachment_mime);
+                if (gid) notice_pains(user, text, "gpost:" + std::to_string(gid));
+            }
             return http_redir("/c/"+slug);
         }
         return http_redir("/c/"+slug);

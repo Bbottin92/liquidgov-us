@@ -58,19 +58,19 @@ get $PAL /settings set.html >/dev/null
 check "Settings has the switch, on by default, with the operator note" 'grep -q "name=\"pains\" value=\"1\" checked" $W/set.html && grep -q "operator can read" $W/set.html' "missing"
 check "precondition: no problem rows yet" '[ "$(rows)" = 0 ]' "$(rows)"
 
-# Sources that must NOT be read.
-post $PAL /feed -F "text=I wish the buses ran later (friends only)" >/dev/null
-check "a friends-only post is not read" '[ "$(rows)" = 0 ]' "$(grep ^pain $W/store.lgp)"
-post $PAL /mail -F "to=stranger" -F "text=I hate when the buses are late" >/dev/null
-check "a private message is not read" '[ "$(rows)" = 0 ]' "$(grep ^pain $W/store.lgp)"
-post $PAL /c/fres1 -F "text=I hate when the buses skip my stop" >/dev/null
-check "a group post is not read" '[ "$(rows)" = 0 ]' "$(grep ^pain $W/store.lgp)"
+# Debate phrases are not triggers. Limited rooms are read for pal only.
 post $PAL /feed -F "text=Someone should fix the buses. Why can't they run on time?" -F "anybody=1" >/dev/null
 check "debate phrases are not triggers" '[ "$(rows)" = 0 ]' "$(grep ^pain $W/store.lgp)"
+post $PAL /feed -F "text=I wish the buses ran later (friends only)" >/dev/null
+check "a friends-only post is noticed for pal" 'grep "^pain	" $W/store.lgp | grep -q "fpost:.*the buses ran later"' "$(grep ^pain $W/store.lgp)"
+post $PAL /mail -F "to=stranger" -F "text=I hate when the buses are late" >/dev/null
+check "a message pal sent is noticed for pal" 'grep "^pain	" $W/store.lgp | grep -q "mail:.*the buses are late"' "$(grep ^pain $W/store.lgp)"
+post $PAL /c/fres1 -F "text=I hate when the buses skip my stop" >/dev/null
+check "a group post is noticed for pal" 'grep "^pain	" $W/store.lgp | grep -q "gpost:.*the buses skip my stop"' "$(grep ^pain $W/store.lgp)"
 
 # Sources that ARE read.
 post $PAL /feed -F "text=I really wish the buses ran later on weekends. Anyway!" -F "anybody=1" >/dev/null
-check "a public post is noticed (as a suggestion, not kept)" '[ "$(rows)" = 1 ] && grep -q "^pain	[0-9]*	pal	wish	0	[0-9]*	post:[0-9]*	the buses ran later on weekends$" $W/store.lgp' "$(grep ^pain $W/store.lgp)"
+check "a public post is noticed (as a suggestion, not kept)" 'grep -q "^pain	[0-9]*	pal	wish	0	[0-9]*	post:[0-9]*	the buses ran later on weekends$" $W/store.lgp' "$(grep ^pain $W/store.lgp)"
 post $PAL /proposals -d "title=Shade" -d "body=I'm so tired of the heat at bus stops" -d "kind=0" >/dev/null
 check "a proposal is noticed" 'grep -q "	pal	pain	0	[0-9]*	prop:[0-9]*	the heat at bus stops$" $W/store.lgp' "$(grep ^pain $W/store.lgp)"
 pid=$(awk -F'\t' '$1=="prop" && $5=="Late-night buses on weekends"{print $2}' "$W/store.lgp")
@@ -88,7 +88,7 @@ get $STRANGER /feed care2.html >/dev/null
 check "...only once" '! grep -q "tel:988" $W/care2.html' "shown again"
 get $PAL /feed other.html >/dev/null
 check "...and to nobody else" '! grep -q "tel:988" $W/other.html' "shown to pal"
-check "nothing about it on disk" '! grep -q "988\|wasn" $W/store.lgp || ! grep "^pain" $W/store.lgp | grep -q stranger' "stored"
+check "nothing about it on disk" '! grep -q "^pain	[0-9]*	stranger	" $W/store.lgp && ! grep "^pain	" $W/store.lgp | grep -q "wasn"' "stored"
 
 # The page: suggestions, Keep, Forget, owner only.
 r=$(get $PAL /problems prob.html)

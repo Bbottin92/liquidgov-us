@@ -1325,6 +1325,73 @@ int main() {
         unlink(ppath.c_str());
         unlink((ppath + ".tmp").c_str());
 
+        // Private prefixes survive the same flush that keeps post:. A missing
+        // post, an unknown prefix, the other person's mail, someone else's
+        // group message, and a deleted group message do not.
+        {
+            const std::string priv = tmp_path();
+            std::uint64_t fpid = 0, gpid = 0, mpid = 0, gmid = 0;
+            {
+                FileStore store(priv);
+                assert(create_account(store, breach, "ann", "correct-horse-battery-staple", "+15558880021").error == AuthError::None);
+                assert(create_account(store, breach, "bob", "correct-horse-battery-staple", "+15558880022").error == AuthError::None);
+                const auto fid = store.add_post("ann", "friends only wish", "");
+                const auto gid = store.add_post("ann", "group wish", "fres1");
+                fpid = store.add_pain_suggestion("ann", {"wish", "the library stayed open"}, "fpost:" + std::to_string(fid));
+                gpid = store.add_pain_suggestion("ann", {"pain", "the buses skip my stop"}, "gpost:" + std::to_string(gid));
+                assert(fpid != 0 && store.pain_by_id(fpid));
+                assert(gpid != 0 && store.pain_by_id(gpid));
+                store.add_mail("ann", "bob", "sidewalks");
+                const auto sent = store.mail_sent_by("ann");
+                assert(sent.size() == 1);
+                mpid = store.add_pain_suggestion("ann", {"pain", "the sidewalks flood"},
+                                                 "mail:" + std::to_string(sent[0].ts) + ":bob");
+                assert(mpid != 0 && store.pain_by_id(mpid));
+                store.add_friend_request("ann", "bob");
+                assert(store.accept_friend_request("ann", "bob"));
+                auto ann = store.find_by_username("ann");
+                auto bob = store.find_by_username("bob");
+                TestSocialGraph graph(store);
+                auto created = create_conversation(store, graph, ann->id, {bob->id}, true);
+                assert(created.error == MessengerError::None && created.conversation_id);
+                auto sent_g = send_message(store, ann->id, *created.conversation_id, "pool earlier");
+                assert(sent_g.error == MessengerError::None && sent_g.message_id);
+                gmid = store.add_pain_suggestion("ann", {"wish", "the pool opened earlier"},
+                                                 "gmsg:" + std::to_string(*sent_g.message_id));
+                assert(gmid != 0 && store.pain_by_id(gmid));
+                assert(store.pains_of("ann").size() == 4);
+                store.add_pain_suggestion("ann", {"wish", "unknown prefix"}, "nope:1");
+                store.add_pain_suggestion("ann", {"wish", "missing friends post"}, "fpost:999999");
+                store.add_mail("bob", "ann", "trains");
+                const auto inbound = store.mail_sent_by("bob");
+                assert(inbound.size() == 1);
+                store.add_pain_suggestion("ann", {"wish", "the trains ran all night"},
+                                          "mail:" + std::to_string(inbound[0].ts) + ":ann");
+                auto bob_msg = send_message(store, bob->id, *created.conversation_id, "not ann");
+                assert(bob_msg.error == MessengerError::None && bob_msg.message_id);
+                store.add_pain_suggestion("ann", {"wish", "not my message"}, "gmsg:" + std::to_string(*bob_msg.message_id));
+                assert(store.pains_of("ann").size() == 4);
+                auto gone = store.get_message(*sent_g.message_id);
+                assert(gone);
+                gone->deletion = DeletionState::DeletedForEveryone;
+                store.update_message(*gone);
+                assert(!store.pain_by_id(gmid));
+                assert(store.pain_by_id(fpid) && store.pain_by_id(gpid) && store.pain_by_id(mpid));
+            }
+            {
+                FileStore store(priv);
+                auto rows = store.pains_of("ann");
+                assert(rows.size() == 3);
+                assert(store.pain_by_id(fpid) && store.pain_by_id(fpid)->source.rfind("fpost:", 0) == 0);
+                assert(store.pain_by_id(gpid) && store.pain_by_id(gpid)->source.rfind("gpost:", 0) == 0);
+                assert(store.pain_by_id(mpid) && store.pain_by_id(mpid)->source.rfind("mail:", 0) == 0);
+                assert(!store.pain_by_id(gmid));
+            }
+            unlink(priv.c_str());
+            unlink((priv + ".tmp").c_str());
+            std::cout << "pain points: private sources survive flush\n";
+        }
+
         // Old suggestions expire after 30 days; kept ones stay. Old 7-field mapp loads with pains on.
         const std::string hand = tmp_path();
         {
@@ -1349,12 +1416,126 @@ int main() {
             assert(c.size() == 1 || c.size() == 2); // loading may or may not save at once...
             store.add_post("cat", "y", "");          // ...but the next save drops the expired suggestion
             c = store.pains_of("cat");
-            assert(c.size() == 1 && c[0].phrase == "old kept");
+            assert(c.size() == 1 && c[0].phrase == "old kept" && !c[0].flowed); // 8 fields: Still
             assert(store.add_pain_suggestion("cat", {"wish", "new one here"}, "post:1") > 8); // ids continue past 8
         }
         unlink(hand.c_str());
         unlink((hand + ".tmp").c_str());
+
+        // Flow is owner-only, kept-only, and the 9th field exists only while it is on.
+        {
+            const std::string fpath = tmp_path();
+            std::uint64_t id = 0, sugg = 0, post_id = 0;
+            {
+                FileStore store(fpath);
+                assert(create_account(store, breach, "ann", "correct-horse-battery-staple", "+15558880011").error == AuthError::None);
+                assert(create_account(store, breach, "bob", "correct-horse-battery-staple", "+15558880012").error == AuthError::None);
+                post_id = store.add_post("ann", "I wish the buses ran later", "");
+                const std::string src = "post:" + std::to_string(post_id);
+                id = store.add_pain_suggestion("ann", {"wish", "the buses ran later"}, src);
+                sugg = store.add_pain_suggestion("ann", {"pain", "parking downtown"}, src);
+                assert(!store.flow_pain("ann", id, true));          // still a suggestion
+                assert(!store.pain_by_id(id)->flowed);
+                assert(store.keep_pain("ann", id));
+                assert(!store.flow_pain("bob", id, true));          // not bob's
+                assert(!store.flow_pain("ann", sugg, true));        // unkept
+                assert(!store.flow_pain("ann", 999, true));
+                assert(store.flow_pain("ann", id, true));
+                assert(store.flow_pain("ann", id, true));           // again: still true, no extra row
+                assert(store.pain_by_id(id)->flowed && store.pain_by_id(id)->kept);
+                assert(!store.pain_by_id(sugg)->flowed);
+            }
+            {
+                const std::string disk = slurp(fpath);
+                assert(disk.find("\tpost:" + std::to_string(post_id) + "\tthe buses ran later\t1\n") != std::string::npos);
+                assert(disk.find("\tparking downtown\n") != std::string::npos);
+                assert(disk.find("\tparking downtown\t") == std::string::npos); // suggestion stays 8 fields
+                FileStore store(fpath);
+                assert(store.pain_by_id(id)->flowed);
+                assert(store.flow_pain("ann", id, false));
+                assert(store.pain_by_id(id)->kept && !store.pain_by_id(id)->flowed);
+            }
+            {
+                const std::string disk = slurp(fpath);
+                assert(disk.find("\tthe buses ran later\n") != std::string::npos);
+                assert(disk.find("\tthe buses ran later\t1\n") == std::string::npos); // Still drops the 9th field
+                FileStore store(fpath);
+                assert(!store.pain_by_id(id)->flowed);
+                assert(store.flow_pain("ann", id, true) && store.forget_pain("ann", id));
+                assert(!store.pain_by_id(id));
+            }
+            unlink(fpath.c_str());
+            unlink((fpath + ".tmp").c_str());
+        }
+        // Same subject is the phrase, case-folded. A shared word is not a match.
+        // Still and unkept rows are not in the Flowed set.
+        {
+            assert(pain_subject_key("  The   Buses ") == "the buses");
+            assert(pain_subject_key("the buses") != pain_subject_key("more buses"));
+            assert(pain_subject_key(" \t ") == "");
+            const std::string spath = tmp_path();
+            std::uint64_t ann_id = 0, bob_id = 0, cat_id = 0, dee_id = 0, sugg_id = 0;
+            {
+                FileStore store(spath);
+                assert(create_account(store, breach, "ann", "correct-horse-battery-staple", "+15558880021").error == AuthError::None);
+                assert(create_account(store, breach, "bob", "correct-horse-battery-staple", "+15558880022").error == AuthError::None);
+                assert(create_account(store, breach, "cat", "correct-horse-battery-staple", "+15558880023").error == AuthError::None);
+                assert(create_account(store, breach, "dee", "correct-horse-battery-staple", "+15558880024").error == AuthError::None);
+                const auto ap = store.add_post("ann", "I wish the buses ran later", "");
+                const auto ap2 = store.add_post("ann", "I wish the buses ran later too", "");
+                const auto bp = store.add_post("bob", "I wish The Buses Ran Later", "");
+                const auto cp = store.add_post("cat", "I wish the buses ran later", "");
+                const auto dp = store.add_post("dee", "I wish more buses downtown", "");
+                ann_id = store.add_pain_suggestion("ann", {"wish", "the buses ran later"}, "post:" + std::to_string(ap));
+                sugg_id = store.add_pain_suggestion("ann", {"wish", "the buses ran later"}, "post:" + std::to_string(ap2));
+                bob_id = store.add_pain_suggestion("bob", {"wish", "The Buses Ran Later"}, "post:" + std::to_string(bp));
+                cat_id = store.add_pain_suggestion("cat", {"wish", "the buses ran later"}, "post:" + std::to_string(cp));
+                dee_id = store.add_pain_suggestion("dee", {"wish", "more buses downtown"}, "post:" + std::to_string(dp));
+                assert(ann_id && sugg_id && bob_id && cat_id && dee_id);
+                assert(store.keep_pain("ann", ann_id) && store.flow_pain("ann", ann_id, true));
+                assert(store.keep_pain("bob", bob_id) && store.flow_pain("bob", bob_id, true));
+                assert(store.keep_pain("cat", cat_id));
+                assert(!store.pain_by_id(cat_id)->flowed);
+                assert(store.keep_pain("dee", dee_id) && store.flow_pain("dee", dee_id, true));
+                assert(!store.pain_by_id(sugg_id)->kept);
+                const auto same = store.flowed_with_subject("THE   buses   RAN later");
+                assert(same.size() == 2);
+                assert((same[0].id == ann_id && same[1].id == bob_id) || (same[0].id == bob_id && same[1].id == ann_id));
+                const auto other = store.flowed_with_subject("more buses downtown");
+                assert(other.size() == 1 && other[0].id == dee_id);
+                assert(store.flowed_with_subject("buses").empty());
+                assert(store.flowed_with_subject("").empty());
+            }
+            unlink(spath.c_str());
+            unlink((spath + ".tmp").c_str());
+        }
+        // A hand-written 9th field reloads. Unkept + flowed is forced Still. 0 is Still.
+        {
+            const std::string rawp = tmp_path();
+            {
+                FileStore store(rawp);
+                assert(create_account(store, breach, "dee", "correct-horse-battery-staple", "+15558880013").error == AuthError::None);
+                store.add_post("dee", "x", "");
+            }
+            {
+                std::ofstream out(rawp, std::ios::app);
+                out << "pain\t3\tdee\twish\t1\t5\tpost:1\tflowed%20one\t1\n"
+                    << "pain\t4\tdee\twish\t1\t5\tpost:1\tstill%20one\t0\n"
+                    << "pain\t5\tdee\twish\t0\t5\tpost:1\tsuggestion%20one\t1\n";
+            }
+            {
+                FileStore store(rawp);
+                assert(store.pain_by_id(3)->flowed && store.pain_by_id(3)->phrase == "flowed one");
+                assert(store.pain_by_id(4)->kept && !store.pain_by_id(4)->flowed);
+                assert(store.pain_by_id(5) && !store.pain_by_id(5)->kept && !store.pain_by_id(5)->flowed);
+            }
+            unlink(rawp.c_str());
+            unlink((rawp + ".tmp").c_str());
+        }
         for (const char* badline : {"LGP1\npain\t1\tcat\twish\t1\t5\tpost:1\n", "LGP1\npain\t1\tcat\twish\t2\t5\tpost:1\tx\n",
+                                    "LGP1\npain\t1\tcat\twish\t1\t5\tpost:1\tx\t2\n",
+                                    // A 10th field is no longer malformed (2026-11-07): a newer version's
+                                    // field is kept verbatim; see "forward compatibility" below.
                                     "LGP1\npainn\n"}) {
             const std::string bad = tmp_path();
             { std::ofstream out(bad); out << badline; }
@@ -1366,7 +1547,41 @@ int main() {
             assert(threw);
             unlink(bad.c_str());
         }
-        std::cout << "pain points: store ok (keep, forget, owner-only, off deletes, source/account deletion, expiry, reload)\n";
+        std::cout << "pain points: store ok (keep, forget, owner-only, off deletes, source/account deletion, expiry, reload, subject match)\n";
+    }
+
+    // Forward compatibility (2026-11-07): a NEWER version's extra fields on mapp and
+    // pain rows load, survive saves (including a settings change) and are written back
+    // verbatim, so rolling back one version neither refuses the store nor drops them.
+    {
+        const std::string fpath = tmp_path();
+        {
+            FileStore store(fpath);
+            assert(create_account(store, breach, "fwd", "correct-horse-battery-staple", "+15559990001").error == AuthError::None);
+            store.add_post("fwd", "source", "");
+        }
+        {
+            std::ofstream out(fpath, std::ios::app);
+            out << "mapp\tfwd\t1\t1\t1\t1\t0\t1\t0\tfuture%20x\n"
+                << "pain\t40\tfwd\twish\t1\t5\tpost:1\tthe buses\t1\t7\tlater\n";
+        }
+        {
+            FileStore store(fpath);
+            assert(store.map_prefs_of("fwd").show && store.map_prefs_of("fwd").pains);
+            auto p = store.pain_by_id(40);
+            assert(p && p->kept && p->flowed && p->extra_fields.size() == 2);
+            MapPrefs mp; mp.show = true; mp.friends = true; // a settings save knows only today's fields
+            store.set_map_prefs("fwd", mp);
+            assert(store.map_prefs_of("fwd").extra_fields.size() == 2);
+        }
+        {
+            const std::string disk = slurp(fpath);
+            assert(disk.find("mapp\tfwd\t1\t1\t1\t1\t1\t1\t0\tfuture%20x\n") != std::string::npos);
+            assert(disk.find("\tthe buses\t1\t7\tlater\n") != std::string::npos);
+            std::cout << "forward compatibility: newer mapp/pain fields kept through load, settings save and flush\n";
+        }
+        unlink(fpath.c_str());
+        unlink((fpath + ".tmp").c_str());
     }
 
     unlink(path.c_str());

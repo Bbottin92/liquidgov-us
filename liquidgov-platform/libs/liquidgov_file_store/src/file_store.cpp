@@ -864,7 +864,11 @@ MapPrefs FileStore::map_prefs_of(const std::string& username) const {
 
 void FileStore::set_map_prefs(const std::string& username, const MapPrefs& p) {
     if (username.empty()) return;
-    map_prefs_[username] = p;
+    // Settings forms only know today's fields: keep a newer version's extras.
+    auto old = map_prefs_.find(username);
+    MapPrefs merged = p;
+    if (old != map_prefs_.end() && merged.extra_fields.empty()) merged.extra_fields = old->second.extra_fields;
+    map_prefs_[username] = merged;
     if (!p.pains) // off deletes everything it collected
         pains_.erase(std::remove_if(pains_.begin(), pains_.end(),
                                     [&](const PainPoint& x) { return x.owner == username; }), pains_.end());
@@ -912,6 +916,21 @@ std::vector<std::string> pain_words(const std::string& text) {
     return out;
 }
 } // namespace
+
+std::string pain_subject_key(const std::string& phrase) {
+    std::string o;
+    bool sp = false;
+    for (unsigned char c : phrase) {
+        if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+            if (!o.empty()) sp = true;
+            continue;
+        }
+        if (sp) { o.push_back(' '); sp = false; }
+        if (c >= 'A' && c <= 'Z') c = static_cast<unsigned char>(c - 'A' + 'a');
+        o.push_back(static_cast<char>(c));
+    }
+    return o;
+}
 
 std::vector<std::string> pain_keywords(const std::string& phrase) {
     static const std::set<std::string> kFiller = {
@@ -1047,11 +1066,34 @@ std::optional<PainPoint> FileStore::pain_by_id(std::uint64_t id) const {
     return std::nullopt;
 }
 
+std::vector<PainPoint> FileStore::flowed_with_subject(const std::string& phrase) const {
+    std::vector<PainPoint> out;
+    const std::string key = pain_subject_key(phrase);
+    if (key.empty()) return out;
+    for (auto it = pains_.rbegin(); it != pains_.rend(); ++it) {
+        if (!it->kept || !it->flowed) continue;
+        if (pain_subject_key(it->phrase) == key) out.push_back(*it);
+    }
+    return out;
+}
+
 bool FileStore::keep_pain(const std::string& owner, std::uint64_t id) {
     for (auto& p : pains_) {
         if (p.id != id) continue;
         if (p.owner != owner) return false;
         if (!p.kept) { p.kept = true; flush(); }
+        return true;
+    }
+    return false;
+}
+
+bool FileStore::flow_pain(const std::string& owner, std::uint64_t id, bool on) {
+    for (auto& p : pains_) {
+        if (p.id != id) continue;
+        if (p.owner != owner || !p.kept) return false;
+        if (p.flowed == on) return true;
+        p.flowed = on;
+        flush();
         return true;
     }
     return false;
@@ -1077,19 +1119,57 @@ void FileStore::clear_pains(const std::string& owner) {
 
 void FileStore::prune_pains() {
     const std::int64_t cutoff = now() - 30LL * 24 * 3600;
-    auto source_alive = [&](const std::string& src) {
-        auto colon = src.find(':');
-        if (colon == std::string::npos) return false;
-        const std::string type = src.substr(0, colon), num = src.substr(colon + 1);
+    // A prefix not named here is deleted on this flush. post/prop/prply are the
+    // public ones. fpost/gpost/mail/gmsg are this owner's own writing and stay
+    // only while that writing still exists. mail is mail:<ts>:<recipient>, so
+    // it cannot share the numeric-id check.
+    auto digits = [](const std::string& num, std::uint64_t& id) {
         if (num.empty() || num.size() > 19 || num.find_first_not_of("0123456789") != std::string::npos) return false;
-        const std::uint64_t id = std::stoull(num);
-        if (type == "post") { for (const auto& p : posts_) if (p.id == id) return true; return false; }
-        if (type == "prop") { for (const auto& p : proposals_) if (p.id == id) return true; return false; }
-        if (type == "prply") { for (const auto& r : proposal_replies_) if (r.id == id) return true; return false; }
+        id = std::stoull(num);
+        return true;
+    };
+    auto source_alive = [&](const PainPoint& pain) {
+        const auto colon = pain.source.find(':');
+        if (colon == std::string::npos || colon == 0) return false;
+        const std::string type = pain.source.substr(0, colon);
+        const std::string rest = pain.source.substr(colon + 1);
+        if (type == "mail") {
+            const auto split = rest.find(':');
+            if (split == std::string::npos || split == 0) return false;
+            std::uint64_t ts_u = 0;
+            if (!digits(rest.substr(0, split), ts_u)) return false;
+            const std::string to = rest.substr(split + 1);
+            if (to.empty()) return false;
+            const auto ts = static_cast<std::int64_t>(ts_u);
+            for (const auto& m : mail_) {
+                if (m.from == pain.owner && m.to == to && m.ts == ts) return true;
+            }
+            return false;
+        }
+        std::uint64_t id = 0;
+        if (!digits(rest, id)) return false;
+        if (type == "post" || type == "fpost" || type == "gpost") {
+            for (const auto& p : posts_) if (p.id == id) return true;
+            return false;
+        }
+        if (type == "prop") {
+            for (const auto& p : proposals_) if (p.id == id) return true;
+            return false;
+        }
+        if (type == "prply") {
+            for (const auto& r : proposal_replies_) if (r.id == id) return true;
+            return false;
+        }
+        if (type == "gmsg") {
+            auto it = messages_.find(id);
+            if (it == messages_.end() || it->second.deletion != DeletionState::NotDeleted) return false;
+            auto owner = find_by_username(pain.owner);
+            return owner && owner->id == it->second.sender;
+        }
         return false;
     };
     pains_.erase(std::remove_if(pains_.begin(), pains_.end(), [&](const PainPoint& p) {
-        return (!p.kept && p.ts < cutoff) || !source_alive(p.source) || !find_by_username(p.owner);
+        return (!p.kept && p.ts < cutoff) || !source_alive(p) || !find_by_username(p.owner);
     }), pains_.end());
 }
 
@@ -2434,7 +2514,8 @@ void FileStore::load() {
             if (f.size() != 3) throw std::runtime_error("LGP1: bad ccity record");
             pending_city[pct_decode(f[1])] = pct_decode(f[2]);
         } else if (tag == "mapp") {
-            if (f.size() != 7 && f.size() != 8) throw std::runtime_error("LGP1: bad mapp record");
+            // 7 or 8 fields, or more from a newer version (kept verbatim in extra_fields).
+            if (f.size() < 7) throw std::runtime_error("LGP1: bad mapp record");
             const std::string who = pct_decode(f[1]);
             auto bit = [&](const std::string& v) {
                 if (v != "0" && v != "1") throw std::runtime_error("LGP1: bad mapp flag");
@@ -2443,10 +2524,12 @@ void FileStore::load() {
             MapPrefs mp;
             mp.show = bit(f[2]); mp.groups = bit(f[3]); mp.posts = bit(f[4]);
             mp.comments = bit(f[5]); mp.friends = bit(f[6]);
-            if (f.size() == 8) mp.pains = bit(f[7]); // 7 fields: written before pains existed, default on
+            if (f.size() >= 8) mp.pains = bit(f[7]); // 7 fields: written before pains existed, default on
+            for (std::size_t i = 8; i < f.size(); ++i) mp.extra_fields.push_back(f[i]); // still percent-encoded
             if (!who.empty()) map_prefs_[who] = mp;
         } else if (tag == "pain") {
-            if (f.size() != 8) throw std::runtime_error("LGP1: bad pain record");
+            // 8 or 9 fields, or more from a newer version (kept verbatim in extra_fields).
+            if (f.size() < 8) throw std::runtime_error("LGP1: bad pain record");
             PainPoint p;
             p.id = parse_u64(f[1], "pain id");
             p.owner = pct_decode(f[2]);
@@ -2456,6 +2539,12 @@ void FileStore::load() {
             p.ts = parse_i64(f[5], "pain ts");
             p.source = pct_decode(f[6]);
             p.phrase = pct_decode(f[7]);
+            if (f.size() >= 9) {
+                if (f[8] != "0" && f[8] != "1") throw std::runtime_error("LGP1: bad pain flowed flag");
+                p.flowed = f[8] == "1";
+            }
+            for (std::size_t i = 9; i < f.size(); ++i) p.extra_fields.push_back(f[i]); // still percent-encoded
+            if (!p.kept) p.flowed = false; // a suggestion is never public
             if (!p.owner.empty() && !p.phrase.empty() && (p.kind == "wish" || p.kind == "pain")) {
                 pains_.push_back(p);
                 if (p.id >= next_pain_id_) next_pain_id_ = p.id + 1;
@@ -3058,13 +3147,20 @@ void FileStore::flush() {
     for (const auto& [who, mp] : map_prefs_) {
         body << "mapp\t" << pct_encode(who) << "\t" << (mp.show ? 1 : 0) << "\t" << (mp.groups ? 1 : 0) << "\t"
              << (mp.posts ? 1 : 0) << "\t" << (mp.comments ? 1 : 0) << "\t" << (mp.friends ? 1 : 0) << "\t"
-             << (mp.pains ? 1 : 0) << "\n";
+             << (mp.pains ? 1 : 0);
+        for (const auto& x : mp.extra_fields) body << "\t" << x; // a newer version's fields, untouched
+        body << "\n";
     }
     prune_pains();
     body << "painn\t" << next_pain_id_ << "\n";
     for (const auto& p : pains_) {
         body << "pain\t" << p.id << "\t" << pct_encode(p.owner) << "\t" << pct_encode(p.kind) << "\t" << (p.kept ? 1 : 0)
-             << "\t" << p.ts << "\t" << pct_encode(p.source) << "\t" << pct_encode(p.phrase) << "\n";
+             << "\t" << p.ts << "\t" << pct_encode(p.source) << "\t" << pct_encode(p.phrase);
+        // 9th field only when Flowed. A Still store stays 8 fields, which the
+        // binary that first shipped pain records can still open.
+        if ((p.kept && p.flowed) || !p.extra_fields.empty()) body << "\t" << (p.kept && p.flowed ? 1 : 0);
+        for (const auto& x : p.extra_fields) body << "\t" << x; // a newer version's fields, untouched
+        body << "\n";
     }
     for (const auto& [key, tags] : city_tags_) {
         for (const auto& tag : tags)

@@ -10,7 +10,7 @@ had. Prints 'naming_check: N checks, F failed' and exits 1 if any failed.
 city_store_test.cpp, a second restart of the same unit, and a watched file hidden in a
 subdirectory. A clean tree with an underscored cpp name and one restart passes.
 """
-import os, re, subprocess, sys, tempfile
+import os, re, shlex, subprocess, sys, tempfile
 
 def parse_toml(text):
     """The small subset this file uses: [section], key = "str", key = N, key = ["a", "b"]."""
@@ -78,20 +78,110 @@ def port_of(path):
     return int(m.group(1)) if m else None
 
 def restart_units(path):
-    """Unit names from a real systemctl restart. Comments and echoed reminders do not count."""
+    """Find literal service restarts without executing shell code.
+
+    Covers simple commands, sudo/env, control-flow separators and ssh payloads.
+    This is not a shell interpreter: variables, aliases, generated code and files
+    outside the repository remain outside the static check's coverage.
+    """
     try:
-        lines = open(path, encoding="utf-8", errors="replace").read().splitlines()
+        with open(path, encoding="utf-8", errors="replace") as f:
+            text = f.read()
     except OSError:
         return []
-    found = []
-    for line in lines:
-        s = line.strip()
-        if not s or s.startswith("#"):
-            continue
-        m = re.search(r"(?:^|[;&|]\s*)systemctl restart\s+(\S+)", s)
-        if m:
-            found.append(m.group(1).rstrip(".;"))
-    return found
+
+    def units_in(text, depth=0):
+        if depth > 8:  # bound nested ssh/shell payloads
+            return []
+        tokens = []
+        # shlex is not a full shell parser (notably nested command-substitution
+        # quoting). Inspect logical command lines, not embedded Python/awk prose.
+        for line in text.replace("\\\n", "").splitlines():
+            if not re.search(r"\b(systemctl|service|ssh)\b", line):
+                continue
+            lex = shlex.shlex(line, posix=True, punctuation_chars=";|&()")
+            lex.whitespace_split = True
+            try:
+                tokens.extend(list(lex) + ["\n"])
+            except ValueError as e:
+                raise ValueError("cannot inspect shell command in %s: %s" % (path, e)) from e
+        events = []
+
+        def operands(words, takes_value=()):
+            result, skip = [], False
+            for word in words:
+                if skip:
+                    skip = False
+                elif word in takes_value:
+                    skip = True
+                elif not word.startswith("-"):
+                    result.append(word)
+            return result
+
+        def command(words):
+            # Only unwrap command-position prefixes, never text passed to echo,
+            # printf, status/show, etc. Quoted ssh payloads stay opaque until here.
+            while words:
+                head = os.path.basename(words[0])
+                if head in ("if", "then", "else", "elif", "do", "while", "until", "{", "!", "exec", "command") or re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", words[0]):
+                    words = words[1:]
+                elif head in ("sudo", "env"):
+                    words = words[1:]
+                    while words and (words[0].startswith("-") or re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", words[0])):
+                        option = words.pop(0)
+                        if option in ("-u", "-g", "-h", "-p", "-C", "-T", "--user", "--group", "--host", "--prompt", "-S", "--split-string") and words:
+                            # sudo -S is a switch, env -S consumes a string.
+                            if option != "-S" or head == "env":
+                                value = words.pop(0)
+                                if head == "env" and option in ("-S", "--split-string"):
+                                    events.extend(units_in(value, depth + 1))
+                else:
+                    break
+            if not words:
+                return
+            head, args = os.path.basename(words[0]), words[1:]
+            if head in ("ssh", "ssh.exe"):
+                args = operands(args, ("-p", "-i", "-l", "-o", "-F", "-J", "-S", "-W"))
+                if len(args) > 1:
+                    events.extend(units_in(" ".join(args[1:]), depth + 1))
+                return
+            if head in ("sh", "bash", "dash"):
+                for i, arg in enumerate(args):
+                    if arg.startswith("-") and "c" in arg[1:] and i + 1 < len(args):
+                        events.extend(units_in(args[i + 1], depth + 1))
+                        break
+                return
+            if head == "systemctl":
+                args = operands(args, ("-H", "--host", "-M", "--machine", "-t", "--type", "--root", "--job-mode"))
+                if not args:
+                    return
+                verb, names = args[0], args[1:]
+            elif head == "service" and len(args) >= 2:
+                verb, names = args[1], args[:1]
+            else:
+                return
+            names = {n[:-8] if n.endswith(".service") else n for n in names}
+            if verb in ("restart", "try-restart", "reload-or-restart", "try-reload-or-restart", "reload-or-try-restart", "force-reload"):
+                events.extend(("restart", n) for n in sorted(names))
+            elif verb in ("stop", "start"):
+                events.extend((verb, n) for n in sorted(names))
+
+        words = []
+        for token in tokens + ["\n"]:
+            if token and all(c in ";|&()\n" for c in token):
+                command(words)
+                words = []
+            else:
+                words.append(token)
+        return events
+
+    found, stopped = set(), set()
+    for action, unit in units_in(text):
+        if action == "restart" or (action == "start" and unit in stopped):
+            found.add(unit)
+        elif action == "stop":
+            stopped.add(unit)
+    return sorted(found)
 
 def branches_of(root):
     r = subprocess.run(["git", "-C", root, "for-each-ref", "--format=%(refname:short)", "refs/heads"],

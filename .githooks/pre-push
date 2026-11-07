@@ -1,0 +1,34 @@
+#!/usr/bin/env sh
+# LiquidGov pre-push: binds EVERY agent that pushes (Claude, Grok, Grok Bot, Brandon), not just one agent's harness.
+# Refuses the push if the store/undo/docs/assets have drifted apart (lgp1_consistency.py) or the app wiring is off
+# (pwa_check.py). Both read files only, take about a second, and need no server.
+# Why (2026-11-07): changes kept landing without their dependents (undo lists, CI checks, rollback binaries), and
+# Brandon asked that "when one thing changes, everything thats effected by that change is also changed accordingly".
+# Enable once per clone (worktrees share it):  git config core.hooksPath .githooks
+ROOT="$(git rev-parse --show-toplevel)" || exit 1
+# Pick an interpreter that actually RUNS: on Windows, `python3` can be the Microsoft Store stub that only prints
+# "Python was not found" (2026-11-07, Git Bash). Try each candidate; never trust `command -v` alone.
+PY=""
+for c in python3 python py /c/Python314/python.exe /c/Python313/python.exe; do
+  if command -v "$c" >/dev/null 2>&1 && "$c" -c "import sys; sys.exit(0 if sys.version_info >= (3, 8) else 1)" >/dev/null 2>&1; then
+    PY="$c"; break
+  fi
+done
+if [ -z "$PY" ]; then
+  echo "pre-push: no working Python 3.8+ found, so the consistency checks could not run; refusing (fix PATH)." >&2
+  exit 1
+fi
+fail=0
+for check in lgp1_consistency.py pwa_check.py; do
+  out="$("$PY" "$ROOT/commons-daemon/tests/$check" "$ROOT" 2>&1)"; rc=$?
+  echo "$out" | tail -1
+  if [ $rc -ne 0 ]; then
+    echo "$out" | grep "FAIL" | head -15 >&2
+    fail=1
+  fi
+done
+if [ $fail -ne 0 ]; then
+  echo "pre-push: refusing. Fix every FAIL above (update everything the change affects), commit, then push." >&2
+  exit 1
+fi
+exit 0

@@ -201,6 +201,11 @@
 //          appears in, beyond Post.community itself (which still holds the
 //          first/primary slug for back-compat with every reader that only
 //          ever looked at that one field). One line per extra slug.
+//   rp     <post_id> <origin_author> <origin_post_id>   // this post is a repost
+//          (credits the original author). Separate tag so old "post" lines load unchanged.
+//   pa     <post_id> <blob_id> <mime>   // the post's attachment. Same reasoning as rp.
+//   pv     <post_id> <old Visibility 0|2>   // LEGACY, read only, never written:
+//          converted to the pau audience on load (see the note below).
 //
 // Legacy note: an earlier same-day draft of per-post audience used a
 // two-value "pv <post_id> <old Visibility 0|2>" tag (0=Public, 2=Friends)

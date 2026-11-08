@@ -1944,17 +1944,10 @@ std::string wrap(const std::string& title, const std::string& user, int unread, 
     // plain first-time-only (localStorage) behavior, same as before this
     // setting existed.
     const bool intro_always_play = show_intro && !user.empty() && g_store.prefs_of(user).intro_every_visit;
-    if (g_embed) {
-        // Inside the map's right-hand field: the page alone, no header,
-        // footer, intro or jukebox. Links and forms keep working in the field.
-        std::string page = page_wrap(title, "", body, false, false);
-        const std::string fit =
-            "<style>header.top,footer.site{display:none!important}"
-            "main.wrap{padding-top:.75rem;padding-bottom:1.5rem}</style>";
-        auto head = page.find("</head>");
-        if (head != std::string::npos) page.insert(head, fit);
-        return page;
-    }
+    // The one-time 988 notice goes on the next page this person sees, framed or not. Framed pages (the map's field,
+    // and every page while Juketube's persistent shell keeps music playing) used to skip it, so someone browsing
+    // with music on could go a long time without it (side-agent catch, Brandon 2026-11-08: fix it). Only visible
+    // frames render wrap() in embed mode: the profile-theme preview frame (/u/<name>/theme) uses http_raw, not wrap.
     std::string care;
     if (!user.empty() && g_care_notice.erase(user)) {
         care = "<div class=\"card\" role=\"note\" style=\"border-left:4px solid var(--accent)\">"
@@ -1962,6 +1955,17 @@ std::string wrap(const std::string& title, const std::string& user, int unread, 
                "In the US you can call or text <a href=\"tel:988\"><strong>988</strong></a> "
                "(Suicide &amp; Crisis Lifeline) any time. It's free and confidential.</p>"
                "<p class=\"muted\">Crisis words are not saved as a problem, and nobody is told.</p></div>";
+    }
+    if (g_embed) {
+        // Inside a frame (the map's right-hand field, or the Juketube shell): the page alone, no header,
+        // footer, intro or jukebox. Links and forms keep working in the field.
+        std::string page = page_wrap(title, "", care + body, false, false);
+        const std::string fit =
+            "<style>header.top,footer.site{display:none!important}"
+            "main.wrap{padding-top:.75rem;padding-bottom:1.5rem}</style>";
+        auto head = page.find("</head>");
+        if (head != std::string::npos) page.insert(head, fit);
+        return page;
     }
     std::string page = page_wrap(title, nav(user, unread), care + body, show_intro, intro_always_play);
     // Widget goes *after* </main>, not inside it: soft-navigation (see

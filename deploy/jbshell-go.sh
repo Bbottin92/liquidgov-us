@@ -6,11 +6,16 @@
 #
 # Read-only preflight, then a dry run. A content file outside the allow-list
 # stops the script before the backup. Then: copy the running binary to
-# liquidgov_http.pre-jbshell, sync, chown, build -j1, restart, read the journal,
-# public checks. No sleep after that. pre-city, pre-flow, pre-match and pre-iphone are left in place.
+# liquidgov_http.pre-jbshell, sync, chown, public checks. No sleep after that.
+# pre-city, pre-flow, pre-match and pre-iphone are left in place.
+# NO BUILD, NO RESTART (Brandon 2026-11-08 "Go, no restart"): this change is assets only, and the running server
+# (WorkingDirectory /opt/liquidgov) reads assets/juketube.js and .css from disk on every request, re-hashing their
+# URLs when the mtime changes. A restart would drop every listener and the shared station's song and queue.
+# The checks after the sync prove it: same server PID as before, and the live juketube.js equals this commit's.
+# Rollback: re-sync the two files from the previous commit (no restart needed either).
 set -euo pipefail
 if [ "${1:-}" != "go" ]; then
-  echo "Refusing. This restarts liquidgov.us. Run: bash deploy/jbshell-go.sh go"
+  echo "Refusing. This changes liquidgov.us (assets only, no restart). Run: bash deploy/jbshell-go.sh go"
   exit 2
 fi
 KEY="${LIQUIDGOV_DEPLOY_KEY:-}"
@@ -37,7 +42,7 @@ SSH=/mnt/c/Windows/System32/OpenSSH/ssh.exe
 HOST=root@143.198.159.58
 WINKEY=$(winpath "$KEY")
 [ -x "$SSH" ]
-echo "RESTARTING liquidgov.us from $ROOT"
+echo "UPDATING liquidgov.us assets (no restart) from $ROOT"
 
 remote() {
   "$SSH" -i "$WINKEY" -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new "$HOST" bash -s -- "$1" < "$ROOT/deploy/jbshell-remote.sh"
@@ -53,6 +58,9 @@ if ! grep -q '^PRE_JBSHELL_ABSENT$' "$PRELOG"; then echo PREFLIGHT_REFUSED; exit
 if ! grep -q '^PRE_FLOW_PRESENT$' "$PRELOG"; then echo PREFLIGHT_REFUSED; exit 1; fi
 if ! grep -q '^PRE_CITY_PRESENT$' "$PRELOG"; then echo PREFLIGHT_REFUSED; exit 1; fi
 if ! grep -q '^PREFLIGHT_DONE$' "$PRELOG"; then echo PREFLIGHT_REFUSED; exit 1; fi
+PID_BEFORE=$(sed -n 's/^PID=\([0-9][0-9]*\)$/\1/p' "$PRELOG")
+if [ -z "$PID_BEFORE" ] || [ "$PID_BEFORE" = "0" ]; then echo "PREFLIGHT_REFUSED (no server PID)"; exit 1; fi
+echo "PID_BEFORE=$PID_BEFORE"
 
 DRYLOG="${TMPDIR:-/tmp}/jbshell-dry-run.txt"
 # WSL vsock accept4/110 has closed rsync before any backup. One retry.
@@ -124,13 +132,21 @@ while true; do
   echo WSL_RSYNC_RETRY
 done
 remote chown
-remote build
-journal="${TMPDIR:-/tmp}/jbshell-restart-journal.txt"
-remote restart | tee "$journal"
-if grep -E "unknown record type|store open failed" "$journal"; then
-  echo ROLLBACK_NEEDED
-  exit 1
-fi
+# no build, no restart (see the header). Prove the running server is the same process and serves the new files.
+POSTLOG="${TMPDIR:-/tmp}/jbshell-postcheck.txt"
+remote preflight | tee "$POSTLOG"
+PID_AFTER=$(sed -n 's/^PID=\([0-9][0-9]*\)$/\1/p' "$POSTLOG")
+if ! grep -q '^ACTIVE=active$' "$POSTLOG"; then echo "NOT_ACTIVE after sync"; exit 1; fi
+if [ "$PID_AFTER" != "$PID_BEFORE" ]; then echo "PID_CHANGED $PID_BEFORE -> $PID_AFTER (something restarted the server)"; exit 1; fi
+echo "PID_SAME=$PID_AFTER"
+for f in juketube.js juketube.css; do
+  live=$(curl -fsS --max-time 20 "https://liquidgov.us/assets/$f" | sha256sum | cut -d' ' -f1)
+  want=$(sha256sum "$ROOT/liquidgov-platform/assets/$f" | cut -d' ' -f1)
+  if [ -z "$live" ] || [ "$live" != "$want" ]; then echo "LIVE_MISMATCH $f"; exit 1; fi
+  echo "LIVE_MATCH $f"
+done
+if ! curl -fsS --max-time 20 "https://liquidgov.us/assets/juketube.js" | grep -q lgShellHome; then echo "LIVE_NO_SHELL"; exit 1; fi
+echo "LIVE_HAS_SHELL"
 echo GO_DONE
 python3 "$ROOT/deploy/city-live-check.py"
 echo CHECK_DONE

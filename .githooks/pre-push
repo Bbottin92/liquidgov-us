@@ -21,7 +21,8 @@ fi
 fail=0
 # one_app_check.py is the one-app wiring. pwa_files_check.py keeps the Commons icons and the old
 # manifests. naming_check.py reads naming.toml. The retired pwa_check.py is not here (#6847b).
-for check in lgp1_consistency.py one_app_check.py pwa_files_check.py naming_check.py restart_bypass_check.py; do
+# make_go_check.py (2026-11-08) runs deploy/make-go.py in a temp copy: right pair for the change, dry mode.
+for check in lgp1_consistency.py one_app_check.py pwa_files_check.py naming_check.py restart_bypass_check.py make_go_check.py; do
   out="$("$PY" "$ROOT/commons-daemon/tests/$check" "$ROOT" 2>&1)"; rc=$?
   echo "$out" | tail -1
   if [ $rc -ne 0 ]; then

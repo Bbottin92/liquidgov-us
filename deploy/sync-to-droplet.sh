@@ -74,7 +74,11 @@ fi
 echo "Deploying commit ${COMMIT:-unknown}${DIRTY:+ (plus uncommitted changes)}"
 
 echo "Syncing $SRC -> $DEST (excluding build/.git/data files)${DRY:+ [dry run]}"
-rsync -az --checksum "${DRY[@]}" -e "$SSH_CMD" \
+# --no-times (2026-11-08): -a includes -t, which set every UNCHANGED file's modification time to the local checkout's,
+# so a fresh worktree made the next server build recompile everything (the 14:22 PT deploy rebuilt the whole tree for
+# one changed .cpp). Without -t, unchanged files keep their server times and a changed file gets "now", so make
+# still rebuilds exactly what changed. --checksum decides what changed, so times are not needed for that.
+rsync -az --no-times --checksum "${DRY[@]}" -e "$SSH_CMD" \
     --exclude build \
     --exclude .git \
     --exclude '*.lgp' \

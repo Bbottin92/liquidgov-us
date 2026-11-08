@@ -14,26 +14,26 @@
 #lgm-view.lgm-glide{transition:transform .35s ease}
 .lgn{cursor:pointer;transition:opacity .25s ease}
 .lgn.lgn-new{opacity:0}
-.lgn rect{fill:var(--paper);stroke:var(--rule);stroke-width:1.6}
+.lgn .lgs{fill:var(--paper);stroke:var(--rule);stroke-width:1.6}
 .lgn text{font-size:13px;fill:var(--ink);text-anchor:middle;pointer-events:none}
-.lgn:hover rect,.lgn:focus rect{stroke-width:3}
+.lgn:hover .lgs,.lgn:focus .lgs{stroke-width:3}
 .lgn:focus{outline:none}
-.lgn-root rect{fill:var(--accent);stroke:var(--accent)}
+.lgn-root .lgs{fill:var(--accent);stroke:var(--accent)}
 .lgn-root text{fill:var(--paper);font-weight:700}
-.lgn-city rect{stroke:var(--accent);stroke-width:2.6}
+.lgn-city .lgs{stroke:var(--accent);stroke-width:2.6}
 .lgn-city text{font-weight:700}
-.lgn-sitewide rect{stroke:#8a5cc2;stroke-width:2}
-.lgn-group rect{stroke:var(--accent)}
-.lgn-person rect{stroke:var(--ok)}
-.lgn-dept rect{stroke:#8a5cc2}
-.lgn-prop rect{stroke:var(--warn)}
-.lgn-post rect{stroke:var(--stone);stroke-dasharray:5 3}
-.lgn-pain rect{stroke:var(--danger);stroke-width:2;stroke-dasharray:2 2}
+.lgn-sitewide .lgs{stroke:#8a5cc2;stroke-width:2}
+.lgn-group .lgs{stroke:var(--accent)}
+.lgn-person .lgs{stroke:var(--ok)}
+.lgn-dept .lgs{stroke:#8a5cc2}
+.lgn-prop .lgs{stroke:var(--warn)}
+.lgn-post .lgs{stroke:var(--stone);stroke-dasharray:5 3}
+.lgn-pain .lgs{stroke:var(--danger);stroke-width:2;stroke-dasharray:2 2}
 .lge-noticed{stroke:var(--danger);stroke-dasharray:2 3}
 .lge-could-act{stroke:#8a5cc2;stroke-dasharray:6 3}
 .lge-about,.lge-working-on{stroke:var(--warn);stroke-dasharray:6 3}
-.lgn-open rect{stroke-width:2.4}
-.lgn-sel rect{stroke-width:4;filter:drop-shadow(0 2px 6px rgba(0,0,0,.18))}
+.lgn-open .lgs{stroke-width:2.4}
+.lgn-sel .lgs{stroke-width:4;filter:drop-shadow(0 2px 6px rgba(0,0,0,.18))}
 .lge{fill:none;stroke:var(--rule);stroke-width:var(--w,1.6px);opacity:.8;transition:opacity .15s,stroke-width .3s}
 .lge-member,.lge-lives{stroke:var(--ok)}
 .lge-touches{stroke:#8a5cc2}
@@ -58,8 +58,24 @@
 .lgm-ptop a{font-size:.9rem}
 #lgm-frame{flex:1;width:100%;border:0;background:var(--paper)}
 .lgm-foot{margin-top:.5rem;font-size:.85rem}
+/* shape key under the map (filled by the server) */
+.lgm-shapes{display:inline-flex;flex-wrap:wrap;gap:.2rem .7rem}
+.lgm-shapes span{display:inline-flex;align-items:center;gap:.25rem}
+.lgm-shapes svg{width:26px;height:12px;overflow:visible}
+.lgm-shapes .lgs{fill:var(--paper);stroke:var(--stone);stroke-width:1.6}
 @media (max-width:760px){
+  /* no transform on phones: it would trap the fixed sheet below inside the map box (advisor 2026-11-07) */
+  .lgmap{width:auto;margin-left:0;transform:none}
   .lgmap-body{flex-direction:column;height:auto}
-  .lgmap-canvas{height:60vh}
-  .lgmap-panel{width:auto;height:70vh}
+  /* flex:none so this height holds: with flex:1 a column flex item's height is ignored and the svg's 100% fell
+     back to SVG's default 150 px (boxes squeezed into a strip; found 2026-11-07). 60vh where svh is unknown. */
+  .lgmap-canvas{flex:none;height:60vh;height:calc(100svh - 220px);min-height:340px}
+  /* Brandon 2026-11-07: on a phone a tapped box's page is a full-screen sheet over the map; the bar at the top
+     ("< mAInstream") returns to the same spot. Above the Juketube button (z 56/57). */
+  .lgmap-panel:not([hidden]){position:fixed;inset:0;z-index:70;width:auto;height:auto;border:0;border-radius:0;
+    padding-top:env(safe-area-inset-top,0px);box-shadow:none}
+  #lgm-expand{display:none}
+  .lgm-ptop{min-height:48px}
+  #lgm-close{order:-1;font-weight:700;min-height:40px;padding:.3rem .8rem}
 }
+html.lgm-sheet-open,html.lgm-sheet-open body{overflow:hidden}

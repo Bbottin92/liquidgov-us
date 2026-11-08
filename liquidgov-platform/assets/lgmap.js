@@ -1,7 +1,7 @@
 // LiquidGov interactive map (/map). Brandon 2026-11-06: click a box and its
 // connections expand out of it; if the box is something people engage with,
 // its page shows in the field on the right; the field can fill the window, and
-// the MAINstream button at the top shrinks it back.
+// the mAInstream button at the top shrinks it back.
 // Data: GET /map/node?n=<id> -> {node:{id,label,kind,page}, links:[{node, edge}]}.
 // The server decides what this viewer may see (privacy settings, blocks); this
 // file only draws it.
@@ -19,6 +19,8 @@
   var ptitle = document.getElementById('lgm-ptitle');
   var openLink = document.getElementById('lgm-open');
   var statusEl = document.getElementById('lgm-status');
+  var closeBtn = document.getElementById('lgm-close');
+  function narrow() { return window.matchMedia ? matchMedia('(max-width: 760px)').matches : innerWidth <= 760; }
   var W = 200, H = 36, COLW = 270, ROWH = 46;
   var nodes = {};   // id -> {id,label,kind,page,rel,x,y,el,expanded}
   var edges = {};   // "a|b" -> {a,b,kind,el}
@@ -50,7 +52,7 @@
   // Brandon 2026-11-06: "if you've never actually connected with a box, then
   // maybe there's no distinct line, only a translucent one". A box counts as
   // touched once you've visited it here, or when it's yours (relevance 1:
-  // your city, groups, proposals...). The Main Stream always counts.
+  // your city, groups, proposals...). The mAInstream always counts.
   function touched(id) {
     var n = nodes[id];
     return (visits[id] || 0) > 0 || (n && (n.kind === 'root' || (typeof n.rel === 'number' && n.rel >= 0.95)));
@@ -65,9 +67,30 @@
     if (typeof n.rel !== 'number' || n.rel < 0) return;
     var r = Math.min(1, n.rel + 0.05 * Math.log2(1 + (visits[n.id] || 0)));
     var hue = Math.round(r * 120);
-    n.el.querySelector('rect').style.fill = 'hsla(' + hue + ',72%,48%,.24)';
+    n.el.querySelector('.lgs').style.fill = 'hsla(' + hue + ',72%,48%,.24)';
     n.el.setAttribute('data-rel', r.toFixed(2));
   }
+
+  // Shapes by kind (Brandon 2026-11-07: "color and shape coding"): people round, groups square, cities oval,
+  // proposals hexagon, offices octagon, problems a tag, posts a note. Colour stays relevance (shade).
+  function shapeEl(kind, w, h) {
+    var c = 10, poly = function (pts) { return el('polygon', { points: pts.map(function (p) { return p.join(','); }).join(' '), 'class': 'lgs' }); };
+    switch (kind) {
+      case 'person': return el('rect', { width: w, height: h, rx: h / 2, 'class': 'lgs' });
+      case 'group': return el('rect', { width: w, height: h, rx: 3, 'class': 'lgs' });
+      case 'city': return el('ellipse', { cx: w / 2, cy: h / 2, rx: w / 2, ry: h / 2, 'class': 'lgs' });
+      case 'prop': case 'sitewide': return poly([[c, 0], [w - c, 0], [w, h / 2], [w - c, h], [c, h], [0, h / 2]]);
+      case 'dept': return poly([[7, 0], [w - 7, 0], [w, 7], [w, h - 7], [w - 7, h], [7, h], [0, h - 7], [0, 7]]);
+      case 'pain': return poly([[0, 0], [w - 14, 0], [w, h / 2], [w - 14, h], [0, h]]);
+      default: return el('rect', { width: w, height: h, rx: 9, 'class': 'lgs' });
+    }
+  }
+  // Size from relevance: your own things are bigger (0.85x far .. 1.25x yours); the mAInstream stays 1x.
+  function sizeOf(n) {
+    return (typeof n.rel === 'number' && n.rel >= 0) ? 0.85 + 0.4 * Math.min(1, n.rel) : 1;
+  }
+  function leftX(n) { return n.x + W / 2 * (1 - sizeOf(n)); }
+  function rightX(n) { return n.x + W / 2 * (1 + sizeOf(n)); }
 
   function status(msg) { statusEl.textContent = msg || ''; }
   function el(tag, attrs) {
@@ -84,6 +107,15 @@
   function focusOn(n) {
     var box = svg.getBoundingClientRect();
     if (!box.width) return;
+    if (narrow()) {
+      // Phone: the box at the left edge and its column of connections beside it, scaled to fit the width,
+      // never under 0.75 (13 px labels stay readable; advisor 2026-11-07).
+      scale = Math.max(0.75, Math.min(1, (box.width - 16) / (COLW + W * 1.25)));
+      tx = Math.round(8 - leftX(n) * scale);
+      ty = Math.round(box.height / 2 - (n.y + H / 2) * scale);
+      apply(true);
+      return;
+    }
     tx = Math.round(Math.min(box.width * 0.3, box.width - (COLW + W + 30) * scale) - n.x * scale);
     ty = Math.round(box.height / 2 - (n.y + H / 2) * scale);
     apply(true);
@@ -110,10 +142,10 @@
     if (A.x > B.x) { var t = A; A = B; B = t; }
     var x1, y1 = A.y + H / 2, x2, y2 = B.y + H / 2;
     if (Math.abs(A.x - B.x) < 1) { // same column: bow out to the right
-      x1 = A.x + W; x2 = B.x + W;
+      x1 = rightX(A); x2 = rightX(B);
       return 'M' + x1 + ' ' + y1 + ' C' + (x1 + 60) + ' ' + y1 + ' ' + (x2 + 60) + ' ' + y2 + ' ' + x2 + ' ' + y2;
     }
-    x1 = A.x + W; x2 = B.x;
+    x1 = rightX(A); x2 = leftX(B);   // lines meet each box's real edge, whatever its size
     var dx = Math.max(30, (x2 - x1) / 2);
     return 'M' + x1 + ' ' + y1 + ' C' + (x1 + dx) + ' ' + y1 + ' ' + (x2 - dx) + ' ' + y2 + ' ' + x2 + ' ' + y2;
   }
@@ -131,8 +163,10 @@
   function addNode(d, x, y) {
     if (nodes[d.id]) return nodes[d.id];
     var n = { id: d.id, label: d.label, kind: d.kind, page: d.page, rel: d.rel, x: x, y: slot(x, y), expanded: false };
-    var g = el('g', { 'class': 'lgn lgn-' + n.kind + ' lgn-new', transform: 'translate(' + n.x + ',' + n.y + ')', tabindex: '0', role: 'button' });
-    g.appendChild(el('rect', { width: W, height: H, rx: 9 }));
+    var s = sizeOf(n);
+    var g = el('g', { 'class': 'lgn lgn-' + n.kind + ' lgn-new', tabindex: '0', role: 'button',
+      transform: 'translate(' + (n.x + W / 2 * (1 - s)) + ',' + (n.y + H / 2 * (1 - s)) + ') scale(' + s + ')' });
+    g.appendChild(shapeEl(n.kind, W, H));
     var text = el('text', { x: W / 2, y: H / 2 + 5 });
     text.textContent = short(n.label, 26);
     g.appendChild(text);
@@ -158,7 +192,7 @@
   }
 
   function load(id) {
-    return fetch('/map/node?n=' + encodeURIComponent(id), { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+    return fetch('/map/node?n=' + encodeURIComponent(id), { credentials: 'same-origin', headers: { Accept: 'application/json' } }) // err-ok: every caller catches this promise and shows the message in the map's status line
       .then(function (r) {
         if (r.status === 401) { location.href = '/login'; throw new Error('signed out'); }
         if (r.status === 404) throw new Error('That is no longer on the map.');
@@ -208,28 +242,56 @@
     openLink.href = n.page;
     // Same page, framed: the server drops its header for framed loads.
     if (frame.getAttribute('src') !== n.page) frame.setAttribute('src', n.page);
+    // Phone: the page is a full-screen sheet over the map (CSS); the page behind must not scroll, and the close
+    // button says where it goes back to (Brandon 2026-11-07: "full-screen sheet over the map").
+    if (narrow()) {
+      document.documentElement.classList.add('lgm-sheet-open');
+      closeBtn.textContent = '‹ mAInstream';
+    } else {
+      closeBtn.innerHTML = '&times;';
+    }
   }
   function closePanel() {
     panel.hidden = true;
     panel.classList.remove('full');
     root.classList.remove('lgm-has-panel');
+    document.documentElement.classList.remove('lgm-sheet-open');
+    if (selected) focusOn(selected);   // back exactly where you were
   }
+  // A link inside the framed page that goes to the map would open a map inside the map (advisor catch,
+  // 2026-11-07): take it at the top level instead, focusing the box when it is on the map already.
+  frame.addEventListener('load', function () {
+    var doc;
+    try { doc = frame.contentDocument; } catch (e) { return; } // err-ok: a cross-origin page has no map links to fix
+    if (!doc) return;
+    doc.addEventListener('click', function (ev) {
+      var a = ev.target.closest && ev.target.closest('a[href]');
+      if (!a) return;
+      var u;
+      try { u = new URL(a.getAttribute('href'), doc.baseURI); } catch (e) { return; } // err-ok: not a URL, leave it
+      if (u.origin !== location.origin || u.pathname !== '/map') return;
+      ev.preventDefault();
+      var f = u.searchParams.get('focus');
+      if (f && nodes[f]) { closePanel(); select(nodes[f]); }
+      else location.href = u.href;
+    });
+  });
 
   document.getElementById('lgm-expand').addEventListener('click', function () {
     var full = panel.classList.toggle('full');
     this.textContent = full ? 'Side' : 'Expand';
   });
-  document.getElementById('lgm-close').addEventListener('click', closePanel);
+  closeBtn.addEventListener('click', closePanel);
   var forget = document.getElementById('lgm-forget');
   if (forget) forget.addEventListener('click', function () {
     visits = {};
-    try { localStorage.removeItem(VKEY); } catch (e) {}
+    try { localStorage.removeItem(VKEY); } catch (e) {} // err-ok: private-mode storage throws; the in-memory visits are still cleared and the status line says so
     for (var k in edges) sizeEdge(edges[k]);
     for (var id in nodes) shade(nodes[id]);
     status('Visits forgotten on this device.');
   });
   document.getElementById('lgm-main').addEventListener('click', function () {
-    // MAINstream: shrink the field back to the side and bring the Main Stream into view.
+    // mAInstream: shrink the field back to the side and bring the mAInstream into view.
     panel.classList.remove('full');
     document.getElementById('lgm-expand').textContent = 'Expand';
     var r = nodes.root;
@@ -268,17 +330,44 @@
     apply();
   }, { passive: false });
 
-  // Start: the Main Stream and its Currents. ?focus=<id> also opens that box.
+  // Start: the mAInstream and its Currents. ?focus=<id> also opens that box.
   var box = svg.getBoundingClientRect();
   ty = box.height / 2 - H / 2;
   apply();
+  // Fit every box on the map into view (not under 0.6x; a phone uses focusOn's own rule instead).
+  function fitAll() {
+    var b = svg.getBoundingClientRect(), ids = Object.keys(nodes);
+    if (!b.width || !ids.length) return;
+    var x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    ids.forEach(function (id) { var n = nodes[id]; x0 = Math.min(x0, leftX(n)); x1 = Math.max(x1, rightX(n)); y0 = Math.min(y0, n.y); y1 = Math.max(y1, n.y + H); });
+    scale = Math.max(0.6, Math.min(1.1, (b.width - 40) / (x1 - x0), (b.height - 40) / (y1 - y0)));
+    tx = Math.round((b.width - (x1 - x0) * scale) / 2 - x0 * scale);
+    ty = Math.round((b.height - (y1 - y0) * scale) / 2 - y0 * scale);
+    apply(true);
+  }
+  // Brandon 2026-11-07: the map is the way in, "with your most relevant boxes enlarged and in scope". So the start
+  // opens the mAInstream, then the most relevant of its boxes (your own city or group when you have one), and
+  // brings that branch into view.
+  function mostRelevant(exceptIds) {
+    var best = null;
+    for (var id in nodes) {
+      var n = nodes[id];
+      if (exceptIds[id] || typeof n.rel !== 'number' || n.rel < 0.5) continue;
+      if (!best || n.rel > best.rel) best = n;
+    }
+    return best;
+  }
   load('root').then(function (data) {
     var r = addNode(data.node, 0, 0);
     selected = null;
     return expand(r);
   }).then(function () {
     var focus = root.getAttribute('data-focus');
-    if (!focus) return;
+    if (!focus) {
+      var top = mostRelevant({ root: 1 });
+      if (!top) { if (!narrow()) fitAll(); return; }
+      return expand(top).then(function () { if (narrow()) focusOn(top); else fitAll(); });
+    }
     if (nodes[focus]) { select(nodes[focus]); return; }
     return load(focus).then(function (data) {
       var n = addNode(data.node, COLW * 2, 0);

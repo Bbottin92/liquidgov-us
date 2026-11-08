@@ -7300,7 +7300,9 @@ std::string admin_proposals_page(const std::string& msg) {
         html += "<tr><td><a href=\"/proposals?id=" + id + "\">" + id + "</a></td>"
                 "<td><a href=\"/u/" + html_escape(p.author) + "\">" + html_escape(p.author) + "</a></td>"
                 "<td>" + html_escape(fmt_time(p.ts)) + "</td>"
-                "<td><strong>" + html_escape(p.title) + "</strong><br><span class=\"muted\">" + html_escape(excerpt) + "</span>"
+                // runs for office (/officials) are proposals too; label them so the operator knows where they show
+                "<td>" + std::string(p.is_office ? "<span class=\"chip\">Officials: " + html_escape(p.jurisdiction) + "</span> " : "") +
+                "<strong>" + html_escape(p.title) + "</strong><br><span class=\"muted\">" + html_escape(excerpt) + "</span>"
                 "<details><summary>Edit</summary>"
                 "<form method=\"POST\" action=\"/admin/proposals/edit\">"
                 "<input type=\"hidden\" name=\"id\" value=\"" + id + "\">"

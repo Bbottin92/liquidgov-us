@@ -7111,6 +7111,7 @@ std::string admin_nav(const char* active) {
         +tab("/admin","overview","Overview")
         +tab("/admin/accounts","accounts","Accounts")
         +tab("/admin/posts","posts","Posts")
+        +tab("/admin/proposals","proposals","Proposals")
         +tab("/admin/communities","communities","Communities")
         +tab("/admin/log","log","Log")
         +"</div>";
@@ -7240,6 +7241,77 @@ std::string admin_posts_page() {
                 "<td><form method=\"POST\" action=\"/admin/posts/delete\" "
                 "onsubmit=\"return confirm('Delete this post?');\">"
                 "<input type=\"hidden\" name=\"id\" value=\""+std::to_string(p.id)+"\">"
+                "<button class=\"danger\" type=\"submit\">Delete</button></form></td></tr>";
+    }
+    html += "</table></div>";
+    return html;
+}
+
+// Operator moderation of proposals (Brandon 2026-11-08: "make it so i can delete and edit proposals for now? people
+// are abusing it"). Before a delete, the proposal and its comments are appended to an archive next to the store
+// (<store>.moderation.jsonl; its name matches the deploy sync's '*.lgp.*' exclusion, so no deploy can touch it), so
+// the evidence survives and a hand restore is possible. If the archive can't be written, the delete is refused.
+bool archive_deleted_proposal(const Proposal& p, const std::string& by) {
+    std::string line = "{\"deleted_by\":\"" + json_escape(by) + "\",\"deleted_at\":" + std::to_string(std::time(nullptr)) +
+        ",\"id\":" + std::to_string(p.id) + ",\"author\":\"" + json_escape(p.author) + "\",\"ts\":" + std::to_string(p.ts) +
+        ",\"city\":\"" + json_escape(p.city) + "\",\"title\":\"" + json_escape(p.title) + "\",\"body\":\"" + json_escape(p.body) +
+        "\",\"reactions\":{";
+    bool first = true;
+    for (const auto& rc : g_store.proposal_reaction_counts(p.id)) {
+        line += std::string(first ? "" : ",") + "\"" + json_escape(rc.first) + "\":" + std::to_string(rc.second);
+        first = false;
+    }
+    line += "},\"comments\":[";
+    first = true;
+    for (const auto& r : g_store.proposal_replies_of(p.id)) {
+        line += std::string(first ? "" : ",") + "{\"author\":\"" + json_escape(r.author) + "\",\"ts\":" + std::to_string(r.ts) +
+                ",\"text\":\"" + json_escape(r.text) + "\"}";
+        first = false;
+    }
+    line += "]}\n";
+    const std::string path = std::string(store_path_from_env()) + ".moderation.jsonl";
+    std::ofstream out(path, std::ios::app | std::ios::binary);
+    if (!out) {
+        std::cerr << "moderation archive not writable: " << path << "\n";
+        return false;
+    }
+    out << line;
+    out.flush();
+    return static_cast<bool>(out);
+}
+
+std::string admin_proposals_page(const std::string& msg) {
+    std::string html = admin_header() + admin_nav("proposals");
+    if (!msg.empty()) html += "<p class=\"muted\" role=\"status\">" + html_escape(msg) + "</p>";
+    auto props = g_store.all_proposals();
+    if (props.empty()) {
+        html += "<p class=\"empty\">No proposals yet.</p>";
+        return html;
+    }
+    html += "<p class=\"muted\">Newest first. Delete keeps a copy (with its comments) in the moderation archive on the "
+            "server; it removes the proposal, its comments, reactions and votes from the site.</p>"
+            "<div style=\"overflow-x:auto\"><table class=\"register\"><tr>"
+            "<th>Id</th><th>Author</th><th>When</th><th>Proposal</th><th></th></tr>";
+    for (auto it = props.rbegin(); it != props.rend(); ++it) {
+        const auto& p = *it;
+        const std::string id = std::to_string(p.id);
+        std::string excerpt = p.body.substr(0, 120);
+        if (p.body.size() > 120) excerpt += "\xE2\x80\xA6";
+        html += "<tr><td><a href=\"/proposals?id=" + id + "\">" + id + "</a></td>"
+                "<td><a href=\"/u/" + html_escape(p.author) + "\">" + html_escape(p.author) + "</a></td>"
+                "<td>" + html_escape(fmt_time(p.ts)) + "</td>"
+                // runs for office (/officials) are proposals too; label them so the operator knows where they show
+                "<td>" + std::string(p.is_office ? "<span class=\"chip\">Officials: " + html_escape(p.jurisdiction) + "</span> " : "") +
+                "<strong>" + html_escape(p.title) + "</strong><br><span class=\"muted\">" + html_escape(excerpt) + "</span>"
+                "<details><summary>Edit</summary>"
+                "<form method=\"POST\" action=\"/admin/proposals/edit\">"
+                "<input type=\"hidden\" name=\"id\" value=\"" + id + "\">"
+                "<label>Title <input name=\"title\" required maxlength=\"200\" value=\"" + html_escape(p.title) + "\"></label>"
+                "<label>Text <textarea name=\"body\" rows=\"5\" maxlength=\"10000\">" + html_escape(p.body) + "</textarea></label>"
+                "<button type=\"submit\">Save</button></form></details></td>"
+                "<td><form method=\"POST\" action=\"/admin/proposals/delete\" "
+                "onsubmit=\"return confirm('Delete proposal " + id + " with its comments and votes? A copy is kept in the moderation archive.');\">"
+                "<input type=\"hidden\" name=\"id\" value=\"" + id + "\">"
                 "<button class=\"danger\" type=\"submit\">Delete</button></form></td></tr>";
     }
     html += "</table></div>";
@@ -11713,6 +11785,38 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         if(!acc) return need_login();
         if(!is_operator(user)) return admin_404();
         return pg("Operator tools", admin_communities_page());
+    }
+    if(method=="GET"&&path=="/admin/proposals") {
+        if(!acc) return need_login();
+        if(!is_operator(user)) return admin_404();
+        const std::string msg = qs.count("done") ? (qs.at("done") == "deleted" ? "Deleted; a copy is in the moderation archive."
+                              : qs.at("done") == "edited" ? "Saved." : qs.at("done") == "archive-failed"
+                              ? "Not deleted: the moderation archive could not be written (see the server log)." : "Nothing changed.") : "";
+        return pg("Operator tools", admin_proposals_page(msg));
+    }
+    if(method=="POST"&&path=="/admin/proposals/delete") {
+        if(!acc) return need_login();
+        if(!is_operator(user)) return admin_404();
+        std::uint64_t pid = 0;
+        try { pid = std::stoull(parse_form(body)["id"]); } catch (...) { return http_redir("/admin/proposals?done=none"); }
+        auto target = g_store.proposal_by_id(pid);
+        if (!target) return http_redir("/admin/proposals?done=none");
+        if (!archive_deleted_proposal(*target, user)) return http_redir("/admin/proposals?done=archive-failed");
+        g_store.delete_proposal(pid);
+        g_store.add_audit_log(user, "delete_proposal", std::to_string(pid) + " by " + target->author + ": " + target->title.substr(0, 60));
+        return http_redir("/admin/proposals?done=deleted");
+    }
+    if(method=="POST"&&path=="/admin/proposals/edit") {
+        if(!acc) return need_login();
+        if(!is_operator(user)) return admin_404();
+        auto f = parse_form(body);
+        std::uint64_t pid = 0;
+        try { pid = std::stoull(f["id"]); } catch (...) { return http_redir("/admin/proposals?done=none"); }
+        const std::string title = trim_ws(f["title"]).substr(0, 200);
+        const std::string text = f["body"].substr(0, 10000);
+        if (!g_store.edit_proposal(pid, title, text)) return http_redir("/admin/proposals?done=none");
+        g_store.add_audit_log(user, "edit_proposal", std::to_string(pid));
+        return http_redir("/admin/proposals?done=edited");
     }
     if(method=="GET"&&path=="/admin/log") {
         if(!acc) return need_login();

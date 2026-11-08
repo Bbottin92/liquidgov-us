@@ -31,7 +31,8 @@
 
   root.innerHTML =
     '<button id="jbtoggle" type="button" aria-label="Juketube" aria-expanded="false">' + ICON + "</button>" +
-    '<div id="jbhint">Juketube — search, stations, history. Tap a track and everyone on that station hears it.</div>' +
+    '<div id="jbhint"><span>Juketube — search, stations, history. Tap a track and everyone on that station hears it.</span>' +
+    '<button type="button" id="jbhintclose" aria-label="Hide this tip">×</button></div>' +
     '<div id="jbpanel" role="dialog" aria-label="Juketube">' +
     '<div id="jbstations" hidden>' +
     '<div class="jb-head">' +
@@ -140,7 +141,27 @@
     else parkPlayer();
   }
 
-  if (localStorage.getItem("lg-jb-hint") === "1") hint.style.display = "none";
+  // The tip used to stay on every page until Juketube was opened, covering controls (Post on /feed) on phones
+  // (2026-11-07 iPhone sweep). Now: a real close button, gone after 8 s, shown on at most 3 page views, never
+  // inside a framed page; localStorage is guarded (private mode throws, which used to stop the whole widget).
+  function hideHint(forGood) {
+    hint.style.display = "none";
+    if (forGood) { try { localStorage.setItem("lg-jb-hint", "1"); } catch (e) {} } // err-ok: private mode; hidden for this page anyway
+  }
+  (function () {
+    var framed = true, seen = "1", views = 0;
+    try { framed = window.top !== window; } catch (e) {} // err-ok: cross-origin parent: treat as framed (no tip)
+    try { seen = localStorage.getItem("lg-jb-hint"); views = +(localStorage.getItem("lg-jb-hint-views") || 0); } catch (e) {} // err-ok: private mode: seen stays "1", no tip
+    if (framed || seen === "1") { hideHint(false); return; }
+    try { localStorage.setItem("lg-jb-hint-views", String(views + 1)); } catch (e) {} // err-ok: private mode: the tip just keeps its 8 s per page
+    if (views + 1 >= 3) { try { localStorage.setItem("lg-jb-hint", "1"); } catch (e) {} } // err-ok: as above
+    setTimeout(function () { hideHint(false); }, 8000);
+  })();
+  document.getElementById("jbhintclose").addEventListener("click", function (e) {
+    e.preventDefault();
+    e.stopPropagation(); // the tip itself opens Juketube; the x must not
+    hideHint(true);
+  });
 
   function syncViewport() {
     var vv = window.visualViewport;
@@ -167,8 +188,7 @@
     toggle.setAttribute("aria-expanded", open ? "true" : "false");
     placePlayer();
     if (open) {
-      hint.style.display = "none";
-      localStorage.setItem("lg-jb-hint", "1");
+      hideHint(true);
       ensurePlayer(function () {
         applySound();
         try {

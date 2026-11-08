@@ -1,8 +1,10 @@
 (function () {
   // The alerts prompt is an ordinary strip at the top of the page content, not
   // a floating button, so it can never cover anything. It has a close button
-  // that hides it for a week, and status notes ("Alerts on") fade after a
-  // moment. Brandon 2026-11-06: "the turn on alerts thing is covering something".
+  // that hides it for a week, and failure notes fade after a moment.
+  // Brandon 2026-11-06: "the turn on alerts thing is covering something".
+  // A page shown inside another (the /map field) asks nothing: the outer page already did (2026-11-07 iPhone sweep).
+  try { if (window.top !== window) return; } catch (e) { return; }
   var HIDE_KEY = 'lg.alerts.hiddenUntil';
   function hiddenByUser() {
     try { return Number(localStorage.getItem(HIDE_KEY) || 0) > Date.now(); } catch (e) { return false; }
@@ -40,6 +42,8 @@
     } else {
       setTimeout(function () { if (wrap.parentNode) wrap.remove(); }, 5000);
     }
+    // One prompt at a time: when alerts can be turned on here, the "Get the app" bar (setup.js) steps aside.
+    if (clickable) { var app = document.getElementById('lggetapp'); if (app) app.remove(); }
     var main = document.querySelector('main');
     if (main) main.insertBefore(wrap, main.firstChild); else document.body.insertBefore(wrap, document.body.firstChild);
   }
@@ -70,13 +74,15 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ endpoint: j.endpoint, p256dh: j.keys && j.keys.p256dh, auth: j.keys && j.keys.auth })
         }).then(function (r) {
-          banner(r.ok ? 'Alerts on' : 'Subscribe failed', null);
+          // success needs no strip (it used to show "Alerts on", which setup.js then hid every second)
+          if (!r.ok) banner('Subscribe failed', null);
         });
       });
     }).catch(function () { banner('Subscribe failed', null); busy = false; }).then(function () { busy = false; });
   }
   if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
-    banner('Alerts need Safari → Add to Home Screen', null);
+    // An iPhone Safari tab: alerts need the site on the Home Screen first. setup.js's get-app bar says exactly that,
+    // so nothing here. (This banner's text used to be hidden every second by setup.js, leaving a strip with only "x".)
     return;
   }
   navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(function () {});

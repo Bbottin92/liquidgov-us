@@ -12,6 +12,7 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/time.h>
 #include <unistd.h>
 #include <algorithm>
@@ -618,6 +619,46 @@ std::string profile_canvas_css(const std::string& username, std::size_t frame_co
     return os.str();
 }
 
+// Asset URLs with a content version (2026-11-07 iPhone sweep): every script and stylesheet was served no-store and
+// re-downloaded on every page view, and the hand-typed ?v=N had drifted (one place ?v=14, another none). asset_url
+// returns "/assets/<name>?v=<hash of the file>". The hash is redone whenever the file's modification time changes, not
+// only at startup: a file copied in by hand without a restart still gets a new URL, so no phone can stay on an old copy
+// for the year it may cache it (side-agent catch). A request that carries ?v= may be cached for a year (asset_cache_header).
+std::string asset_url(const std::string& name) {
+    static std::mutex mu;
+    static std::map<std::string, std::pair<long long, std::string>> done;   // name -> (mtime ns, url)
+    std::lock_guard<std::mutex> lock(mu);
+    struct stat st{};
+    const long long mtime = ::stat(("assets/" + name).c_str(), &st) == 0
+        ? static_cast<long long>(st.st_mtim.tv_sec) * 1000000000LL + st.st_mtim.tv_nsec : -1;
+    auto it = done.find(name);
+    if (it != done.end() && it->second.first == mtime) return it->second.second;
+    std::ifstream in("assets/" + name, std::ios::binary);
+    std::string url = "/assets/" + name;
+    if (in) {
+        std::ostringstream ss; ss << in.rdbuf();
+        const std::string data = ss.str();
+        unsigned long long h = 1469598103934665603ULL;            // FNV-1a 64
+        for (unsigned char c : data) { h ^= c; h *= 1099511628211ULL; }
+        char hex[17];
+        std::snprintf(hex, sizeof hex, "%016llx", h);
+        url += "?v=" + std::string(hex, 10);
+    } else {
+        // missing file: no version, so it is never cached for a year; the route itself answers 404
+        std::cerr << "asset_url: assets/" << name << " not readable; serving it unversioned\n";
+    }
+    done[name] = {mtime, url};
+    return url;
+}
+
+// Cache-Control for an asset request: a versioned URL (?v=...) never changes, so a year and immutable; a bare one
+// (an old page, a bookmark) keeps today's no-store so it can never go stale.
+std::string asset_cache_header(const std::string& rawpath) {
+    return rawpath.find("?v=") != std::string::npos || rawpath.find("&v=") != std::string::npos
+        ? "Cache-Control: public, max-age=31536000, immutable\r\n"
+        : "Cache-Control: no-store\r\n";
+}
+
 std::string css() {
     return
         ":root{--paper:#f7f1e4;--parchment:#efe8d8;--panel:#f3ecdd;--ink:#1a1814;"
@@ -1022,13 +1063,15 @@ std::string css() {
         "min-width:44px;min-height:44px;width:44px;height:44px;border-radius:50%;flex-shrink:0;"
         "border:none;background:var(--accent);color:var(--paper);cursor:pointer;"
         "position:absolute;top:0;right:0}"
-        ".listen-pulse::after{content:'';position:absolute;inset:-6px;border-radius:50%;"
+        // inset -4px and scale(1.35), not -6px and 1.7: the bigger ring reached ~3-8 px past a phone's right edge,
+        // so the logged-out home page grew and shrank sideways with every pulse (2026-11-07 iPhone sweep).
+        ".listen-pulse::after{content:'';position:absolute;inset:-4px;border-radius:50%;pointer-events:none;"
         "border:2px solid var(--accent);opacity:.55;animation:lg-listenpulse 1.8s ease-out infinite}"
         // Pulsing while it's already playing would read as "still waiting
         // to be tapped" -- the ring only means "tap for sound".
         ".listen-pulse.playing::after{animation:none;opacity:0}"
         "@media(prefers-reduced-motion:reduce){.listen-pulse::after{animation:none}}"
-        "@keyframes lg-listenpulse{0%{transform:scale(.7);opacity:.55}100%{transform:scale(1.7);opacity:0}}"
+        "@keyframes lg-listenpulse{0%{transform:scale(.7);opacity:.55}100%{transform:scale(1.35);opacity:0}}"
         // A few nudges toward the corner, not an indefinite distraction --
         // the animation runs its fixed count and settles, same spirit as
         // the install-hint pulse being a "tap for sound" cue rather than
@@ -1226,101 +1269,16 @@ std::string intro_overlay_html(bool always_play) {
            "})();</script>";
 }
 
-// iOS gives a site no way to trigger its own "Add to Home Screen" --
-// there's no manifest-driven install banner there the way Chrome/Edge/
-// Android have (see /manifest.webmanifest and /install's own comment).
-// This is the honest substitute: a small, dismiss-once banner nudging
-// toward the Share-sheet action that already exists, shown only to a
-// browser that's actually on iOS and not already running installed.
-// Can't reliably tell Safari from Brave/other iOS browsers by user agent
-// (Brave deliberately doesn't add a distinguishing token, to resist
-// fingerprinting), so this doesn't name a specific browser at all -- kept
-// short on purpose; /install has the Safari-if-you-don't-see-it fallback
-// for whoever needs it.
-std::string ios_install_hint() {
-    // Same droplet-in-rings mark as favicon_svg(), at banner scale, in
-    // literal colors (this sits outside <main>, no guarantee page CSS has
-    // finished applying var(--accent) yet on a slow connection).
-    const char* mark =
-        "<svg width=\"32\" height=\"32\" viewBox=\"0 0 48 48\" aria-hidden=\"true\" style=\"flex-shrink:0\">"
-        "<circle cx=\"24\" cy=\"24\" r=\"21\" fill=\"none\" stroke=\"#6b6458\" stroke-width=\"1.5\"/>"
-        "<circle cx=\"24\" cy=\"24\" r=\"17.5\" fill=\"none\" stroke=\"#d1a85c\" stroke-width=\"2\"/>"
-        "<path d=\"M24 9c0 0 9.5 12.2 9.5 17.2a9.5 9.5 0 0 1-19 0C14.5 21.2 24 9 24 9z\" fill=\"#d1a85c\"/></svg>";
-    return
-        // position:fixed, pinned to the bottom of the viewport. This was
-        // suspected at one point of being the actual problem (theory:
-        // native browser toolbar chrome eating the tap) -- it wasn't. The
-        // real bugs were the two documented below, both independent of
-        // positioning, both now fixed, so this is back to fixed/bottom.
-        // display:none here, not the `hidden` attribute -- `hidden` loses
-        // to this div's own inline display:flex (inline style always beats
-        // the UA's [hidden]{display:none}, same fight already documented
-        // at ctextrow/dropdown-panel above). el.hidden=true was silently
-        // doing nothing: dismiss() *was* running (localStorage really got
-        // set), the banner just never stopped rendering. Toggling
-        // style.display directly, like ctextrow does, sidesteps the
-        // cascade instead of fighting it.
-        // The dismiss control is a plain, unwrapped <button> -- no outer
-        // div playing role="button", no pointer-events:none punching a
-        // hole through it. iOS WebKit is known to just not fire `click`
-        // on a div-as-button in some contexts; a nested pointer-events:
-        // none element made it worse by putting a dead zone right where
-        // the tap lands. A real <button> is natively focusable and
-        // tappable with no help needed.
-        "<div id=\"lgioshint\" "
-        "style=\"position:fixed;left:.6rem;right:.6rem;"
-        "bottom:calc(.6rem + env(safe-area-inset-bottom,0px));"
-        "z-index:50;max-width:26rem;margin:0 auto;background:var(--parchment);border:1px solid var(--rule);"
-        "border-radius:var(--rmd);padding:.6rem .7rem;box-shadow:0 6px 20px rgba(0,0,0,.18);"
-        "display:none;align-items:center;gap:.6rem\">"
-        +std::string(mark)+
-        "<div style=\"flex:1;min-width:0\">"
-        "<p style=\"margin:0;font-family:var(--display);font-weight:700;font-size:1rem;color:var(--ink)\">Get the app</p>"
-        "<p style=\"margin:.1rem 0 0;font-size:.78rem;color:var(--stone)\">Tap "
-        "<strong>Share</strong>, then <strong>Add to Home Screen</strong>.</p></div>"
-        "<button type=\"button\" id=\"lgioshintclose\" class=\"ghost\" aria-label=\"Dismiss\" "
-        "style=\"min-height:44px;min-width:44px;padding:0;flex-shrink:0;font-size:1.1rem\">"
-        "&#10005;</button></div>"
-        "<script>(function(){"
-        "try{if(localStorage.getItem('liquidgov.ioshint.dismissed'))return;}catch(e){return;}"
-        "var isIOS=/iP(hone|od|ad)/.test(navigator.userAgent)||"
-        "(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);"
-        "if(!isIOS)return;"
-        "var standalone=window.navigator.standalone===true||"
-        "(window.matchMedia&&matchMedia('(display-mode: standalone)').matches);"
-        "if(standalone)return;"
-        "var el=document.getElementById('lgioshint');"
-        "el.style.cursor='pointer';"
-        "el.style.display='flex';"
-        "function dismiss(){"
-        "el.style.display='none';"
-        "try{localStorage.setItem('liquidgov.ioshint.dismissed','1');}catch(e){}"
-        "}"
-        // Diagnostic-by-design: flash a visible check on the button itself
-        // before hiding, so if this STILL doesn't work, the user can tell
-        // us whether the tap registered at all (flash, then hides -- some
-        // other rule is still winning) or never registered (no flash --
-        // the listener itself isn't firing). touchstart+click both wired
-        // in case one silently doesn't fire on this device; dismiss() is
-        // idempotent so a double-fire is harmless.
-        "var btn=document.getElementById('lgioshintclose');"
-        "var firing=false;"
-        "function onhit(){"
-        "if(firing)return;firing=true;"
-        "btn.textContent='\\u2713';"
-        "setTimeout(dismiss,150);"
-        "}"
-        "btn.addEventListener('touchstart',onhit,{passive:true});"
-        "btn.addEventListener('click',onhit);"
-        "})();</script>";
-}
+// The iOS 'Get the app' bar that used to be built here (ios_install_hint) was removed 2026-11-07: assets/setup.js
+// shows the one get-app prompt (iPhone Safari: "Add to Home Screen to get alerts"), and setup.js used to hide this
+// one every second, so on a real iPhone it flashed up and vanished.
 
 // Shown once, only inside /mail's own body (never site-wide via
 // wrap() -- see that route) -- Add to Home Screen bookmarks whatever
 // page is actually on screen, so the nudge has to land after the
 // visitor is already on the real inbox, not on the /app/mail install
 // page that may have sent them here. Same dismiss-once/style.display/
-// real-<button> conventions as ios_install_hint() above, but covers
+// real-<button> conventions the removed site-wide iOS hint used, but covers
 // Android too (a real menu item there, not an iOS-only gesture) and
 // keys off its own localStorage entry so dismissing one hint doesn't
 // silently dismiss the other.
@@ -1337,7 +1295,7 @@ std::string mail_install_hint() {
         // Chrome on iPhone has no Add to Home Screen action at all --
         // the button just isn't in its share sheet, same reason
         // apps.html and the old app-mail.html copy both named Safari/
-        // Brave specifically. ios_install_hint() above skips naming a
+        // Brave specifically. The removed site-wide iOS hint skipped naming a
         // browser (it's the generic site-wide nudge, kept short on
         // purpose) but this one is telling someone to do a specific
         // thing right now, so the caveat that saves a dead-end tap
@@ -1424,8 +1382,8 @@ std::string page_wrap(const std::string& title, const std::string& navhtml, cons
     return "<!doctype html><html lang=\"en\""+theme_attr+"><head><meta charset=\"utf-8\">"
            // viewport-fit=cover: without it, env(safe-area-inset-bottom)
            // resolves to 0 everywhere per spec -- every bottom-fixed
-           // element's safe-area term (jbtoggle, jbpanel, jbhint,
-           // lgioshint) has silently been adding zero this whole time.
+           // element's safe-area term (jbtoggle, jbpanel, jbhint)
+           // has silently been adding zero this whole time.
            "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1,viewport-fit=cover\">"
            "<meta name=\"referrer\" content=\"strict-origin-when-cross-origin\">"
            "<title>"+full_title+"</title>"
@@ -1466,7 +1424,7 @@ std::string page_wrap(const std::string& title, const std::string& navhtml, cons
            "<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">"
            "<link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>"
            "<link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&display=swap\">"
-           "<style>"+css()+"</style><link rel=\"stylesheet\" href=\"/assets/setup.css\"><script src=\"/assets/setup.js\" defer></script></head><body>"
+           "<style>"+css()+"</style><link rel=\"stylesheet\" href=\""+asset_url("setup.css")+"\"><script src=\""+asset_url("setup.js")+"\" defer></script></head><body>"
            +(show_intro ? intro_overlay_html(intro_always_play) : std::string())+
            "<header class=\"top\"><div class=\"topinner\">"
            "<a class=\"brand\" href=\"/\">"
@@ -1490,7 +1448,7 @@ std::string page_wrap(const std::string& title, const std::string& navhtml, cons
            return nav_out+header_toggle;
        }()+"</div></header>"
            "<main class=\"wrap\">"+body+"</main>"
-           +ios_install_hint()+
+           +
            // "Who holds control" used to sit in this row as a plain link, reading like just another page (Laws, Privacy).
            // It stays reachable everywhere (/control is unchanged) but tucked behind a closed disclosure, same
            // <details><summary> pattern this file already uses for "Delete…" (see e.g. the post-menu one above) --
@@ -2005,9 +1963,9 @@ std::string wrap(const std::string& title, const std::string& user, int unread, 
     // page-to-page click untouched instead of being torn down and rebuilt.
     if (!user.empty()) {
         std::string widget =
-            "<link rel=\"stylesheet\" href=\"/assets/juketube.css\">"
+            "<link rel=\"stylesheet\" href=\""+asset_url("juketube.css")+"\">"
             "<div id=\"juketube-root\"></div>"
-            "<script src=\"/assets/juketube.js\" defer></script><script src=\"/assets/push.js?v=4\" defer></script>";
+            "<script src=\""+asset_url("juketube.js")+"\" defer></script><script src=\""+asset_url("push.js")+"\" defer></script>";
         auto pos = page.find("</main>");
         if (pos != std::string::npos) page.insert(pos + 7, widget);
     }
@@ -5524,7 +5482,7 @@ std::string jukebox_script(const std::string& yt_key, bool standalone, const std
         // that matters, this just catches a personal station's own
         // player up to it every few seconds instead of only on a track
         // change.
-        "if(mode==='community'&&ytPlayer&&typeof ytPlayer.getCurrentTime==='function'"
+        "if(mode==='community'&&playerReady&&typeof ytPlayer.getCurrentTime==='function'"
         "&&ytPlayer.getPlayerState()===YT.PlayerState.PLAYING){"
         "var cur=ytPlayer.getCurrentTime();"
         "if(lastKnownDuration>1){var tgt=saneStart(lastCommunityElapsed);if(tgt<lastKnownDuration-0.5&&Math.abs(cur-tgt)>2)ytPlayer.seekTo(tgt,true);}"
@@ -5533,7 +5491,7 @@ std::string jukebox_script(const std::string& yt_key, bool standalone, const std
         "}else{"
         "nowEl.textContent=esc(stationName('u:'+owner))+': nothing playing \\u2014 add a track below.';"
         "lastCommunityId=null;"
-        "if(mode==='community'&&ytPlayer)ytPlayer.stopVideo();"
+        "if(mode==='community'&&playerReady)ytPlayer.stopVideo();"
         "}"
         "upcomingEl.textContent=data.upcoming?(data.upcoming+' track'+(data.upcoming===1?'':'s')+' queued next'):'';"
         "}).catch(function(){"
@@ -5553,7 +5511,7 @@ std::string jukebox_script(const std::string& yt_key, bool standalone, const std
         // referee that from a bare heartbeat, only from an explicit
         // freeze with its own reconciliation -- see personalFreezeBeacon).
         "function personalHeartbeatTick(){"
-        "if(mode!=='community'||!activePersonalOwner||!ytPlayer||!lastCommunityId)return;"
+        "if(mode!=='community'||!activePersonalOwner||!playerReady||!lastCommunityId)return;"
         "if(ytPlayer.getPlayerState()!==YT.PlayerState.PLAYING)return;"
         "fetch('/u/'+encodeURIComponent(activePersonalOwner)+'/jukebox/pos',{method:'POST',"
         "headers:{'Content-Type':'application/x-www-form-urlencoded'},"
@@ -5565,7 +5523,7 @@ std::string jukebox_script(const std::string& yt_key, bool standalone, const std
         // 30s short of it. sendBeacon survives the page actually
         // unloading; a plain fetch might not finish in time.
         "function personalFreezeBeacon(){"
-        "if(mode!=='community'||!activePersonalOwner||!ytPlayer||!lastCommunityId)return;"
+        "if(mode!=='community'||!activePersonalOwner||!playerReady||!lastCommunityId)return;"
         "var cur=0;try{cur=Math.round(ytPlayer.getCurrentTime());}catch(e){}"
         "var b='video_id='+encodeURIComponent(lastCommunityId)+'&freeze=1&offset='+cur;"
         "var url='/u/'+encodeURIComponent(activePersonalOwner)+'/jukebox/pos';"
@@ -5580,7 +5538,7 @@ std::string jukebox_script(const std::string& yt_key, bool standalone, const std
         "window.addEventListener('pagehide',personalFreezeBeacon);"
         "function connectActive(id){"
         "if(id===null){nowEl.textContent='No station selected \\u2014 add one below.';upcomingEl.textContent='';"
-        "if(ytPlayer)ytPlayer.stopVideo();return;}"
+        "if(playerReady)ytPlayer.stopVideo();return;}"
         "var owner=personalOwnerFromId(id);"
         "if(owner)pollPersonal(owner);else connectWs(id);"
         "}"
@@ -5603,7 +5561,7 @@ std::string jukebox_script(const std::string& yt_key, bool standalone, const std
         // WS ticks every ~500ms, so drift here is normally tiny (a
         // reconnect or a stalled player are the real cases this catches);
         // same >2s threshold and reasoning as the personal/poll path.
-        "if(mode==='community'&&ytPlayer&&typeof ytPlayer.getCurrentTime==='function'"
+        "if(mode==='community'&&playerReady&&typeof ytPlayer.getCurrentTime==='function'"
         "&&ytPlayer.getPlayerState()===YT.PlayerState.PLAYING){"
         "var cur=ytPlayer.getCurrentTime();"
         "if(lastKnownDuration>1){var tgt=saneStart(lastCommunityElapsed);if(tgt<lastKnownDuration-0.5&&Math.abs(cur-tgt)>2)ytPlayer.seekTo(tgt,true);}"
@@ -5612,7 +5570,7 @@ std::string jukebox_script(const std::string& yt_key, bool standalone, const std
         "}else{"
         "nowEl.textContent=esc(stationName(stationId))+': nothing playing \\u2014 add a track below.';"
         "lastCommunityId=null;"
-        "if(mode==='community'&&ytPlayer)ytPlayer.stopVideo();"
+        "if(mode==='community'&&playerReady)ytPlayer.stopVideo();"
         "}"
         "upcomingEl.textContent=data.upcoming?(data.upcoming+' track'+(data.upcoming===1?'':'s')+' queued next'):'';"
         "};"
@@ -6017,7 +5975,7 @@ std::string jukebox_script(const std::string& yt_key, bool standalone, const std
         "tabC.addEventListener('click',function(){switchMode('community');});"
         "tabS.addEventListener('click',function(){switchMode('search');});"
         "playPauseBtn.addEventListener('click',function(){"
-        "if(!ytPlayer)return;"
+        "if(!playerReady)return;"
         "if(ytPlayer.getPlayerState()===YT.PlayerState.PLAYING){ytPlayer.pauseVideo();personalFreezeBeacon();}"
         "else{if(mode==='community'&&lastCommunityId)ytPlayer.seekTo(saneStart(lastCommunityElapsed),true);ytPlayer.playVideo();}"
         "});"
@@ -6035,7 +5993,7 @@ std::string jukebox_script(const std::string& yt_key, bool standalone, const std
         // throttling). Catch back up to the live community position
         // instead of leaving it stalled whenever the tab is visible again.
         "document.addEventListener('visibilitychange',function(){"
-        "if(!document.hidden&&mode==='community'&&ytPlayer&&lastCommunityId){"
+        "if(!document.hidden&&mode==='community'&&playerReady&&lastCommunityId){"
         "if(ytPlayer.getPlayerState()!==YT.PlayerState.PLAYING){"
         "ytPlayer.seekTo(saneStart(lastCommunityElapsed),true);ytPlayer.playVideo();"
         "}"
@@ -6079,9 +6037,9 @@ std::string jukebox_stations_js(const std::string& user) {
 // (deliberately multi-page) site.
 std::string global_jukebox_widget(const std::string& yt_key, const std::string& user) {
     (void)yt_key; (void)user;
-    return "<link rel=\"stylesheet\" href=\"/assets/juketube.css?v=14\">"
+    return "<link rel=\"stylesheet\" href=\""+asset_url("juketube.css")+"\">"
            "<div id=\"juketube-root\"></div>"
-           "<script src=\"/assets/juketube.js?v=14\" defer></script><script src=\"/assets/push.js?v=4\" defer></script>";
+           "<script src=\""+asset_url("juketube.js")+"\" defer></script><script src=\""+asset_url("push.js")+"\" defer></script>";
 }
 
 std::string jukebox_standalone_page(const std::string& yt_key, const std::string& user) {
@@ -8609,7 +8567,7 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         if(!in) return http_raw("404 Not Found","text/plain; charset=utf-8","not found");
         std::ostringstream ss; ss << in.rdbuf();
         return http_raw("200 OK","text/javascript; charset=utf-8", ss.str(),
-            "Cache-Control: no-store\r\n");
+            asset_cache_header(rawpath));
     }
     if(method=="GET"&&path=="/push/vapid") {
         std::ifstream in("deploy/vapid.public");
@@ -8647,7 +8605,7 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
     // just /mail -- see page_wrap's manifest href branch). start_url is
     // /mail, not /, so installing *from that page* on a manifest-reading
     // platform (Chrome/Edge/Android; iOS Safari ignores this file
-    // entirely, see ios_install_hint's own comment) opens straight back
+    // entirely and has no install banner of its own) opens straight back
     // into the inbox instead of the Genesis landing page.
     if(method=="GET"&&path=="/manifest-mail.webmanifest") {
         return http_raw("200 OK", "application/manifest+json",
@@ -8717,27 +8675,27 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         std::ifstream in("assets/setup.js", std::ios::binary);
         if(!in) return http_raw("404 Not Found","text/plain; charset=utf-8","not found");
         std::ostringstream ss; ss << in.rdbuf();
-        return http_raw("200 OK","text/javascript; charset=utf-8", ss.str(), "Cache-Control: no-store\r\n");
+        return http_raw("200 OK","text/javascript; charset=utf-8", ss.str(), asset_cache_header(rawpath));
     }
     if(method=="GET"&&path=="/assets/setup.css") {
         std::ifstream in("assets/setup.css", std::ios::binary);
         if(!in) return http_raw("404 Not Found","text/plain; charset=utf-8","not found");
         std::ostringstream ss; ss << in.rdbuf();
-        return http_raw("200 OK","text/css; charset=utf-8", ss.str(), "Cache-Control: no-store\r\n");
+        return http_raw("200 OK","text/css; charset=utf-8", ss.str(), asset_cache_header(rawpath));
     }
     if(method=="GET"&&path=="/assets/juketube.js") {
         std::ifstream in("assets/juketube.js", std::ios::binary);
         if(!in) return http_raw("404 Not Found","text/plain; charset=utf-8","not found");
         std::ostringstream ss; ss << in.rdbuf();
         return http_raw("200 OK","text/javascript; charset=utf-8", ss.str(),
-            "Cache-Control: no-store\r\n");
+            asset_cache_header(rawpath));
     }
     if(method=="GET"&&path=="/assets/juketube.css") {
         std::ifstream in("assets/juketube.css", std::ios::binary);
         if(!in) return http_raw("404 Not Found","text/plain; charset=utf-8","not found");
         std::ostringstream ss; ss << in.rdbuf();
         return http_raw("200 OK","text/css; charset=utf-8", ss.str(),
-            "Cache-Control: no-store\r\n");
+            asset_cache_header(rawpath));
     }
     if(method=="GET"&&path=="/assets/intro.mp4") {
         static std::string cached;
@@ -9265,7 +9223,8 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
                 + css_msg +
                 "<form method=\"POST\" action=\"/me/css\" data-draft=\"1\">"
                 "<textarea name=\"css\" rows=\"8\" spellcheck=\"false\" "
-                "style=\"font-family:ui-monospace,Consolas,monospace;font-size:.85rem\" "
+                // 16px, not .85rem: under 16px iOS Safari zooms the page in on focus and leaves it zoomed (2026-11-07)
+                "style=\"font-family:ui-monospace,Consolas,monospace;font-size:16px\" "
                 "placeholder=\".lg-theme h1{color:#a23b3b}\">"+html_escape(current_css)+"</textarea>"
                 "</form></div>";
         }
@@ -9951,7 +9910,7 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         std::string focus;
         if (qs.count("focus") && map_gnode(qs.at("focus"), user)) focus = qs.at("focus");
         std::string html =
-            "<link rel=\"stylesheet\" href=\"/assets/lgmap.css?v=2\">"
+            "<link rel=\"stylesheet\" href=\""+asset_url("lgmap.css")+"\">"
             "<div id=\"lgmap\" class=\"lgmap\" data-focus=\""+html_escape(focus)+"\" data-me=\""+html_escape(user)+"\">"
             "<div class=\"lgmap-bar\">"
             "<button type=\"button\" id=\"lgm-main\" class=\"lgm-main\" title=\"Back to the Main Stream; shrinks the field\">MAINstream</button>"
@@ -9974,7 +9933,7 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
             "<button type=\"button\" id=\"lgm-forget\" class=\"ghost\">Forget my visits</button></div>"
             "<p class=\"muted lgm-foot\">Colours come from what you're in and have done; only you see them. "
             "Cities are labels people chose, not governments. You only see what people have made visible.</p></div>"
-            "<script src=\"/assets/lgmap.js?v=2\" defer></script>";
+            "<script src=\""+asset_url("lgmap.js")+"\" defer></script>";
         return pg("Map", html);
     }
     // Your own wishes and pain points. Owner only; nobody else has a way in.
@@ -10151,7 +10110,7 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         if(!in) return http_raw("404 Not Found","text/plain; charset=utf-8","not found");
         std::ostringstream ss; ss << in.rdbuf();
         return http_raw("200 OK", js ? "text/javascript; charset=utf-8" : "text/css; charset=utf-8", ss.str(),
-                        "Cache-Control: no-store\r\n");
+                        asset_cache_header(rawpath));
     }
     // One post on its own (the map's right-hand field opens this). Same
     // audience rules as the author's profile, via map_post_ok.

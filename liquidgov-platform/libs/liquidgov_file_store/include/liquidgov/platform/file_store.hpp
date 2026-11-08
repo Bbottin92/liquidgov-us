@@ -928,6 +928,13 @@ public:
     // as the first spelling and still returns true.
     bool add_city_tag(const std::string& key, const std::string& actor, const std::string& tag);
     std::vector<std::string> city_tags(const std::string& key) const;
+    // Operator moderation (2026-11-08): every (city key, tag) pair, cities in key order, tags in list order.
+    std::vector<std::pair<std::string, std::string>> all_city_tags() const;
+    // Ids of the proposals that name this tag (case-insensitive), for the moderation list and archive.
+    std::vector<std::uint64_t> proposals_with_city_tag(const std::string& key, const std::string& tag) const;
+    // Remove one department/council from a city (case-insensitive match) and drop it from every proposal that named
+    // it. False when the city has no such tag. Persists at once.
+    bool delete_city_tag(const std::string& key, const std::string& tag);
     // Keep the wanted tags that this proposal's city actually has, in city-list
     // order. Unknown tags are dropped. A proposal with no city keeps none.
     bool set_proposal_tags(std::uint64_t proposal_id, const std::vector<std::string>& tags);

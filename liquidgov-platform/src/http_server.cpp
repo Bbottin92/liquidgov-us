@@ -7153,6 +7153,7 @@ std::string admin_nav(const char* active) {
         +tab("/admin/posts","posts","Posts")
         +tab("/admin/proposals","proposals","Proposals")
         +tab("/admin/comments","comments","Comments")
+        +tab("/admin/departments","departments","Departments")
         +tab("/admin/communities","communities","Communities")
         +tab("/admin/log","log","Log")
         +"</div>";
@@ -7429,6 +7430,56 @@ std::string admin_comments_page(const std::string& q, const std::string& msg) {
                 "<td>" + html_escape(fmt_time(r.ts)) + "</td><td>" + html_escape(excerpt) + "</td>"
                 "<td><form method=\"POST\" action=\"/admin/comments/delete\" onsubmit=\"return confirm('Delete this comment?');\">"
                 "<input type=\"hidden\" name=\"on\" value=\"" + r.on + "\"><input type=\"hidden\" name=\"id\" value=\"" + std::to_string(r.id) + "\">"
+                "<button class=\"danger\" type=\"submit\">Delete</button></form></td></tr>";
+    }
+    html += "</table></div>";
+    return html;
+}
+
+// One deleted city department/council, archived like a deleted comment (same <store>.moderation.jsonl; refused if
+// unwritable), with the proposals that named it so a hand restore can re-tag them.
+bool archive_deleted_city_tag(const std::string& key, const std::string& tag, const std::vector<std::uint64_t>& props,
+                              const std::string& by) {
+    std::string ids;
+    for (auto id : props) ids += (ids.empty() ? "" : ",") + std::to_string(id);
+    const std::string line = "{\"deleted_by\":\"" + json_escape(by) + "\",\"deleted_at\":" + std::to_string(std::time(nullptr)) +
+        ",\"city_tag_city\":\"" + json_escape(key) + "\",\"city_tag\":\"" + json_escape(tag) + "\",\"proposals\":[" + ids + "]}\n";
+    const std::string path = std::string(store_path_from_env()) + ".moderation.jsonl";
+    std::ofstream out(path, std::ios::app | std::ios::binary);
+    if (!out) {
+        std::cerr << "moderation archive not writable: " << path << "\n";
+        return false;
+    }
+    out << line;
+    out.flush();
+    return static_cast<bool>(out);
+}
+
+// Departments and councils named on city pages, each deletable (open item "moderation gap left: delete city
+// departments/councils", Brandon OK'd 2026-11-08). q searches the city and the name.
+std::string admin_departments_page(const std::string& q, const std::string& msg) {
+    std::string html = admin_header() + admin_nav("departments") + admin_search_form("/admin/departments", q);
+    if (!msg.empty()) html += "<p class=\"muted\" role=\"status\">" + html_escape(msg) + "</p>";
+    auto rows = g_store.all_city_tags();
+    if (!q.empty())
+        rows.erase(std::remove_if(rows.begin(), rows.end(), [&](const std::pair<std::string, std::string>& r) {
+            return !admin_matches(r.first, q) && !admin_matches(r.second, q); }), rows.end());
+    if (rows.empty()) {
+        html += "<p class=\"empty\">" + std::string(q.empty() ? "No departments or councils yet." : "Nothing matches.") + "</p>";
+        return html;
+    }
+    html += "<p class=\"muted\">Delete removes it from the city page and from every proposal that names it; a copy goes "
+            "to the moderation archive first.</p>"
+            "<div style=\"overflow-x:auto\"><table class=\"register\"><tr><th>City</th><th>Department or council</th>"
+            "<th>Proposals</th><th></th></tr>";
+    for (const auto& [key, tag] : rows) {
+        const auto n = g_store.proposals_with_city_tag(key, tag).size();
+        html += "<tr><td><a href=\"/city/" + url_encode(key) + "\">" + html_escape(key) + "</a></td>"
+                "<td>" + html_escape(tag) + "</td><td>" + std::to_string(n) + "</td>"
+                "<td><form method=\"POST\" action=\"/admin/departments/delete\" "
+                "onsubmit=\"return confirm('Delete this department or council?');\">"
+                "<input type=\"hidden\" name=\"city\" value=\"" + html_escape(key) + "\">"
+                "<input type=\"hidden\" name=\"tag\" value=\"" + html_escape(tag) + "\">"
                 "<button class=\"danger\" type=\"submit\">Delete</button></form></td></tr>";
     }
     html += "</table></div>";
@@ -8773,8 +8824,10 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         if(!acc) return need_login();
         return http_redir("/mail");
     }
+    // A day of caching (2026-11-08: it had no Cache-Control, so every page fetched it again; measured in headless Edge).
+    // The icon only changes with a deploy, and a day-old tab icon is harmless.
     if(method=="GET"&&path=="/favicon.svg")
-        return http_raw("200 OK","image/svg+xml", favicon_svg());
+        return http_raw("200 OK","image/svg+xml", favicon_svg(), "Cache-Control: public, max-age=86400\r\n");
     if(method=="GET"&&path=="/me/unread") {
         if(!acc) return http_raw("401 Unauthorized","application/json","{\"n\":0,\"m\":0}");
         const int mcnt = g_store.unread_message_count(user);
@@ -11963,6 +12016,29 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
             return http_redir("/admin/comments?done=none");
         }
         return http_redir("/admin/comments?done=deleted");
+    }
+    if(method=="GET"&&path=="/admin/departments") {
+        if(!acc) return need_login();
+        if(!is_operator(user)) return admin_404();
+        const std::string done = qs.count("done") ? qs.at("done") : "";
+        const std::string msg = done == "deleted" ? "Deleted; a copy is in the moderation archive."
+                              : done == "archive-failed" ? "Not deleted: the moderation archive could not be written (see the server log)."
+                              : done.empty() ? "" : "Nothing changed.";
+        return pg("Operator tools", admin_departments_page(qs.count("q") ? trim_ws(qs.at("q")) : "", msg));
+    }
+    if(method=="POST"&&path=="/admin/departments/delete") {
+        if(!acc) return need_login();
+        if(!is_operator(user)) return admin_404();
+        auto f = parse_form(body);
+        const std::string key = f["city"], tag = f["tag"];
+        bool known = false;
+        for (const auto& t : g_store.city_tags(key)) if (t == tag) { known = true; break; }
+        if (key.empty() || !known) return http_redir("/admin/departments?done=none");
+        const auto props = g_store.proposals_with_city_tag(key, tag);
+        if (!archive_deleted_city_tag(key, tag, props, user)) return http_redir("/admin/departments?done=archive-failed");
+        if (!g_store.delete_city_tag(key, tag)) return http_redir("/admin/departments?done=none");
+        g_store.add_audit_log(user, "delete_city_tag", key + ": " + tag.substr(0, 80) + " (" + std::to_string(props.size()) + " proposal(s))");
+        return http_redir("/admin/departments?done=deleted");
     }
     if(method=="POST"&&path=="/admin/proposals/edit") {
         if(!acc) return need_login();

@@ -1524,6 +1524,46 @@ std::vector<std::string> FileStore::city_tags(const std::string& key) const {
     return it->second;
 }
 
+std::vector<std::pair<std::string, std::string>> FileStore::all_city_tags() const {
+    std::vector<std::pair<std::string, std::string>> out;
+    for (const auto& [key, tags] : city_tags_)
+        for (const auto& tag : tags) out.emplace_back(key, tag);
+    return out;
+}
+
+std::vector<std::uint64_t> FileStore::proposals_with_city_tag(const std::string& key, const std::string& tag) const {
+    std::vector<std::uint64_t> ids;
+    const std::string fold = lower_copy(clean_city(tag));
+    for (const auto& p : proposals_) {
+        if (p.city != key) continue;
+        for (const auto& have : p.tags)
+            if (lower_copy(have) == fold) { ids.push_back(p.id); break; }
+    }
+    return ids;
+}
+
+bool FileStore::delete_city_tag(const std::string& key, const std::string& tag) {
+    auto it = city_tags_.find(key);
+    if (it == city_tags_.end()) return false;
+    const std::string fold = lower_copy(clean_city(tag));
+    if (fold.empty()) return false;
+    auto& list = it->second;
+    const auto before = list.size();
+    list.erase(std::remove_if(list.begin(), list.end(), [&](const std::string& t) { return lower_copy(t) == fold; }),
+               list.end());
+    if (list.size() == before) return false;
+    if (list.empty()) city_tags_.erase(it);
+    // proposals in this city drop the tag now (flush() would also prune it; done here so the in-memory state is right
+    // before the write, and so a failed flush does not leave a proposal naming a tag its city no longer has)
+    for (auto& p : proposals_) {
+        if (p.city != key) continue;
+        p.tags.erase(std::remove_if(p.tags.begin(), p.tags.end(), [&](const std::string& t) { return lower_copy(t) == fold; }),
+                     p.tags.end());
+    }
+    flush();
+    return true;
+}
+
 bool FileStore::delete_proposal(std::uint64_t proposal_id) {
     auto it = std::find_if(proposals_.begin(), proposals_.end(),
                            [&](const Proposal& p) { return p.id == proposal_id; });

@@ -2389,7 +2389,7 @@ std::optional<GNode> map_gnode(const std::string& id, const std::string& viewer)
         for (char c : s) if (c < '0' || c > '9') return std::nullopt;
         return std::stoull(s);
     };
-    if (id == "root") return GNode{"root", "Main Stream", "root", ""};
+    if (id == "root") return GNode{"root", "mAInstream", "root", ""};
     if (id == "sitewide") return GNode{"sitewide", "Sitewide", "sitewide", "/proposals"};
     if (type == "city") {
         if (rest.empty() || city_key(rest) != rest) return std::nullopt;
@@ -2614,7 +2614,7 @@ MapCtx map_ctx(const std::string& me) {
         if (pp.kept) for (const auto& k : pain_keywords(pp.phrase)) c.keywords.push_back(k);
     return c;
 }
-// -1 = not scored (the Main Stream itself).
+// -1 = not scored (the mAInstream itself).
 double map_relevance(const GNode& n, const MapCtx& c) {
     auto colon = n.id.find(':');
     const std::string rest = colon == std::string::npos ? "" : n.id.substr(colon + 1);
@@ -2841,8 +2841,8 @@ std::string city_map_svg(const std::string& key, const std::string& name, const 
     return os.str();
 }
 
-// The root of the map (Brandon 2026-11-06: "a MAINstream Media Map and then things
-// branch off from there"): Main Stream -> each city's Current -> a few of its groups
+// The root of the map (Brandon 2026-11-06: "a mAInstream Media Map and then things
+// branch off from there"): mAInstream -> each city's Current -> a few of its groups
 // and proposals, plus a Sitewide branch for proposals with no city. Clicking a city
 // opens its own map (city_map_svg). Only groups and proposals, which every signed-in
 // member can already see; no people at this level.
@@ -2925,10 +2925,10 @@ std::string main_stream_svg() {
         }
         row += n;
     }
-    box(0, root_y, "root", "Main Stream", "Main Stream", "", "city");
+    box(0, root_y, "root", "mAInstream", "mAInstream", "", "city");
     std::ostringstream os;
     os << "<div class=\"cmapwrap\"><svg class=\"cmap\" viewBox=\"0 0 860 " << height
-       << "\" role=\"img\" aria-label=\"Main Stream map\" xmlns=\"http://www.w3.org/2000/svg\">"
+       << "\" role=\"img\" aria-label=\"mAInstream map\" xmlns=\"http://www.w3.org/2000/svg\">"
        << "<text class=\"cmaph\" x=\"" << kX[1] + kW[1] / 2 << "\" y=\"26\">Currents</text>"
        << "<text class=\"cmaph\" x=\"" << kX[2] + kW[2] / 2 << "\" y=\"26\">Groups and proposals</text>"
        << "<g class=\"cmapedges\">" << edges.str() << "</g>" << boxes.str() << "</svg></div>";
@@ -6573,6 +6573,37 @@ std::string genesis_body() {
 // the live /world player map, per-station jukebox now-playing state)
 // rather than any of that design's new, unbuilt concepts (Studio, geolocated
 // "people near you").
+// The mAInstream map page (assets/lgmap.js draws it). Shared by /map and, for a signed-in person, by "/":
+// Brandon 2026-11-07, "pages should be accessed through the map". <noscript> keeps the plain drawing.
+std::string map_page_body(const std::string& user, const std::string& focus) {
+    return
+            "<link rel=\"stylesheet\" href=\""+asset_url("lgmap.css")+"\">"
+            "<div id=\"lgmap\" class=\"lgmap\" data-focus=\""+html_escape(focus)+"\" data-me=\""+html_escape(user)+"\">"
+            "<div class=\"lgmap-bar\">"
+            "<button type=\"button\" id=\"lgm-main\" class=\"lgm-main\" title=\"Back to the mAInstream; shrinks the field\">mAInstream</button>"
+            "<span class=\"lgm-hint muted\">Tap a box to grow its connections and open its page. Bigger boxes are closer to you.</span>"
+            "<span id=\"lgm-status\" class=\"lgm-status\" role=\"status\"></span>"
+            "<a class=\"lgm-privacy\" href=\"/settings#map-privacy\">Map privacy</a></div>"
+            "<div class=\"lgmap-body\">"
+            "<div class=\"lgmap-canvas\"><svg id=\"lgm-svg\" xmlns=\"http://www.w3.org/2000/svg\" aria-label=\"Map\">"
+            "<g id=\"lgm-view\"><g id=\"lgm-edges\"></g><g id=\"lgm-nodes\"></g></g></svg></div>"
+            "<aside id=\"lgm-panel\" class=\"lgmap-panel\" hidden>"
+            "<div class=\"lgm-ptop\"><strong id=\"lgm-ptitle\"></strong>"
+            "<button type=\"button\" id=\"lgm-expand\" title=\"Fill the window\">Expand</button>"
+            "<a id=\"lgm-open\" href=\"#\" target=\"_top\">Open page</a>"
+            "<button type=\"button\" id=\"lgm-close\" aria-label=\"Close\">&times;</button></div>"
+            "<iframe id=\"lgm-frame\" title=\"Selected item\"></iframe></aside></div>"
+            "<noscript>"+main_stream_svg()+kCityMapStyle+"</noscript>"
+            "<div class=\"lgm-legend muted\">"
+            "<span class=\"lgm-scale\">Far from you <i aria-hidden=\"true\"></i> Close to you</span>"
+            "<span>Thicker lines: paths you use often (kept on this device only)</span>"
+            "<button type=\"button\" id=\"lgm-forget\" class=\"ghost\">Forget my visits</button>"
+            "<span class=\"lgm-shapes\" aria-label=\"Shapes\">""<span><svg viewBox=\"0 0 26 12\"><rect class=\"lgs\" width=\"26\" height=\"12\" rx=\"6\"/></svg>people</span>""<span><svg viewBox=\"0 0 26 12\"><rect class=\"lgs\" width=\"26\" height=\"12\" rx=\"1.5\"/></svg>groups</span>""<span><svg viewBox=\"0 0 26 12\"><ellipse class=\"lgs\" cx=\"13\" cy=\"6\" rx=\"13\" ry=\"6\"/></svg>cities</span>""<span><svg viewBox=\"0 0 26 12\"><polygon class=\"lgs\" points=\"4,0 22,0 26,6 22,12 4,12 0,6\"/></svg>proposals</span>""<span><svg viewBox=\"0 0 26 12\"><polygon class=\"lgs\" points=\"3,0 23,0 26,3 26,9 23,12 3,12 0,9 0,3\"/></svg>offices</span>""<span><svg viewBox=\"0 0 26 12\"><polygon class=\"lgs\" points=\"0,0 20,0 26,6 20,12 0,12\"/></svg>problems</span>""<span><svg viewBox=\"0 0 26 12\"><rect class=\"lgs\" width=\"26\" height=\"12\" rx=\"3\"/></svg>posts</span></span>""<a href=\"/home\">Your dashboard</a>""</div>"
+            "<p class=\"muted lgm-foot\">Colours come from what you're in and have done; only you see them. "
+            "Cities are labels people chose, not governments. You only see what people have made visible.</p></div>"
+            "<script src=\""+asset_url("lgmap.js")+"\" defer></script>";
+}
+
 std::string home_dashboard(const std::string& user) {
     const auto posts = g_store.posts_by(user).size();
     const auto friends = g_store.friends_of(user).size();
@@ -8809,6 +8840,14 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         return http_redir(back, extra);
     }
 
+    // The old signed-in landing page (counts, your rooms), still one tap away from the map (2026-11-07).
+    if(method=="GET"&&path=="/home") {
+        if(!acc) return need_login();
+        return http_ok(wrap("Home", user, unread, home_dashboard(user)+
+                "<div class=\"card\"><h2>What this is</h2>"
+                "<p class=\"muted\">Genesis, not a government. Three rules, and the rest is up to you.</p>"
+                "<p class=\"muted\"><a href=\"/laws\">Read the disclosure</a></p></div>"));
+    }
     if(method=="GET"&&path=="/") {
         if(acc) {
             // A returning member's "landing page" is here, not the
@@ -8818,10 +8857,7 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
             // pg() (which never shows the intro) specifically for this;
             // show_intro is otherwise only ever true for the Genesis path.
             const bool replay_intro = g_store.prefs_of(user).intro_every_visit;
-            return http_ok(wrap("Home", user, unread, home_dashboard(user)+
-                "<div class=\"card\"><h2>What this is</h2>"
-                "<p class=\"muted\">Genesis, not a government. Three rules, and the rest is up to you.</p>"
-                "<p class=\"muted\"><a href=\"/laws\">Read the disclosure</a></p></div>", replay_intro));
+            return http_ok(wrap("mAInstream", user, unread, map_page_body(user, ""), replay_intro));
         }
         std::string extra =
             "<div class=\"card\"><p class=\"row\"><a class=\"btn\" href=\"/signup\">Create an account</a> "
@@ -9752,7 +9788,7 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         if (!cities.empty()) {
             html += "<div class=\"card\"><h2>Cities</h2>"
                     "<p class=\"muted\">Groups that name the same city are listed together, so people there can find each other. "
-                    "<a href=\"/map\">See them on the Main Stream map</a>.</p><p>";
+                    "<a href=\"/map\">See them on the mAInstream map</a>.</p><p>";
             for (const auto& cu : cities) {
                 html += "<a class=\"chip\" href=\"/city/"+url_encode(cu.key)+"\" style=\"text-decoration:none\">"+
                         html_escape(cu.name)+" &middot; "+std::to_string(cu.groups)+"</a> ";
@@ -9900,41 +9936,16 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
 
     // /city/<key>: every group that names this city (city proposals build
     // plan, slice 1). A city is a label people chose, not an AVND locality.
-    // Map view (slice 6): /map is the Main Stream; /city/<key>/map is one city's branch.
+    // Map view (slice 6): /map is the mAInstream; /city/<key>/map is one city's branch.
     if(method=="GET"&&path=="/map") {
         if(!acc) return need_login();
         // Interactive map (assets/lgmap.js): click a box and its connections
         // grow out of it; its page opens in the field on the right, which can
-        // fill the window; MAINstream shrinks it back. <noscript> keeps the
+        // fill the window; mAInstream shrinks it back. <noscript> keeps the
         // plain drawing for browsers without JavaScript.
         std::string focus;
         if (qs.count("focus") && map_gnode(qs.at("focus"), user)) focus = qs.at("focus");
-        std::string html =
-            "<link rel=\"stylesheet\" href=\""+asset_url("lgmap.css")+"\">"
-            "<div id=\"lgmap\" class=\"lgmap\" data-focus=\""+html_escape(focus)+"\" data-me=\""+html_escape(user)+"\">"
-            "<div class=\"lgmap-bar\">"
-            "<button type=\"button\" id=\"lgm-main\" class=\"lgm-main\" title=\"Back to the Main Stream; shrinks the field\">MAINstream</button>"
-            "<span class=\"lgm-hint muted\">Click a box to grow its connections and open it on the right.</span>"
-            "<span id=\"lgm-status\" class=\"lgm-status\" role=\"status\"></span>"
-            "<a class=\"lgm-privacy\" href=\"/settings#map-privacy\">Map privacy</a></div>"
-            "<div class=\"lgmap-body\">"
-            "<div class=\"lgmap-canvas\"><svg id=\"lgm-svg\" xmlns=\"http://www.w3.org/2000/svg\" aria-label=\"Map\">"
-            "<g id=\"lgm-view\"><g id=\"lgm-edges\"></g><g id=\"lgm-nodes\"></g></g></svg></div>"
-            "<aside id=\"lgm-panel\" class=\"lgmap-panel\" hidden>"
-            "<div class=\"lgm-ptop\"><strong id=\"lgm-ptitle\"></strong>"
-            "<button type=\"button\" id=\"lgm-expand\" title=\"Fill the window\">Expand</button>"
-            "<a id=\"lgm-open\" href=\"#\" target=\"_top\">Open page</a>"
-            "<button type=\"button\" id=\"lgm-close\" aria-label=\"Close\">&times;</button></div>"
-            "<iframe id=\"lgm-frame\" title=\"Selected item\"></iframe></aside></div>"
-            "<noscript>"+main_stream_svg()+kCityMapStyle+"</noscript>"
-            "<div class=\"lgm-legend muted\">"
-            "<span class=\"lgm-scale\">Far from you <i aria-hidden=\"true\"></i> Close to you</span>"
-            "<span>Thicker lines: paths you use often (kept on this device only)</span>"
-            "<button type=\"button\" id=\"lgm-forget\" class=\"ghost\">Forget my visits</button></div>"
-            "<p class=\"muted lgm-foot\">Colours come from what you're in and have done; only you see them. "
-            "Cities are labels people chose, not governments. You only see what people have made visible.</p></div>"
-            "<script src=\""+asset_url("lgmap.js")+"\" defer></script>";
-        return pg("Map", html);
+        return pg("Map", map_page_body(user, focus));
     }
     // Your own wishes and pain points. Owner only; nobody else has a way in.
     if(method=="GET"&&path=="/problems") {
@@ -10134,10 +10145,10 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         auto groups = g_store.communities_in_city(key);
         if (groups.empty() && g_store.proposals_in_city(key).empty())
             return http_code("404 Not Found", wrap("No map here yet", user, unread,
-                "<h1>Nothing names this city yet</h1><div class=\"card\"><p><a href=\"/map\">Main Stream</a></p></div>"));
+                "<h1>Nothing names this city yet</h1><div class=\"card\"><p><a href=\"/map\">mAInstream</a></p></div>"));
         std::string name = groups.empty() ? key : groups.front().city;
         for (const auto& cu : g_store.cities_in_use()) if (cu.key == key) { name = cu.name; break; }
-        std::string html = "<p class=\"muted\"><a href=\"/map\">Main Stream</a> &rsaquo; "+html_escape(name)+"</p>"
+        std::string html = "<p class=\"muted\"><a href=\"/map\">mAInstream</a> &rsaquo; "+html_escape(name)+"</p>"
             "<h1>"+html_escape(name)+"</h1>"
             "<p class=\"lede\">Point at a box to light up its lines. Click it to open it. "
             "<a href=\"/city/"+url_encode(key)+"\">List view</a></p>"
@@ -10177,7 +10188,7 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         for (const auto& c : groups) for (const auto& m : g_store.members_of(c.slug)) people.insert(m);
         std::string html = "<h1>"+html_escape(name)+"</h1>"
             "<p class=\"lede\">People here started these groups. A city on LiquidGov is a label, not a government.</p>"
-            "<p><a href=\"/city/"+url_encode(key)+"/map\">Map view</a> &middot; <a href=\"/map\">Main Stream</a></p>"
+            "<p><a href=\"/city/"+url_encode(key)+"/map\">Map view</a> &middot; <a href=\"/map\">mAInstream</a></p>"
             + flash_error(qs) +
             "<p class=\"muted\">"+std::to_string(groups.size())+(groups.size()==1?" group":" groups")+" &middot; "+
             std::to_string(people.size())+(people.size()==1?" person":" people")+" in them</p>"

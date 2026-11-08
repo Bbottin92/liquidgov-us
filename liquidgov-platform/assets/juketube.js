@@ -19,6 +19,12 @@
   }
 
   if (document.getElementById("jbtoggle")) return;
+  // A page inside the persistent shell's frame (see the shell section at the end) must not start a second player.
+  // The server already leaves Juketube out of framed pages (Sec-Fetch-Dest: iframe); this covers browsers that do
+  // not send that header (Safari before 16.4).
+  try {
+    if (window.top !== window && window.top.document.documentElement.classList.contains("lg-shell")) return;
+  } catch (e) {} // err-ok: a cross-origin parent is not our shell; the widget behaves as before
 
   var root = document.getElementById("juketube-root");
   if (!root) {
@@ -1206,4 +1212,198 @@
     .catch(function () {
       if (!personalOwner()) connectWs();
     });
+
+  // ---- Persistent shell: music keeps playing between pages (Brandon 2026-11-08) ----
+  // A full page load destroys the YouTube player. So while it is playing, a click on a site link keeps this
+  // document (its header and this widget) and loads the next page into a full-screen frame below the header.
+  // Framed pages render in the server's embed mode (no header, footer or Juketube: the same mode the /map field
+  // uses), and links and forms inside them simply navigate the frame. The address bar and title follow the frame
+  // with replaceState; each shell-started page is its own history entry, and in-frame clicks are frame entries,
+  // so Back works. Anything that must not run in a frame (sign-in, logout, theme, /listen's own player, the /world
+  // game, app install pages, other sites) does a normal full load, as does every page while nothing is playing.
+  // /map stays in the shell (its own field frame simply nests; checked in a browser 2026-11-08).
+  // On any failure the shell falls back to a normal page load, so a broken shell can stop the music but never
+  // strand you on a blank page; each fallback is reported with a /log beacon.
+  // Rejected: swapping page content by script (inline page scripts declare ~378 top-level let/const names that
+  // would collide on a second page), and reload-and-resume (a gap on every page, and iPhone needs a tap to resume).
+  var FULL_LOAD = ["/login", "/logout", "/signup", "/forgot", "/reset", "/theme", "/listen", "/world",
+    "/install", "/apps"];
+  function fullLoadPath(p) {
+    // whole path segments only: "/login" matches "/login" and "/login/google", never "/loginx" or "/logs"
+    for (var i = 0; i < FULL_LOAD.length; i++) {
+      var f = FULL_LOAD[i];
+      if (p === f || p.indexOf(f + "/") === 0) return true;
+    }
+    return false;
+  }
+  var shellFrame = null;
+  var shellHomeTitle = "";
+  var shellPending = "";
+  function playing() {
+    if (!playerReady || !ytPlayer) return false;
+    try {
+      var st = ytPlayer.getPlayerState();
+      return st === YT.PlayerState.PLAYING || st === YT.PlayerState.BUFFERING;
+    } catch (e) { return false; } // err-ok: an unreadable player counts as not playing, so links load normally
+  }
+  function shellLeave(href, why) {
+    lgBeacon("shell-exit", why);
+    location.href = href;
+  }
+  function cleanHref(href) {
+    var u = new URL(href);
+    u.searchParams.delete("embed");
+    return u.href;
+  }
+  function sizeShell() {
+    if (!shellFrame) return;
+    var head = document.querySelector("header.top");
+    var top = head ? Math.max(0, Math.round(head.getBoundingClientRect().bottom)) : 0;
+    document.documentElement.style.setProperty("--lg-shell-top", top + "px");
+  }
+  function showShellFrame(on) {
+    document.documentElement.classList.toggle("lg-shell-home", !on);
+    if (on) sizeShell();
+    else document.title = shellHomeTitle;
+  }
+  function startShell() {
+    shellHomeTitle = document.title;
+    // the current page becomes the "home" entry, so Back from the first framed page returns to it
+    history.replaceState({ lgShellHome: 1 }, "", location.href);
+    shellFrame = document.createElement("iframe");
+    shellFrame.id = "lg-shell-frame";
+    shellFrame.title = "Page";
+    shellFrame.addEventListener("load", onShellLoad);
+    document.documentElement.classList.add("lg-shell");
+    document.body.appendChild(shellFrame);
+    var head = document.querySelector("header.top");
+    if (head && window.ResizeObserver) new ResizeObserver(sizeShell).observe(head);
+    window.addEventListener("resize", sizeShell);
+    window.addEventListener("popstate", onShellPop);
+  }
+  function shellGo(href) {
+    if (!shellFrame) startShell();
+    history.pushState({ lgShell: 1 }, "", href);
+    showShellFrame(true);
+    loadInFrame(href);
+  }
+  function loadInFrame(href) {
+    shellPending = href;
+    var w = shellFrame.contentWindow, same = false;
+    try { same = !!(w && w.location.href && w.location.href !== "about:blank"); } catch (e) {} // err-ok: not ours yet; set src instead
+    // replace, not a new frame entry: shellGo already pushed this page's history entry
+    if (same) w.location.replace(href);
+    else shellFrame.src = href;
+  }
+  function onShellPop(e) {
+    try {
+      if (e.state && e.state.lgShell) {
+        showShellFrame(true);
+        var cur = "";
+        try { cur = cleanHref(shellFrame.contentWindow.location.href); } catch (err) {} // err-ok: reloaded below
+        if (cur !== location.href) loadInFrame(location.href);
+        else document.title = shellFrame.contentDocument.title || shellHomeTitle; // no load event will set it
+      } else {
+        showShellFrame(false);
+      }
+    } catch (err) {
+      shellLeave(location.href, "pop " + err);
+    }
+  }
+  function onShellLoad() {
+    var w = shellFrame.contentWindow, href;
+    try {
+      href = w.location.href;
+    } catch (e) {
+      // another origin or the browser's own error page (no network): load the page we were going to normally
+      shellLeave(shellPending || location.href, "frame not readable");
+      return;
+    }
+    try {
+      if (href === "about:blank") {
+        if (shellPending) shellLeave(shellPending, "frame blank");
+        return;
+      }
+      shellPending = "";
+      var url = new URL(href);
+      if (url.origin !== location.origin || fullLoadPath(url.pathname)) {
+        // e.g. a form whose redirect lands on /login because the session ended
+        shellLeave(href, "landed on " + url.pathname);
+        return;
+      }
+      var doc = w.document;
+      // a browser that sends no Sec-Fetch-Dest gets the full page: hide its header and footer, as embed mode does
+      if (doc.querySelector("header.top")) {
+        var fit = doc.createElement("style");
+        fit.textContent = "header.top,footer.site{display:none!important}main.wrap{padding-top:.75rem}";
+        doc.head.appendChild(fit);
+      }
+      document.title = doc.title || shellHomeTitle;
+      var st = history.state && history.state.lgShell ? history.state : { lgShell: 1 };
+      history.replaceState(st, "", cleanHref(href));
+      showShellFrame(true);
+      doc.addEventListener("click", onFrameClick);
+      doc.addEventListener("submit", onFrameSubmit, true);
+      doc.addEventListener("pointerdown", function () {
+        if (panel.classList.contains("open")) setOpen(false);
+      });
+    } catch (e) {
+      shellLeave(href, "load " + e);
+    }
+  }
+  function linkTarget(e, base) {
+    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return null;
+    var a = e.target && e.target.closest && e.target.closest("a[href]");
+    if (!a || a.hasAttribute("download")) return null;
+    var t = (a.getAttribute("target") || "").toLowerCase();
+    if (t && t !== "_self" && t !== "_top" && t !== "_parent") return null; // _blank and named windows: untouched
+    return { a: a, t: t, url: new URL(a.getAttribute("href"), base) };
+  }
+  function onFrameClick(e) {
+    try {
+      var hit = linkTarget(e, e.target.ownerDocument.baseURI);
+      if (!hit) return;
+      if (hit.url.origin !== location.origin || fullLoadPath(hit.url.pathname)) {
+        e.preventDefault();
+        shellLeave(hit.url.href, "frame link " + (hit.url.origin !== location.origin ? "other site" : hit.url.pathname));
+        return;
+      }
+      if (hit.t === "_top" || hit.t === "_parent") {
+        e.preventDefault();
+        shellGo(hit.url.href);
+        return;
+      }
+      shellPending = hit.url.href; // the frame navigates itself
+    } catch (err) {
+      lgBeacon("shell-error", "frame click " + err); // err-ok: the browser's own navigation still happens
+    }
+  }
+  function onFrameSubmit(e) {
+    try {
+      var f = e.target;
+      var action = new URL(f.getAttribute("action") || "", f.ownerDocument.baseURI);
+      if (action.origin !== location.origin || fullLoadPath(action.pathname)) {
+        f.target = "_top"; // sign-in and the like leave the shell, as they would without it
+        lgBeacon("shell-exit", "form " + action.pathname);
+      } else {
+        shellPending = action.href;
+      }
+    } catch (err) {
+      lgBeacon("shell-error", "frame submit " + err); // err-ok: the form still submits inside the frame
+    }
+  }
+  document.addEventListener("click", function (e) {
+    try {
+      if (!shellFrame && !playing()) return; // nothing playing: every page loads exactly as before
+      var hit = linkTarget(e, location.href);
+      if (!hit || root.contains(hit.a)) return;
+      var u = hit.url;
+      if (u.origin !== location.origin || fullLoadPath(u.pathname)) return;
+      if (u.pathname === location.pathname && u.search === location.search && u.hash) return; // in-page anchor
+      e.preventDefault();
+      shellGo(u.href);
+    } catch (err) {
+      lgBeacon("shell-error", "click " + err); // err-ok: no preventDefault ran, so the link loads normally
+    }
+  });
 })();

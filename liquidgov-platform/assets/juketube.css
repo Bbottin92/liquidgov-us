@@ -172,3 +172,15 @@ main .card.jukebox iframe{display:none}
 
 /* jb-skin-4 */
 .jb-head{padding:.55rem .5rem .5rem .9rem}
+
+/* Persistent shell (juketube.js, end): while music plays, pages load in a frame under the header so the player
+   survives. Only the header, Juketube and the frame stay visible; the page underneath is the "home" entry and comes
+   back (lg-shell-home) when Back returns to it. Header z-index 10 and Juketube 56 sit above the frame's 5. */
+html.lg-shell:not(.lg-shell-home) body{overflow:hidden}
+html.lg-shell:not(.lg-shell-home) body > :not(header.top):not(#juketube-root):not(#lg-shell-frame){display:none!important}
+#lg-shell-frame{
+  position:fixed;left:0;top:var(--lg-shell-top,0px);z-index:5;
+  width:100%;height:calc(100vh - var(--lg-shell-top,0px));height:calc(100dvh - var(--lg-shell-top,0px));
+  border:0;margin:0;padding:0;display:block;background:var(--paper,#fff);
+}
+html.lg-shell-home #lg-shell-frame{display:none}

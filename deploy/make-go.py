@@ -14,6 +14,7 @@ Every generated *-go.sh also takes "dry": preflight, dry run and allow-list chec
 and changes nothing (open item, 2026-11-08)."""
 import os
 import re
+import shutil
 import subprocess
 import sys
 
@@ -114,7 +115,10 @@ if entry not in m.group(1):
 for p in made:
     # relative, forward-slash path from the repo root: a Windows path handed to bash loses its backslashes
     rel = os.path.relpath(p, root).replace("\\", "/")
-    r = subprocess.run(["bash", "-n", rel], capture_output=True, text=True, cwd=root)
+    # shutil.which follows PATH (Git's bash on Windows, /usr/bin/bash in WSL). A bare "bash" goes through Windows
+    # CreateProcess order, which checks System32 first, so it started WSL's bash.exe and failed intermittently
+    # (make_go_check, 2026-11-08).
+    r = subprocess.run([shutil.which("bash") or "bash", "-n", rel], capture_output=True, text=True, cwd=root)
     if r.returncode != 0:
         sys.exit("bash -n failed for %s: %s" % (p, r.stderr.strip()))
 print("made and syntax-checked deploy/%s-go.sh and %s-remote.sh; registered in naming.toml" % (dst_name, dst_name))

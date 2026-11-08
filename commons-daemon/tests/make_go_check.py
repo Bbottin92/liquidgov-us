@@ -15,6 +15,7 @@ import subprocess
 import sys
 import tempfile
 
+BASH = shutil.which("bash") or "bash"
 ROOT = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(__file__), "..", ".."))
 passes = fails = 0
 
@@ -45,6 +46,8 @@ try:
         shutil.copy2(src, os.path.join(tmp, rel))
     check("precondition: the no-restart template never restarts",
           not re.search(r"^remote restart\b", rd(os.path.join(tmp, "deploy/jbshell-go.sh")), re.M))
+    check("precondition: the bash used is not Windows' System32 WSL launcher",
+          "system32" not in BASH.lower(), BASH)
     check("precondition: the restart template restarts",
           bool(re.search(r"^remote restart\b", rd(os.path.join(tmp, "deploy/care-go.sh")), re.M)))
     # the generator is run from Windows Python under Git Bash or from WSL; it calls bash -n itself
@@ -56,7 +59,8 @@ try:
         return p.returncode, p.stdout + p.stderr
 
     def go(name, arg):
-        p = subprocess.run(["bash", "deploy/%s-go.sh" % name] + ([arg] if arg else []), capture_output=True, text=True,
+        # PATH's bash, never Windows' System32 WSL bash.exe (a bare "bash" found that one first and failed at random)
+        p = subprocess.run([BASH, "deploy/%s-go.sh" % name] + ([arg] if arg else []), capture_output=True, text=True,
                            cwd=tmp, env=dict(env, LIQUIDGOV_DEPLOY_KEY=""), timeout=60)
         return p.returncode, p.stdout + p.stderr
 

@@ -127,6 +127,13 @@ constexpr std::size_t kCommunityHistoryCap = 15;
 // behind it. Three hours matches the old client cap.
 constexpr std::int64_t kJukeboxResumeMaxSec = 3 * 3600;
 std::map<std::string, std::deque<CommunityTrack>> g_community_history_by_station;
+// Juketube fix (Brandon 2026-11-08, "do a and b"): one listener's player error or a bare {"ended":true} used to end the
+// track for the whole station. Now a playback error is a vote: {"unplayable":"<id>"} per connection, and the track is
+// skipped once at least 25% of connected listeners have reported it. Keyed by station: the track it counts for, and how many.
+std::map<std::string, std::pair<std::string, int>> g_community_unplayable_by_station;
+// A named "ended" from someone who is not alone counts only after this many seconds of the track, so a crafted message
+// can't skip a song the room just started.
+constexpr std::int64_t kCommunityMinEndedSec = 20;
 
 // Caller must hold g_community_mu.
 std::int64_t community_elapsed_locked(const std::string& station, std::int64_t now) {
@@ -5040,6 +5047,7 @@ void run_community_session(int fd, const std::string& username, const std::strin
         }
     }
 
+    std::string reported_unplayable; // this connection's one vote per track (see g_community_unplayable_by_station)
     for (;;) {
         auto result = ws_read_frame(fd);
         if (result.status == WsReadStatus::Closed) break;
@@ -5088,12 +5096,40 @@ void run_community_session(int fd, const std::string& username, const std::strin
                         }
                         lglog::emit("jukebox", "play "+station+" "+*id+" by "+username);
                     }
-                } else if (s.find("\"ended\"") != std::string::npos) {
+                } else if (s.find("\"ended\"") != std::string::npos || s.find("\"unplayable\"") != std::string::npos) {
+                    const bool unplayable = s.find("\"unplayable\"") != std::string::npos;
+                    // {"ended":"<id>"} / {"unplayable":"<id>"} name the track; an old client's {"ended":true} names none.
+                    const auto named = extract_json_string_field(s, unplayable ? "\"unplayable\"" : "\"ended\"");
                     const auto now = std::chrono::duration_cast<std::chrono::seconds>(
                         std::chrono::system_clock::now().time_since_epoch()).count();
                     std::lock_guard<std::mutex> lock(g_community_mu);
                     auto& now_playing = g_community_now_by_station[station];
-                    if (now_playing.active) {
+                    const int listeners = g_community_listeners_by_station[station];
+                    const bool alone = listeners <= 1;
+                    bool advance = false;
+                    if (!now_playing.active) {
+                        // nothing to end
+                    } else if (named && *named != now_playing.video_id) {
+                        lglog::emit("jukebox", "ended-stale " + station + " by " + username);
+                    } else if (unplayable) {
+                        if (named && reported_unplayable != now_playing.video_id) {
+                            reported_unplayable = now_playing.video_id;
+                            auto& votes = g_community_unplayable_by_station[station];
+                            if (votes.first != now_playing.video_id) votes = {now_playing.video_id, 0};
+                            ++votes.second;
+                        }
+                        const auto& votes = g_community_unplayable_by_station[station];
+                        const int n = votes.first == now_playing.video_id ? votes.second : 0;
+                        // Brandon 2026-11-08: skip "if it wont play for at least 25% or more people trying to use
+                        // juketube" -- so one silent listener (background tab, old page) can't stall the room.
+                        advance = n > 0 && (alone || n * 4 >= listeners);
+                        lglog::emit("jukebox", "unplayable " + station + " " + now_playing.video_id + " " +
+                                    std::to_string(n) + "/" + std::to_string(listeners) + " by " + username);
+                    } else {
+                        advance = alone || (named && community_elapsed_locked(station, now) >= kCommunityMinEndedSec);
+                        if (!advance) lglog::emit("jukebox", "ended-ignored " + station + " by " + username);
+                    }
+                    if (advance) {
                         // Bug (Brandon: "i dont see an accurate history"): nothing ever
                         // recorded a shared station's plays anywhere, so the History
                         // section's /jukebox/history?station= call always came back empty
@@ -5402,7 +5438,7 @@ std::string jukebox_script(const std::string& yt_key, bool standalone, const std
         "try{ytPlayer.seekTo(0,true);ytPlayer.playVideo();}catch(err){}"
         "return;"
         "}"
-        "if(ws&&ws.readyState===1)ws.send(JSON.stringify({ended:true}));"
+        "if(ws&&ws.readyState===1)ws.send(JSON.stringify({ended:lastCommunityId||true}));"
         "else if(activePersonalOwner&&lastCommunityId)fetch("
         "'/u/'+encodeURIComponent(activePersonalOwner)+'/jukebox/complete',{method:'POST',"
         "headers:{'Content-Type':'application/x-www-form-urlencoded'},"
@@ -8712,11 +8748,18 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         std::string url = "https://www.youtube.com/oembed?format=json&url=" +
             url_encode("https://www.youtube.com/watch?v=" + id);
         std::string resp = curl_get(url, 5);
+        // Juketube B (Brandon 2026-11-08): YouTube's oEmbed answers 401 "Unauthorized" when the owner blocks
+        // embedding and 404 "Not Found" / 400 "Bad Request" for a removed or private video (curl_get keeps the body),
+        // so the picker can say so before the room tries it. Empty or anything else = unknown: "{}" as before.
+        if (resp.rfind("Unauthorized", 0) == 0 || resp.rfind("Forbidden", 0) == 0)
+            return http_raw("200 OK", "application/json", "{\"embeddable\":false}", "Cache-Control: no-store\r\n");
+        if (resp.rfind("Not Found", 0) == 0 || resp.rfind("Bad Request", 0) == 0)
+            return http_raw("200 OK", "application/json", "{\"embeddable\":false,\"missing\":true}", "Cache-Control: no-store\r\n");
         if (resp.empty() || resp[0] != '{')
             return http_raw("200 OK", "application/json", "{}", "Cache-Control: no-store\r\n");
         auto title = oembed_json_string_field(resp, "title");
         auto author = oembed_json_string_field(resp, "author_name");
-        std::string out = "{\"title\":\""+json_escape(title)+"\",\"author_name\":\""+json_escape(author)+"\"}";
+        std::string out = "{\"title\":\""+json_escape(title)+"\",\"author_name\":\""+json_escape(author)+"\",\"embeddable\":true}";
         // A video's title/uploader essentially never changes -- fine to
         // cache in the browser across the session instead of re-curling
         // every time the same track scrolls back into focus.

@@ -128,13 +128,44 @@
   // that panel never reaches ENDED, so a shared station sits on one track.
   // Park the player off-screen, still laid out, for as long as the panel
   // is closed or the keyboard has covered it.
+  // Brandon 2026-11-08: "it should keep playing when the widget is closed". Moving the wrapper between the panel and
+  // root re-inserted the YouTube iframe, and a browser reloads an iframe it re-inserts, so every open/close restarted
+  // the player. Now the wrapper moves to root once, here, before any player exists, and is only positioned after
+  // that: over the panel's slot while open, off-screen (still laid out, so it keeps playing) while closed.
+  root.appendChild(wrapEl);
+  var dockTimer = null;
+  function clearDockBox() {
+    wrapEl.style.left = wrapEl.style.top = wrapEl.style.width = wrapEl.style.height = "";
+  }
+  function trackSlot() {
+    var r = wrapSlot.getBoundingClientRect();
+    var p = panel.getBoundingClientRect();
+    var outside = r.top < p.top - 1 || r.bottom > p.bottom + 1 || r.left < p.left - 1 || r.right > p.right + 1;
+    // the slot is hidden (keyboard up) or pushed past the panel's clipped edge (long search results): park, so the
+    // player never floats over the page or the results the panel used to clip
+    if (r.width < 2 || r.height < 2 || outside) {
+      wrapEl.classList.remove("jb-docked");
+      wrapEl.classList.add("jb-parked");
+      clearDockBox();
+      return;
+    }
+    wrapEl.classList.remove("jb-parked");
+    wrapEl.classList.add("jb-docked");
+    wrapEl.style.left = r.left + "px";
+    wrapEl.style.top = r.top + "px";
+    wrapEl.style.width = r.width + "px";
+    wrapEl.style.height = r.height + "px";
+  }
   function parkPlayer() {
+    if (dockTimer) { clearInterval(dockTimer); dockTimer = null; }
+    wrapEl.classList.remove("jb-docked");
     wrapEl.classList.add("jb-parked");
-    if (wrapEl.parentNode !== root) root.appendChild(wrapEl);
+    clearDockBox();
   }
   function dockPlayer() {
-    wrapEl.classList.remove("jb-parked");
-    if (wrapEl.parentNode !== wrapSlot) wrapSlot.appendChild(wrapEl);
+    trackSlot();
+    // the slot moves when search results or the queue change the panel's layout; follow it while the panel is open
+    if (!dockTimer) dockTimer = setInterval(trackSlot, 250);
   }
   function placePlayer() {
     if (panel.classList.contains("open") && !panel.classList.contains("kb")) dockPlayer();
@@ -381,8 +412,15 @@
               return;
             }
             if (code === 2 || code === 5 || code === 100 || code === 101 || code === 150) {
-              nowEl.textContent = "That video cannot play here. Skipping.";
-              reportEnded({ force: true });
+              // A personal jukebox is its owner's own list: skip it there. On a shared station this is only a vote:
+              // the server skips once at least 25% of connected listeners' players have failed (Brandon 2026-11-08).
+              if (personalOwner()) {
+                nowEl.textContent = "That video cannot play here. Skipping.";
+                reportEnded({ force: true });
+              } else {
+                nowEl.textContent = "That video cannot play here. It is skipped if it fails for a quarter of the listeners.";
+                sendUnplayable(lastId);
+              }
               return;
             }
             if (code === 153) nowEl.textContent = "The player was blocked. Tap Play.";
@@ -418,8 +456,44 @@
       });
       return;
     }
-    if (ws && ws.readyState === 1) ws.send(JSON.stringify({ ended: true }));
+    // Name the track: the server ignores an "ended" for anything but the track it is playing.
+    if (ws && ws.readyState === 1) ws.send(JSON.stringify({ ended: endedId }));
     else { pendingEnded = true; connectWs(); }
+  }
+
+  var pendingUnplayable = "";
+  function sendUnplayable(id) {
+    if (!id) return;
+    lgBeacon("unplayable", id);
+    if (ws && ws.readyState === 1) ws.send(JSON.stringify({ unplayable: id }));
+    else { pendingUnplayable = id; connectWs(); }
+  }
+
+  // Juketube B (Brandon 2026-11-08): ask before telling the station. ok() runs unless YouTube says the owner blocks
+  // other sites or the video is gone; an unknown answer (network, YouTube down) lets it through as before.
+  function checkEmbeddable(id, ok, no) {
+    fetch("/jukebox/oembed?id=" + encodeURIComponent(id), { credentials: "same-origin" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) {
+        if (j && j.title) rememberTitle(id, j.title);
+        if (j && j.embeddable === false) no(j);
+        else ok();
+      })
+      .catch(function () { ok(); }); // err-ok: an unknown answer must not block a pick; the station's vote still protects the room
+  }
+  function refusePick(id, j) {
+    lgBeacon("not-embeddable", id);
+    localQueue = localQueue.filter(function (x) { return x.id !== id; });
+    renderQueue();
+    if (holdId === id) holdId = "";
+    if (lastId === id) {
+      lastId = null;
+      lastElapsed = 0;
+      if (ytPlayer) { try { ytPlayer.stopVideo(); } catch (e) {} }
+    }
+    nowEl.textContent = (j && j.missing)
+      ? "That video is not available on YouTube anymore. Pick another."
+      : "That video's owner lets it play only on YouTube, not on LiquidGov. Pick another.";
   }
 
   function loadTrack(id, elapsed) {
@@ -527,14 +601,18 @@
       nowTitle = "";
       localQueue = [];
       if (emptyTimer) return;
-      emptyTimer = setTimeout(function () {
-        emptyTimer = null;
-        lastId = null;
-        lastElapsed = 0;
-        if (ytPlayer) {
-          try { ytPlayer.stopVideo(); } catch (e) {}
-        }
-      }, 1500);
+      // Only when something is loaded: with lastId already cleared this used to call stopVideo every 1.5 s for as long
+      // as the station stayed empty (seen in the 2026-11-08 repro).
+      if (lastId) {
+        emptyTimer = setTimeout(function () {
+          emptyTimer = null;
+          lastId = null;
+          lastElapsed = 0;
+          if (ytPlayer) {
+            try { ytPlayer.stopVideo(); } catch (e) {}
+          }
+        }, 1500);
+      }
     }
     if (Array.isArray(data.queue)) {
       localQueue = data.queue.map(function (x) {
@@ -569,7 +647,11 @@
     ws.onopen = function () {
       if (pendingEnded && endedSentFor === lastId) {
         pendingEnded = false;
-        ws.send(JSON.stringify({ ended: true }));
+        ws.send(JSON.stringify({ ended: lastId }));
+      }
+      if (pendingUnplayable) {
+        ws.send(JSON.stringify({ unplayable: pendingUnplayable }));
+        pendingUnplayable = "";
       }
       if (pendingPlay) {
         ws.send(JSON.stringify({ play: pendingPlay }));
@@ -710,22 +792,25 @@
       renderNow();
       renderQueue();
       fillTitle(id);
+      // started here, inside the tap, so iPhone counts it as a user gesture; the station is only told after the check
       loadTrack(id, 0);
     }
-    if (owner) {
-      fetch("/u/" + encodeURIComponent(owner) + "/jukebox/add", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: "url=" + encodeURIComponent(url)
-      });
-      return;
-    }
-    if (ws && ws.readyState === 1) ws.send(JSON.stringify({ play: url }));
-    else {
-      pendingPlay = url;
-      connectWs();
-    }
+    checkEmbeddable(id, function () {
+      if (owner) {
+        fetch("/u/" + encodeURIComponent(owner) + "/jukebox/add", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: "url=" + encodeURIComponent(url)
+        });
+        return;
+      }
+      if (ws && ws.readyState === 1) ws.send(JSON.stringify({ play: url }));
+      else {
+        pendingPlay = url;
+        connectWs();
+      }
+    }, function (j) { refusePick(id, j); });
   }
 
   function sendNext(it) {
@@ -737,20 +822,22 @@
     renderQueue();
     fillTitle(id);
     var owner = personalOwner();
-    if (owner) {
-      fetch("/u/" + encodeURIComponent(owner) + "/jukebox/add", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: "url=" + encodeURIComponent(url)
-      });
-      return;
-    }
-    if (ws && ws.readyState === 1) ws.send(JSON.stringify({ add: url }));
-    else {
-      pendingAdds.push(url);
-      connectWs();
-    }
+    checkEmbeddable(id, function () {
+      if (owner) {
+        fetch("/u/" + encodeURIComponent(owner) + "/jukebox/add", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: "url=" + encodeURIComponent(url)
+        });
+        return;
+      }
+      if (ws && ws.readyState === 1) ws.send(JSON.stringify({ add: url }));
+      else {
+        pendingAdds.push(url);
+        connectWs();
+      }
+    }, function (j) { refusePick(id, j); });
   }
 
   pauseBtn.addEventListener("click", function () {
@@ -777,7 +864,7 @@
       }).then(function () { pollPersonal(); }).catch(function () {});
       return;
     }
-    if (ws && ws.readyState === 1) ws.send(JSON.stringify({ ended: true }));
+    if (ws && ws.readyState === 1 && id) ws.send(JSON.stringify({ ended: id }));
   });
   var muted = localStorage.getItem("lg-jb-muted") === "1";
   vol.value = localStorage.getItem("lg-jb-vol") || "80";

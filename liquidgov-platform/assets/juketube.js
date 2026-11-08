@@ -128,44 +128,13 @@
   // that panel never reaches ENDED, so a shared station sits on one track.
   // Park the player off-screen, still laid out, for as long as the panel
   // is closed or the keyboard has covered it.
-  // Brandon 2026-11-08: "it should keep playing when the widget is closed". Moving the wrapper between the panel and
-  // root re-inserted the YouTube iframe, and a browser reloads an iframe it re-inserts, so every open/close restarted
-  // the player. Now the wrapper moves to root once, here, before any player exists, and is only positioned after
-  // that: over the panel's slot while open, off-screen (still laid out, so it keeps playing) while closed.
-  root.appendChild(wrapEl);
-  var dockTimer = null;
-  function clearDockBox() {
-    wrapEl.style.left = wrapEl.style.top = wrapEl.style.width = wrapEl.style.height = "";
-  }
-  function trackSlot() {
-    var r = wrapSlot.getBoundingClientRect();
-    var p = panel.getBoundingClientRect();
-    var outside = r.top < p.top - 1 || r.bottom > p.bottom + 1 || r.left < p.left - 1 || r.right > p.right + 1;
-    // the slot is hidden (keyboard up) or pushed past the panel's clipped edge (long search results): park, so the
-    // player never floats over the page or the results the panel used to clip
-    if (r.width < 2 || r.height < 2 || outside) {
-      wrapEl.classList.remove("jb-docked");
-      wrapEl.classList.add("jb-parked");
-      clearDockBox();
-      return;
-    }
-    wrapEl.classList.remove("jb-parked");
-    wrapEl.classList.add("jb-docked");
-    wrapEl.style.left = r.left + "px";
-    wrapEl.style.top = r.top + "px";
-    wrapEl.style.width = r.width + "px";
-    wrapEl.style.height = r.height + "px";
-  }
   function parkPlayer() {
-    if (dockTimer) { clearInterval(dockTimer); dockTimer = null; }
-    wrapEl.classList.remove("jb-docked");
     wrapEl.classList.add("jb-parked");
-    clearDockBox();
+    if (wrapEl.parentNode !== root) root.appendChild(wrapEl);
   }
   function dockPlayer() {
-    trackSlot();
-    // the slot moves when search results or the queue change the panel's layout; follow it while the panel is open
-    if (!dockTimer) dockTimer = setInterval(trackSlot, 250);
+    wrapEl.classList.remove("jb-parked");
+    if (wrapEl.parentNode !== wrapSlot) wrapSlot.appendChild(wrapEl);
   }
   function placePlayer() {
     if (panel.classList.contains("open") && !panel.classList.contains("kb")) dockPlayer();

@@ -45,12 +45,9 @@
   background:#000;border-radius:var(--rsm);overflow:hidden;
 }
 #jbtube-wrap.jb-parked{
-  position:fixed;left:-4000px !important;top:0 !important;width:320px !important;height:180px !important;
+  position:fixed;left:-4000px;top:0;width:320px;height:180px;
   opacity:1;pointer-events:none;z-index:0;
 }
-/* open panel: the wrapper stays a child of #juketube-root (never re-inserted, so the iframe never reloads) and sits
-   over #jbtube-slot; left/top/width/height come from juketube.js trackSlot() */
-#jbtube-wrap.jb-docked{position:fixed;inset:auto;z-index:57}
 #jbtube-wrap iframe,#jbtube-player{
   position:absolute;inset:0;width:100% !important;height:100% !important;border:0;display:block;
 }

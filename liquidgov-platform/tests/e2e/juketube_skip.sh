@@ -29,6 +29,8 @@ case "\$*" in
   *oembed*BLOCKEDxxxx*) printf 'Unauthorized' ;;
   *oembed*MISSINGxxxx*) printf 'Not Found' ;;
   *oembed*EMBEDOKxxxx*) printf '{"title":"A fine song","author_name":"Someone"}' ;;
+  *oembed*) exit 7 ;;  # any other oEmbed id: network down (no output), never the real YouTube
+
   *) exec "$REAL_CURL" "\$@" ;;
 esac
 EOF

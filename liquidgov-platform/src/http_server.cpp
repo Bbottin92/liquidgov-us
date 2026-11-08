@@ -7112,6 +7112,7 @@ std::string admin_nav(const char* active) {
         +tab("/admin/accounts","accounts","Accounts")
         +tab("/admin/posts","posts","Posts")
         +tab("/admin/proposals","proposals","Proposals")
+        +tab("/admin/comments","comments","Comments")
         +tab("/admin/communities","communities","Communities")
         +tab("/admin/log","log","Log")
         +"</div>";
@@ -7222,11 +7223,33 @@ std::string admin_accounts_page(const std::string& viewer, const std::string& q)
     return html;
 }
 
-std::string admin_posts_page() {
-    std::string html = admin_header() + admin_nav("posts");
-    auto posts = g_store.recent_posts(80);
+// Case-insensitive "does hay contain needle" for operator searches.
+bool admin_matches(const std::string& hay, const std::string& needle) {
+    auto low = [](std::string s) { for (auto& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c))); return s; };
+    return low(hay).find(low(needle)) != std::string::npos;
+}
+
+std::string admin_search_form(const char* action, const std::string& q) {
+    return "<form method=\"GET\" action=\"" + std::string(action) + "\" class=\"row\" style=\"margin:0 0 1rem\">"
+           "<input name=\"q\" placeholder=\"Author or words\" value=\"" + html_escape(q) + "\" style=\"flex:1;font-size:16px\">"
+           "<button type=\"submit\">Search</button></form>";
+}
+
+std::string admin_posts_page(const std::string& q) {
+    std::string html = admin_header() + admin_nav("posts") + admin_search_form("/admin/posts", q);
+    // Without a search: the 80 newest. With one: every post whose author is q or whose text contains q, newest first
+    // (Brandon 2026-11-08: older abusive posts could not be reached from the 80-newest list).
+    std::vector<Post> posts;
+    if (q.empty()) {
+        posts = g_store.recent_posts(80);
+    } else {
+        auto all = g_store.all_posts();
+        for (auto it = all.rbegin(); it != all.rend() && posts.size() < 500; ++it)
+            if (admin_matches(it->author, q) || admin_matches(it->text, q)) posts.push_back(*it);
+        html += "<p class=\"muted\">" + std::to_string(posts.size()) + (posts.size() == 500 ? "+" : "") + " matching.</p>";
+    }
     if (posts.empty()) {
-        html += "<p class=\"empty\">No posts yet.</p>";
+        html += "<p class=\"empty\">" + std::string(q.empty() ? "No posts yet." : "No post matches.") + "</p>";
         return html;
     }
     html += "<div style=\"overflow-x:auto\"><table class=\"register\"><tr>"
@@ -7312,6 +7335,60 @@ std::string admin_proposals_page(const std::string& msg) {
                 "<td><form method=\"POST\" action=\"/admin/proposals/delete\" "
                 "onsubmit=\"return confirm('Delete proposal " + id + " with its comments and votes? A copy is kept in the moderation archive.');\">"
                 "<input type=\"hidden\" name=\"id\" value=\"" + id + "\">"
+                "<button class=\"danger\" type=\"submit\">Delete</button></form></td></tr>";
+    }
+    html += "</table></div>";
+    return html;
+}
+
+// One deleted comment, archived like a deleted proposal (same <store>.moderation.jsonl; refused if unwritable).
+bool archive_deleted_comment(const char* on, std::uint64_t id, std::uint64_t parent, const std::string& author,
+                             std::int64_t ts, const std::string& text, const std::string& by) {
+    const std::string line = "{\"deleted_by\":\"" + json_escape(by) + "\",\"deleted_at\":" + std::to_string(std::time(nullptr)) +
+        ",\"comment_on\":\"" + on + "\",\"comment_id\":" + std::to_string(id) + ",\"parent_id\":" + std::to_string(parent) +
+        ",\"author\":\"" + json_escape(author) + "\",\"ts\":" + std::to_string(ts) + ",\"text\":\"" + json_escape(text) + "\"}\n";
+    const std::string path = std::string(store_path_from_env()) + ".moderation.jsonl";
+    std::ofstream out(path, std::ios::app | std::ios::binary);
+    if (!out) {
+        std::cerr << "moderation archive not writable: " << path << "\n";
+        return false;
+    }
+    out << line;
+    out.flush();
+    return static_cast<bool>(out);
+}
+
+// Comments on posts and on proposals, newest first, each deletable on its own (Brandon 2026-11-08). q searches
+// author and text across all of them.
+std::string admin_comments_page(const std::string& q, const std::string& msg) {
+    std::string html = admin_header() + admin_nav("comments") + admin_search_form("/admin/comments", q);
+    if (!msg.empty()) html += "<p class=\"muted\" role=\"status\">" + html_escape(msg) + "</p>";
+    const std::size_t limit = q.empty() ? 100 : 100000;
+    struct Row { std::string on, parent_href, author, text; std::uint64_t id; std::int64_t ts; };
+    std::vector<Row> rows;
+    for (const auto& r : g_store.recent_post_replies(limit))
+        rows.push_back({"post", "/post/" + std::to_string(r.post_id), r.author, r.text, r.id, r.ts});
+    for (const auto& r : g_store.recent_proposal_replies(limit))
+        rows.push_back({"proposal", "/proposals?id=" + std::to_string(r.proposal_id), r.author, r.text, r.id, r.ts});
+    if (!q.empty())
+        rows.erase(std::remove_if(rows.begin(), rows.end(), [&](const Row& r) {
+            return !admin_matches(r.author, q) && !admin_matches(r.text, q); }), rows.end());
+    std::sort(rows.begin(), rows.end(), [](const Row& a, const Row& b) { return a.ts > b.ts; });
+    if (rows.size() > 300) rows.resize(300);
+    if (rows.empty()) {
+        html += "<p class=\"empty\">" + std::string(q.empty() ? "No comments yet." : "No comment matches.") + "</p>";
+        return html;
+    }
+    html += "<p class=\"muted\">Delete removes only that comment; a copy goes to the moderation archive first.</p>"
+            "<div style=\"overflow-x:auto\"><table class=\"register\"><tr><th>On</th><th>Author</th><th>When</th><th>Comment</th><th></th></tr>";
+    for (const auto& r : rows) {
+        std::string excerpt = r.text.substr(0, 160);
+        if (r.text.size() > 160) excerpt += "\xE2\x80\xA6";
+        html += "<tr><td><a href=\"" + r.parent_href + "\">" + r.on + "</a></td>"
+                "<td><a href=\"/u/" + html_escape(r.author) + "\">" + html_escape(r.author) + "</a></td>"
+                "<td>" + html_escape(fmt_time(r.ts)) + "</td><td>" + html_escape(excerpt) + "</td>"
+                "<td><form method=\"POST\" action=\"/admin/comments/delete\" onsubmit=\"return confirm('Delete this comment?');\">"
+                "<input type=\"hidden\" name=\"on\" value=\"" + r.on + "\"><input type=\"hidden\" name=\"id\" value=\"" + std::to_string(r.id) + "\">"
                 "<button class=\"danger\" type=\"submit\">Delete</button></form></td></tr>";
     }
     html += "</table></div>";
@@ -11779,7 +11856,7 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
     if(method=="GET"&&path=="/admin/posts") {
         if(!acc) return need_login();
         if(!is_operator(user)) return admin_404();
-        return pg("Operator tools", admin_posts_page());
+        return pg("Operator tools", admin_posts_page(qs.count("q") ? trim_ws(qs.at("q")) : ""));
     }
     if(method=="GET"&&path=="/admin/communities") {
         if(!acc) return need_login();
@@ -11805,6 +11882,40 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         g_store.delete_proposal(pid);
         g_store.add_audit_log(user, "delete_proposal", std::to_string(pid) + " by " + target->author + ": " + target->title.substr(0, 60));
         return http_redir("/admin/proposals?done=deleted");
+    }
+    if(method=="GET"&&path=="/admin/comments") {
+        if(!acc) return need_login();
+        if(!is_operator(user)) return admin_404();
+        const std::string done = qs.count("done") ? qs.at("done") : "";
+        const std::string msg = done == "deleted" ? "Deleted; a copy is in the moderation archive."
+                              : done == "archive-failed" ? "Not deleted: the moderation archive could not be written (see the server log)."
+                              : done.empty() ? "" : "Nothing changed.";
+        return pg("Operator tools", admin_comments_page(qs.count("q") ? trim_ws(qs.at("q")) : "", msg));
+    }
+    if(method=="POST"&&path=="/admin/comments/delete") {
+        if(!acc) return need_login();
+        if(!is_operator(user)) return admin_404();
+        auto f = parse_form(body);
+        std::uint64_t cid = 0;
+        try { cid = std::stoull(f["id"]); } catch (...) { return http_redir("/admin/comments?done=none"); }
+        if (f["on"] == "post") {
+            auto r = g_store.post_reply_by_id(cid);
+            if (!r) return http_redir("/admin/comments?done=none");
+            if (!archive_deleted_comment("post", r->id, r->post_id, r->author, r->ts, r->text, user))
+                return http_redir("/admin/comments?done=archive-failed");
+            g_store.delete_post_reply(cid);
+            g_store.add_audit_log(user, "delete_comment", "post comment " + std::to_string(cid) + " by " + r->author);
+        } else if (f["on"] == "proposal") {
+            auto r = g_store.proposal_reply_by_id(cid);
+            if (!r) return http_redir("/admin/comments?done=none");
+            if (!archive_deleted_comment("proposal", r->id, r->proposal_id, r->author, r->ts, r->text, user))
+                return http_redir("/admin/comments?done=archive-failed");
+            g_store.delete_proposal_reply(cid);
+            g_store.add_audit_log(user, "delete_comment", "proposal comment " + std::to_string(cid) + " by " + r->author);
+        } else {
+            return http_redir("/admin/comments?done=none");
+        }
+        return http_redir("/admin/comments?done=deleted");
     }
     if(method=="POST"&&path=="/admin/proposals/edit") {
         if(!acc) return need_login();

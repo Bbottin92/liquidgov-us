@@ -1540,6 +1540,49 @@ bool FileStore::delete_proposal(std::uint64_t proposal_id) {
     return true;
 }
 
+std::vector<Post> FileStore::all_posts() const { return posts_; }
+
+std::vector<PostReply> FileStore::recent_post_replies(std::size_t limit) const {
+    std::vector<PostReply> out;
+    for (auto it = replies_.rbegin(); it != replies_.rend() && out.size() < limit; ++it) out.push_back(*it);
+    return out;
+}
+
+std::vector<ProposalReply> FileStore::recent_proposal_replies(std::size_t limit) const {
+    std::vector<ProposalReply> out;
+    for (auto it = proposal_replies_.rbegin(); it != proposal_replies_.rend() && out.size() < limit; ++it) out.push_back(*it);
+    return out;
+}
+
+std::optional<PostReply> FileStore::post_reply_by_id(std::uint64_t id) const {
+    for (const auto& r : replies_) if (r.id == id) return r;
+    return std::nullopt;
+}
+
+std::optional<ProposalReply> FileStore::proposal_reply_by_id(std::uint64_t id) const {
+    for (const auto& r : proposal_replies_) if (r.id == id) return r;
+    return std::nullopt;
+}
+
+bool FileStore::delete_post_reply(std::uint64_t reply_id) {
+    auto it = std::find_if(replies_.begin(), replies_.end(), [&](const PostReply& r) { return r.id == reply_id; });
+    if (it == replies_.end()) return false;
+    replies_.erase(it);
+    prune_pains(); // a problem suggestion read from this comment goes with it
+    flush();
+    return true;
+}
+
+bool FileStore::delete_proposal_reply(std::uint64_t reply_id) {
+    auto it = std::find_if(proposal_replies_.begin(), proposal_replies_.end(),
+                           [&](const ProposalReply& r) { return r.id == reply_id; });
+    if (it == proposal_replies_.end()) return false;
+    proposal_replies_.erase(it);
+    prune_pains();
+    flush();
+    return true;
+}
+
 bool FileStore::edit_proposal(std::uint64_t proposal_id, const std::string& title, const std::string& body) {
     if (title.empty()) return false;
     for (auto& p : proposals_) {

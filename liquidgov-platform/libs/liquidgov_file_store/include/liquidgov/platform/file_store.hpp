@@ -935,6 +935,14 @@ public:
     // everything keyed to it (comments, reactions, votes, ballot answers, problem suggestions pointing at it);
     // edit_proposal replaces only the title and body. Both false when the id is unknown or the new title is empty.
     bool delete_proposal(std::uint64_t proposal_id);
+    // Operator moderation of single comments and of older posts (Brandon 2026-11-08, "see if you can get more done").
+    std::vector<Post> all_posts() const;                                         // oldest first
+    std::vector<PostReply> recent_post_replies(std::size_t limit) const;         // newest first
+    std::vector<ProposalReply> recent_proposal_replies(std::size_t limit) const; // newest first
+    std::optional<PostReply> post_reply_by_id(std::uint64_t id) const;
+    std::optional<ProposalReply> proposal_reply_by_id(std::uint64_t id) const;
+    bool delete_post_reply(std::uint64_t reply_id);     // false when unknown
+    bool delete_proposal_reply(std::uint64_t reply_id); // false when unknown
     bool edit_proposal(std::uint64_t proposal_id, const std::string& title, const std::string& body);
     // Comment. Empty text or a missing proposal returns 0. Text is trimmed,
     // other control characters dropped, and cut at 1000 bytes on a UTF-8 boundary.

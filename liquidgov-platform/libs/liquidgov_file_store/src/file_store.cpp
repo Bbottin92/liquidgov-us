@@ -1524,6 +1524,35 @@ std::vector<std::string> FileStore::city_tags(const std::string& key) const {
     return it->second;
 }
 
+bool FileStore::delete_proposal(std::uint64_t proposal_id) {
+    auto it = std::find_if(proposals_.begin(), proposals_.end(),
+                           [&](const Proposal& p) { return p.id == proposal_id; });
+    if (it == proposals_.end()) return false;
+    proposals_.erase(it);
+    proposal_replies_.erase(std::remove_if(proposal_replies_.begin(), proposal_replies_.end(),
+                                           [&](const ProposalReply& r) { return r.proposal_id == proposal_id; }),
+                            proposal_replies_.end());
+    proposal_reactions_.erase(proposal_id);
+    proposal_votes_.erase(proposal_id);
+    ballot_values_.erase(proposal_id);
+    prune_pains(); // suggestions whose source proposal or comment is gone
+    flush();
+    return true;
+}
+
+bool FileStore::edit_proposal(std::uint64_t proposal_id, const std::string& title, const std::string& body) {
+    if (title.empty()) return false;
+    for (auto& p : proposals_) {
+        if (p.id != proposal_id) continue;
+        if (p.title == title && p.body == body) return true;
+        p.title = title;
+        p.body = body;
+        flush();
+        return true;
+    }
+    return false;
+}
+
 bool FileStore::set_proposal_tags(std::uint64_t proposal_id, const std::vector<std::string>& tags) {
     Proposal* found = nullptr;
     for (auto& p : proposals_) {

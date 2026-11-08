@@ -931,6 +931,11 @@ public:
     // Keep the wanted tags that this proposal's city actually has, in city-list
     // order. Unknown tags are dropped. A proposal with no city keeps none.
     bool set_proposal_tags(std::uint64_t proposal_id, const std::vector<std::string>& tags);
+    // Operator moderation (Brandon 2026-11-08: "people are abusing it"). delete_proposal removes the proposal and
+    // everything keyed to it (comments, reactions, votes, ballot answers, problem suggestions pointing at it);
+    // edit_proposal replaces only the title and body. Both false when the id is unknown or the new title is empty.
+    bool delete_proposal(std::uint64_t proposal_id);
+    bool edit_proposal(std::uint64_t proposal_id, const std::string& title, const std::string& body);
     // Comment. Empty text or a missing proposal returns 0. Text is trimmed,
     // other control characters dropped, and cut at 1000 bytes on a UTF-8 boundary.
     std::uint64_t add_proposal_reply(std::uint64_t proposal_id, const std::string& author,

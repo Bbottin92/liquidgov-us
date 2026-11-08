@@ -28,7 +28,7 @@ pattern = "^[a-z0-9]+(?:-[a-z0-9]+)+\\.sh$"
 restart_pattern = "^([a-z0-9]+)-remote\\.sh$"
 # These three already restart the site. A new script that restarts liquidgov fails the check.
 restart_unit = "liquidgov"
-restart_allowed = ["deploy/city-remote.sh", "deploy/flow-remote.sh", "deploy/match-remote.sh", "deploy/iphone-remote.sh"]
+restart_allowed = ["deploy/city-remote.sh", "deploy/flow-remote.sh", "deploy/match-remote.sh", "deploy/iphone-remote.sh", "deploy/mainstream-remote.sh"]
 
 [branches]
 pattern = "^wip/[0-9]+-[a-z0-9-]+$"

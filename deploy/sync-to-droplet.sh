@@ -86,6 +86,62 @@ if [ ${#DRY[@]} -eq 0 ]; then
     fi
 fi
 
+# No-rollback guard on every REAL sync (Brandon 2026-11-09): the program a rollback restores (built from the LIVE
+# commit) must still open the store this commit writes; deploy/rollback_guard.py compares the two file_store.cpp
+# versions. The live commit comes from <dest>/DEPLOYED_COMMIT on the server (written below by every real sync), or
+# LIQUIDGOV_LIVE_COMMIT=<commit> (the first deploy after this change, before the file exists). Unknown -> refused
+# (fails closed). LIQUIDGOV_NO_ROLLBACK_OK="<reason + undo plan>" gets past a refusal, logged, only with Brandon's OK.
+# The file holds the LAST TWO synced commits (newest first) and the guard checks this commit against BOTH: the file is
+# written right after the sync, before the build, so after a failed build the running program is the older line
+# (side-agent note 2026-11-09). Cost: the deploy right after an overridden one is checked against the commit before
+# it too, so it may need the override once more.
+# Tests: commons-daemon/tests/rollback_guard_check.py.
+DEST_HOST="${DEST%%:*}"
+DEST_DIR="${DEST#*:}"
+pick_python() {
+    local p
+    for p in python3 python; do
+        command -v "$p" >/dev/null 2>&1 || continue
+        "$p" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 8) else 1)' >/dev/null 2>&1 </dev/null && { echo "$p"; return 0; }
+    done
+    return 1
+}
+PREV_LIVE=""
+if [ ${#DRY[@]} -eq 0 ]; then
+    if [ -n "${LIQUIDGOV_LIVE_COMMIT:-}" ]; then
+        LIVES="$LIQUIDGOV_LIVE_COMMIT"
+    else
+        # shellcheck disable=SC2086  # SSH_CMD is a command line, split on purpose (as rsync -e does)
+        LIVES="$($SSH_CMD "$DEST_HOST" "cat ${DEST_DIR%/}/DEPLOYED_COMMIT" 2>/dev/null </dev/null | tr -d '\r' | head -2 | tr '\n' ' ')" || LIVES=""
+    fi
+    read -r -a LIVE_LIST <<< "$LIVES"
+    if [ ${#LIVE_LIST[@]} -eq 0 ]; then LIVE_LIST=(""); fi
+    for LIVE in "${LIVE_LIST[@]}"; do
+        if ! [[ "$LIVE" =~ ^[0-9a-f]{7,40}$ ]]; then
+            echo "Refusing to sync: the live commit is unknown (no usable ${DEST_DIR%/}/DEPLOYED_COMMIT on $DEST_HOST, got '${LIVE:0:40}')."
+            echo "Give it from the last deploy record: LIQUIDGOV_LIVE_COMMIT=<commit> $0 $*   Nothing was sent."
+            exit 5
+        fi
+    done
+    PREV_LIVE="${LIVE_LIST[0]}"
+    GUARD="$(dirname "${BASH_SOURCE[0]}")/rollback_guard.py"
+    PY="$(pick_python)" || PY=""
+    if [ -n "$PY" ] && [ -f "$GUARD" ]; then
+        for LIVE in "${LIVE_LIST[@]}"; do
+            if ! "$PY" "$GUARD" "$LIVE" "$REPO"; then
+                echo "Refusing to sync: the no-rollback guard (deploy/rollback_guard.py) did not pass against $LIVE. Nothing was sent."
+                exit 5
+            fi
+        done
+    elif [ -n "${LIQUIDGOV_NO_ROLLBACK_OK:-}" ]; then
+        # the override is the emergency path, so it must not depend on Python or the guard file being there
+        echo "ROLLBACK_GUARD_OVERRIDE: $LIQUIDGOV_NO_ROLLBACK_OK (guard not run: ${PY:-no Python 3.8+}, $GUARD)"
+    else
+        echo "Refusing to sync: cannot run the no-rollback guard (${PY:-no Python 3.8+}; $GUARD). Nothing was sent."
+        exit 5
+    fi
+fi
+
 echo "Syncing $SRC -> $DEST (excluding build/.git/data files)${DRY:+ [dry run]}"
 # --no-times (2026-11-08): -a includes -t, which set every UNCHANGED file's modification time to the local checkout's,
 # so a fresh worktree made the next server build recompile everything (the 14:22 PT deploy rebuilt the whole tree for
@@ -99,5 +155,27 @@ rsync -az --no-times --checksum "${DRY[@]}" -e "$SSH_CMD" \
     --exclude 'liquidgov_blobs/' \
     --exclude '.env.local' \
     "$SRC" "$DEST"
+
+# Record what was just synced for the next deploy's rollback guard: this commit first, the previous newest second.
+# Written right after the sync, before the build, so after a failed build line 1 names a commit the running program
+# was not built from; line 2 is the one it was, and the next guard checks both.
+# If it cannot be written, stop here, before any build or restart: the next deploy's guard would refuse anyway.
+if [ ${#DRY[@]} -eq 0 ]; then
+    FULL="$(git_in_repo rev-parse HEAD)" || FULL=""
+    REC="$(mktemp)"
+    # newest first; the previous newest stays as line 2 (the running program if this deploy's build fails)
+    if [ -n "$PREV_LIVE" ] && [ "${PREV_LIVE}" != "${FULL:0:${#PREV_LIVE}}" ]; then
+        printf '%s\n%s\n' "$FULL" "$PREV_LIVE" > "$REC"
+    else
+        printf '%s\n' "$FULL" > "$REC"
+    fi
+    if [ -z "$FULL" ] || ! rsync -z --chmod=F644 -e "$SSH_CMD" "$REC" "${DEST%/}/DEPLOYED_COMMIT"; then
+        rm -f "$REC"
+        echo "Synced, but could NOT record ${DEST%/}/DEPLOYED_COMMIT (commit '${FULL:0:12}'). Stopping before any build or restart."
+        exit 6
+    fi
+    rm -f "$REC"
+    echo "Recorded DEPLOYED_COMMIT ${FULL:0:12} on $DEST_HOST"
+fi
 
 echo "Sync done. Still need on the remote: cmake --build <path>/build -j1, chown, systemctl restart liquidgov."

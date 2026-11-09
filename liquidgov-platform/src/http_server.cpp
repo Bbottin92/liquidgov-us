@@ -7153,7 +7153,7 @@ std::string admin_nav(const char* active) {
         +tab("/admin/posts","posts","Posts")
         +tab("/admin/proposals","proposals","Proposals")
         +tab("/admin/comments","comments","Comments")
-        +tab("/admin/departments","departments","Departments")
+        +tab("/admin/departmentz","departments","Departments")
         +tab("/admin/communities","communities","Communities")
         +tab("/admin/log","log","Log")
         +"</div>";

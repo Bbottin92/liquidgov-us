@@ -8,8 +8,8 @@ Claude create fakes. “Have Claude git pull” updates notes/README (and now
 `Persistence/TheCommons/` spec files).
 
 **The Commons spec** (sibling game, not the civic binary): `Persistence/TheCommons/`.
-Paste `CLAUDE_THE_COMMONS.md` for that job. Civic continue file stays
-`CLAUDE_CODE_CONTINUE.md`.
+Paste `docs/archive/CLAUDE_THE_COMMONS.md` for that job. The old civic continue file is
+`docs/archive/CLAUDE_CODE_CONTINUE.md` (both moved from the repo root 2026-11-09).
 
 **Claude — standing rule (every session, non-negotiable):**
 1. `git pull` if your WSL clone might be behind.
@@ -20,6 +20,6 @@ Paste `CLAUDE_THE_COMMONS.md` for that job. Civic continue file stays
    with the work they belong to, or on their own if there is no code yet.
 4. You may edit this file. Do not delete entries without Brandon saying so.
    Newest bullets at the top of a heading.
-5. Closed pins in `notes.md` and `CLAUDE_CODE_CONTINUE.md` stay closed.
+5. Closed pins in `notes.md` and `docs/archive/CLAUDE_CODE_CONTINUE.md` stay closed.
 
 Grok writes here via GitHub. You write here via git in WSL. Same file.

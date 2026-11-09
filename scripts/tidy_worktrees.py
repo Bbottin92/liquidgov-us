@@ -74,6 +74,10 @@ def judge(repo, wt):
         return "on " + branch
     if not path.exists():
         return "folder missing (run git worktree prune by hand after checking)"
+    # 2026-11-08: run from a shell standing inside a worktree, git unregistered it, could not delete the folder
+    # (Permission denied) and left an empty folder and the branch behind. Never remove the caller's own worktree.
+    if Path.cwd().resolve().is_relative_to(path.resolve()):
+        return "the current directory is inside it (run this from the main checkout)"
     rc, _, _ = git(repo, "merge-base", "--is-ancestor", branch, "master")
     if rc != 0:
         return "branch not merged into master"

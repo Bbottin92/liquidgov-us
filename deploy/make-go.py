@@ -21,6 +21,7 @@ import sys
 AUTO_NO_RESTART, AUTO_RESTART = "jbshell", "care"
 NO_RESTART_DIRS = ("assets/", "tests/")
 DRY_LINE = 'if [ "${1:-}" = "dry" ]; then echo "DRY_ONLY_DONE: nothing on the server was changed. Run with go to deploy."; exit 0; fi'
+GATE_LINE = 'bash "$ROOT/deploy/ci-gate.sh" "${1:-}" || exit 1'
 
 if len(sys.argv) < 5:
     sys.exit(__doc__)
@@ -97,6 +98,13 @@ for part in ("go", "remote"):
             out = out.replace(end, end + nl + "# dry: stop here, before the backup (added by make-go.py)" + nl + DRY_LINE + nl)
         if out.count(DRY_LINE) != 1 or out.index(DRY_LINE) > out.find(nl + "remote backup"):
             sys.exit("dry mode check failed for %s: the dry exit must appear once, before 'remote backup'" % dst_path)
+        # CI gate (Brandon 2026-11-08 "yes build the gate"): go refuses unless the platform CI job passed for this
+        # exact liquidgov-platform tree; dry only reports what go would decide. Placed right before the dry exit, so
+        # it runs after the read-only preflight and dry run and before the backup or any server change.
+        if GATE_LINE not in out:
+            out = out.replace(DRY_LINE, "# CI gate (added by make-go.py): deploy/ci-gate.sh" + nl + GATE_LINE + nl + DRY_LINE)
+        if out.count(GATE_LINE) != 1 or not (0 <= out.index(GATE_LINE) < out.index(DRY_LINE)):
+            sys.exit("CI gate check failed for %s: the gate call must appear once, right before the dry exit" % dst_path)
         # the banner: a dry run said "RESTARTING liquidgov.us" while changing nothing (citymod-go.sh dry, 2026-11-08)
         banner = re.search(r'^echo "((?:RESTARTING|UPDATING) liquidgov\.us[^"]*)"$', out, re.M)
         if not banner:

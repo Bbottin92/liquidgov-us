@@ -24,7 +24,8 @@ fail=0
 # make_go_check.py (2026-11-08) runs deploy/make-go.py in a temp copy: right pair for the change, dry mode.
 # tidy_worktrees_check.py and next_port_check.py (2026-11-08) run their scripts in throwaway trees.
 # ci_gate_check.py (2026-11-08): deploy/ci-gate.sh against a fake gh, and the gate call in every make-go script.
-for check in lgp1_consistency.py one_app_check.py pwa_files_check.py naming_check.py restart_bypass_check.py make_go_check.py tidy_worktrees_check.py next_port_check.py make_go_records_check.py tidy_cwd_check.py tidy_in_use_check.py make_go_dry_label_check.py ci_gate_check.py; do
+# sync_gate_check.py (2026-11-09): sync-to-droplet.sh runs that gate on every real sync (covers the older go scripts).
+for check in lgp1_consistency.py one_app_check.py pwa_files_check.py naming_check.py restart_bypass_check.py make_go_check.py tidy_worktrees_check.py next_port_check.py make_go_records_check.py tidy_cwd_check.py tidy_in_use_check.py make_go_dry_label_check.py ci_gate_check.py sync_gate_check.py; do
   out="$("$PY" "$ROOT/commons-daemon/tests/$check" "$ROOT" 2>&1)"; rc=$?
   echo "$out" | tail -1
   if [ $rc -ne 0 ]; then

@@ -73,6 +73,19 @@ if [ -n "$DIRTY" ] || [ -z "$COMMIT" ]; then
 fi
 echo "Deploying commit ${COMMIT:-unknown}${DIRTY:+ (plus uncommitted changes)}"
 
+# CI gate on every REAL sync (Brandon 2026-11-09): deploy/ci-gate.sh go refuses unless the platform CI run passed for
+# this exact liquidgov-platform tree. Every deploy/*-go.sh syncs through this script, so this covers the 12 go scripts
+# made before make-go.py added its own (earlier) gate call; new ones simply pass the gate twice. Dry runs are not
+# gated: they change nothing. LIQUIDGOV_DEPLOY_ALLOW_DIRTY does not get past it (CI never saw uncommitted code);
+# LIQUIDGOV_CI_OVERRIDE="<reason>" does, logged, and only with Brandon's explicit OK for that deploy.
+# Tests: commons-daemon/tests/sync_gate_check.py.
+if [ ${#DRY[@]} -eq 0 ]; then
+    if ! bash "$(dirname "${BASH_SOURCE[0]}")/ci-gate.sh" go; then
+        echo "Refusing to sync: the CI gate (deploy/ci-gate.sh) did not pass. Nothing was sent."
+        exit 4
+    fi
+fi
+
 echo "Syncing $SRC -> $DEST (excluding build/.git/data files)${DRY:+ [dry run]}"
 # --no-times (2026-11-08): -a includes -t, which set every UNCHANGED file's modification time to the local checkout's,
 # so a fresh worktree made the next server build recompile everything (the 14:22 PT deploy rebuilt the whole tree for

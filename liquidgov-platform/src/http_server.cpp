@@ -725,6 +725,19 @@ std::string css() {
         // overlay (999), which should stay on top of the header regardless.
         "header.top{border-bottom:1px solid var(--rule);background:var(--parchment);"
         "position:sticky;top:0;z-index:10}"
+        // A link to #something scrolled it under this sticky header (/pain/<id> -> /problems#painN: the post link
+        // and Keep/Forget were hidden; sweep 2026-11-09). Every jump target stops below the header instead.
+        "[id]{scroll-margin-top:5.5rem}"
+        ".setidx{display:flex;flex-wrap:wrap;gap:.4rem;margin:0 0 1rem}"
+        ".setidx a{display:inline-flex;align-items:center;min-height:36px;padding:0 .75rem;border:1px solid var(--rule);"
+        "border-radius:999px;text-decoration:none;color:var(--accent);font-size:.9rem;background:var(--panel)}"
+        // "New proposal" (a <details> on /proposals) looks like the site's buttons, not a bare disclosure triangle
+        "details.newprop>summary{display:inline-flex;align-items:center;min-height:44px;padding:0 1.1rem;"
+        "border-radius:var(--rmd);background:var(--accent);color:var(--paper);font-weight:600;cursor:pointer;"
+        "list-style:none}"
+        "details.newprop>summary::-webkit-details-marker{display:none}"
+        "details.newprop[open]>summary{margin-bottom:.6rem;background:transparent;color:var(--accent);"
+        "border:1px solid var(--rule)}"
         ".topinner{max-width:clamp(58rem,88vw,96rem);margin:0 auto;padding:.7rem 1.1rem;display:flex;"
         "align-items:center;flex-wrap:wrap;gap:.45rem 1rem}"
         ".brand{display:flex;align-items:center;gap:.65rem;text-decoration:none;color:var(--ink);margin-right:auto}"
@@ -958,7 +971,10 @@ std::string css() {
         ".portrait{width:96px;height:96px;border-radius:50%;object-fit:cover;border:1px solid var(--rule);"
         "background:var(--parchment);flex-shrink:0;display:inline-block;vertical-align:middle}"
         ".portrait.sm{width:36px;height:36px}"
-        ".portrait.ph{box-sizing:border-box}"
+        ".portrait.ph{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;"
+        "font-family:var(--display);font-weight:600;color:var(--accent);font-size:2.6rem;line-height:1;"
+        "user-select:none}"
+        ".portrait.sm.ph{font-size:1rem}"
         ".hit{display:flex;gap:.7rem;align-items:flex-start;border-top:1px solid var(--rule);padding:.75rem 0;flex-wrap:wrap}"
         ".hit:first-child{border-top:0}"
         ".hit .hitinfo{flex:1;min-width:8rem}"
@@ -987,6 +1003,8 @@ std::string css() {
         "footer.site{max-width:clamp(58rem,88vw,96rem);margin:0 auto;padding:1.2rem 1.1rem 2.5rem;color:var(--stone);font-size:.82rem;"
         "border-top:1px solid var(--rule)}"
         "footer.site a{color:var(--stone)}"
+        // the "Disclaimer" toggle matches the footer links beside it (it was a size larger; sweep 2026-11-09)
+        "footer.site summary{font-size:inherit;color:var(--stone);text-decoration:underline}"
         ".empty{color:var(--stone);padding:.4rem 0}"
         "form.inline{display:inline}form.stack{margin:0}"
         ".clocks{display:grid;gap:.7rem}@media(min-width:640px){.clocks{grid-template-columns:1fr 1fr}}"
@@ -3255,12 +3273,25 @@ std::string upload_ok_response(const std::string& headers) {
               : http_raw("403 Forbidden", "text/plain; charset=utf-8", "no");
 }
 
+// No picture: the person's first letter in the circle, not an empty grey circle that reads as a broken image (sweep
+// 2026-11-09). The first UTF-8 code point, so a name starting with a non-ASCII letter is not cut mid-character.
+std::string portrait_placeholder(const std::string& username, const char* cls) {
+    std::string initial;
+    if (!username.empty()) {
+        const unsigned char c0 = static_cast<unsigned char>(username[0]);
+        std::size_t len = c0 < 0x80 ? 1 : (c0 >> 5) == 0x6 ? 2 : (c0 >> 4) == 0xE ? 3 : (c0 >> 3) == 0x1E ? 4 : 1;
+        initial = username.substr(0, std::min(len, username.size()));
+        if (initial.size() == 1) initial[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(initial[0])));
+    }
+    return std::string("<span class=\"portrait ")+cls+" ph\" aria-hidden=\"true\">"+html_escape(initial)+"</span>";
+}
+
 std::string portrait_tag(const std::string& username, const char* cls) {
     auto acc = g_store.find_by_username(username);
-    if (!acc) return std::string("<span class=\"portrait ")+cls+" ph\" aria-hidden=\"true\"></span>";
+    if (!acc) return portrait_placeholder(username, cls);
     auto av = g_store.get(acc->id);
     if (!av || !g_blobs.meta(av->blob_id).has_value())
-        return std::string("<span class=\"portrait ")+cls+" ph\" aria-hidden=\"true\"></span>";
+        return portrait_placeholder(username, cls);
     // /portrait/<username> is served with Cache-Control: max-age=300 at
     // this same URL regardless of which image is behind it, so a browser
     // that already fetched it once shows the old picture for up to five
@@ -6621,7 +6652,11 @@ std::string map_page_body(const std::string& user, const std::string& focus) {
             "<div id=\"lgmap\" class=\"lgmap\" data-focus=\""+html_escape(focus)+"\" data-me=\""+html_escape(user)+"\">"
             "<div class=\"lgmap-bar\">"
             "<button type=\"button\" id=\"lgm-main\" class=\"lgm-main\" title=\"Back to the mAInstream; shrinks the field\">mAInstream</button>"
-            "<span class=\"lgm-hint muted\">Tap a box to grow its connections and open its page. Bigger boxes are closer to you.</span>"
+            // Phones: a tap grows connections, a hold opens the page (Brandon 2026-11-09); the hint says so, since a
+            // long press is invisible unless something tells you about it (side-agent note).
+            "<span class=\"lgm-hint muted\"><span class=\"lgm-hint-wide\">Click a box to grow its connections and open its page.</span>"
+            "<span class=\"lgm-hint-narrow\">Tap a box to see its connections &middot; <strong>hold it</strong> to open its page.</span>"
+            " Bigger boxes are closer to you.</span>"
             "<span id=\"lgm-status\" class=\"lgm-status\" role=\"status\"></span>"
             "<a class=\"lgm-privacy\" href=\"/settings#map-privacy\">Map privacy</a></div>"
             "<div class=\"lgmap-body\">"
@@ -7023,6 +7058,29 @@ std::string laws_body() {
            "<p class=\"muted\"><a href=\"/control\">Who holds control of this site</a> · <a href=\"/\">Genesis disclosure</a></p>";
 }
 
+// "Listen" on a Laws chapter (Brandon 2026-11-09: "i want the audio"): the chapter's recorded narration
+// (/assets/chapter<n>.mp3). Shown only when the file is there. Unlike the Genesis button, a failed play (missing file,
+// iPhone refusing, network) resets the button and says so instead of showing "playing" over silence.
+std::string chapter_narration_html(size_t n) {
+    const std::string num = std::to_string(n);
+    std::ifstream probe("assets/chapter" + num + ".mp3", std::ios::binary);
+    if (!probe) return "";
+    return "<p class=\"row narr\"><button type=\"button\" class=\"btn ghost\" id=\"narrbtn\" aria-pressed=\"false\">"
+           "&#9654; Listen to this chapter</button>"
+           "<span class=\"muted\" id=\"narrmsg\" role=\"status\"></span></p>"
+           "<audio id=\"narraudio\" preload=\"none\" src=\"/assets/chapter" + num + ".mp3\"></audio>"
+           "<script>(function(){"
+           "var b=document.getElementById('narrbtn'),a=document.getElementById('narraudio'),"
+           "m=document.getElementById('narrmsg');if(!b||!a)return;"
+           "function idle(){b.innerHTML='&#9654; Listen to this chapter';b.setAttribute('aria-pressed','false');}"
+           "function fail(){idle();m.textContent='The narration could not play. Try again in a moment.';}"
+           "a.addEventListener('ended',idle);a.addEventListener('error',fail);"
+           "b.addEventListener('click',function(){m.textContent='';"
+           "if(a.paused){var p=a.play();b.innerHTML='&#10074;&#10074; Pause';b.setAttribute('aria-pressed','true');"
+           "if(p&&p.catch)p.catch(fail);}else{a.pause();idle();}});"
+           "})();</script>";
+}
+
 std::string laws_chapter_body(size_t n) {
     const auto& chapters = law_chapters();
     const auto& ch = chapters[n-1];
@@ -7032,7 +7090,7 @@ std::string laws_chapter_body(size_t n) {
                html_escape(chapters[n].title) + " &rarr;</a>";
     nav += "</p>";
     return "<p class=\"eyebrow\">Chapter " + std::to_string(n) + " of " + std::to_string(chapters.size()) + "</p>"
-           "<h1>" + html_escape(ch.title) + "</h1>"
+           "<h1>" + html_escape(ch.title) + "</h1>" + chapter_narration_html(n) +
            "<div class=\"card\">" + ch.body + "</div>" +
            (n == chapters.size()
              ? "<p class=\"muted\">You can stop here. Most people do, and that's fine — the rest is mechanism, "
@@ -7270,9 +7328,9 @@ bool admin_matches(const std::string& hay, const std::string& needle) {
     return low(hay).find(low(needle)) != std::string::npos;
 }
 
-std::string admin_search_form(const char* action, const std::string& q) {
+std::string admin_search_form(const char* action, const std::string& q, const char* hint = "Author or words") {
     return "<form method=\"GET\" action=\"" + std::string(action) + "\" class=\"row\" style=\"margin:0 0 1rem\">"
-           "<input name=\"q\" placeholder=\"Author or words\" value=\"" + html_escape(q) + "\" style=\"flex:1;font-size:16px\">"
+           "<input name=\"q\" placeholder=\"" + std::string(hint) + "\" value=\"" + html_escape(q) + "\" style=\"flex:1;font-size:16px\">"
            "<button type=\"submit\">Search</button></form>";
 }
 
@@ -7458,12 +7516,17 @@ bool archive_deleted_city_tag(const std::string& key, const std::string& tag, co
 // Departments and councils named on city pages, each deletable (open item "moderation gap left: delete city
 // departments/councils", Brandon OK'd 2026-11-08). q searches the city and the name.
 std::string admin_departments_page(const std::string& q, const std::string& msg) {
-    std::string html = admin_header() + admin_nav("departments") + admin_search_form("/admin/departments", q);
+    std::string html = admin_header() + admin_nav("departments") + admin_search_form("/admin/departments", q, "City or name");
     if (!msg.empty()) html += "<p class=\"muted\" role=\"status\">" + html_escape(msg) + "</p>";
+    // the city's name ("Fresno, CA"), not its key ("fresno-ca"), as the city page shows it (sweep 2026-11-09)
+    std::map<std::string, std::string> city_names;
+    for (const auto& cu : g_store.cities_in_use()) city_names[cu.key] = cu.name;
+    auto city_name = [&](const std::string& key) { auto it = city_names.find(key); return it == city_names.end() ? key : it->second; };
     auto rows = g_store.all_city_tags();
     if (!q.empty())
         rows.erase(std::remove_if(rows.begin(), rows.end(), [&](const std::pair<std::string, std::string>& r) {
-            return !admin_matches(r.first, q) && !admin_matches(r.second, q); }), rows.end());
+            return !admin_matches(r.first, q) && !admin_matches(city_name(r.first), q) && !admin_matches(r.second, q); }),
+            rows.end());
     if (rows.empty()) {
         html += "<p class=\"empty\">" + std::string(q.empty() ? "No departments or councils yet." : "Nothing matches.") + "</p>";
         return html;
@@ -7474,7 +7537,7 @@ std::string admin_departments_page(const std::string& q, const std::string& msg)
             "<th>Proposals</th><th></th></tr>";
     for (const auto& [key, tag] : rows) {
         const auto n = g_store.proposals_with_city_tag(key, tag).size();
-        html += "<tr><td><a href=\"/city/" + url_encode(key) + "\">" + html_escape(key) + "</a></td>"
+        html += "<tr><td><a href=\"/city/" + url_encode(key) + "\">" + html_escape(city_name(key)) + "</a></td>"
                 "<td>" + html_escape(tag) + "</td><td>" + std::to_string(n) + "</td>"
                 "<td><form method=\"POST\" action=\"/admin/departments/delete\" "
                 "onsubmit=\"return confirm('Delete this department or council?');\">"
@@ -8577,8 +8640,9 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
     }
 
     if(method=="GET"&&path=="/logs") {
-        const char* op = std::getenv("LIQUIDGOV_OPERATOR");
-        if (!op || !op[0] || user != op)
+        // is_operator(), like every other operator page: this read LIQUIDGOV_OPERATOR (singular), which the live
+        // service never sets (it sets LIQUIDGOV_OPERATORS), so the page was a 404 for everyone (sweep 2026-11-09).
+        if (!acc || !is_operator(user))
             return http_raw("404 Not Found", "text/plain", "not found\n");
         return http_raw("200 OK", "text/plain; charset=utf-8", lglog::dump_text(),
             "Cache-Control: no-store\r\n");
@@ -9066,17 +9130,40 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
     }
     // Real recorded narration (Helios) for the Chapter 1 Listen control --
     // replaces the earlier browser speechSynthesis approach entirely.
-    if(method=="GET"&&path=="/assets/chapter1.mp3") {
-        static std::string cached;
-        static bool tried = false;
-        if (!tried) {
-            tried = true;
-            std::ifstream in("assets/chapter1.mp3", std::ios::binary);
-            if (in) { std::ostringstream ss; ss << in.rdbuf(); cached = ss.str(); }
+    // Narration for every Laws chapter (Helios, recorded 2026-09-13; Brandon 2026-11-09 "i want the audio"):
+    // /assets/chapter<N>.mp3 for N = 1..number of chapters. Chapter 1 used to be the only route (a whole-file copy
+    // held in memory for good); all 14 that way would pin ~18 MB on the 512 MB droplet, so each request reads the
+    // file from disk. Byte ranges are honoured (iPhone Safari asks for them before playing audio). Cached a day,
+    // not a year: a chapter whose text changes gets re-recorded at the same address.
+    if(method=="GET"&&path.rfind("/assets/chapter",0)==0&&path.size()>19&&path.compare(path.size()-4,4,".mp3")==0) {
+        const std::string num = path.substr(15, path.size()-15-4);
+        size_t n = 0;
+        if (num.empty() || num.size() > 2 || num[0] == '0' || !std::all_of(num.begin(), num.end(), ::isdigit))
+            return http_raw("404 Not Found", "text/plain; charset=utf-8", "not found");
+        n = static_cast<size_t>(std::stoi(num));
+        if (n < 1 || n > law_chapters().size()) return http_raw("404 Not Found", "text/plain; charset=utf-8", "not found");
+        // the name is built, so lgp1_consistency (literal asset names) cannot see it; narration_files_check.py checks
+        // that assets/chapter1..N.mp3 exist for every Laws chapter instead
+        const std::string file = "assets/chapter" + num + ".mp3";
+        std::ifstream in(file, std::ios::binary);
+        if (!in) {
+            lglog::emit("narration", "missing assets/chapter" + num + ".mp3");
+            return http_raw("404 Not Found", "text/plain; charset=utf-8", "not found");
         }
-        if (cached.empty()) return http_raw("404 Not Found", "text/plain; charset=utf-8", "not found");
-        return http_raw("200 OK", "audio/mpeg", cached,
-            "Cache-Control: public, max-age=31536000, immutable\r\n");
+        std::ostringstream ss; ss << in.rdbuf();
+        const std::string all = ss.str();
+        const std::string cache = "Cache-Control: public, max-age=86400\r\nAccept-Ranges: bytes\r\n";
+        const std::string range = header_value(req, "Range");
+        unsigned long long a = 0, b = 0;
+        if (!range.empty() && !all.empty() && std::sscanf(range.c_str(), "bytes=%llu-%llu", &a, &b) >= 1) {
+            if (range.find('-') == range.size() - 1 || b >= all.size()) b = all.size() - 1;
+            if (a > b || a >= all.size())
+                return http_raw("416 Range Not Satisfiable", "text/plain; charset=utf-8", "",
+                    "Content-Range: bytes */" + std::to_string(all.size()) + "\r\n");
+            return http_raw("206 Partial Content", "audio/mpeg", all.substr(a, b - a + 1), cache +
+                "Content-Range: bytes " + std::to_string(a) + "-" + std::to_string(b) + "/" + std::to_string(all.size()) + "\r\n");
+        }
+        return http_raw("200 OK", "audio/mpeg", all, cache);
     }
 
     if(method=="GET"&&(path=="/theme/dark"||path=="/theme/light")) {
@@ -9146,7 +9233,7 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         const std::string err = flash_error(qs);
         const std::string next = safe_next_path(qs["next"]);
         return pg("Log in", "<div class=\"card\"><h1>Log in</h1>"
-            "<p class=\"muted\">Username and password. Phone is not the daily credential.</p>"+err+
+            "<p class=\"muted\">Log in with your username and password.</p>"+err+
             google_signin_button_html()+
             "<form method=\"POST\" action=\"/login\"><label>Username</label>"
             "<input name=\"username\" required autocomplete=\"username\" value=\""+html_escape(qs["username"])+"\">"
@@ -9280,9 +9367,10 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
                 tag_fields = "<label>Departments and councils</label>" + tag_fields;
         }
         std::string html = "<h1>Proposals</h1>"
-            "<p class=\"muted\">Unofficial straw polls &mdash; a way to gauge how people feel about "
-            "something not yet decided. Not a CitizenId vote, not binding, not this platform's Phase 2. "
-            "Discussion only. Nothing is sent to the city.</p>";
+            // Plain words (sweep 2026-11-09): same honesty as before, without "CitizenId" and an unexplained "Phase 2".
+            "<p class=\"muted\">Unofficial straw polls &mdash; a way to see how people feel about something not yet "
+            "decided. Not binding, and not an identity-verified vote: that only comes later, in "
+            "<a href=\"/laws/13\">Phase 2</a>. Discussion only. Nothing is sent to the city.</p>";
         if (!filter_key.empty()) {
             std::string name = filter_key;
             for (const auto& cu : g_store.cities_in_use()) if (cu.key == filter_key) { name = cu.name; break; }
@@ -9293,7 +9381,14 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         // ?title= prefills the title ("Start a proposal about this" from /problems). Never posts by itself.
         std::string title_prefill = qs.count("title") ? trim_ws(qs.at("title")) : std::string();
         if (title_prefill.size() > 140) title_prefill.resize(140);
-        html += "<div class=\"card\" id=\"new\"><form method=\"POST\" action=\"/proposals\">"
+        auto all = filter_key.empty() ? g_store.all_proposals() : g_store.proposals_in_city(filter_key);
+        std::reverse(all.begin(), all.end());
+        // The proposals first, the form behind a "New proposal" button (sweep 2026-11-09: on a phone the page opened
+        // on an empty form and the proposals began a full screen down). Open on its own when it is what you came for:
+        // a ?title= prefill, an error to fix, nothing to read yet, or a link to #new (the script below).
+        const bool open_form = !title_prefill.empty() || qs.count("err") || all.empty();
+        html += std::string("<details class=\"card newprop\" id=\"new\"") + (open_form ? " open" : "") +
+                "><summary>New proposal</summary><form method=\"POST\" action=\"/proposals\">"
                 "<label>Title</label><input name=\"title\" maxlength=\"140\" required value=\""+html_escape(title_prefill)+"\">"
                 "<label>What's being proposed</label>"
                 "<textarea name=\"body\" maxlength=\"4000\" required placeholder=\"Plain text.\"></textarea>"
@@ -9336,9 +9431,8 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
                 "document.getElementById('bchoice').hidden=(v!=='3');"
                 "document.getElementById('bscale').hidden=(v!=='4');}"
                 "s.addEventListener('change',show);show();})();"
-                "</script></div>";
-        auto all = filter_key.empty() ? g_store.all_proposals() : g_store.proposals_in_city(filter_key);
-        std::reverse(all.begin(), all.end());
+                "(function(){var d=document.getElementById('new');if(d&&location.hash==='#new')d.open=true;})();"
+                "</script></details>";
         if (all.empty()) html += "<div class=\"card\"><p class=\"empty\">None open.</p>"
             "<p class=\"muted\">The form above starts an unofficial straw poll. Not a binding vote.</p></div>";
         for (const auto& p : all) {
@@ -10588,15 +10682,17 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         auto p = g_store.prefs_of(user);
         auto find_sel = [&](Findability f){ return p.findability==f?" checked":""; };
         std::string html = "<h1>Settings</h1>"
-            "<p class=\"muted\">Account, privacy, data, and notifications.</p>";
+            "<p class=\"muted\">Account, privacy, data, and notifications.</p>"
+            // jump links (sweep 2026-11-09): nine sections were one long scroll on a phone
+            "<div class=\"setidx\" role=\"navigation\" aria-label=\"Settings sections\"><a href=\"#security\">Security</a><a href=\"#sessions\">Sessions</a><a href=\"#map\">Map and connections</a><a href=\"#privacy\">Privacy</a><a href=\"#blocks\">Block list</a><a href=\"#jukebox\">Jukebox</a><a href=\"#identity\">Identity</a><a href=\"#data\">Data</a><a href=\"#notifications\">Notifications</a></div>";  // a div: the phone CSS hides every <nav> (nav{display:none} is the mobile menu)
         if (qs["ok"]=="password") html += "<p class=\"ok\">Password changed.</p>";
         html += flash_error(qs);
 
-        html += "<div class=\"card\"><h2>Security</h2>"
+        html += "<div class=\"card\"><h2 id=\"security\">Security</h2>"
             "<form method=\"POST\" action=\"/settings/password\">"
             "<label>Current password</label><input type=\"password\" name=\"current\" required autocomplete=\"current-password\">"
             "<label>New password</label><input type=\"password\" name=\"next\" required autocomplete=\"new-password\">"
-            "<button>Change password</button></form><h2>Sessions</h2>";
+            "<button>Change password</button></form><h2 id=\"sessions\">Sessions</h2>";
         auto all = g_store.sessions_for(acc->id);
         int shown = 0;
         for (const auto& s : all) {
@@ -10627,7 +10723,7 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
                        "<input type=\"checkbox\" name=\"") + name + "\" value=\"1\"" + (on ? " checked" : "") + "> <span><strong>" +
                        label + "</strong><br><span class=\"muted\">" + help + "</span></span></label>";
             };
-            html += "<div class=\"card\" id=\"map-privacy\"><h2>Map and connections</h2>"
+            html += "<div class=\"card\" id=\"map-privacy\"><h2 id=\"map\">Map and connections</h2>"
                     "<p class=\"muted\">The <a href=\"/map\">Map</a> connects people, groups, cities and proposals so you can find "
                     "the people worth talking to. Choose what it shows about you. You always see your own.</p>"
                     "<form method=\"POST\" action=\"/settings/map\">"
@@ -10646,7 +10742,7 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
                     + "<p class=\"muted\"><a href=\"/problems\">See your problems and solutions</a></p>"
                     + "<button>Save map settings</button></form></div>";
         }
-        html += std::string("<div class=\"card\"><h2>Privacy</h2><form method=\"POST\" action=\"/settings/privacy\">")
+        html += std::string("<div class=\"card\"><h2 id=\"privacy\">Privacy</h2><form method=\"POST\" action=\"/settings/privacy\">")
             + "<label>Who can find you</label>"
             + "<p class=\"muted\">One axis, three states. Each level includes the one above it.</p>"
             + "<p><label><input type=\"radio\" name=\"findability\" value=\"0\"" + find_sel(Findability::FriendsOnly) + "> Friends only</label>"
@@ -10682,7 +10778,7 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
                 "(Anybody/Friends/Groups) -- this row is the fallback for Groups-only posts on your "
                 "profile, and Only me still hides everything from everyone but you.</span></td></tr>"
                 "</table>"
-                "<button>Save privacy</button></form><h2>Block list</h2>";
+                "<button>Save privacy</button></form><h2 id=\"blocks\">Block list</h2>";
         auto bl = g_store.block_entries_of(user);
         html += "<p class=\"muted eyebrow\">"+std::to_string(bl.size())+
                 (bl.size()==1?" member":" members")+" &middot; not visible to them</p>";
@@ -10705,7 +10801,7 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
             // visibility above, not something that belongs on a page
             // visitors see (Brandon: "its not appropriate" there).
             auto jsel = [&](JukeboxPolicy pol) -> std::string { return p.jukebox_policy==pol?" checked":""; };
-            html += "<h2>Jukebox</h2>"
+            html += "<h2 id=\"jukebox\">Jukebox</h2>"
                     "<form method=\"POST\" action=\"/me/jukebox/policy\">"
                     "<label>Who else can queue a track on your jukebox</label>"
                     "<p><label><input type=\"radio\" name=\"policy\" value=\"0\""+jsel(JukeboxPolicy::OwnerOnly)+"> Just me</label></p>"
@@ -10717,11 +10813,11 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         }
         html += "</div>";
 
-        html += "<div class=\"card\"><h2>Identity</h2>"
+        html += "<div class=\"card\"><h2 id=\"identity\">Identity</h2>"
             "<p>No civic identity is linked to this account.</p>"
             "<p class=\"muted\">Voting is not live yet. Linking a citizen identity later will not happen from this page until it is.</p></div>";
 
-        html += "<div class=\"card\"><h2>Data</h2>"
+        html += "<div class=\"card\"><h2 id=\"data\">Data</h2>"
             "<p><a class=\"btn ghost\" href=\"/export\">Download your export</a></p>"
             "<p class=\"muted\">Export includes username, blurb, profile CSS, your friend list, communities you started or joined, "
             "posts you wrote, settings, and messages you sent. It does not include other people’s text or your password hash.</p>"
@@ -10732,7 +10828,7 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
             "<p class=\"muted\">Sessions end immediately. Mail you sent is shown as [deleted account]. "
             "A fingerprint of the phone number is held ninety days so a deleted account cannot immediately reopen under the same number.</p></div>";
 
-        html += std::string("<div class=\"card\"><h2>Notifications</h2><form method=\"POST\" action=\"/settings/notify\">")
+        html += std::string("<div class=\"card\"><h2 id=\"notifications\">Notifications</h2><form method=\"POST\" action=\"/settings/notify\">")
             + "<p><label><input type=\"checkbox\" name=\"notify_friend\" value=\"1\"" + (p.notify_friend?" checked":"") + "> Friend requests and accepts</label></p>"
             + "<p><label><input type=\"checkbox\" name=\"notify_message\" value=\"1\"" + (p.notify_message?" checked":"") + "> New mail</label></p>"
             + "<p><label><input type=\"checkbox\" name=\"notify_group\" value=\"1\"" + (p.notify_group?" checked":"") + "> Community invites</label></p>"

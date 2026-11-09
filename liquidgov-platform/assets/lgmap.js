@@ -111,8 +111,17 @@
       // Phone: the box at the left edge and its column of connections beside it, scaled to fit the width,
       // never under 0.75 (13 px labels stay readable; advisor 2026-11-07).
       scale = Math.max(0.75, Math.min(1, (box.width - 16) / (COLW + W * 1.25)));
-      tx = Math.round(8 - leftX(n) * scale);
-      ty = Math.round(box.height / 2 - (n.y + H / 2) * scale);
+      // Sweep 2026-11-09: at the 0.75 floor the column of connections ran off the right edge ("Tower District
+      // Garde..."), and centring on the box left a screenful of empty map above it. So: the connections (the boxes
+      // you tap next) stay fully in view - right-aligned when box + column are wider than the phone - and the top
+      // of that column starts near the top of the frame instead of being centred in it.
+      var right = leftX(n) + COLW + W * 1.25, top = n.y;
+      for (var k in edges) {
+        var o = edges[k].a === n.id ? nodes[edges[k].b] : (edges[k].b === n.id ? nodes[edges[k].a] : null);
+        if (o && o.x > n.x) top = Math.min(top, o.y);
+      }
+      tx = Math.round(Math.min(8 - leftX(n) * scale, box.width - 8 - right * scale));
+      ty = Math.round(Math.min(box.height / 2 - (n.y + H / 2) * scale, 12 - top * scale));
       apply(true);
       return;
     }
@@ -171,8 +180,23 @@
     text.textContent = short(n.label, 26);
     g.appendChild(text);
     var title = el('title', {}); title.textContent = n.label; g.appendChild(title);
-    g.addEventListener('click', function (ev) { ev.stopPropagation(); select(n); });
-    g.addEventListener('keydown', function (ev) { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); select(n); } });
+    g.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      if (Date.now() < suppressClickUntil) return; // the press below already handled this touch
+      select(n, !narrow());
+    });
+    // Enter opens the page (keyboard and screen readers, which cannot long-press); Space only grows connections.
+    g.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); select(n, ev.key === 'Enter'); }
+    });
+    // Phones (Brandon 2026-11-09): a quick tap only grows the box's connections; holding it makes the box swell
+    // the longer you hold (like Messenger's thumbs-up) and letting go after HOLD_MS opens its page. Moving the
+    // finger cancels, so dragging the map still works.
+    g.addEventListener('pointerdown', function (ev) {
+      if (ev.pointerType === 'mouse' || !narrow()) return;
+      startHold(n, ev);
+    });
+    g.addEventListener('contextmenu', function (ev) { if (narrow()) ev.preventDefault(); });
     g.addEventListener('mouseenter', function () { light(n.id); });
     g.addEventListener('mouseleave', function () { light(selected ? selected.id : null); });
     nodeLayer.appendChild(g);
@@ -217,7 +241,61 @@
     }).catch(function (err) { status(err.message); return n; });
   }
 
-  function select(n) {
+  // ---- press and hold (phones) ----
+  var HOLD_MS = 450, GROW_MAX = 1.6, GROW_MS = 900, suppressClickUntil = 0, hold = null;
+  function boxTransform(n, k) {
+    var s = sizeOf(n) * k;
+    return 'translate(' + (n.x + W / 2 * (1 - s)) + ',' + (n.y + H / 2 * (1 - s)) + ') scale(' + s + ')';
+  }
+  function endHold(open) {
+    if (!hold) return;
+    var h = hold;
+    hold = null;
+    cancelAnimationFrame(h.raf);
+    h.n.el.classList.remove('lgn-hold', 'lgn-ready');
+    h.n.el.setAttribute('transform', boxTransform(h.n, 1));
+    document.removeEventListener('pointermove', h.move, true);
+    document.removeEventListener('pointerup', h.up, true);
+    document.removeEventListener('pointercancel', h.cancel, true);
+    if (open === null) return;              // cancelled (the finger moved: a drag, not a tap)
+    suppressClickUntil = Date.now() + 600;  // the browser's click for this touch must not run select() again
+    select(h.n, open);
+  }
+  function startHold(n, ev) {
+    endHold(null);
+    var t0 = performance.now(), x0 = ev.clientX, y0 = ev.clientY;
+    hold = { n: n, raf: 0, ready: false };
+    n.el.classList.add('lgn-hold');
+    // grow on top of its neighbours, not behind the next box down (seen in the 2026-11-09 screenshot); the release
+    // is caught on the document, so moving the element does not lose the touch
+    nodeLayer.appendChild(n.el);
+    function grow(now) {
+      if (!hold) return;
+      var t = Math.min(1, (now - t0) / GROW_MS);
+      n.el.setAttribute('transform', boxTransform(n, 1 + (GROW_MAX - 1) * t));
+      if (!hold.ready && now - t0 >= HOLD_MS) {
+        hold.ready = true;
+        n.el.classList.add('lgn-ready');
+        try { if (navigator.vibrate) navigator.vibrate(12); } catch (e) {} // err-ok: haptics are a nicety; iOS has none
+      }
+      hold.raf = requestAnimationFrame(grow);
+    }
+    hold.move = function (e) { if (Math.abs(e.clientX - x0) > 10 || Math.abs(e.clientY - y0) > 10) endHold(null); };
+    // Tap or hold is decided from the input events' own timestamps (when the finger went down and up), not from
+    // when this page got round to handling them: a busy page delays handlers by hundreds of ms (measured in
+    // headless Edge: a 60 ms tap handled 453 ms apart), which would turn a tap into a hold.
+    var down = ev.timeStamp;
+    hold.up = function (e) { endHold(e.timeStamp - down >= HOLD_MS); };
+    hold.cancel = function () { endHold(null); };
+    document.addEventListener('pointermove', hold.move, true);
+    document.addEventListener('pointerup', hold.up, true);
+    document.addEventListener('pointercancel', hold.cancel, true);
+    hold.raf = requestAnimationFrame(grow);
+  }
+
+  // open: show the box's page (desktop click, Enter, a phone long-press). Without it - a quick tap on a phone -
+  // only the connections grow.
+  function select(n, open) {
     var prev = selected;
     if (selected) selected.el.classList.remove('lgn-sel');
     selected = n;
@@ -230,7 +308,8 @@
     shade(n);
     for (var k in edges) if (edges[k].a === n.id || edges[k].b === n.id) sizeEdge(edges[k]);
     light(n.id);
-    if (n.page) openPanel(n); else closePanel();
+    if (n.page && open) openPanel(n);
+    else if (!n.page || !narrow()) closePanel();
     // After the field opens (the map narrows), glide to the box and what grew out of it.
     expand(n).then(function () { light(n.id); focusOn(n); });
   }
@@ -272,7 +351,7 @@
       if (u.origin !== location.origin || u.pathname !== '/map') return;
       ev.preventDefault();
       var f = u.searchParams.get('focus');
-      if (f && nodes[f]) { closePanel(); select(nodes[f]); }
+      if (f && nodes[f]) { closePanel(); select(nodes[f], !narrow()); }
       else location.href = u.href;
     });
   });
@@ -368,11 +447,11 @@
       if (!top) { if (!narrow()) fitAll(); return; }
       return expand(top).then(function () { if (narrow()) focusOn(top); else fitAll(); });
     }
-    if (nodes[focus]) { select(nodes[focus]); return; }
+    if (nodes[focus]) { select(nodes[focus], !narrow()); return; }
     return load(focus).then(function (data) {
       var n = addNode(data.node, COLW * 2, 0);
       data.links.forEach(function (l) { if (nodes[l.node.id]) addEdge(n.id, l.node.id, l.edge); });
-      select(n);
+      select(n, !narrow());
     });
   }).catch(function (err) { status(err.message); });
 })();

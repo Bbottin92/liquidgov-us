@@ -12,7 +12,12 @@
 #lgm-svg.lgm-drag{cursor:grabbing}
 #lgm-view{transform-origin:0 0}
 #lgm-view.lgm-glide{transition:transform .35s ease}
-.lgn{cursor:pointer;transition:opacity .25s ease}
+.lgn{cursor:pointer;transition:opacity .25s ease;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+/* press and hold on phones (2026-11-09): the box swells while held (lgmap.js), and shows when it will open */
+.lgn.lgn-hold .lgs{stroke-width:3}
+.lgn.lgn-ready .lgs{stroke-width:4;filter:drop-shadow(0 0 6px var(--accent,#8a6620))}
+.lgm-hint-narrow{display:none}
+@media (max-width:760px){.lgm-hint-wide{display:none}.lgm-hint-narrow{display:inline}}
 .lgn.lgn-new{opacity:0}
 .lgn .lgs{fill:var(--paper);stroke:var(--rule);stroke-width:1.6}
 .lgn text{font-size:13px;fill:var(--ink);text-anchor:middle;pointer-events:none}

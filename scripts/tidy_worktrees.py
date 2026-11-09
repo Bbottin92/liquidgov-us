@@ -15,6 +15,7 @@ import argparse
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 BUILD_DIRS = ("build/", "liquidgov-platform/build/")
@@ -96,7 +97,26 @@ def judge(repo, wt):
     link = has_links(path)
     if link:
         return "contains a junction/symlink: %s" % link
-    return None
+    return in_use(path)
+
+
+def in_use(path):
+    """Windows refuses to rename a folder that another process uses (a shell's cwd, an editor). Probe it BEFORE git
+    touches the worktree: on 2026-11-08 git unregistered two such worktrees, could not delete the folders (Permission
+    denied) and left an empty folder and the branch behind, because the holder was the session shell, not this tool."""
+    probe = path.with_name(path.name + ".tidy-probe")
+    try:
+        os.rename(path, probe)
+    except OSError as ex:
+        return "folder in use by another process (a shell or editor has it open; cd out of it first): %s" % ex.strerror
+    for attempt in range(10):
+        try:
+            os.rename(probe, path)
+            return None
+        except OSError:
+            time.sleep(0.5)
+    raise SystemExit("tidy_worktrees: STOP: %s was renamed to %s for the in-use probe and could not be renamed back; "
+                     "rename it back by hand before using git there" % (path, probe))
 
 
 def main(argv=None):

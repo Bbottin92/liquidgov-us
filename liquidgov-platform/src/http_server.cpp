@@ -6655,7 +6655,7 @@ std::string map_page_body(const std::string& user, const std::string& focus) {
             // Phones: a tap grows connections, a hold opens the page (Brandon 2026-11-09); the hint says so, since a
             // long press is invisible unless something tells you about it (side-agent note).
             "<span class=\"lgm-hint muted\"><span class=\"lgm-hint-wide\">Click a box to grow its connections and open its page.</span>"
-            "<span class=\"lgm-hint-narrow\">Tap a box to see its connections &middot; <strong>hold it</strong> to open its page.</span>"
+            "<span class=\"lgm-hint-narrow\">Tap a box to see its connections &middot; double-tap or <strong>hold it</strong> to open its page.</span>"
             " Bigger boxes are closer to you.</span>"
             "<span id=\"lgm-status\" class=\"lgm-status\" role=\"status\"></span>"
             "<a class=\"lgm-privacy\" href=\"/settings#map-privacy\">Map privacy</a></div>"

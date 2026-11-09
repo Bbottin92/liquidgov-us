@@ -243,6 +243,7 @@
 
   // ---- press and hold (phones) ----
   var HOLD_MS = 450, GROW_MAX = 1.6, GROW_MS = 900, suppressClickUntil = 0, hold = null;
+  var DOUBLE_MS = 350, GLIDE_WAIT_MS = 320, lastTap = { id: null, t: 0 };
   function boxTransform(n, k) {
     var s = sizeOf(n) * k;
     return 'translate(' + (n.x + W / 2 * (1 - s)) + ',' + (n.y + H / 2 * (1 - s)) + ') scale(' + s + ')';
@@ -285,7 +286,14 @@
     // when this page got round to handling them: a busy page delays handlers by hundreds of ms (measured in
     // headless Edge: a 60 ms tap handled 453 ms apart), which would turn a tap into a hold.
     var down = ev.timeStamp;
-    hold.up = function (e) { endHold(e.timeStamp - down >= HOLD_MS); };
+    // a hold opens; so does a second quick tap on the same box within DOUBLE_MS (Brandon 2026-11-09: "maybe a
+    // double tap can open a box?"), also by event timestamps
+    hold.up = function (e) {
+      if (e.timeStamp - down >= HOLD_MS) { lastTap = { id: null, t: 0 }; endHold(true); return; }
+      var dbl = lastTap.id === n.id && e.timeStamp - lastTap.t < DOUBLE_MS;
+      lastTap = dbl ? { id: null, t: 0 } : { id: n.id, t: e.timeStamp };
+      endHold(dbl);
+    };
     hold.cancel = function () { endHold(null); };
     document.addEventListener('pointermove', hold.move, true);
     document.addEventListener('pointerup', hold.up, true);
@@ -311,7 +319,13 @@
     if (n.page && open) openPanel(n);
     else if (!n.page || !narrow()) closePanel();
     // After the field opens (the map narrows), glide to the box and what grew out of it.
-    expand(n).then(function () { light(n.id); focusOn(n); });
+    // Phone, a tap that did not open: wait before gliding, so a second tap (double-tap to open) lands on the same box
+    // instead of wherever the glide moved it.
+    var wait = narrow() && !open ? GLIDE_WAIT_MS : 0;
+    expand(n).then(function () {
+      light(n.id);
+      setTimeout(function () { if (selected === n) focusOn(n); }, wait);
+    });
   }
 
   function openPanel(n) {

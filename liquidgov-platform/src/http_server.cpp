@@ -14,6 +14,7 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/time.h>
+#include <sys/wait.h>
 #include <unistd.h>
 #include <algorithm>
 #include <atomic>
@@ -337,15 +338,22 @@ std::string shell_single_quote(const std::string& s) {
 // verification) is why it's a real function now instead of a third
 // copy. Caller must url_encode anything untrusted before it lands in
 // url -- this does not escape anything itself.
-std::string curl_get(const std::string& url, int timeout_sec) {
+// curl_exit (optional) gets curl's exit status: 0 when an answer came back (an HTTP error page too: no -f), curl's
+// own code when nothing did (6 no DNS, 7 refused, 28 timeout, 35 TLS...), -1 when curl could not be started. Site
+// sweep 2026-11-09: it was thrown away, so "unreachable" looked like an empty answer. curl's error line itself
+// already reaches the service log (-sS prints it to our stderr).
+std::string curl_get(const std::string& url, int timeout_sec, int* curl_exit = nullptr) {
     std::string cmd = "curl -sS --max-time " + std::to_string(timeout_sec) + " '" + url + "'";
     std::string resp;
+    int status = -1;
     if (FILE* p = popen(cmd.c_str(), "r")) {
         char buf[4096];
         size_t n;
         while ((n = fread(buf, 1, sizeof(buf), p)) > 0) resp.append(buf, n);
-        pclose(p);
+        int st = pclose(p);
+        status = (st != -1 && WIFEXITED(st)) ? WEXITSTATUS(st) : -1;
     }
+    if (curl_exit) *curl_exit = status;
     return resp;
 }
 
@@ -8104,6 +8112,7 @@ std::string flash_error(const std::map<std::string,std::string>& qs) {
     if (e=="denied") return "<p class=\"warn\">You can't queue a track here.</p>";
     if (e=="pending") return "<p class=\"warn\">You already have a track queued. Wait for it to play first.</p>";
     if (e=="google") return "<p class=\"warn\">Couldn&rsquo;t verify that Google sign-in. Try again.</p>";
+    if (e=="google-down") return "<p class=\"warn\">Couldn&rsquo;t reach Google to check your sign-in. Try again in a moment.</p>";
     if (e=="reset") return "<p class=\"warn\">That link has expired or was already used. Request a new one.</p>";
     return "";
 }
@@ -11000,8 +11009,11 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         std::string credential = trim_ws(f["credential"]);
         if (credential.empty()) return http_redir("/login?err=google");
 
+        int curl_exit = 0;
         std::string resp = curl_get(
-            "https://oauth2.googleapis.com/tokeninfo?id_token=" + url_encode(credential), 8);
+            "https://oauth2.googleapis.com/tokeninfo?id_token=" + url_encode(credential), 8, &curl_exit);
+        // nothing came back (no network, timeout): say Google could not be reached, not that the sign-in was bad
+        if (curl_exit != 0 && resp.empty()) return http_redir("/login?err=google-down");
         if (resp.empty() || resp[0] != '{') return http_redir("/login?err=google");
 
         std::string aud = oembed_json_string_field(resp, "aud");

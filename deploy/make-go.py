@@ -97,6 +97,28 @@ for part in ("go", "remote"):
             out = out.replace(end, end + nl + "# dry: stop here, before the backup (added by make-go.py)" + nl + DRY_LINE + nl)
         if out.count(DRY_LINE) != 1 or out.index(DRY_LINE) > out.find(nl + "remote backup"):
             sys.exit("dry mode check failed for %s: the dry exit must appear once, before 'remote backup'" % dst_path)
+        # records: the ctx log line and notes.md bullet from THIS run's real output (Brandon 2026-11-08, "Deploy writes
+        # its records"); a template copied from an older pair carries an old block, so it is replaced, never doubled
+        cut = out.find("# records (added by make-go.py)")
+        if cut >= 0:
+            out = out[:cut]
+        anchor = "echo CHECK_DONE" + nl
+        if out.count(anchor) != 1 or not out.endswith(anchor) or 'SYNCLOG="' not in out:
+            sys.exit("cannot add the record block: %s must end with one 'echo CHECK_DONE' line and set SYNCLOG" % src_path)
+        safe = re.sub(r'["\\$`]', "", purpose) + " (" + dst_name + ")"
+        out += nl.join([
+            "# records (added by make-go.py): the ctx log line and notes.md bullet from THIS run's real output",
+            "# (Brandon 2026-11-08); reached only after the public checks passed (set -e; city-live-check exits 1)",
+            "REC_COMMIT=$(sed -n 's/^Deploying commit \\([0-9a-f][0-9a-f]*\\).*/\\1/p' \"$SYNCLOG\" | tail -1) || true",
+            "REC_PID=$(remote preflight 2>/dev/null | sed -n 's/^PID=\\([0-9][0-9]*\\)$/\\1/p' | tail -1) || true",
+            'if [ -z "$REC_COMMIT" ] || [ -z "$REC_PID" ]; then',
+            "  echo \"RECORD_FAILED: commit '$REC_COMMIT' / PID '$REC_PID' not found; write the records by hand from the log above\"",
+            "else",
+            '  echo "RECORD ctx log: python C:/Users/Brandon/shared-context/tools/ctx.py log <who> deploy \\"liquidgov.us '
+            + safe + '\\" --result ok --ref $REC_COMMIT"',
+            '  echo "RECORD notes.md: - **$(TZ=America/Los_Angeles date \'+%Y-%m-%d %H:%M\') PT -- ' + safe
+            + ' LIVE (commit \\`$REC_COMMIT\\`, PID $REC_PID, public checks FAILS 0).**"',
+            "fi", ""])
     for a, b in zip(src.splitlines(), out.splitlines()):
         if a != b:
             print("%s-%s: %s" % (dst_name, part, b.strip()[:140]))

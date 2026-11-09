@@ -17,7 +17,12 @@ import subprocess
 import sys
 from pathlib import Path
 
-BUILD_DIRS = ("build/", "liquidgov-platform/build/", "__pycache__/", ".pytest_cache/")
+BUILD_DIRS = ("build/", "liquidgov-platform/build/")
+CACHE_SEGMENTS = {"__pycache__", ".pytest_cache"}  # anywhere in the path (2026-11-08: nested ones kept 9 worktrees)
+
+
+def is_build_output(rel):
+    return rel.startswith(BUILD_DIRS) or bool(CACHE_SEGMENTS & set(rel.rstrip("/").split("/")))
 
 
 def git(cwd, *args):
@@ -77,9 +82,11 @@ def judge(repo, wt):
         return "git status failed: " + err.strip()[:120]
     if out.strip():
         return "%d uncommitted/untracked path(s)" % len(out.splitlines())
-    rc, out, _ = git(path, "status", "--porcelain", "--ignored")
+    # --untracked-files=all: without it git collapses a folder holding only ignored files into "sub/", hiding that it
+    # is only __pycache__ (measured in tidy_worktrees_check, 2026-11-08)
+    rc, out, _ = git(path, "status", "--porcelain", "--ignored", "--untracked-files=all")
     ignored = [l[3:] for l in out.splitlines() if l.startswith("!! ")]
-    kept = [i for i in ignored if not i.startswith(BUILD_DIRS)]
+    kept = [i for i in ignored if not is_build_output(i)]
     if kept:
         return "ignored files that are not build output: " + ", ".join(kept[:5])
     link = has_links(path)

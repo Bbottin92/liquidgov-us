@@ -56,6 +56,14 @@ try:
     (wt["store"] / "accounts.lgp").write_text("real data\n")
     (wt["clean"] / "build").mkdir()
     (wt["clean"] / "build" / "x.o").write_text("obj\n")  # build output alone does not keep a worktree
+    # a NESTED __pycache__ is build output too (2026-11-08: the first real dry run kept 9 worktrees for
+    # commons-daemon/tests/__pycache__/ alone)
+    (wt["clean"] / "sub" / "tests" / "__pycache__").mkdir(parents=True)
+    (wt["clean"] / "sub" / "tests" / "__pycache__" / "m.pyc").write_text("pyc\n")
+    (main / ".gitignore").write_text("*.lgp\nbuild/\n__pycache__/\n")
+    git(main, "add", "."), git(main, "commit", "-q", "-m", "ignore pycache")
+    for name in wt:
+        git(wt[name], "merge", "-q", "--ff-only", "master") if name != "unmerged" else None
     target.mkdir()
     (target / "keep.txt").write_text("must survive\n")
     made = subprocess.run(["cmd", "/c", "mklink", "/J", str(wt["junction"] / "linked"), str(target)],

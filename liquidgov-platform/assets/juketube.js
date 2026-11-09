@@ -1236,6 +1236,34 @@
     }
     return false;
   }
+  // Night mode while music plays (Brandon 2026-11-08: "just stops when i switch to/from night mode"). /theme/<mode>
+  // is a full-load path because the server answers it with a cookie and a redirect, and a reload stops the music.
+  // So while the shell is up or something is playing, the toggle is done here instead: the same cookie the server
+  // sets (http_server.cpp, GET /theme/dark|light: lg_theme, Path=/, SameSite=Lax, a year, Secure on https), then
+  // data-theme on this page and the framed page, then every toggle link flips to point the other way (its glyph as
+  // page_wrap draws it: a sun while dark, a moon while light). Nested frames (the /map field) pick it up on their
+  // next load. Nothing playing: the link loads normally, as before.
+  var THEME_PATH = /^\/theme\/(dark|light)$/;
+  function themeInPlace(url) {
+    var m = THEME_PATH.exec(url.pathname);
+    if (!m || url.origin !== location.origin) return false;
+    var mode = m[1], next = mode === "dark" ? "light" : "dark";
+    document.cookie = "lg_theme=" + mode + "; Path=/; SameSite=Lax; Max-Age=31536000" +
+      (location.protocol === "https:" ? "; Secure" : "");
+    var docs = [document];
+    try {
+      if (shellFrame && shellFrame.contentDocument) docs.push(shellFrame.contentDocument);
+    } catch (e) {} // err-ok: an unreadable frame is another origin; it is replaced by a normal load anyway
+    docs.forEach(function (d) {
+      d.documentElement.setAttribute("data-theme", mode);
+      Array.prototype.forEach.call(d.querySelectorAll('a[href="/theme/dark"],a[href="/theme/light"]'), function (a) {
+        a.setAttribute("href", "/theme/" + next);
+        a.textContent = mode === "dark" ? "☀" : "☽";
+      });
+    });
+    lgBeacon("shell-theme", mode);
+    return true;
+  }
   var shellFrame = null;
   var shellHomeTitle = "";
   var shellPending = "";
@@ -1363,6 +1391,10 @@
     try {
       var hit = linkTarget(e, e.target.ownerDocument.baseURI);
       if (!hit) return;
+      if (themeInPlace(hit.url)) {
+        e.preventDefault();
+        return;
+      }
       if (hit.url.origin !== location.origin || fullLoadPath(hit.url.pathname)) {
         e.preventDefault();
         shellLeave(hit.url.href, "frame link " + (hit.url.origin !== location.origin ? "other site" : hit.url.pathname));
@@ -1398,6 +1430,10 @@
       var hit = linkTarget(e, location.href);
       if (!hit || root.contains(hit.a)) return;
       var u = hit.url;
+      if (themeInPlace(u)) {
+        e.preventDefault();
+        return;
+      }
       if (u.origin !== location.origin || fullLoadPath(u.pathname)) return;
       if (u.pathname === location.pathname && u.search === location.search && u.hash) return; // in-page anchor
       e.preventDefault();

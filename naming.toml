@@ -8,7 +8,7 @@
 root = "liquidgov-platform/tests/e2e"
 pattern = "^[a-z0-9]+_[a-z0-9_]+\\.sh$"
 port_min = 18080
-port_max = 18099
+port_max = 18119
 
 [cpp]
 root = "liquidgov-platform/tests"

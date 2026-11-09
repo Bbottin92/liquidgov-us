@@ -23,7 +23,7 @@ fail=0
 # manifests. naming_check.py reads naming.toml. The retired pwa_check.py is not here (#6847b).
 # make_go_check.py (2026-11-08) runs deploy/make-go.py in a temp copy: right pair for the change, dry mode.
 # tidy_worktrees_check.py and next_port_check.py (2026-11-08) run their scripts in throwaway trees.
-for check in lgp1_consistency.py one_app_check.py pwa_files_check.py naming_check.py restart_bypass_check.py make_go_check.py tidy_worktrees_check.py next_port_check.py make_go_records_check.py tidy_cwd_check.py tidy_in_use_check.py; do
+for check in lgp1_consistency.py one_app_check.py pwa_files_check.py naming_check.py restart_bypass_check.py make_go_check.py tidy_worktrees_check.py next_port_check.py make_go_records_check.py tidy_cwd_check.py tidy_in_use_check.py make_go_dry_label_check.py; do
   out="$("$PY" "$ROOT/commons-daemon/tests/$check" "$ROOT" 2>&1)"; rc=$?
   echo "$out" | tail -1
   if [ $rc -ne 0 ]; then

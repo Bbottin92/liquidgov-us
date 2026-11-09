@@ -97,6 +97,12 @@ for part in ("go", "remote"):
             out = out.replace(end, end + nl + "# dry: stop here, before the backup (added by make-go.py)" + nl + DRY_LINE + nl)
         if out.count(DRY_LINE) != 1 or out.index(DRY_LINE) > out.find(nl + "remote backup"):
             sys.exit("dry mode check failed for %s: the dry exit must appear once, before 'remote backup'" % dst_path)
+        # the banner: a dry run said "RESTARTING liquidgov.us" while changing nothing (citymod-go.sh dry, 2026-11-08)
+        banner = re.search(r'^echo "((?:RESTARTING|UPDATING) liquidgov\.us[^"]*)"$', out, re.M)
+        if not banner:
+            sys.exit("cannot label the dry run: no 'echo \"RESTARTING/UPDATING liquidgov.us ...\"' line in %s" % src_path)
+        out = out[:banner.start()] + ('if [ "${1:-}" = "dry" ]; then echo "DRY RUN (nothing on the server changes) from $ROOT"; '
+                                      'else echo "%s"; fi' % banner.group(1)) + out[banner.end():]
         # records: the ctx log line and notes.md bullet from THIS run's real output (Brandon 2026-11-08, "Deploy writes
         # its records"); a template copied from an older pair carries an old block, so it is replaced, never doubled
         cut = out.find("# records (added by make-go.py)")

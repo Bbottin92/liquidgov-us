@@ -1,0 +1,70 @@
+name: platform
+
+# The website (liquidgov-platform: liquidgov_http and its libraries) had no CI; commons.yml builds only the game
+# daemon (Brandon OK'd a platform job 2026-11-08). This job runs the SAME check as a local run, scripts/lgcheck.sh:
+# compile -> every unit test -> every e2e suite, each judged by its own passes=/fails=/EXIT= line. One script for
+# both, so CI and the laptop cannot drift apart. No droplet, no ssh, no secrets: the suites start the server on
+# loopback against a throwaway store made by liquidgov_e2e_seed.
+# Not covered here: city_undo (lgcheck skips it; it needs an old binary), browser tests (scratch, headless Edge on
+# Windows), and the "new suite must fail on the previous build" step (lgcheck's extra arguments; done locally).
+
+on:
+  push:
+    branches: [master, "wip/**"]
+    paths:
+      - "liquidgov-platform/**"
+      - "scripts/lgcheck.sh"
+      - ".github/workflows/platform.yml"
+  pull_request:
+    paths:
+      - "liquidgov-platform/**"
+      - "scripts/lgcheck.sh"
+      - ".github/workflows/platform.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: platform-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: tools the suites call
+        run: |
+          set -euo pipefail
+          for t in cmake g++ curl python3 nc; do command -v "$t" >/dev/null || { echo "missing $t"; exit 1; }; done
+          cmake --version | head -1; g++ --version | head -1
+
+      # The first build uses both cores; lgcheck.sh then re-runs the build at -j1 (its laptop setting), which
+      # finds nothing to do. Debug, as lgcheck.sh configures it, so the two builds share one cache.
+      - name: build
+        run: |
+          set -euo pipefail
+          cmake -S liquidgov-platform -B "$RUNNER_TEMP/lg" -DCMAKE_BUILD_TYPE=Debug
+          cmake --build "$RUNNER_TEMP/lg" -j2
+
+      # lgcheck.sh's third argument is the previous build that NEW suites must fail on; none are named here, so
+      # the build itself is passed (lgcheck only checks that it holds the two binaries).
+      - name: lgcheck (unit + e2e)
+        run: |
+          set -uo pipefail
+          bash scripts/lgcheck.sh liquidgov-platform "$RUNNER_TEMP/lg" "$RUNNER_TEMP/lg" | tee "$RUNNER_TEMP/lgcheck.txt"
+          last=$(tail -1 "$RUNNER_TEMP/lgcheck.txt")
+          echo "last line: $last"
+          [ "$last" = "EXIT=0" ]
+
+      - name: keep the suite logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lgcheck-logs
+          path: |
+            ${{ runner.temp }}/lgcheck.txt
+            ${{ runner.temp }}/lg/*.out
+          if-no-files-found: warn

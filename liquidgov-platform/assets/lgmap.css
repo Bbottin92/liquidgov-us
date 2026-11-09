@@ -14,6 +14,9 @@
 #lgm-view.lgm-glide{transition:transform .35s ease}
 .lgn{cursor:pointer;transition:opacity .25s ease;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;
   touch-action:manipulation} /* no double-tap zoom: a double tap opens the box */
+/* screen-reader-only "Open <name>" button after each box (lgmap.js): seen by VoiceOver/TalkBack, not by eyes or fingers */
+.lgn-sr{pointer-events:none}
+.lgn-sr rect{fill:transparent;stroke:none}
 /* press and hold on phones (2026-11-09): the box swells while held (lgmap.js), and shows when it will open */
 .lgn.lgn-hold .lgs{stroke-width:3}
 .lgn.lgn-ready .lgs{stroke-width:4;filter:drop-shadow(0 0 6px var(--accent,#8a6620))}

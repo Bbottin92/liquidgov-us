@@ -200,6 +200,16 @@
     g.addEventListener('mouseenter', function () { light(n.id); });
     g.addEventListener('mouseleave', function () { light(selected ? selected.id : null); });
     nodeLayer.appendChild(g);
+    // Screen readers (Brandon 2026-11-09): VoiceOver and TalkBack turn a double tap into a plain click, which on a
+    // phone only grows connections, and they cannot press and hold. So a box with a page gets an "Open <name>" button
+    // right after it in reading order: 1x1, transparent, no pointer events, not a Tab stop (Enter on the box opens).
+    if (n.page) {
+      var sr = el('g', { 'class': 'lgn-sr', role: 'button', 'aria-label': 'Open ' + n.label });
+      sr.appendChild(el('rect', { x: n.x + W - 1, y: n.y + H - 1, width: 1, height: 1 }));
+      sr.addEventListener('click', function (ev) { ev.stopPropagation(); select(n, true); });
+      nodeLayer.appendChild(sr);
+      n.sr = sr;
+    }
     setTimeout(function () { g.classList.remove('lgn-new'); }, 20);
     n.el = g;
     nodes[n.id] = n;
@@ -270,6 +280,7 @@
     // grow on top of its neighbours, not behind the next box down (seen in the 2026-11-09 screenshot); the release
     // is caught on the document, so moving the element does not lose the touch
     nodeLayer.appendChild(n.el);
+    if (n.sr) nodeLayer.appendChild(n.sr);  // its screen-reader button stays right after it
     function grow(now) {
       if (!hold) return;
       var t = Math.min(1, (now - t0) / GROW_MS);

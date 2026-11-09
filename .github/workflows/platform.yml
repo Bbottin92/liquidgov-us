@@ -35,9 +35,14 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: tools the suites call
+      # libsodium is the one system library the build needs (pkg_check_modules in libs/liquidgov_blob, _file_store,
+      # _password, _session); the first run failed at configure without it (2026-11-08, run 42579702974).
+      - name: tools the build and the suites call
         run: |
           set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libsodium-dev pkg-config
+          pkg-config --modversion libsodium
           for t in cmake g++ curl python3 nc; do command -v "$t" >/dev/null || { echo "missing $t"; exit 1; }; done
           cmake --version | head -1; g++ --version | head -1
 

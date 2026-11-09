@@ -27,7 +27,7 @@ fail=0
 # sync_gate_check.py (2026-11-09): sync-to-droplet.sh runs that gate on every real sync (covers the older go scripts).
 # rollback_guard_check.py (2026-11-09): the no-rollback guard, its rules on real history, and the sync's DEPLOYED_COMMIT.
 # narration_files_check.py (2026-11-09): a narration file for every Laws chapter (the route builds the name).
-for check in lgp1_consistency.py one_app_check.py pwa_files_check.py naming_check.py restart_bypass_check.py make_go_check.py tidy_worktrees_check.py next_port_check.py make_go_records_check.py tidy_cwd_check.py tidy_in_use_check.py make_go_dry_label_check.py ci_gate_check.py sync_gate_check.py rollback_guard_check.py narration_files_check.py; do
+for check in lgp1_consistency.py one_app_check.py pwa_files_check.py naming_check.py restart_bypass_check.py make_go_check.py tidy_worktrees_check.py next_port_check.py make_go_records_check.py tidy_cwd_check.py tidy_in_use_check.py make_go_dry_label_check.py ci_gate_check.py sync_gate_check.py rollback_guard_check.py narration_files_check.py make_go_record_length_check.py; do
   out="$("$PY" "$ROOT/commons-daemon/tests/$check" "$ROOT" 2>&1)"; rc=$?
   echo "$out" | tail -1
   if [ $rc -ne 0 ]; then

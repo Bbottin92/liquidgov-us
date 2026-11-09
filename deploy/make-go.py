@@ -119,7 +119,12 @@ for part in ("go", "remote"):
         anchor = "echo CHECK_DONE" + nl
         if out.count(anchor) != 1 or not out.endswith(anchor) or 'SYNCLOG="' not in out:
             sys.exit("cannot add the record block: %s must end with one 'echo CHECK_DONE' line and set SYNCLOG" % src_path)
-        safe = re.sub(r'["\\$`]', "", purpose) + " (" + dst_name + ")"
+        clean = re.sub(r'["\\$`]', "", purpose)
+        safe = clean + " (" + dst_name + ")"
+        # ctx log refuses a target over 120 chars (sweep1, 2026-11-09: 124 was refused): trim the purpose there only;
+        # the notes.md bullet keeps it whole
+        room = 120 - len("liquidgov.us  (%s)" % dst_name)
+        short = (clean if len(clean) <= room else clean[:max(room - 3, 0)].rstrip() + "...") + " (" + dst_name + ")"
         out += nl.join([
             "# records (added by make-go.py): the ctx log line and notes.md bullet from THIS run's real output",
             "# (Brandon 2026-11-08); reached only after the public checks passed (set -e; city-live-check exits 1)",
@@ -129,7 +134,7 @@ for part in ("go", "remote"):
             "  echo \"RECORD_FAILED: commit '$REC_COMMIT' / PID '$REC_PID' not found; write the records by hand from the log above\"",
             "else",
             '  echo "RECORD ctx log: python C:/Users/Brandon/shared-context/tools/ctx.py log <who> deploy \\"liquidgov.us '
-            + safe + '\\" --result ok --ref $REC_COMMIT"',
+            + short + '\\" --result ok --ref $REC_COMMIT"',
             '  echo "RECORD notes.md: - **$(TZ=America/Los_Angeles date \'+%Y-%m-%d %H:%M\') PT -- ' + safe
             + ' LIVE (commit \\`$REC_COMMIT\\`, PID $REC_PID, public checks FAILS 0).**"',
             "fi", ""])

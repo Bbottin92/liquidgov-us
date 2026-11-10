@@ -7,7 +7,15 @@
 .lgm-status{font-size:.9rem;color:var(--warn)}
 .lgm-privacy{margin-left:auto;font-size:.9rem}
 .lgmap-body{position:relative;display:flex;gap:.75rem;height:calc(100vh - 210px);min-height:420px}
-.lgmap-canvas{flex:1;min-width:0;border:1px solid var(--rule);border-radius:var(--rmd,10px);background:var(--panel);overflow:hidden}
+/* "Night river" (Brandon picked it 2026-11-10, after "the mainstream looks like, lifeless"): the map is a deep
+   night-blue surface in both site themes; boxes glow softly, connections are gold. The frame redefines the site's
+   colour tokens to their dark-theme values, so every box, outline and line inside it gets the light-on-dark
+   versions without a rule per kind; the page around it keeps the viewer's theme. */
+.lgmap-canvas{--paper:#14120f;--panel:#1b1813;--ink:#f6efe0;--accent:#d1a85c;--stone:#a89c88;
+  --rule:rgba(242,234,216,.16);--danger:#d98a7c;--warn:#e0b070;--ok:#8fbba1;
+  flex:1;min-width:0;border:1px solid #2a3348;border-radius:20px;overflow:hidden;
+  background:radial-gradient(ellipse at 30% 0%,#2a3550 0%,#141a28 55%,#0d111b 100%);
+  box-shadow:0 10px 40px rgba(13,17,27,.35)}
 #lgm-svg{display:block;width:100%;height:100%;touch-action:none;cursor:grab;font-family:var(--body,inherit)}
 #lgm-svg.lgm-drag{cursor:grabbing}
 #lgm-view{transform-origin:0 0}
@@ -23,11 +31,18 @@
 .lgm-hint-narrow{display:none}
 @media (max-width:760px){.lgm-hint-wide{display:none}.lgm-hint-narrow{display:inline}}
 .lgn.lgn-new{opacity:0}
-.lgn .lgs{fill:var(--paper);stroke:var(--rule);stroke-width:1.6}
-.lgn text{font-size:13px;fill:var(--ink);text-anchor:middle;pointer-events:none}
-.lgn:hover .lgs,.lgn:focus .lgs{stroke-width:3}
+/* boxes have a little depth and crisper type; they arrive with a fade (polish 2026-11-09). No CSS transform on .lgn:
+   its position is the SVG transform attribute, which a CSS transform would replace. */
+.lgn{transition:opacity .45s ease}
+.lgn .lgs{fill:var(--paper);stroke:var(--rule);stroke-width:2;filter:drop-shadow(0 0 8px rgba(255,214,130,.22))}
+.lgn text{font-size:14px;font-weight:600;letter-spacing:.01em;fill:var(--ink);text-anchor:middle;pointer-events:none}
+.lgn:hover .lgs,.lgn:focus .lgs{stroke-width:3;filter:drop-shadow(0 0 12px rgba(255,214,130,.45))}
 .lgn:focus{outline:none}
-.lgn-root .lgs{fill:var(--accent);stroke:var(--accent)}
+/* the mAInstream root: gold with a still glow (an animated filter repaints every frame: too costly on a phone) */
+.lgn-root .lgs{fill:var(--accent);stroke:#f3d48f;filter:drop-shadow(0 0 14px rgba(243,212,143,.8))}
+/* phones: no shadow on every box (each one repaints while the map glides or a box is held); stroke only, and the
+   selected box and the root keep theirs (side-agent note 2026-11-09: confirm smoothness on a real iPhone) */
+@media (max-width:760px),(hover:none){.lgn:not(.lgn-sel):not(.lgn-root) .lgs{filter:none}}
 .lgn-root text{fill:var(--paper);font-weight:700}
 .lgn-city .lgs{stroke:var(--accent);stroke-width:2.6}
 .lgn-city text{font-weight:700}
@@ -42,8 +57,9 @@
 .lge-could-act{stroke:#8a5cc2;stroke-dasharray:6 3}
 .lge-about,.lge-working-on{stroke:var(--warn);stroke-dasharray:6 3}
 .lgn-open .lgs{stroke-width:2.4}
-.lgn-sel .lgs{stroke-width:4;filter:drop-shadow(0 2px 6px rgba(0,0,0,.18))}
-.lge{fill:none;stroke:var(--rule);stroke-width:var(--w,1.6px);opacity:.8;transition:opacity .15s,stroke-width .3s}
+.lgn-sel .lgs{stroke-width:3.2;stroke:#f3d48f;filter:drop-shadow(0 0 14px rgba(243,212,143,.7))}
+/* connections are gold on the night surface (kinds keep their own colours below) */
+.lge{fill:none;stroke:rgba(209,168,92,.55);stroke-width:var(--w,2px);stroke-linecap:round;opacity:.9;transition:opacity .15s,stroke-width .3s}
 .lge-member,.lge-lives{stroke:var(--ok)}
 .lge-touches{stroke:#8a5cc2}
 .lge-wrote{stroke:var(--warn)}
@@ -52,7 +68,12 @@
 .lge-friends{stroke:var(--ok);stroke-dasharray:8 3}
 .lge.lge-faint{opacity:.22}
 #lgm-svg.lgm-focus .lge{opacity:.12}
-#lgm-svg.lgm-focus .lge.hi{opacity:1;stroke-width:calc(var(--w,1.6px) + 1.5px)}
+/* the connections you are looking at flow like a current: the mAInstream (polish 2026-11-09) */
+#lgm-svg.lgm-focus .lge.hi{opacity:1;stroke:#f3d48f;stroke-width:calc(var(--w,2px) + 1.5px);stroke-dasharray:10 7}
+/* ...and moves only on a mouse-and-hover computer that hasn't asked for less motion; a phone shows it still */
+@media (hover:hover) and (pointer:fine) and (prefers-reduced-motion:no-preference){
+  #lgm-svg.lgm-focus .lge.hi{animation:lgm-flow 1.1s linear infinite}}
+@keyframes lgm-flow{to{stroke-dashoffset:-17}}
 .lgm-legend{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem 1rem;font-size:.85rem;margin-top:.5rem}
 .lgm-scale{display:inline-flex;align-items:center;gap:.4rem}
 .lgm-scale i{display:inline-block;width:120px;height:12px;border-radius:6px;border:1px solid var(--rule);

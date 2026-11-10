@@ -21,7 +21,9 @@
   var statusEl = document.getElementById('lgm-status');
   var closeBtn = document.getElementById('lgm-close');
   function narrow() { return window.matchMedia ? matchMedia('(max-width: 760px)').matches : innerWidth <= 760; }
-  var W = 200, H = 36, COLW = 270, ROWH = 46;
+  // ROWH 56 (was 46): a box can grow to 1.25x (45 px tall), so 46 px rows made the boxes closest to you overlap their
+  // neighbours (polish 2026-11-09); 56 leaves ~10 px between even the biggest
+  var W = 200, H = 36, COLW = 270, ROWH = 56;
   var nodes = {};   // id -> {id,label,kind,page,rel,x,y,el,expanded}
   var edges = {};   // "a|b" -> {a,b,kind,el}
   var selected = null;
@@ -67,7 +69,8 @@
     if (typeof n.rel !== 'number' || n.rel < 0) return;
     var r = Math.min(1, n.rel + 0.05 * Math.log2(1 + (visits[n.id] || 0)));
     var hue = Math.round(r * 120);
-    n.el.querySelector('.lgs').style.fill = 'hsla(' + hue + ',72%,48%,.24)';
+    // the same relevance hue, with more color: .24 alpha read as washed out ("lifeless", polish 2026-11-09)
+    n.el.querySelector('.lgs').style.fill = 'hsla(' + hue + ',78%,58%,.42)';
     n.el.setAttribute('data-rel', r.toFixed(2));
   }
 

@@ -15,11 +15,13 @@
     if (clickable && hiddenByUser()) return;
     var wrap = document.createElement('div');
     wrap.id = 'lgpushask';
-    wrap.style.cssText = 'display:flex;align-items:center;gap:.25rem;width:fit-content;max-width:100%;margin:0 0 .75rem;border-radius:8px;background:#8a6620;color:#f7f1e4;font:600 .9rem sans-serif';
+    // a slim, quiet pill with room above it, in the site's own colors (polish 2026-11-09: a heavy gold block jammed
+    // under the header read like a stray button); the fallbacks are the light theme's values
+    wrap.style.cssText = 'display:flex;align-items:center;gap:.1rem;width:fit-content;max-width:100%;margin:1rem 0 .4rem;border-radius:999px;border:1px solid var(--rule,rgba(26,24,20,.14));background:var(--panel,#f3ecdd);color:var(--accent,#8a6620);font:600 .85rem var(--body,sans-serif)';
     var b = document.createElement('button');
     b.type = 'button';
     b.textContent = text;
-    b.style.cssText = 'flex:1;padding:.55rem .8rem;border:0;background:none;color:inherit;font:inherit;text-align:left;cursor:' + (clickable ? 'pointer' : 'default');
+    b.style.cssText = 'flex:1;padding:.35rem .5rem .35rem 1rem;border:0;background:none;color:inherit;font:inherit;text-align:left;cursor:' + (clickable ? 'pointer' : 'default');
     wrap.appendChild(b);
     var x = document.createElement('button');
     x.type = 'button';

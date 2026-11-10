@@ -679,6 +679,8 @@ std::string css() {
         ":root{--paper:#f7f1e4;--parchment:#efe8d8;--panel:#f3ecdd;--ink:#1a1814;"
         "--accent:#8a6620;--stone:#6b6458;--rule:rgba(26,24,20,.14);--danger:#6b2424;"
         "--warn:#7a4a12;--ok:#1e3d32;--rsm:6px;--rmd:8px;--rlg:10px;"
+        // Night river 2026-11-10: sections are near-white cards that lift off the page
+        "--card:#fffdf8;--cardshadow:0 2px 6px rgba(60,44,12,.08),0 10px 28px rgba(60,44,12,.08);"
         "--display:\"Playfair Display\",\"Iowan Old Style\",Palatino,\"Palatino Linotype\",Georgia,serif;"
         "--body:\"Segoe UI\",system-ui,-apple-system,sans-serif}"
         // Same tokens, ink warmed rather than pure black -- system dark
@@ -692,17 +694,21 @@ std::string css() {
         "@media (prefers-color-scheme:dark){:root:not([data-theme=\"light\"]){"
         "--paper:#14120f;--parchment:#241f18;--panel:#1b1813;--ink:#f2ead8;"
         "--accent:#d1a85c;--stone:#a89c88;--rule:rgba(242,234,216,.14);"
-        "--danger:#c9776a;--warn:#d9a866;--ok:#7fa891}}"
+        "--danger:#c9776a;--warn:#d9a866;--ok:#7fa891;"
+        "--card:#221d16;--cardshadow:0 2px 6px rgba(0,0,0,.35),0 10px 28px rgba(0,0,0,.35)}}"
         ":root[data-theme=\"dark\"]{"
         "--paper:#14120f;--parchment:#241f18;--panel:#1b1813;--ink:#f2ead8;"
         "--accent:#d1a85c;--stone:#a89c88;--rule:rgba(242,234,216,.14);"
-        "--danger:#c9776a;--warn:#d9a866;--ok:#7fa891}"
+        "--danger:#c9776a;--warn:#d9a866;--ok:#7fa891;"
+        "--card:#221d16;--cardshadow:0 2px 6px rgba(0,0,0,.35),0 10px 28px rgba(0,0,0,.35)}"
         "*{box-sizing:border-box}html{-webkit-font-smoothing:antialiased}"
         "body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.5 var(--body);"
         "transition:background .15s ease,color .15s ease}"
         "a{color:var(--accent)}a:hover{color:var(--ink)}"
         "h1,h3{font-family:var(--display);font-weight:600;letter-spacing:-.02em;"
-        "text-wrap:balance;line-height:1.2}h1{font-size:clamp(1.6rem,1.2rem + 1.6vw,2.2rem);margin:.2rem 0 .8rem}"
+        "text-wrap:balance;line-height:1.2}"
+        // bigger page titles (Night river 2026-11-10)
+        "h1{font-size:clamp(2rem,1.5rem + 2.2vw,3rem);letter-spacing:-.03em;margin:.8rem 0 .4rem}"
         "h3{font-size:1.15rem;margin:0 0 .3rem}"
         // A register, not app chrome: every card/section title is a small
         // tracked-out label naming what the block below it is, not a
@@ -731,7 +737,8 @@ std::string css() {
         // it. Above every sticky in-page element (#medraftbar's 8 is the
         // highest), below the floating jukebox widget (30) and the intro
         // overlay (999), which should stay on top of the header regardless.
-        "header.top{border-bottom:1px solid var(--rule);background:var(--parchment);"
+        "header.top{border-bottom:1px solid var(--rule);background:linear-gradient(180deg,var(--parchment),var(--paper));"
+        "box-shadow:0 1px 0 rgba(138,102,32,.18);"
         "position:sticky;top:0;z-index:10}"
         // A link to #something scrolled it under this sticky header (/pain/<id> -> /problems#painN: the post link
         // and Keep/Forget were hidden; sweep 2026-11-09). Every jump target stops below the header instead.
@@ -876,11 +883,32 @@ std::string css() {
         ".badge{display:inline-flex;align-items:center;justify-content:center;min-width:1.3rem;height:1.3rem;"
         "padding:0 .35rem;border-radius:999px;background:var(--accent);color:var(--paper);font-size:.7rem;"
         "margin-left:.25rem;font-variant-numeric:tabular-nums}"
-        ".card{background:var(--panel);border:1px solid var(--rule);border-radius:var(--rlg);padding:1.15rem 1.25rem;margin:1rem 0}"
-        ".card .card{border-radius:var(--rmd)}"
+        // Polish 2026-11-09 (Brandon: "cleaner and more esthetic"): even padding, a softer corner and a hair of depth;
+        // the first heading inside no longer adds a gap at the top ("YOURS"/"CITIES" sat a line low), nor the last
+        // child one at the bottom.
+        // Night river (2026-11-10): a near-white card that clearly lifts off the beige page (in dark mode a warm
+        // charcoal one); the first pass's barely-there panel was too subtle to see
+        ".card{background:var(--card);border:1px solid rgba(138,102,32,.16);border-radius:18px;padding:1.3rem 1.4rem;"
+        "margin:1.1rem 0;box-shadow:var(--cardshadow)}"
+        ".card>:first-child{margin-top:0}.card>:last-child{margin-bottom:0}"
+        ".card h2{margin:1.1rem 0 .55rem}"
+        ".card .card{border-radius:var(--rmd);box-shadow:none;background:var(--panel)}"
+        // main actions only (a form's submit, a filled link button, the active feed tab) get a gold gradient; every
+        // <button> did in the prototype and the alerts pill's text vanished
+        // (a form <button> with no type is a submit button too: "Change password" was missed by [type=submit] alone;
+        // "New proposal" is a <details> summary styled as a button)
+        "form button:not([type=button]):not([type=reset]):not(.ghost):not(.danger):not(.ichip):not(.iconbtn),"
+        "a.btn:not(.ghost):not(.danger),.segtabs>.btn:not(.ghost),details.newprop:not([open])>summary{"
+        "background:linear-gradient(180deg,#a37a2c,#7d5a17);color:#fffdf8;border-radius:12px;"
+        "box-shadow:inset 0 1px 0 rgba(255,255,255,.25),0 2px 6px rgba(125,90,23,.35)}"
         ".lede{font-family:var(--display);font-size:1.15rem;line-height:1.4;color:var(--accent)}"
         ".muted{color:var(--stone);font-size:.9rem}.warn{color:var(--warn)}.ok{color:var(--ok)}"
         "label{display:block;font-size:.82rem;color:var(--stone);margin:.4rem 0 .15rem;font-weight:500}"
+        // Form fields get room between them, and the submit button doesn't touch the last field (polish 2026-11-09).
+        // Scoped to forms: the header avatar is a <label> too (it opens the account menu) and must not move.
+        "form label{margin:.85rem 0 .3rem;font-size:.85rem}form>label:first-child{margin-top:0}"
+        // any button right after a field (Settings' "Change password" touched its field: the dark-mode pass caught it)
+        "form>button[type=submit]:last-child,form>input+button,form>textarea+button,form>select+button{margin-top:.9rem}"
         "input,textarea,select{width:100%;padding:.65rem .7rem;border-radius:var(--rsm);border:1px solid var(--rule);"
         "background:var(--paper);color:var(--ink);font:1rem var(--body);min-height:44px}"
         // Checkboxes and radios are natively tiny; the width:100%/min-height:44px
@@ -890,15 +918,25 @@ std::string css() {
         // per-control at every future callsite.
         "input[type=checkbox],input[type=radio]{width:1.1rem;min-height:0;height:1.1rem;padding:0;flex:0 0 auto}"
         "textarea{min-height:6rem;resize:vertical}button,.btn{display:inline-flex;align-items:center;justify-content:center;"
-        "gap:.35rem;background:var(--accent);color:var(--paper);border:0;padding:.65rem 1.05rem;border-radius:var(--rsm);"
-        "cursor:pointer;font:600 .95rem var(--body);min-height:44px;text-decoration:none}"
+        "gap:.35rem;background:var(--accent);color:var(--paper);border:0;padding:.6rem 1rem;border-radius:var(--rsm);"
+        "cursor:pointer;font:600 .92rem var(--body);min-height:44px;text-decoration:none}"
         // hover:hover guards this -- a touch tap on iOS synthesizes :hover
         // with no matching "leave" event, so an unguarded rule here stays
         // stuck brighter until something else steals focus/hover. A mouse
         // still gets the real hover feedback; a touch never triggers it.
         "@media(hover:hover){button:hover,.btn:hover{filter:brightness(1.08)}}"
         "button:active,.btn:active{transform:scale(.98)}"
-        "button.ghost,.btn.ghost{background:transparent;color:var(--accent);border:1px solid var(--rule)}"
+        // Secondary buttons are quiet: ink text, normal weight, the outline turns gold on hover (polish 2026-11-09;
+        // a row of gold-bold outlines competed with the one gold primary button)
+        "button.ghost,.btn.ghost{background:transparent;color:var(--ink);font-weight:500;border:1px solid var(--rule)}"
+        "@media(hover:hover){button.ghost:hover,.btn.ghost:hover{filter:none;border-color:var(--accent);color:var(--accent)}}"
+        // the feed's filter (All / Friends / Communities / Drawings): one segmented control that never wraps on a phone
+        ".segtabs{display:inline-flex;flex-wrap:nowrap;gap:0;padding:3px;border:1px solid var(--rule);border-radius:12px;"
+        "background:var(--panel);max-width:100%;overflow-x:auto;margin:.5rem 0 1rem}"
+        ".segtabs>.btn{min-height:38px;padding:.35rem .9rem;border:0;border-radius:9px;font-size:.9rem;white-space:nowrap}"
+        ".segtabs>.btn.ghost{background:transparent;color:var(--stone)}"
+        // a post's actions (Repost, seconded, Delete) are small and quiet
+        ".post form.inline button{min-height:36px;padding:.3rem .75rem;font-size:.85rem}"
         "button.danger,.btn.danger{background:var(--danger);color:#f7f1e4}"
         ".row{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}"
         ".toolgroup-sep{width:1px;align-self:stretch;background:var(--rule);margin:0 .15rem}"
@@ -9319,11 +9357,11 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         else filter_key = "all";
         auto tab = [&](const char* key, const char* label) {
             const bool active = filter_key == key;
-            return "<a class=\"btn"+std::string(active?"":" ghost")+"\" href=\"/feed?filter="+key+"\">"+label+"</a>";
+            return "<a class=\"btn"+std::string(active?"\" aria-current=\"page":" ghost")+"\" href=\"/feed?filter="+key+"\">"+label+"</a>";
         };
         std::string html = "<h1>Feed</h1><p class=\"muted eyebrow\">"+html_escape(fmt_time(now()))+
             " &middot; "+std::to_string(g_store.account_count())+" members</p>"
-            "<div class=\"row\" style=\"margin:.5rem 0 1rem\">"+
+            "<div class=\"segtabs\">"+
             tab("all","All")+tab("friends","Friends")+tab("committees","Communities")+tab("drawings","Drawings")+
             "</div>"+
             flash_error(qs)+

@@ -448,7 +448,9 @@
     var wait = narrow() && !open ? GLIDE_WAIT_MS : 0;
     expand(n).then(function () {
       light(n.id);
-      setTimeout(function () { if (selected === n) focusOn(n); }, wait);
+      // on the ring (you or one of your kinds) keep the whole open map in view instead of sliding the tapped box to the
+      // edge (2026-11-11 CI screenshot: tapping Friends cut the cards off at the left)
+      setTimeout(function () { if (selected === n) { if (n.kind === 'mine' || n.kind === 'you') fitAll(); else focusOn(n); } }, wait);
     });
   }
 

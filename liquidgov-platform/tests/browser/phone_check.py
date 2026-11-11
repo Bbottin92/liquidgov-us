@@ -118,14 +118,27 @@ class Run:
 
     def case2_first_view(self):
         self.goto("/map", settle=3)
+        # Edited 2026-11-11 with Brandon's OK ("yes"): the first view is a ring around you (M1.1 look), not a column
+        # starting at the frame top. Every box fully inside the frame, you in the middle third, and no two boxes
+        # overlapping (the 2026-11-11 screenshots showed side boxes covering you; nothing here caught it).
         r = self.j("(() => { const fb = document.getElementById('lgm-svg').getBoundingClientRect();"
-                   " const boxes = [...document.querySelectorAll('#lgm-nodes .lgn')].map(g => g.getBoundingClientRect())"
-                   "   .filter(b => b.width > 0 && b.top < fb.bottom && b.bottom > fb.top);"
-                   " return JSON.stringify({frame: [fb.left, fb.top, fb.right, fb.bottom], n: boxes.length,"
-                   "  right: Math.max(...boxes.map(b => b.right)), top: Math.min(...boxes.map(b => b.top))}); })()")
+                   " const els = [...document.querySelectorAll('#lgm-nodes > g.lgn')];"
+                   " const bx = g => g.querySelector('.lgs').getBoundingClientRect();"
+                   " const boxes = els.map(bx).filter(b => b.width > 0);"
+                   " const you = document.querySelector('#lgm-nodes > g.lgn-you'); const yb = you && bx(you);"
+                   " let overlaps = 0; for (let i = 0; i < boxes.length; i++) for (let k = i + 1; k < boxes.length; k++) {"
+                   "  const a = boxes[i], b = boxes[k]; if (a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1) overlaps++; }"
+                   " return JSON.stringify({frame: [fb.left, fb.top, fb.right, fb.bottom], n: boxes.length, overlaps: overlaps,"
+                   "  left: Math.min(...boxes.map(b => b.left)), right: Math.max(...boxes.map(b => b.right)),"
+                   "  top: Math.min(...boxes.map(b => b.top)), bottom: Math.max(...boxes.map(b => b.bottom)),"
+                   "  youMid: yb ? (yb.left + yb.right) / 2 : null}); })()")
         self.shot("map-first-view")
-        ok = isinstance(r, dict) and r.get("n", 0) >= 3 and r["right"] <= r["frame"][2] + 0.5 and r["top"] - r["frame"][1] <= 80
-        self.check("2 map: connections inside the frame, column starts near its top", ok, r)
+        ok = (isinstance(r, dict) and r.get("n", 0) >= 3 and r["overlaps"] == 0
+              and r["left"] >= r["frame"][0] - 0.5 and r["right"] <= r["frame"][2] + 0.5
+              and r["top"] >= r["frame"][1] - 0.5 and r["bottom"] <= r["frame"][3] + 0.5
+              and r["youMid"] is not None
+              and r["frame"][0] + (r["frame"][2] - r["frame"][0]) / 3 <= r["youMid"] <= r["frame"][2] - (r["frame"][2] - r["frame"][0]) / 3)
+        self.check("2 map: the ring around you fits the frame, you in the middle, no boxes overlapping", ok, r)
 
     def case3_quick_tap(self):
         name = "3 quick tap: connections grow, no page sheet"

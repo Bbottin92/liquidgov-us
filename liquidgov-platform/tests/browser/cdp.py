@@ -18,7 +18,9 @@ import tempfile
 import time
 import urllib.request
 
-EDGE = r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
+# LG_BROWSER (2026-11-11): any Chromium on Linux, e.g. google-chrome in GitHub Actions (ci_phone_check.py); the
+# laptop keeps headless Edge.
+EDGE = os.environ.get("LG_BROWSER") or r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
 UA = ("Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) "
       "Version/17.5 Mobile/15E148 Safari/604.1")
 
@@ -106,8 +108,10 @@ def launch_edge(prefix="lg-phone-edge-"):
     except OSError:
         pass  # err-ok: nothing listening is the precondition we want
     prof = tempfile.mkdtemp(prefix=prefix)
+    extra = ["--no-sandbox"] if os.name != "nt" else []  # CI containers have no user namespaces for Chrome's sandbox
     proc = subprocess.Popen([EDGE, "--headless=new", "--disable-gpu", "--no-first-run", "--remote-debugging-port=%d" % port,
-                             "--user-data-dir=" + prof, "about:blank"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                             "--user-data-dir=" + prof] + extra + ["about:blank"], stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL, start_new_session=(os.name != "nt"))
     tabs = []
     for _ in range(60):
         try:
@@ -130,6 +134,17 @@ def launch_edge(prefix="lg-phone-edge-"):
 
 def stop_edge(proc, profile=None):
     """Kill the launcher's tree and every msedge.exe started with this run's profile folder; say if any are left."""
+    if os.name != "nt":  # Linux (CI): the browser runs in its own session, so its whole process group goes at once
+        import signal
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except OSError as e:
+            print("stop_edge: could not kill browser group %d: %s" % (proc.pid, e), file=sys.stderr)
+        try:
+            proc.wait(timeout=10)
+        except subprocess.SubprocessError as e:
+            print("stop_edge: browser %d did not exit: %s" % (proc.pid, e), file=sys.stderr)
+        return
     try:
         subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True, timeout=30)
     except (OSError, subprocess.SubprocessError) as e:

@@ -64,6 +64,25 @@ jobs:
           echo "last line: $last"
           [ "$last" = "EXIT=0" ]
 
+      # Phone screenshots in CI (Brandon 2026-11-11 'ci'): the laptop often has under the 2.5 GB the browser check needs,
+      # so the same check runs here on every push and the PNGs are kept as an artifact (download from the run page or
+      # `gh run download <id> -n phone-screenshots`). Headless Chrome, phone viewport, Bbottin signed in.
+      - name: phone screenshots (browser check)
+        if: always()
+        run: |
+          set -uo pipefail
+          export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
+          echo "browser: $LG_BROWSER"
+          python3 liquidgov-platform/tests/browser/ci_phone_check.py "$RUNNER_TEMP/lg" "$PWD/liquidgov-platform" ci "$RUNNER_TEMP/phone"
+
+      - name: keep the phone screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phone-screenshots
+          path: ${{ runner.temp }}/phone
+          if-no-files-found: warn
+
       - name: keep the suite logs on failure
         if: failure()
         uses: actions/upload-artifact@v4

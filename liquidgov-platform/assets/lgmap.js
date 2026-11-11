@@ -339,21 +339,78 @@
     for (var id in nodes) if (nodes[id].from === cid) out.push(nodes[id]);
     return out;
   }
-  function isHidden(n) { var h = hiddenBy[centerId()] || []; return n.from === centerId() && h.indexOf(chipKey(n)) >= 0; }
+  // A box is hidden by its kind's chip (key = its kind, or at You its own id) or on its own (Hidden mode: 'id:<id>';
+  // at You the two are the same key). Only the boxes around the current center are ever hidden.
+  function boxKey(n) { return centerId() === 'you' ? n.id : 'id:' + n.id; }
+  function isHidden(n) {
+    if (n.from !== centerId()) return false;
+    var h = hiddenBy[centerId()] || [];
+    return h.indexOf(chipKey(n)) >= 0 || h.indexOf(boxKey(n)) >= 0;
+  }
+  function saveHidden(cid, list) {
+    if (list.length) hiddenBy[cid] = list; else delete hiddenBy[cid];
+    try { localStorage.setItem(FKEY, JSON.stringify(hiddenBy)); } catch (e) {} // err-ok: private mode: the choice holds until the page reloads
+  }
+  // Hidden mode (Brandon 2026-11-11: "a 'hidden' toggle that reveals all of the boxes that you have hidden as translucent
+  // boxes that you can select to unhide or select a non-hidden box in that mode to hide it"): hidden boxes come back
+  // faded; a tap on a box hides or shows it instead of moving the map. It ends with Done or when the center changes.
+  var hideMode = false;
+  function toggleBox(n) {
+    var cid = centerId(), list = (hiddenBy[cid] || []).slice(), ck = chipKey(n), bk = boxKey(n);
+    if (isHidden(n)) {
+      var ki = list.indexOf(ck);
+      if (ki >= 0 && ck !== bk) {
+        // hidden with its whole kind: show just this one; the rest of that kind stay hidden, now one by one
+        list.splice(ki, 1);
+        ringKids().forEach(function (o) { if (o !== n && chipKey(o) === ck && list.indexOf(boxKey(o)) < 0) list.push(boxKey(o)); });
+      }
+      [ck, bk].forEach(function (k) { var i = list.indexOf(k); if (i >= 0) list.splice(i, 1); });
+    } else {
+      list.push(bk);
+    }
+    saveHidden(cid, list);
+    renderFilter();
+  }
+  function setHideMode(on) {
+    hideMode = !!on;
+    root.classList.toggle('lgm-hidemode', hideMode);
+    renderFilter();
+  }
   function applyFilter() {
-    var off = {};
+    var off = {}, count = 0;
     for (var id in nodes) {
       var n = nodes[id], hide = isHidden(n);
-      if (hide) off[id] = 1;
-      n.el.style.display = hide ? 'none' : '';
+      if (hide) { off[id] = 1; count++; }
+      n.el.style.display = hide && !hideMode ? 'none' : '';
+      n.el.classList.toggle('lgn-hidden', hide && hideMode);
       if (n.sr) n.sr.style.display = hide ? 'none' : '';
     }
-    for (var k in edges) edges[k].el.style.display = off[edges[k].a] || off[edges[k].b] ? 'none' : '';
-    if (noteEl) noteEl.hidden = !(hiddenBy[centerId()] || []).length;
+    for (var k in edges) {
+      var gone = off[edges[k].a] || off[edges[k].b];
+      edges[k].el.style.display = gone && !hideMode ? 'none' : '';
+      edges[k].el.classList.toggle('lge-hiddenbox', !!gone && hideMode);
+    }
+    var tb = document.getElementById('lgm-hidetoggle');
+    if (tb) {
+      tb.textContent = hideMode ? 'Done' : 'Hidden' + (count ? ' (' + count + ')' : '');
+      tb.setAttribute('aria-pressed', hideMode ? 'true' : 'false');
+    }
+    if (noteEl) {
+      noteEl.textContent = hideMode
+        ? 'Tap a faded box to show it again, or any other box to hide it. Hiding only changes what this map shows on this device.'
+        : 'Hiding only changes what this map shows on this device. Nothing is deleted, and nobody else\'s view changes.';
+      noteEl.hidden = !hideMode && !count;
+    }
   }
   function renderFilter() {
     if (!filterEl) return;
     filterEl.textContent = '';
+    var tb = document.createElement('button');
+    tb.type = 'button';
+    tb.id = 'lgm-hidetoggle';
+    tb.className = 'lgm-hidetoggle';
+    tb.addEventListener('click', function () { setHideMode(!hideMode); });
+    filterEl.appendChild(tb);
     var seen = {}, cid = centerId(), h = hiddenBy[cid] || [];
     ringKids().forEach(function (n) {
       var key = chipKey(n);
@@ -368,8 +425,9 @@
       b.addEventListener('click', function () {
         var list = (hiddenBy[cid] || []).slice(), at = list.indexOf(key);
         if (at >= 0) list.splice(at, 1); else list.push(key);
-        if (list.length) hiddenBy[cid] = list; else delete hiddenBy[cid];
-        try { localStorage.setItem(FKEY, JSON.stringify(hiddenBy)); } catch (e) {} // err-ok: private mode: the choice holds until the page reloads
+        if (at >= 0) // turning a kind back on also shows the boxes of that kind hidden one by one
+          ringKids().forEach(function (o) { if (chipKey(o) === key) { var i = list.indexOf(boxKey(o)); if (i >= 0) list.splice(i, 1); } });
+        saveHidden(cid, list);
         b.setAttribute('aria-pressed', at >= 0 ? 'true' : 'false');
         applyFilter();
       });
@@ -416,6 +474,8 @@
     if (oldRing && oldRing.parentNode) oldRing.parentNode.removeChild(oldRing);
     nodes = {};
     edges = {};
+    hideMode = false; // Hidden mode is per level: a new center starts with it off
+    root.classList.remove('lgm-hidemode');
     var d = dataOf(m), at = -1;
     for (var i = 0; i < centerPath.length; i++) if (centerPath[i].id === d.id) at = i;
     if (at >= 0) centerPath = centerPath.slice(0, at + 1); else centerPath.push(d);
@@ -575,6 +635,8 @@
     // Zoom out). Normalised here so it can never reach openPanel below.
     var now = open === 'now';
     if (now) open = false;
+    // Hidden mode: a tap on a box around the center hides or shows it; nothing moves and no page opens
+    if (hideMode && !now && n.el && n.from === centerId() && n.id !== centerId()) { toggleBox(n); return; }
     // you or one of your kinds becomes the center, with its connections on a ring (Brandon 2026-11-11)
     if (isCenterKind(n) && n.id !== centerId()) {
       // phone, a tap that did not open: wait the double-tap window first, so a second tap still lands on the box and

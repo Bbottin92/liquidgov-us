@@ -31,6 +31,16 @@
 .lgm-chip::after{content:"";position:absolute;inset:-6px -2px}
 .lgm-chip[aria-pressed="false"]{background:none;border-style:dashed;color:#9a927f;text-decoration:line-through}
 .lgm-filter-note{margin:0;padding:0 .7rem .4rem;font-size:.78rem;color:#c9bfa8}
+/* Hidden mode (Brandon 2026-11-11): the toggle leads the chip row; while it is on, hidden boxes come back faded and
+   dashed, and a tap shows or hides a box instead of moving the map */
+.lgm-hidetoggle{position:relative;flex:none;background:none;border:1px dashed #c9a35a;color:#f3d48f;border-radius:999px;
+  padding:.2rem .75rem;font-size:.82rem;min-height:32px;cursor:pointer}
+.lgm-hidetoggle::after{content:"";position:absolute;inset:-6px -2px}
+.lgm-hidetoggle[aria-pressed="true"]{background:#c9a35a;color:#14120f;border-style:solid;font-weight:700}
+.lgn.lgn-hidden{opacity:.35}
+.lgn.lgn-hidden .lgs{stroke-dasharray:4 3;filter:none}
+.lge.lge-hiddenbox{opacity:.12}
+.lgm-hidemode .lgn:not(.lgn-you):not(.lgn-sel) .lgs{stroke:#f3d48f}
 .lgm-status{font-size:.9rem;color:var(--warn)}
 .lgm-privacy{margin-left:auto;font-size:.9rem}
 .lgmap-body{position:relative;display:flex;gap:.75rem;height:calc(100vh - 210px);min-height:420px}

@@ -196,11 +196,11 @@
       var ini = el('text', { x: 20, y: H / 2 + 5, 'class': 'lgn-initial' });
       ini.textContent = String(n.label || '?').charAt(0).toUpperCase();
       g.appendChild(ini);
-      var ob = el('g', { 'class': 'lgn-openbtn', role: 'button', tabindex: '0', 'aria-label': 'Open your page' });
+      // aria-hidden: screen readers already get "Open <you>" from the box's own 1px button (one per box, phone_check 6c)
+      var ob = el('g', { 'class': 'lgn-openbtn', 'aria-hidden': 'true' });
       ob.appendChild(el('rect', { x: W / 2 - 62, y: H + 10, width: 124, height: 24, rx: 12 }));
       var obt = el('text', { x: W / 2, y: H + 26 }); obt.textContent = 'Open your page'; ob.appendChild(obt);
       ob.addEventListener('click', function (ev) { ev.stopPropagation(); select(n, true); });
-      ob.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); select(n, true); } });
       g.appendChild(ob);
     }
     var title = el('title', {}); title.textContent = n.label; g.appendChild(title);
@@ -262,7 +262,11 @@
   // Box i of k on an ellipse around box c, starting at the top and going clockwise. A phone gets a narrower, taller
   // ring so the whole ring fits the width at a readable scale.
   function ringPlace(c, i, k) {
-    var rx = narrow() ? 175 : 300, ry = narrow() ? 200 : 165, a = -Math.PI / 2 + 2 * Math.PI * i / Math.max(1, k);
+    // An even count is turned half a step, so no box sits level with you (left/right boxes overlapped the you box on
+    // a phone, 2026-11-11 screenshot with 4 kinds).
+    var step = 2 * Math.PI / Math.max(1, k), turn = k % 2 === 0 ? step / 2 : 0;
+    // kind boxes draw at 1.25x (sizeOf), so left/right neighbours need centres >= 250 px apart: rx 200 on a phone
+    var rx = narrow() ? 200 : 300, ry = narrow() ? 190 : 165, a = -Math.PI / 2 + turn + step * i;
     return { x: Math.round(c.x + rx * Math.cos(a)), y: Math.round(c.y + ry * Math.sin(a)) };
   }
   function expand(n) {

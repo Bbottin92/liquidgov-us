@@ -907,8 +907,10 @@ std::string css() {
         // Form fields get room between them, and the submit button doesn't touch the last field (polish 2026-11-09).
         // Scoped to forms: the header avatar is a <label> too (it opens the account menu) and must not move.
         "form label{margin:.85rem 0 .3rem;font-size:.85rem}form>label:first-child{margin-top:0}"
-        // any button right after a field (Settings' "Change password" touched its field: the dark-mode pass caught it)
-        "form>button[type=submit]:last-child,form>input+button,form>textarea+button,form>select+button{margin-top:.9rem}"
+        // any button right after a field (Settings' "Change password" touched its field: the dark-mode pass caught it).
+        // Not one-button inline forms, and a hidden field is not a field (2026-11-10: Add friend / Accept sat .9rem low)
+        "form:not(.inline)>button[type=submit]:last-child,form:not(.inline)>input:not([type=hidden])+button,"
+        "form:not(.inline)>textarea+button,form:not(.inline)>select+button{margin-top:.9rem}"
         "input,textarea,select{width:100%;padding:.65rem .7rem;border-radius:var(--rsm);border:1px solid var(--rule);"
         "background:var(--paper);color:var(--ink);font:1rem var(--body);min-height:44px}"
         // Checkboxes and radios are natively tiny; the width:100%/min-height:44px
@@ -3651,6 +3653,7 @@ std::string notices_list_html(const std::string& user) {
         else line = html_escape(n.type);
         html += "<div class=\"person" + std::string(n.read?"":" notice-unread") + "\">";
         if (!n.from.empty()) html += portrait_tag(n.from, "sm");
+        else html += "<span class=\"portrait sm ph\" aria-hidden=\"true\">&#9673;</span>"; // a site note: same indent as the rest
         if (!href.empty()) html += "<a href=\""+href+"\" style=\"flex:1;min-width:0;color:inherit;text-decoration:none\">";
         else html += "<div style=\"flex:1;min-width:0\">";
         html += "<div>"+line+"<div class=\"muted\">"+html_escape(fmt_time(n.ts))+"</div></div>";
@@ -10434,14 +10437,15 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         for (auto& n : g_store.members_of(slug)) {
             const bool can_add = !user.empty() && n != user && !asked.count(n) && !g_store.are_friends(user, n) &&
                                  !g_store.is_blocked(user, n) && !g_store.is_blocked(n, user);
-            html += "<li class=\"who\" style=\"margin:.35rem 0\">"+portrait_tag(n,"sm")+
+            html += "<li class=\"who\" style=\"margin:.35rem 0;align-items:center\">"+portrait_tag(n,"sm")+
                     "<div><a href=\"/u/"+html_escape(n)+"\">"+html_escape(n)+"</a>"+
                     (n==c->owner?" <span class=\"muted\">starter</span>":"")+"</div>";
             if (can_add)
-                html += "<form class=\"inline\" style=\"margin-left:auto\" method=\"POST\" action=\"/friends\" data-add=\""+html_escape(n)+"\">"
+                // same gold Add friend as People you may know (one look everywhere), centred on the row
+                html += "<form class=\"inline\" style=\"margin:0 0 0 auto;align-self:center\" method=\"POST\" action=\"/friends\" data-add=\""+html_escape(n)+"\">"
                         "<input type=\"hidden\" name=\"who\" value=\""+html_escape(n)+"\">"
                         "<input type=\"hidden\" name=\"next\" value=\"/c/"+html_escape(slug)+"\">"
-                        "<button class=\"ghost\" type=\"submit\">Add friend</button></form>";
+                        "<button type=\"submit\">Add friend</button></form>";
             html += "</li>";
         }
         html += "</ul>";

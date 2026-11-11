@@ -1,9 +1,22 @@
 name: commons
 
+# Only when the game's own files change (2026-11-10, Brandon: CI "as long as it doesnt cost money"): the Commons is
+# paused, yet this job ran on every master push and used 222 of the month's first 242 Actions minutes. Every step
+# below reads only these paths (the civic+client gate needs a commons/ file to fire at all).
 on:
   push:
     branches: [master]
+    paths:
+      - "commons/**"
+      - "commons-daemon/**"
+      - "Persistence/TheCommons/**"
+      - ".github/workflows/commons.yml"
   pull_request:
+    paths:
+      - "commons/**"
+      - "commons-daemon/**"
+      - "Persistence/TheCommons/**"
+      - ".github/workflows/commons.yml"
 
 permissions:
   contents: read

@@ -12,6 +12,25 @@
 .lgm-trail-step{background:none;border:0;padding:.15rem .25rem;color:#f3d48f;cursor:pointer;text-decoration:underline;font:inherit;min-height:28px}
 .lgm-trail-step.here{text-decoration:none;color:#e9e2cf;cursor:default}
 .lgm-trail-sep{color:#9a927f}
+/* map SPEC phase 1 (Brandon 2026-11-11): Back, the trail and Zoom out on one row, the filter bar for this level under
+   it. Sticky, so on a phone they stay at the top while the page scrolls (the canvas clips with overflow:clip, which,
+   unlike overflow:hidden, does not make it the sticky box's scroll container). */
+.lgm-bars{position:sticky;top:0;z-index:4;background:rgba(13,17,27,.88);border-bottom:1px solid rgba(243,212,143,.12)}
+.lgm-navrow{display:flex;align-items:center;gap:.3rem;padding:.25rem .5rem 0}
+.lgm-navrow .lgm-trail{flex:1;min-width:0;padding:.1rem .2rem 0}
+.lgm-navbtn{background:none;border:1px solid rgba(243,212,143,.45);color:#f3d48f;border-radius:999px;padding:.15rem .7rem;
+  font-size:.82rem;min-height:32px;cursor:pointer;white-space:nowrap}
+.lgm-navbtn:disabled{opacity:.35;cursor:default}
+.lgm-filter{display:flex;gap:.35rem;padding:.35rem .6rem .45rem;overflow-x:auto;scrollbar-width:none;
+  -webkit-mask-image:linear-gradient(90deg,#000 88%,transparent);mask-image:linear-gradient(90deg,#000 88%,transparent)}
+.lgm-filter::-webkit-scrollbar{display:none}
+.lgm-filter:empty{display:none}
+/* chips: at least 32 px tall, a 44 px hit area (SPEC 8) */
+.lgm-chip{position:relative;flex:none;background:#1d1a14;border:1px solid #c9a35a;color:#f4ecd8;border-radius:999px;
+  padding:.2rem .75rem;font-size:.82rem;min-height:32px;cursor:pointer}
+.lgm-chip::after{content:"";position:absolute;inset:-6px -2px}
+.lgm-chip[aria-pressed="false"]{background:none;border-style:dashed;color:#9a927f;text-decoration:line-through}
+.lgm-filter-note{margin:0;padding:0 .7rem .4rem;font-size:.78rem;color:#c9bfa8}
 .lgm-status{font-size:.9rem;color:var(--warn)}
 .lgm-privacy{margin-left:auto;font-size:.9rem}
 .lgmap-body{position:relative;display:flex;gap:.75rem;height:calc(100vh - 210px);min-height:420px}
@@ -21,10 +40,14 @@
    versions without a rule per kind; the page around it keeps the viewer's theme. */
 .lgmap-canvas{--paper:#14120f;--panel:#1b1813;--ink:#f6efe0;--accent:#d1a85c;--stone:#a89c88;
   --rule:rgba(242,234,216,.16);--danger:#d98a7c;--warn:#e0b070;--ok:#8fbba1;
-  flex:1;min-width:0;border:1px solid #2a3348;border-radius:20px;overflow:hidden;
+  flex:1;min-width:0;border:1px solid #2a3348;border-radius:20px;overflow:hidden;overflow:clip;
   background:radial-gradient(ellipse at 30% 0%,#2a3550 0%,#141a28 55%,#0d111b 100%);
   box-shadow:0 10px 40px rgba(13,17,27,.35)}
 #lgm-svg{display:block;width:100%;height:100%;touch-action:none;cursor:grab;font-family:var(--body,inherit)}
+/* the bars take their own height and the map gets the rest (with height:100% under two rows of bars the svg ran past
+   the frame's bottom, so fitAll centered boxes in a space partly clipped away) */
+.lgmap-canvas{display:flex;flex-direction:column}
+.lgmap-canvas>#lgm-svg{flex:1;min-height:0;height:auto}
 #lgm-svg.lgm-drag{cursor:grabbing}
 #lgm-view{transform-origin:0 0}
 #lgm-view.lgm-glide{transition:transform .35s ease}

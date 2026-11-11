@@ -2449,6 +2449,72 @@ bool map_post_ok(const Post& p, const std::string& viewer) {
     }
 }
 
+// ---- Interests on the map (map SPEC phase 1, section 3.7; Brandon 2026-11-11 "yes, build phase 1") ----------
+// Your interests are the comma items of your profile's Interests line, read at view time (no record type). A box id is
+// int:<key>: the item's words, lowercase, joined by '-' ("Public Transit" -> public-transit); its label is the item as
+// typed. Matching is by whole words, so "parks" never matches "Sparkshop" or "Parking"; a simple plural counts as the
+// same word ("park" = "parks", "bus" = "buses"; side agent 2026-11-11), nothing looser.
+std::vector<std::string> map_words(const std::string& text) {
+    std::vector<std::string> out;
+    std::string cur;
+    auto flush = [&]() { if (!cur.empty()) out.push_back(cur); cur.clear(); };
+    for (unsigned char c : text) {
+        if (std::isalnum(c) || c >= 0x80) cur.push_back(static_cast<char>(std::tolower(c))); // bytes >= 0x80: UTF-8 letters
+        else flush();
+    }
+    flush();
+    return out;
+}
+// A word and the singulars it could be: parks -> {parks, park}, buses -> {buses, buse, bus}, houses -> {houses, house,
+// hous}, cities -> {cities, city}. Two words match when they share a form, so park = parks, bus = buses,
+// house = houses; "parking" and "sparks" never meet "park". Words of 3 letters or fewer are left alone ("bus", "gas").
+std::vector<std::string> map_word_forms(const std::string& w) {
+    std::vector<std::string> f{w};
+    const auto n = w.size();
+    auto ends = [&](const char* s) { const std::string e(s); return n >= e.size() && w.compare(n - e.size(), e.size(), e) == 0; };
+    if (n > 3 && ends("s") && !ends("ss")) f.push_back(w.substr(0, n - 1));
+    if (n > 4 && ends("es")) f.push_back(w.substr(0, n - 2));
+    if (n > 4 && ends("ies")) f.push_back(w.substr(0, n - 3) + "y");
+    return f;
+}
+std::set<std::string> map_folded_words(const std::string& text) {
+    std::set<std::string> out;
+    for (const auto& w : map_words(text)) for (auto& f : map_word_forms(w)) out.insert(std::move(f));
+    return out;
+}
+// Every word of the interest appears as a whole word in the text (any shared form).
+bool map_interest_matches(const std::string& interest, const std::set<std::string>& text_words) {
+    const auto words = map_words(interest);
+    if (words.empty()) return false;
+    for (const auto& w : words) {
+        bool hit = false;
+        for (const auto& f : map_word_forms(w)) if (text_words.count(f)) { hit = true; break; }
+        if (!hit) return false;
+    }
+    return true;
+}
+struct MapInterest { std::string key, label; };
+std::vector<MapInterest> map_interests_of(const std::string& user) {
+    std::vector<MapInterest> out;
+    std::set<std::string> seen;
+    auto add = [&](std::string item) {
+        while (!item.empty() && std::isspace(static_cast<unsigned char>(item.front()))) item.erase(item.begin());
+        while (!item.empty() && std::isspace(static_cast<unsigned char>(item.back()))) item.pop_back();
+        std::string key;
+        for (const auto& w : map_words(item)) key += (key.empty() ? "" : "-") + w;
+        if (key.empty() || key.size() > 60 || out.size() >= 12 || !seen.insert(key).second) return;
+        std::string label;  // runs of spaces inside an item become one ("Public   Transit" -> "Public Transit")
+        for (char c : item) if (!(c == ' ' && !label.empty() && label.back() == ' ')) label.push_back(c);
+        out.push_back({key, label});
+    };
+    std::string cur;
+    for (char c : g_store.profile_of(user).interests) {
+        if (c == ',' || c == ';') { add(cur); cur.clear(); } else cur.push_back(c);
+    }
+    add(cur);
+    return out;
+}
+
 // ---- The interactive map's data: one box and its connections ------------
 // Box ids: root, sitewide, city:<key>, group:<slug>, user:<name>,
 // dept:<key>|<tag>, prop:<id>, post:<id>, pain:<id>. /map/node?n=<id> answers with the
@@ -2481,6 +2547,25 @@ std::optional<GNode> map_gnode(const std::string& id, const std::string& viewer)
         if (rest == "places") return GNode{id, "Places", "mine", ""};
         if (rest == "politics") return GNode{id, "Politics", "mine", "/proposals"};
         if (rest == "problems") return GNode{id, "Problems", "mine", "/problems"};
+        // map SPEC phase 1 (Brandon 2026-11-11): Events stays empty until M1.4 (so it is left off the ring), Feeds
+        // (never Drawings), Interests from your profile
+        if (rest == "events") return GNode{id, "Events", "mine", ""};
+        if (rest == "feeds") return GNode{id, "Feeds", "mine", "/feed"};
+        if (rest == "interests") return GNode{id, "Interests", "mine", "/me"};
+        return std::nullopt;
+    }
+    if (type == "int") { // one of YOUR interests; anyone else asking for it gets nothing
+        if (viewer.empty()) return std::nullopt;
+        for (const auto& i : map_interests_of(viewer))
+            if (i.key == rest) return GNode{id, i.label, "interest", ""};
+        return std::nullopt;
+    }
+    if (type == "feed") { // one of your feeds; its posts are what you may see anyway (map_post_ok)
+        if (viewer.empty()) return std::nullopt;
+        if (rest == "friends") return GNode{id, "Friends' posts", "feed", "/feed"};
+        if (rest == "groups") return GNode{id, "Your groups' posts", "feed", "/feed"};
+        if (rest == "anybody-near") return GNode{id, "Posts near you", "feed", "/feed"};
+        if (rest == "mine") return GNode{id, "Your posts", "feed", "/u/" + url_encode(viewer)};
         return std::nullopt;
     }
     if (type == "city") {
@@ -2540,6 +2625,13 @@ std::optional<GNode> map_gnode(const std::string& id, const std::string& viewer)
 // The items under one of your kind boxes (defined after map_ctx, which it uses).
 void map_mine_links(const std::string& kind, const std::string& viewer,
                     const std::function<void(const std::string&, const std::string&)>& link);
+// The posts of one of your feeds, newest first, at most `limit`, each one you may see (map_post_ok). emit returns false
+// to stop early. Defined after map_ctx (Near you uses your cities).
+void map_feed_posts(const std::string& feed, const std::string& viewer, std::size_t limit,
+                    const std::function<bool(const Post&)>& emit);
+// The groups, proposals and people under one of your interests (defined after map_ctx).
+void map_interest_links(const std::string& key, const std::string& viewer,
+                        const std::function<void(const std::string&, const std::string&)>& link);
 
 std::vector<GLink> map_links(const std::string& id, const std::string& viewer) {
     constexpr std::size_t kMax = 40; // per kind, newest first where it matters
@@ -2567,8 +2659,9 @@ std::vector<GLink> map_links(const std::string& id, const std::string& viewer) {
 
     if (id == "you") {
         if (viewer.empty()) return out;
-        // A kind with nothing in it is left off; Places always has the whole site.
-        for (const char* k : {"friends", "groups", "places", "politics", "problems"}) {
+        // A kind with nothing in it is left off; Places always has the whole site. Clockwise from the top in the order
+        // of the map SPEC's mockup A (Brandon's seven kinds, then your own Problems).
+        for (const char* k : {"politics", "friends", "events", "feeds", "places", "groups", "interests", "problems"}) {
             bool any = false;
             map_mine_links(k, viewer, [&](const std::string& to, const std::string&) {
                 if (!any && to != "you" && map_gnode(to, viewer)) any = true;
@@ -2579,6 +2672,14 @@ std::vector<GLink> map_links(const std::string& id, const std::string& viewer) {
         if (!map_gnode(id, viewer)) return out;
         link("you", "yours");
         map_mine_links(rest, viewer, link);
+    } else if (type == "feed") {
+        if (!map_gnode(id, viewer)) return out;
+        link("mine:feeds", "yours");
+        map_feed_posts(rest, viewer, 12, [&](const Post& p) { link("post:" + std::to_string(p.id), "posted"); return true; });
+    } else if (type == "int") {
+        if (!map_gnode(id, viewer)) return out; // only your own interests
+        link("mine:interests", "yours");
+        map_interest_links(rest, viewer, link);
     } else if (id == "root") {
         if (!viewer.empty()) link("you", "in");
         for (const auto& cu : g_store.cities_in_use()) link("city:" + cu.key, "in");
@@ -2743,6 +2844,84 @@ void map_mine_links(const std::string& kind, const std::string& viewer,
         for (auto it = ctx.props.rbegin(); it != ctx.props.rend(); ++it) link("prop:" + std::to_string(*it), "yours");
     } else if (kind == "problems") {
         for (const auto& p : g_store.pains_of(viewer)) if (p.kept) link("pain:" + std::to_string(p.id), "noticed");
+    } else if (kind == "feeds") {
+        // a feed with nothing you may see in it is left off (Drawings is never one of them, Brandon 2026-11-11)
+        for (const char* f : {"friends", "groups", "anybody-near", "mine"}) {
+            bool any = false;
+            map_feed_posts(f, viewer, 1, [&](const Post&) { any = true; return false; });
+            if (any) link(std::string("feed:") + f, "yours");
+        }
+    } else if (kind == "interests") {
+        for (const auto& i : map_interests_of(viewer)) link("int:" + i.key, "yours");
+    }
+    // "events": nothing exists until M1.4, so the box stays empty and the ring leaves it off
+}
+
+void map_feed_posts(const std::string& feed, const std::string& viewer, std::size_t limit,
+                    const std::function<bool(const Post&)>& emit) {
+    if (viewer.empty() || limit == 0) return;
+    std::set<std::string> mygroups, near;
+    if (feed == "groups") for (const auto& c : g_store.communities_of(viewer)) mygroups.insert(c.slug);
+    if (feed == "anybody-near")
+        for (const auto& k : map_ctx(viewer).cities)
+            for (const auto& u : g_store.people_listed_in_city(k)) near.insert(u);
+    auto wanted = [&](const Post& p) {
+        if (feed == "mine") return p.author == viewer;
+        if (p.author == viewer) return false;
+        if (feed == "friends") return g_store.are_friends(viewer, p.author);
+        if (feed == "groups") {
+            if (mygroups.count(p.community)) return true;
+            for (const auto& g : p.extra_groups) if (mygroups.count(g)) return true;
+            return false;
+        }
+        if (feed == "anybody-near") return p.audience == PostAudience::Anybody && near.count(p.author) > 0;
+        return false;
+    };
+    const auto posts = feed == "mine" ? g_store.posts_by(viewer) : g_store.all_posts(); // both oldest first
+    std::size_t n = 0;
+    for (auto it = posts.rbegin(); it != posts.rend() && n < limit; ++it) {
+        if (!wanted(*it) || !map_post_ok(*it, viewer)) continue;
+        ++n;
+        if (!emit(*it)) return;
+    }
+}
+
+void map_interest_links(const std::string& key, const std::string& viewer,
+                        const std::function<void(const std::string&, const std::string&)>& link) {
+    std::string label;
+    for (const auto& i : map_interests_of(viewer)) if (i.key == key) label = i.label;
+    if (label.empty()) return;
+    constexpr std::size_t kMax = 40, kPeople = 8;
+    std::size_t n = 0;
+    for (const auto& c : g_store.all_communities())
+        if (n < kMax && map_interest_matches(label, map_folded_words(c.name + " " + c.about + " " + c.subcategory))) {
+            link("group:" + c.slug, "interest"); ++n;
+        }
+    auto props = g_store.all_proposals();
+    n = 0;
+    for (auto it = props.rbegin(); it != props.rend() && n < kMax; ++it)
+        if (map_interest_matches(label, map_folded_words(it->title + " " + it->body))) {
+            link("prop:" + std::to_string(it->id), "interest"); ++n;
+        }
+    // People (SPEC 3.7): only those who list the same interest, are on the map (map_person_ok, via link -> map_gnode),
+    // findable by name, and listed in one of your cities. At most 8, newest-listed order not implied; never a count.
+    std::set<std::string> seen;
+    n = 0;
+    for (const auto& k : map_ctx(viewer).cities) {
+        for (const auto& u : g_store.people_listed_in_city(k)) {
+            if (n >= kPeople) return;
+            if (u == viewer || !seen.insert(u).second) continue;
+            if (g_store.prefs_of(u).findability != Findability::Typeahead) continue;
+            if (!map_person_ok(u, viewer)) continue;
+            bool same = false;
+            for (const auto& i : map_interests_of(u))
+                if (map_interest_matches(label, map_folded_words(i.label)) && map_interest_matches(i.label, map_folded_words(label))) {
+                    same = true; break;
+                }
+            if (!same) continue;
+            link("user:" + u, "interest");
+            ++n;
+        }
     }
 }
 
@@ -2773,6 +2952,20 @@ void map_add_sub(GNode& n, const std::string& viewer) {
         std::size_t k = 0;
         for (const auto& p : g_store.pains_of(viewer)) if (p.kept) ++k;
         n.sub = plural(k, "kept", "kept");
+    } else if (kind == "interests") {
+        std::string s;
+        for (const auto& i : map_interests_of(viewer)) s += (s.empty() ? "" : ", ") + i.label;
+        n.sub = s;
+    } else if (kind == "feeds") {
+        // the feeds that have something for you, by name (never Drawings)
+        std::string s;
+        for (const auto& [f, name] : std::initializer_list<std::pair<const char*, const char*>>{
+                 {"friends", "Friends"}, {"groups", "Groups"}, {"anybody-near", "Near you"}, {"mine", "Yours"}}) {
+            bool any = false;
+            map_feed_posts(f, viewer, 1, [&](const Post&) { any = true; return false; });
+            if (any) s += (s.empty() ? "" : " \xC2\xB7 ") + std::string(name);
+        }
+        n.sub = s;
     }
 }
 // -1 = not scored (the MAINstream itself).
@@ -2790,6 +2983,7 @@ double map_relevance(const GNode& n, const MapCtx& c) {
         if (p && p->owner == c.me) return 1; // their own box
         return 0.35;                         // someone else's flowed subject
     }
+    if (n.kind == "interest" || n.kind == "feed") return 1; // your own interests and feeds (viewer-only boxes)
     if (n.kind == "sitewide") return 0.5;
     if (n.kind == "city") return c.cities.count(rest) ? 1.0 : 0.15;
     if (n.kind == "person") {
@@ -6898,7 +7092,15 @@ std::string map_page_body(const std::string& user, const std::string& focus) {
             "<a class=\"lgm-privacy\" href=\"/settings#map-privacy\">Map privacy</a></div>"
             "<div class=\"lgmap-body\">"
             // the trail (M1.1 look): You > Groups > ... ; a div, since the phone CSS hides every <nav>
-            "<div class=\"lgmap-canvas\"><div id=\"lgm-trail\" class=\"lgm-trail\" role=\"navigation\" aria-label=\"Where you are on the map\"></div>"
+            // map SPEC phase 1 (Brandon 2026-11-11): Back, the trail and Zoom out on one row, then the filter bar for
+            // this level (lgmap.js fills it); both stay at the top on a phone (position:sticky, lgmap.css)
+            "<div class=\"lgmap-canvas\"><div id=\"lgm-bars\" class=\"lgm-bars\">"
+            "<div class=\"lgm-navrow\"><button type=\"button\" id=\"lgm-back\" class=\"lgm-navbtn\" disabled>&lsaquo; Back</button>"
+            "<div id=\"lgm-trail\" class=\"lgm-trail\" role=\"navigation\" aria-label=\"Where you are on the map\"></div>"
+            "<button type=\"button\" id=\"lgm-zoomout\" class=\"lgm-navbtn\" title=\"Up one level; from You, the MAINstream\">Zoom out</button></div>"
+            "<div id=\"lgm-filter\" class=\"lgm-filter\" role=\"group\" aria-label=\"Show at this level\"></div>"
+            "<p id=\"lgm-filter-note\" class=\"lgm-filter-note\" hidden>Hiding only changes what this map shows on this device. "
+            "Nothing is deleted, and nobody else's view changes.</p></div>"
             "<svg id=\"lgm-svg\" xmlns=\"http://www.w3.org/2000/svg\" aria-label=\"Map\">"
             "<g id=\"lgm-view\"><g id=\"lgm-edges\"></g><g id=\"lgm-nodes\"></g></g></svg></div>"
             "<aside id=\"lgm-panel\" class=\"lgmap-panel\" hidden>"

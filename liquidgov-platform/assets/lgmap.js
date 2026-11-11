@@ -184,7 +184,7 @@
     var n = { id: d.id, label: d.label, kind: d.kind, page: d.page, rel: d.rel, sub: d.sub || '', x: x,
       y: d.kind === 'mine' ? y : slot(x, y), expanded: false };  // ring places are exact (see ringPlace)
     var s = sizeOf(n);
-    var g = el('g', { 'class': 'lgn lgn-' + n.kind + ' lgn-new', tabindex: '0', role: 'button',
+    var g = el('g', { 'class': 'lgn lgn-' + n.kind + ' lgn-new', tabindex: '0', role: 'button', 'data-id': n.id,
       transform: 'translate(' + (n.x + W / 2 * (1 - s)) + ',' + (n.y + H / 2 * (1 - s)) + ') scale(' + s + ')' });
     g.appendChild(shapeEl(n.kind, W, H));
     if (n.kind === 'you') {
@@ -301,6 +301,91 @@
   // of your kinds sits in the middle with its connections on a ring; centerPath is the trail back (You > Friends).
   var centerPath = [];
   function centerId() { return centerPath.length ? centerPath[centerPath.length - 1].id : 'you'; }
+
+  // ---- map SPEC phase 1 (Brandon 2026-11-11 "yes, build phase 1"): the filter bar, Back, Zoom out ----
+  // Filter bar: one chip per kind of box around the center (at You, one per box: Politics, Friends...). A chip turns
+  // that kind off at this level only. It is a view setting kept in this browser (localStorage), never a deletion and
+  // never a privacy change; the note under the bar says so while anything is off.
+  var FKEY = 'lgmap.filter.' + (root.getAttribute('data-me') || '');
+  var hiddenBy = {};
+  try { hiddenBy = JSON.parse(localStorage.getItem(FKEY) || '{}') || {}; } catch (e) { hiddenBy = {}; } // err-ok: unreadable or blocked storage = everything shown
+  var KIND_NAMES = { person: 'People', group: 'Groups', city: 'Cities', prop: 'Proposals', dept: 'Departments', post: 'Posts',
+    pain: 'Problems', interest: 'Interests', feed: 'Feeds', root: 'The whole site', sitewide: 'Sitewide', mine: 'Kinds' };
+  var filterEl = document.getElementById('lgm-filter'), noteEl = document.getElementById('lgm-filter-note');
+  function chipKey(n) { return centerId() === 'you' ? n.id : n.kind; }
+  function chipLabel(n) { return centerId() === 'you' ? n.label : (KIND_NAMES[n.kind] || n.kind); }
+  function ringKids() {
+    var cid = centerId(), out = [];
+    for (var id in nodes) if (nodes[id].from === cid) out.push(nodes[id]);
+    return out;
+  }
+  function isHidden(n) { var h = hiddenBy[centerId()] || []; return n.from === centerId() && h.indexOf(chipKey(n)) >= 0; }
+  function applyFilter() {
+    var off = {};
+    for (var id in nodes) {
+      var n = nodes[id], hide = isHidden(n);
+      if (hide) off[id] = 1;
+      n.el.style.display = hide ? 'none' : '';
+      if (n.sr) n.sr.style.display = hide ? 'none' : '';
+    }
+    for (var k in edges) edges[k].el.style.display = off[edges[k].a] || off[edges[k].b] ? 'none' : '';
+    if (noteEl) noteEl.hidden = !(hiddenBy[centerId()] || []).length;
+  }
+  function renderFilter() {
+    if (!filterEl) return;
+    filterEl.textContent = '';
+    var seen = {}, cid = centerId(), h = hiddenBy[cid] || [];
+    ringKids().forEach(function (n) {
+      var key = chipKey(n);
+      if (seen[key]) return;
+      seen[key] = 1;
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'lgm-chip';
+      b.setAttribute('data-key', key);
+      b.setAttribute('aria-pressed', h.indexOf(key) >= 0 ? 'false' : 'true');
+      b.textContent = chipLabel(n);
+      b.addEventListener('click', function () {
+        var list = (hiddenBy[cid] || []).slice(), at = list.indexOf(key);
+        if (at >= 0) list.splice(at, 1); else list.push(key);
+        if (list.length) hiddenBy[cid] = list; else delete hiddenBy[cid];
+        try { localStorage.setItem(FKEY, JSON.stringify(hiddenBy)); } catch (e) {} // err-ok: private mode: the choice holds until the page reloads
+        b.setAttribute('aria-pressed', at >= 0 ? 'true' : 'false');
+        applyFilter();
+      });
+      filterEl.appendChild(b);
+    });
+    applyFilter();
+  }
+  // Back: history entries made by recenter(); popstate returns to that center without pushing again.
+  var restoring = false, depth = 0, backBtn = document.getElementById('lgm-back');
+  function updateBack() { if (backBtn) backBtn.disabled = depth <= 0; }
+  if (backBtn) backBtn.addEventListener('click', function () { if (depth > 0) history.back(); });
+  window.addEventListener('popstate', function (ev) {
+    // each entry carries the center's own box data, so it can be drawn again even after the trail moved past it
+    var id = ev.state && ev.state.lgc, d = ev.state && ev.state.d;
+    if (!id || !d) return; // not one of the map's entries
+    depth = Math.max(0, depth - 1);
+    restoring = true;
+    try { select(nodes[id] || d, 'now'); } finally { restoring = false; }
+    updateBack();
+  });
+  // Zoom out: up one level along the trail (an item -> its center -> the center before); from You, the MAINstream.
+  function zoomOut() {
+    var cid = centerId();
+    if (selected && selected.id !== cid) { select(nodes[cid] || centerPath[centerPath.length - 1], 'now'); return; }
+    if (centerPath.length > 1) { select(centerPath[centerPath.length - 2], 'now'); return; }
+    if (nodes.root) { select(nodes.root, false); return; }
+    status('Loading…');
+    load('root').then(function (data) {
+      // below the ring, so it and the column it grows do not cover your kinds
+      var r = addNode(data.node, -COLW, ringRadii().ry + 2 * ROWH);
+      r.from = null;
+      select(r, false);
+    }).catch(function (err) { status(err.message); });
+  }
+  var zoomBtn = document.getElementById('lgm-zoomout');
+  if (zoomBtn) zoomBtn.addEventListener('click', zoomOut);
   function dataOf(n) { return { id: n.id, label: n.label, kind: n.kind, page: n.page, rel: n.rel, sub: n.sub }; }
   function isCenterKind(n) { return n.kind === 'you' || n.kind === 'mine'; }
   // m: the tapped box (its own element is kept and moved to the middle: a replaced element broke anything holding it,
@@ -316,6 +401,12 @@
     var d = dataOf(m), at = -1;
     for (var i = 0; i < centerPath.length; i++) if (centerPath[i].id === d.id) at = i;
     if (at >= 0) centerPath = centerPath.slice(0, at + 1); else centerPath.push(d);
+    // Back (map SPEC phase 1): each new center is a history entry, so the phone's back gesture steps back out of it.
+    // A center reached BY going back (popstate) is not pushed again.
+    if (!restoring) {
+      try { history.pushState({ lgc: d.id, d: d }, ''); depth++; } catch (e) {} // err-ok: no history API (old browser): Back stays disabled, the trail still works
+    }
+    updateBack();
     if (!keep) return addNode(d, 0, 0);
     keep.x = 0; keep.y = 0; keep.expanded = false; delete keep.from;
     keep.el.classList.remove('lgn-open');
@@ -370,6 +461,7 @@
         fresh.forEach(function (l, i) { addNode(l.node, x, start + i * ROWH).from = n.id; });
       }
       links.forEach(function (l) { addEdge(n.id, l.node.id, l.edge); });
+      if (n.id === centerId()) renderFilter();
       n.expanded = true;
       n.el.classList.add('lgn-open');
       status(data.links.length ? '' : 'Nothing else connects here yet.');
@@ -461,11 +553,15 @@
     });
   }
   function select(n, open) {
+    // 'now': move without the phone's double-tap wait and without opening a page (the wait's own second call, Back,
+    // Zoom out). Normalised here so it can never reach openPanel below.
+    var now = open === 'now';
+    if (now) open = false;
     // you or one of your kinds becomes the center, with its connections on a ring (Brandon 2026-11-11)
     if (isCenterKind(n) && n.id !== centerId()) {
       // phone, a tap that did not open: wait the double-tap window first, so a second tap still lands on the box and
       // opens its page instead of hitting the spot it moved away from (CI phone_check 4c, 2026-11-11)
-      if (narrow() && !open && n.el) {
+      if (narrow() && !open && !now && n.el) {
         if (selected && selected.el) selected.el.classList.remove('lgn-sel');
         selected = n;
         n.el.classList.add('lgn-sel');
@@ -473,7 +569,6 @@
         return;
       }
       n = recenter(n);
-      if (open === 'now') open = false;
     }
     var prev = selected;
     if (selected) selected.el.classList.remove('lgn-sel');
@@ -626,6 +721,8 @@
   load('you').then(function (data) {
     var r = addNode(data.node, 0, 0);
     centerPath = [dataOf(r)];
+    // the first view is the history entry Back returns to (map SPEC phase 1)
+    try { history.replaceState({ lgc: r.id, d: dataOf(r) }, ''); } catch (e) {} // err-ok: no history API: Back stays disabled
     selected = null;
     trail(r); // "You" until you step out
     return expand(r);

@@ -110,7 +110,8 @@ try:
           (rc, out, err))
     git("commit", "-q", "-m", "two")
     head = git("rev-parse", "HEAD").strip()
-    rc, out, err = run("--push", "refs/heads/master %s refs/heads/master %s\n" % (head, base))
+    # a wip branch: master pushes run every check since 2026-11-10 (Brandon OK'd this edit; affected_checks_master_check.py)
+    rc, out, err = run("--push", "refs/heads/wip/x %s refs/heads/wip/x %s\n" % (head, base))
     check("real --push: the pushed commits' files decide", rc == 0 and "lgp1_consistency.py" in out
           and "make_go_check.py" not in out, (rc, out, err))
     rc, out, err = run("--push", "refs/heads/x %s refs/heads/x %s\n" % (head, "0" * 40))

@@ -42,6 +42,7 @@ CHECKS = {
     "make_go_record_length_check.py": DEPLOY,
     "preflight_retry_check.py": DEPLOY,
     "affected_checks_check.py": [],
+    "affected_checks_master_check.py": [],
 }
 EVERYTHING = [".githooks/*", "scripts/affected_checks.py"]
 
@@ -93,6 +94,10 @@ def name_status(lines):
     return changed, added
 
 
+class PushToMaster(Exception):
+    pass
+
+
 def changed_files(root, mode, stdin_text=""):
     if mode == "--staged":
         return name_status(git_lines(root, "diff", "--cached", "--name-status", "-M"))
@@ -101,6 +106,10 @@ def changed_files(root, mode, stdin_text=""):
         parts = line.split()
         if len(parts) != 4 or parts[1] == ZERO:
             continue  # a branch delete pushes no files
+        if parts[2] == "refs/heads/master":
+            # every check on master pushes (Brandon 2026-11-10, "to avoid drift"): the path map above can miss a file
+            # a check reads, and nothing else runs these checks (affected_checks_master_check.py)
+            raise PushToMaster()
         lsha, rsha = parts[1], parts[3]
         base = rsha if rsha != ZERO else git_lines(root, "merge-base", lsha, "origin/master")[0]
         c, a = name_status(git_lines(root, "diff", "--name-status", "-M", base, lsha))
@@ -121,6 +130,8 @@ def main():
         stdin_text = sys.stdin.read() if sys.argv[2] == "--push" else ""
         changed, added = changed_files(root, sys.argv[2], stdin_text)
         picked, why = select(changed, added, on_disk)
+    except PushToMaster:
+        picked, why = run_order(on_disk), "push to master: every check (drift guard)"
     except Exception as e:  # can't tell what changed: run everything rather than skip
         picked, why = run_order(on_disk), "could not list the changed files (%s): every check" % e
     print("affected_checks: " + why, file=sys.stderr)

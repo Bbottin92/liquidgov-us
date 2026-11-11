@@ -119,9 +119,9 @@
       // never under 0.75 (13 px labels stay readable; advisor 2026-11-07).
       scale = Math.max(0.75, Math.min(1, (box.width - 16) / (COLW + W * 1.25)));
       // Sweep 2026-11-09: at the 0.75 floor the column of connections ran off the right edge ("Tower District
-      // Garde..."), and centring on the box left a screenful of empty map above it. So: the connections (the boxes
+      // Garde..."), and centering on the box left a screenful of empty map above it. So: the connections (the boxes
       // you tap next) stay fully in view - right-aligned when box + column are wider than the phone - and the top
-      // of that column starts near the top of the frame instead of being centred in it.
+      // of that column starts near the top of the frame instead of being centered in it.
       var right = leftX(n) + COLW + W * 1.25, top = n.y;
       for (var k in edges) {
         var o = edges[k].a === n.id ? nodes[edges[k].b] : (edges[k].b === n.id ? nodes[edges[k].a] : null);
@@ -157,7 +157,7 @@
     var A = nodes[e.a], B = nodes[e.b];
     if (A.x > B.x) { var t = A; A = B; B = t; }
     var x1, y1 = A.y + H / 2, x2, y2 = B.y + H / 2;
-    if (A.kind === 'you' || B.kind === 'you' || A.kind === 'mine' || B.kind === 'mine') { // a ring: straight spokes, centre to centre
+    if (A.kind === 'you' || B.kind === 'you' || A.kind === 'mine' || B.kind === 'mine') { // a ring: straight spokes, center to center
       return 'M' + (A.x + W / 2) + ' ' + y1 + ' L' + (B.x + W / 2) + ' ' + y2;
     }
     if (Math.abs(A.x - B.x) < 1) { // same column: bow out to the right
@@ -240,7 +240,7 @@
     shade(n);
     return n;
   }
-  // The elements that sit beside a box at its position; recentre() calls this again after moving a box to the middle.
+  // The elements that sit beside a box at its position; recenter() calls this again after moving a box to the middle.
   function addExtras(n) {
     // Screen readers (Brandon 2026-11-09): VoiceOver and TalkBack turn a double tap into a plain click, which on a
     // phone only grows connections, and they cannot press and hold. So a box with a page gets an "Open <name>" button
@@ -254,7 +254,7 @@
     }
     if (n.kind === 'you') {
       // "Open your page" under the you box, as its OWN element (not inside the box's group: a group that held it had its
-      // centre between box and button, so a press on that centre missed the box; CI phone_check 4/4b, 2026-11-11).
+      // center between box and button, so a press on that center missed the box; CI phone_check 4/4b, 2026-11-11).
       // aria-hidden: screen readers already get "Open <you>" from the box's own 1px button (one per box, check 6c).
       var ob = el('g', { 'class': 'lgn-openbtn', 'aria-hidden': 'true', transform: 'translate(' + n.x + ',' + n.y + ')' });
       ob.appendChild(el('rect', { x: W / 2 - 62, y: H / 2 + YOU_R + 8, width: 124, height: 24, rx: 12 }));
@@ -288,7 +288,7 @@
     // An even count is turned half a step, so no box sits level with you (left/right boxes overlapped the you box on
     // a phone, 2026-11-11 screenshot with 4 kinds).
     var step = 2 * Math.PI / Math.max(1, k), turn = k % 2 === 0 ? step / 2 : 0;
-    // kind boxes draw at 1.25x (sizeOf), so left/right neighbours need centres >= 250 px apart: rx 200 on a phone
+    // kind boxes draw at 1.25x (sizeOf), so left/right neighbours need centers >= 250 px apart: rx 200 on a phone
     var r = ringRadii(), a = -Math.PI / 2 + turn + step * i;
     return { x: Math.round(c.x + r.rx * Math.cos(a)), y: Math.round(c.y + r.ry * Math.sin(a)) };
   }
@@ -297,15 +297,15 @@
   // Collapse (Brandon 2026-11-11: "if i select a higher level box, shouldnt the previous branches collapse?"): when a box
   // is selected, keep only you, your kind ring, the path from you to this box, and what this box opens onto; branches
   // off that path close. Going back up the trail closes what was open below.
-  // The centre (Grok Bot's mockup 1: "tap a kind, its items branch out; tap an item, it becomes the centre"): you or one
-  // of your kinds sits in the middle with its connections on a ring; centrePath is the trail back (You > Friends).
-  var centrePath = [];
-  function centreId() { return centrePath.length ? centrePath[centrePath.length - 1].id : 'you'; }
+  // The center (Grok Bot's mockup 1: "tap a kind, its items branch out; tap an item, it becomes the center"): you or one
+  // of your kinds sits in the middle with its connections on a ring; centerPath is the trail back (You > Friends).
+  var centerPath = [];
+  function centerId() { return centerPath.length ? centerPath[centerPath.length - 1].id : 'you'; }
   function dataOf(n) { return { id: n.id, label: n.label, kind: n.kind, page: n.page, rel: n.rel, sub: n.sub }; }
-  function isCentreKind(n) { return n.kind === 'you' || n.kind === 'mine'; }
+  function isCenterKind(n) { return n.kind === 'you' || n.kind === 'mine'; }
   // m: the tapped box (its own element is kept and moved to the middle: a replaced element broke anything holding it,
   // CI phone_check 3, 2026-11-11), or a trail entry's data when that box is no longer drawn.
-  function recentre(m) {
+  function recenter(m) {
     var keep = m.el && nodes[m.id] === m ? m : null;
     for (var k in edges) if (edges[k].el.parentNode) edges[k].el.parentNode.removeChild(edges[k].el);
     [].slice.call(nodeLayer.childNodes).forEach(function (c) { if (!keep || c !== keep.el) nodeLayer.removeChild(c); });
@@ -314,8 +314,8 @@
     nodes = {};
     edges = {};
     var d = dataOf(m), at = -1;
-    for (var i = 0; i < centrePath.length; i++) if (centrePath[i].id === d.id) at = i;
-    if (at >= 0) centrePath = centrePath.slice(0, at + 1); else centrePath.push(d);
+    for (var i = 0; i < centerPath.length; i++) if (centerPath[i].id === d.id) at = i;
+    if (at >= 0) centerPath = centerPath.slice(0, at + 1); else centerPath.push(d);
     if (!keep) return addNode(d, 0, 0);
     keep.x = 0; keep.y = 0; keep.expanded = false; delete keep.from;
     keep.el.classList.remove('lgn-open');
@@ -325,7 +325,7 @@
     return keep;
   }
   function collapseTo(n) {
-    var keep = {}, cid = centreId();
+    var keep = {}, cid = centerId();
     keep[cid] = 1;
     for (var id in nodes) if (nodes[id].from === cid) keep[id] = 1;
     for (var c = n, guard = 0; c && guard < 50; c = c.from ? nodes[c.from] : null, guard++) keep[c.id] = 1;
@@ -356,7 +356,7 @@
       // around a kind, "you" is the way back (the trail), not one of its items
       var links = n.kind === 'mine' ? data.links.filter(function (l) { return l.node.id !== 'you'; }) : data.links;
       var fresh = links.filter(function (l) { return !nodes[l.node.id]; });
-      if (isCentreKind(n) && n.id === centreId()) { // M1.1 look (Grok Bot's mockup 1): the centre's connections on a ring
+      if (isCenterKind(n) && n.id === centerId()) { // M1.1 look (Grok Bot's mockup 1): the center's connections on a ring
         // the faint dotted ring behind them (mockup), drawn once under the lines
         if (!document.getElementById('lgm-ring')) {
           var ring = el('ellipse', { id: 'lgm-ring', 'class': 'lgm-ring', cx: n.x + W / 2, cy: n.y + H / 2,
@@ -444,10 +444,10 @@
   var trailEl = document.getElementById('lgm-trail');
   function trail(n) {
     if (!trailEl) return;
-    // the centres you stepped through (You > Friends), then the boxes from the centre out to n
-    var tail = [], seen = {}, cid = centreId();
+    // the centers you stepped through (You > Friends), then the boxes from the center out to n
+    var tail = [], seen = {}, cid = centerId();
     for (var c = n; c && c.id !== cid && !seen[c.id] && tail.length < 12; c = c.from ? nodes[c.from] : null) { seen[c.id] = 1; tail.unshift(c); }
-    var chain = centrePath.concat(tail);
+    var chain = centerPath.concat(tail);
     trailEl.textContent = '';
     chain.forEach(function (c, i) {
       if (i) { var sep = document.createElement('span'); sep.className = 'lgm-trail-sep'; sep.textContent = '›'; trailEl.appendChild(sep); }
@@ -461,18 +461,18 @@
     });
   }
   function select(n, open) {
-    // you or one of your kinds becomes the centre, with its connections on a ring (Brandon 2026-11-11)
-    if (isCentreKind(n) && n.id !== centreId()) {
+    // you or one of your kinds becomes the center, with its connections on a ring (Brandon 2026-11-11)
+    if (isCenterKind(n) && n.id !== centerId()) {
       // phone, a tap that did not open: wait the double-tap window first, so a second tap still lands on the box and
       // opens its page instead of hitting the spot it moved away from (CI phone_check 4c, 2026-11-11)
       if (narrow() && !open && n.el) {
         if (selected && selected.el) selected.el.classList.remove('lgn-sel');
         selected = n;
         n.el.classList.add('lgn-sel');
-        setTimeout(function () { if (selected === n && centreId() !== n.id) select(n, 'now'); }, GLIDE_WAIT_MS);
+        setTimeout(function () { if (selected === n && centerId() !== n.id) select(n, 'now'); }, GLIDE_WAIT_MS);
         return;
       }
-      n = recentre(n);
+      n = recenter(n);
       if (open === 'now') open = false;
     }
     var prev = selected;
@@ -499,7 +499,7 @@
       light(n.id);
       // on the ring (you or one of your kinds) keep the whole open map in view instead of sliding the tapped box to the
       // edge (2026-11-11 CI screenshot: tapping Friends cut the cards off at the left)
-      setTimeout(function () { if (selected === n) { if (isCentreKind(n)) fitAll(true); else focusOn(n); } }, wait);
+      setTimeout(function () { if (selected === n) { if (isCenterKind(n)) fitAll(true); else focusOn(n); } }, wait);
     });
   }
 
@@ -603,7 +603,7 @@
   ty = box.height / 2 - H / 2;
   apply();
   // Fit every box on the map into view (not under 0.6x; a phone uses focusOn's own rule instead).
-  // top: place the boxes near the top of the frame instead of centring them (the first view: centred, the Juketube tip
+  // top: place the boxes near the top of the frame instead of centering them (the first view: centered, the Juketube tip
   // that first-time visitors see covered the you box on a phone, phone_check 4/4b + #jbhint probe 2026-11-11).
   function fitAll(top) {
     var b = svg.getBoundingClientRect(), ids = Object.keys(nodes);
@@ -625,7 +625,7 @@
   // Politics, Problems) as the first ring. The whole site (MAINstream) is under Places, and its button still works.
   load('you').then(function (data) {
     var r = addNode(data.node, 0, 0);
-    centrePath = [dataOf(r)];
+    centerPath = [dataOf(r)];
     selected = null;
     trail(r); // "You" until you step out
     return expand(r);

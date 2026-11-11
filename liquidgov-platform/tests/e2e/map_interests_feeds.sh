@@ -98,9 +98,9 @@ check "parks does NOT match 'Parking meters'" '! has parks.json prop:$parkingpro
 check "parks -> pal (lists parks, on the map, in your city Fresno)" 'has parks.json user:pal' "$(ids parks.json)"
 check "parks leaves out stranger (lists parks but is in none of your cities)" '! has parks.json user:stranger' "$(ids parks.json)"
 check "parks leads back to Interests" 'has parks.json mine:interests' "$(ids parks.json)"
-check "no box under an interest carries a count line" '! grep -q "\"sub\"" $W/parks.json' "$(head -c 300 $W/parks.json)"
-# the both-ways half: stranger lists Fresno, then shows up; then hides from the map and is gone again
-post $STRANGER /city/fresno-ca/list -d "on=1" >/dev/null
+check "no box under an interest carries a count line (the back-link to Interests carries YOUR list)" '[ -z "$(python3 -c "import json;d=json.load(open(\"$W/parks.json\"));print(\" \".join(l[\"node\"][\"id\"] for l in d[\"links\"] if l[\"node\"].get(\"sub\") and not l[\"node\"][\"id\"].startswith(\"mine:\")))")" ]' "$(head -c 300 $W/parks.json)"
+# both ways: stranger lists Fresno (today the store lists only people in a group there, so join first), then hides
+post $STRANGER /c/fres1/join -d "" >/dev/null; post $STRANGER /city/fresno-ca/list -d "on=1" >/dev/null
 node $ADMIN int:parks parks2.json >/dev/null
 check "after stranger lists Fresno, parks -> stranger" 'has parks2.json user:stranger' "$(ids parks2.json)"
 post $STRANGER /settings/map -d "x=1" >/dev/null  # every map box left unchecked: show-me off

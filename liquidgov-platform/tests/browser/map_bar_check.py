@@ -38,20 +38,39 @@ class BarRun(phone_check.Run):
                       " label: b.textContent.trim(), on: b.getAttribute('aria-pressed') === 'true'})))")
 
     def tap_sel(self, selector):
+        """A real tap on the element's center. Records (rep["taps"]) what was under that point and whether a click
+        reached the element, so a tap that does nothing says why (2026-11-11: chip and Zoom out taps did nothing)."""
         r = self.j("(() => { const e = document.querySelector(%s); if (!e) return JSON.stringify({none: true});"
-                   " const b = e.getBoundingClientRect(); return JSON.stringify({x: (b.left + b.right) / 2, y: (b.top + b.bottom) / 2}); })()"
-                   % json.dumps(selector))
+                   " const b = e.getBoundingClientRect(), x = (b.left + b.right) / 2, y = (b.top + b.bottom) / 2;"
+                   " const top = document.elementFromPoint(x, y);"
+                   " window.__clicked = false; e.addEventListener('click', () => { window.__clicked = true; }, {once: true, capture: true});"
+                   " return JSON.stringify({x: x, y: y, under: top ? (top.id || top.tagName + '.' + (top.getAttribute('class') || '')) : null,"
+                   "  inside: !!top && (top === e || e.contains(top))}); })()" % json.dumps(selector))
         if not isinstance(r, dict) or r.get("none"):
+            self.rep.setdefault("taps", []).append({"sel": selector, "found": False})
             return False
         self.ws.call("Input.synthesizeTapGesture", x=r["x"], y=r["y"], duration=60, tapCount=1, gestureSourceType="touch")
         time.sleep(1.5)
+        r["clicked"] = self.j("JSON.stringify(window.__clicked === true)")
+        r["sel"] = selector
+        self.rep.setdefault("taps", []).append(r)
+        print("tap %s: under=%s inside=%s clicked=%s" % (selector, r.get("under"), r.get("inside"), r.get("clicked")), flush=True)
         return True
+
+    def close_tips(self):
+        """Close the Juketube tip a first-time visitor sees, with its own close button, as a person would: it sits
+        over the lower part of the map on a phone, so a tap there would land on the tip instead."""
+        cdp.js(self.ws, "(() => { const c = document.getElementById('jbhintclose'); if (c && c.offsetParent) c.click(); return 1; })()")
+        time.sleep(0.5)
 
     def trail(self):
         return self.j("JSON.stringify([...document.querySelectorAll('#lgm-trail .lgm-trail-step')].map(b => b.textContent.trim()))")
 
     def cases(self):
+        # Each case runs even when an earlier one failed: a missing precondition fails that case and moves on (lesson
+        # 2026-11-11: an early return left B3-B8 never run on the old build).
         self.goto("/map", settle=3)
+        self.close_tips()
         ring, chips = self.ring(), self.chips()
         names = sorted(r["label"] for r in ring) if isinstance(ring, list) else None
         self.check("B1 precondition: the ring has at least 3 boxes", isinstance(ring, list) and len(ring) >= 3, ring)
@@ -61,8 +80,8 @@ class BarRun(phone_check.Run):
         self.shot("you")
         target = next((c for c in chips if c["key"] == "mine:friends"), chips[0] if chips else None) if isinstance(chips, list) else None
         if not target:
-            self.check("B2 a chip to tap", False, chips)
-            return
+            self.check("B2 precondition: a chip to tap", False, chips)
+            target = {"key": "mine:friends"}  # the cases below still run, and fail on what they find
         self.tap_sel('#lgm-filter .lgm-chip[data-key="%s"]' % target["key"])
         ring2 = self.ring()
         gone = [r for r in ring2 if r["id"] == target["key"]] if isinstance(ring2, list) else None
@@ -80,6 +99,7 @@ class BarRun(phone_check.Run):
         self.check("B2d the bar says hiding only changes this view", isinstance(note, str) and "only" in note.lower(), note)
         self.shot("hidden")
         self.goto("/map", settle=3)
+        self.close_tips()
         ring3, chips3 = self.ring(), self.chips()
         still = [r for r in ring3 if r["id"] == target["key"]] if isinstance(ring3, list) else None
         c3 = [c for c in chips3 if c["key"] == target["key"]] if isinstance(chips3, list) else None
@@ -92,7 +112,6 @@ class BarRun(phone_check.Run):
 
         if not self.tap_sel('#lgm-nodes .lgn[data-id="mine:groups"]'):
             self.check("B5 precondition: Groups is on the ring", False, ring4)
-            return
         time.sleep(1)
         t5, chips5 = self.trail(), self.chips()
         self.check("B5 tapping Groups makes it the center (trail You > Groups)", t5 == ["You", "Groups"], t5)

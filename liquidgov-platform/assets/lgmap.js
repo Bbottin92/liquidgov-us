@@ -289,7 +289,9 @@
     // phone_check 2, 2026-11-11): the look Brandon saw with 4 kinds - two columns, a row above you and a row below - kept
     // and grown downward and upward, two cards a row, in reading order; an odd last card sits centered under you.
     if (narrow()) {
-      var rows = Math.ceil(k / 2), above = Math.ceil(rows / 2), row = Math.floor(i / 2), col = i % 2;
+      // the extra row (odd row count) goes below you, so you stay near the top of the frame (2026-11-11 CI shot: two
+      // rows above pushed you and the last card down under the Juketube tip)
+      var rows = Math.ceil(k / 2), above = Math.max(1, Math.floor(rows / 2)), row = Math.floor(i / 2), col = i % 2;
       var y = row < above ? -(PHONE_BASE + (above - 1 - row) * PHONE_GAP) : PHONE_BASE + 40 + (row - above) * PHONE_GAP;
       var alone = i === k - 1 && k % 2 === 1;
       return { x: Math.round(c.x + (alone ? 0 : (col ? 1 : -1) * PHONE_DX)), y: Math.round(c.y + y) };
@@ -303,11 +305,12 @@
   }
   // phone rows: the first row clears your circle (58) + half a card; the first row below also clears "Open your page";
   // columns 141 px either side (the 4-kind look: cards 250 wide at 1.25x never touch)
-  var PHONE_BASE = 120, PHONE_GAP = 64, PHONE_DX = 141;
+  // PHONE_GAP 80: a card is ~45 px tall at 1.25x plus its second line; 64 left them touching (2026-11-11 CI shot)
+  var PHONE_BASE = 120, PHONE_GAP = 80, PHONE_DX = 141;
   // k: how many boxes go round the center. On a phone the dotted ring is as tall as the rows it encloses.
   function ringRadii(k) {
     if (!narrow()) return { rx: 300, ry: 165 };
-    var rows = Math.ceil((k || 4) / 2), above = Math.ceil(rows / 2), below = rows - above;
+    var rows = Math.ceil((k || 4) / 2), above = Math.max(1, Math.floor(rows / 2)), below = rows - above;
     return { rx: 200, ry: Math.max(150, PHONE_BASE + 40 + Math.max(above, below) * PHONE_GAP - PHONE_GAP + 30) };
   }
 

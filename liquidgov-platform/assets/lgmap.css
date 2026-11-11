@@ -47,6 +47,13 @@
 /* M1.1: your kinds of connection (Friends, Groups, Places, Politics, Problems) */
 .lgn-mine .lgs{stroke:var(--accent);stroke-width:2.2;stroke-dasharray:6 3}
 .lgn-mine text{font-weight:700}
+/* M1.1 look (Grok Bot's mockup 1): second line, your initial, and the visible Open-your-page button */
+.lgn text.lgn-subt{font-size:10px;font-weight:400;opacity:.8}
+.lgn-face{fill:var(--paper);stroke:#f3d48f;stroke-width:1.5}
+.lgn-you text.lgn-initial{fill:var(--accent);font-weight:800}
+.lgn-openbtn{cursor:pointer}
+.lgn-openbtn rect{fill:var(--accent);stroke:#f3d48f}
+.lgn-you .lgn-openbtn text{fill:var(--paper);font-size:12px;font-weight:700}
 .lgn-city .lgs{stroke:var(--accent);stroke-width:2.6}
 .lgn-city text{font-weight:700}
 .lgn-sitewide .lgs{stroke:#8a5cc2;stroke-width:2}

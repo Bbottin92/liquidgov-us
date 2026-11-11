@@ -153,6 +153,9 @@
     var A = nodes[e.a], B = nodes[e.b];
     if (A.x > B.x) { var t = A; A = B; B = t; }
     var x1, y1 = A.y + H / 2, x2, y2 = B.y + H / 2;
+    if (A.kind === 'you' || B.kind === 'you') { // the ring around you: straight spokes, centre to centre
+      return 'M' + (A.x + W / 2) + ' ' + y1 + ' L' + (B.x + W / 2) + ' ' + y2;
+    }
     if (Math.abs(A.x - B.x) < 1) { // same column: bow out to the right
       x1 = rightX(A); x2 = rightX(B);
       return 'M' + x1 + ' ' + y1 + ' C' + (x1 + 60) + ' ' + y1 + ' ' + (x2 + 60) + ' ' + y2 + ' ' + x2 + ' ' + y2;
@@ -174,14 +177,32 @@
 
   function addNode(d, x, y) {
     if (nodes[d.id]) return nodes[d.id];
-    var n = { id: d.id, label: d.label, kind: d.kind, page: d.page, rel: d.rel, x: x, y: slot(x, y), expanded: false };
+    var n = { id: d.id, label: d.label, kind: d.kind, page: d.page, rel: d.rel, sub: d.sub || '', x: x,
+      y: d.kind === 'mine' ? y : slot(x, y), expanded: false };  // ring places are exact (see ringPlace)
     var s = sizeOf(n);
     var g = el('g', { 'class': 'lgn lgn-' + n.kind + ' lgn-new', tabindex: '0', role: 'button',
       transform: 'translate(' + (n.x + W / 2 * (1 - s)) + ',' + (n.y + H / 2 * (1 - s)) + ') scale(' + s + ')' });
     g.appendChild(shapeEl(n.kind, W, H));
-    var text = el('text', { x: W / 2, y: H / 2 + 5 });
+    var text = el('text', { x: W / 2, y: n.sub ? H / 2 - 1 : H / 2 + 5 });
     text.textContent = short(n.label, 26);
     g.appendChild(text);
+    if (n.sub) { // M1.1 look: a short second line (your kind boxes: "3 people", "Fresno, then the rest of the site")
+      var sub = el('text', { x: W / 2, y: H / 2 + 12, 'class': 'lgn-subt' });
+      sub.textContent = short(n.sub, 34);
+      g.appendChild(sub);
+    }
+    if (n.kind === 'you') { // your initial, and a visible "Open your page" under the box (no hidden gesture needed)
+      g.appendChild(el('circle', { cx: 20, cy: H / 2, r: 13, 'class': 'lgn-face' }));
+      var ini = el('text', { x: 20, y: H / 2 + 5, 'class': 'lgn-initial' });
+      ini.textContent = String(n.label || '?').charAt(0).toUpperCase();
+      g.appendChild(ini);
+      var ob = el('g', { 'class': 'lgn-openbtn', role: 'button', tabindex: '0', 'aria-label': 'Open your page' });
+      ob.appendChild(el('rect', { x: W / 2 - 62, y: H + 10, width: 124, height: 24, rx: 12 }));
+      var obt = el('text', { x: W / 2, y: H + 26 }); obt.textContent = 'Open your page'; ob.appendChild(obt);
+      ob.addEventListener('click', function (ev) { ev.stopPropagation(); select(n, true); });
+      ob.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); select(n, true); } });
+      g.appendChild(ob);
+    }
     var title = el('title', {}); title.textContent = n.label; g.appendChild(title);
     g.addEventListener('click', function (ev) {
       ev.stopPropagation();
@@ -238,14 +259,24 @@
       });
   }
 
+  // Box i of k on an ellipse around box c, starting at the top and going clockwise. A phone gets a narrower, taller
+  // ring so the whole ring fits the width at a readable scale.
+  function ringPlace(c, i, k) {
+    var rx = narrow() ? 175 : 300, ry = narrow() ? 200 : 165, a = -Math.PI / 2 + 2 * Math.PI * i / Math.max(1, k);
+    return { x: Math.round(c.x + rx * Math.cos(a)), y: Math.round(c.y + ry * Math.sin(a)) };
+  }
   function expand(n) {
     if (n.expanded) return Promise.resolve(n);
     status('Loading…');
     return load(n.id).then(function (data) {
       var fresh = data.links.filter(function (l) { return !nodes[l.node.id]; });
-      var x = n.x + COLW;
-      var start = n.y - (fresh.length - 1) * ROWH / 2;
-      fresh.forEach(function (l, i) { addNode(l.node, x, start + i * ROWH).from = n.id; });
+      if (n.kind === 'you') { // M1.1 look (Grok Bot's mockup 1): your kinds on a ring around you
+        fresh.forEach(function (l, i) { var p = ringPlace(n, i, fresh.length); addNode(l.node, p.x, p.y).from = n.id; });
+      } else {
+        var x = n.x + COLW;
+        var start = n.y - (fresh.length - 1) * ROWH / 2;
+        fresh.forEach(function (l, i) { addNode(l.node, x, start + i * ROWH).from = n.id; });
+      }
       data.links.forEach(function (l) { addEdge(n.id, l.node.id, l.edge); });
       n.expanded = true;
       n.el.classList.add('lgn-open');
@@ -460,7 +491,7 @@
     return expand(r);
   }).then(function () {
     var focus = root.getAttribute('data-focus');
-    if (!focus) { if (narrow()) { var me = nodes['you']; if (me) focusOn(me); } else fitAll(); return; }
+    if (!focus) { fitAll(); return; } // the whole ring in view, phone included (no box cut off at the edge)
     if (nodes[focus]) { select(nodes[focus], !narrow()); return; }
     return load(focus).then(function (data) {
       var n = addNode(data.node, COLW * 2, 0);

@@ -2454,7 +2454,7 @@ bool map_post_ok(const Post& p, const std::string& viewer) {
 // dept:<key>|<tag>, prop:<id>, post:<id>, pain:<id>. /map/node?n=<id> answers with the
 // box and every box it connects to that this viewer may see, as JSON. The
 // "page" of a box is what the right-hand field shows.
-struct GNode { std::string id, label, kind, page; };
+struct GNode { std::string id, label, kind, page, sub; }; // sub: a short second line (your kind boxes only, M1.1 look)
 struct GLink { GNode to; std::string edge; };
 
 std::optional<GNode> map_gnode(const std::string& id, const std::string& viewer) {
@@ -2745,6 +2745,36 @@ void map_mine_links(const std::string& kind, const std::string& viewer,
         for (const auto& p : g_store.pains_of(viewer)) if (p.kept) link("pain:" + std::to_string(p.id), "noticed");
     }
 }
+
+// The second line on the "you" box and your kind boxes (Grok Bot's mockup 1, Brandon 2026-11-11). Built only from the
+// viewer's own connections, the same ones the kind box opens onto; nothing about anyone else's lists.
+void map_add_sub(GNode& n, const std::string& viewer) {
+    if (viewer.empty()) return;
+    auto plural = [](std::size_t k, const char* one, const char* many) {
+        return std::to_string(k) + " " + (k == 1 ? one : many);
+    };
+    if (n.kind == "you") { n.sub = "YOU"; return; }
+    if (n.kind != "mine") return;
+    const std::string kind = n.id.substr(5);
+    if (kind == "friends") {
+        n.sub = plural(g_store.friends_of(viewer).size(), "person", "people");
+    } else if (kind == "groups") {
+        const auto gs = g_store.communities_of(viewer);
+        if (!gs.empty()) n.sub = gs.front().name + (gs.size() > 1 ? ", and " + std::to_string(gs.size() - 1) + " more" : "");
+    } else if (kind == "places") {
+        const auto ctx = map_ctx(viewer);
+        std::string first;
+        if (!ctx.cities.empty())
+            for (const auto& cu : g_store.cities_in_use()) if (cu.key == *ctx.cities.begin()) first = cu.name;
+        n.sub = first.empty() ? "the whole site" : first + ", then the rest of the site";
+    } else if (kind == "politics") {
+        n.sub = plural(map_ctx(viewer).props.size(), "proposal you touched", "proposals you touched");
+    } else if (kind == "problems") {
+        std::size_t k = 0;
+        for (const auto& p : g_store.pains_of(viewer)) if (p.kept) ++k;
+        n.sub = plural(k, "kept", "kept");
+    }
+}
 // -1 = not scored (the MAINstream itself).
 double map_relevance(const GNode& n, const MapCtx& c) {
     auto colon = n.id.find(':');
@@ -2813,6 +2843,7 @@ std::string map_node_json(const GNode& n, double rel = -1) {
     std::snprintf(buf, sizeof buf, "%.2f", rel);
     return "{\"id\":\"" + json_escape(n.id) + "\",\"label\":\"" + json_escape(n.label) + "\",\"kind\":\"" +
            json_escape(n.kind) + "\",\"page\":\"" + json_escape(n.page) + "\"" +
+           (n.sub.empty() ? std::string() : ",\"sub\":\"" + json_escape(n.sub) + "\"") +
            (rel < 0 ? std::string() : std::string(",\"rel\":") + buf) + "}";
 }
 
@@ -10683,11 +10714,13 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         auto n = map_gnode(id, user);
         if (!n) return http_raw("404 Not Found","application/json; charset=utf-8","{\"error\":\"not found\"}");
         const MapCtx ctx = map_ctx(user); // relevance colours, for this viewer only
+        map_add_sub(*n, user);
         std::string out = "{\"node\":" + map_node_json(*n, map_relevance(*n, ctx)) + ",\"links\":[";
         bool first = true;
-        for (const auto& l : map_links(id, user)) {
+        for (auto l : map_links(id, user)) {
             if (!first) out += ",";
             first = false;
+            map_add_sub(l.to, user);
             out += "{\"node\":" + map_node_json(l.to, map_relevance(l.to, ctx)) + ",\"edge\":\"" + json_escape(l.edge) + "\"}";
         }
         out += "]}";

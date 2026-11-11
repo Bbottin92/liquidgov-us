@@ -157,7 +157,7 @@
     var A = nodes[e.a], B = nodes[e.b];
     if (A.x > B.x) { var t = A; A = B; B = t; }
     var x1, y1 = A.y + H / 2, x2, y2 = B.y + H / 2;
-    if (A.kind === 'you' || B.kind === 'you') { // the ring around you: straight spokes, centre to centre
+    if (A.kind === 'you' || B.kind === 'you' || A.kind === 'mine' || B.kind === 'mine') { // a ring: straight spokes, centre to centre
       return 'M' + (A.x + W / 2) + ' ' + y1 + ' L' + (B.x + W / 2) + ' ' + y2;
     }
     if (Math.abs(A.x - B.x) < 1) { // same column: bow out to the right
@@ -611,7 +611,12 @@
     var x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     ids.forEach(function (id) { var n = nodes[id]; x0 = Math.min(x0, leftX(n)); x1 = Math.max(x1, rightX(n)); y0 = Math.min(y0, n.y); y1 = Math.max(y1, n.y + H); });
     y1 += 40; // room for "Open your page" under the you box
-    scale = Math.max(0.6, Math.min(1.1, (b.width - 40) / (x1 - x0), (b.height - 40) / (y1 - y0)));
+    var ring = document.getElementById('lgm-ring'); // the whole dotted ring stays in view too (a 1-item ring zoomed in
+    if (ring) {                                      // and cut it off, CI screenshot 2026-11-11)
+      var cx = +ring.getAttribute('cx'), cy = +ring.getAttribute('cy'), rx = +ring.getAttribute('rx'), ry = +ring.getAttribute('ry');
+      x0 = Math.min(x0, cx - rx); x1 = Math.max(x1, cx + rx); y0 = Math.min(y0, cy - ry); y1 = Math.max(y1, cy + ry);
+    }
+    scale = Math.max(0.6, Math.min(top ? 1 : 1.1, (b.width - 40) / (x1 - x0), (b.height - 40) / (y1 - y0)));
     tx = Math.round((b.width - (x1 - x0) * scale) / 2 - x0 * scale);
     ty = top ? Math.round(16 - y0 * scale) : Math.round((b.height - (y1 - y0) * scale) / 2 - y0 * scale);
     apply(!top); // the first view is placed, not glided in

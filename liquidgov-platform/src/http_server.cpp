@@ -2458,7 +2458,17 @@ std::vector<std::string> map_words(const std::string& text) {
     std::vector<std::string> out;
     std::string cur;
     auto flush = [&]() { if (!cur.empty()) out.push_back(cur); cur.clear(); };
-    for (unsigned char c : text) {
+    const auto* s = reinterpret_cast<const unsigned char*>(text.data());
+    for (std::size_t i = 0, n = text.size(); i < n; ++i) {
+        const unsigned char c = s[i];
+        // curly quotes and apostrophes (U+2018/2019/201C/201D, what an iPhone types: "Kids’") separate words like ' does
+        if (c == 0xE2 && i + 2 < n && s[i + 1] == 0x80 && (s[i + 2] == 0x98 || s[i + 2] == 0x99 || s[i + 2] == 0x9C || s[i + 2] == 0x9D)) {
+            flush(); i += 2; continue;
+        }
+        // accented capitals (Latin-1, U+00C0-00DE except the multiplication sign) lowercase like ASCII: CAFÉ = café
+        if (c == 0xC3 && i + 1 < n && s[i + 1] >= 0x80 && s[i + 1] <= 0x9E && s[i + 1] != 0x97) {
+            cur.push_back(static_cast<char>(0xC3)); cur.push_back(static_cast<char>(s[i + 1] + 0x20)); ++i; continue;
+        }
         if (std::isalnum(c) || c >= 0x80) cur.push_back(static_cast<char>(std::tolower(c))); // bytes >= 0x80: UTF-8 letters
         else flush();
     }
@@ -2466,14 +2476,18 @@ std::vector<std::string> map_words(const std::string& text) {
     return out;
 }
 // A word and the singulars it could be: parks -> {parks, park}, buses -> {buses, buse, bus}, houses -> {houses, house,
-// hous}, cities -> {cities, city}. Two words match when they share a form, so park = parks, bus = buses,
-// house = houses; "parking" and "sparks" never meet "park". Words of 3 letters or fewer are left alone ("bus", "gas").
+// hous}, boxes -> {boxes, boxe, box}, cities -> {cities, city}. Two words match when they share a form, so park = parks,
+// bus = buses, house = houses; "parking" and "sparks" never meet "park". "-es" is dropped only after s, x, z, ch, sh
+// (where English adds it), so James never becomes "jam" (Grok Bot's check 2026-11-11); a few words that only look
+// plural keep their s ("news" is not "new"). Words of 3 letters or fewer are left alone ("bus", "gas").
 std::vector<std::string> map_word_forms(const std::string& w) {
+    static const std::set<std::string> kNotPlural{"news", "series", "species"};
     std::vector<std::string> f{w};
     const auto n = w.size();
+    if (kNotPlural.count(w)) return f;
     auto ends = [&](const char* s) { const std::string e(s); return n >= e.size() && w.compare(n - e.size(), e.size(), e) == 0; };
     if (n > 3 && ends("s") && !ends("ss")) f.push_back(w.substr(0, n - 1));
-    if (n > 4 && ends("es")) f.push_back(w.substr(0, n - 2));
+    if (n > 4 && (ends("ses") || ends("xes") || ends("zes") || ends("ches") || ends("shes"))) f.push_back(w.substr(0, n - 2));
     if (n > 4 && ends("ies")) f.push_back(w.substr(0, n - 3) + "y");
     return f;
 }

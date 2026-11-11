@@ -332,8 +332,11 @@
   var KIND_NAMES = { person: 'People', group: 'Groups', city: 'Cities', prop: 'Proposals', dept: 'Departments', post: 'Posts',
     pain: 'Problems', interest: 'Interests', feed: 'Feeds', root: 'The whole site', sitewide: 'Sitewide', mine: 'Kinds' };
   var filterEl = document.getElementById('lgm-filter'), noteEl = document.getElementById('lgm-filter-note');
-  function chipKey(n) { return centerId() === 'you' ? n.id : n.kind; }
-  function chipLabel(n) { return centerId() === 'you' ? n.label : (KIND_NAMES[n.kind] || n.kind); }
+  // one chip per box at You, and for each feed and each interest (SPEC 3.4/3.7: Friends / Communities / Near me / Mine,
+  // and one per interest; Grok Bot's check 2026-11-11: a single "Feeds" chip hid them all); elsewhere one per kind
+  function perBoxChip(n) { return centerId() === 'you' || n.kind === 'feed' || n.kind === 'interest'; }
+  function chipKey(n) { return perBoxChip(n) ? n.id : n.kind; }
+  function chipLabel(n) { return perBoxChip(n) ? n.label : (KIND_NAMES[n.kind] || n.kind); }
   function ringKids() {
     var cid = centerId(), out = [];
     for (var id in nodes) if (nodes[id].from === cid) out.push(nodes[id]);
@@ -452,6 +455,8 @@
   function zoomOut() {
     var cid = centerId();
     if (selected && selected.id !== cid) { select(nodes[cid] || centerPath[centerPath.length - 1], 'now'); return; }
+    // the MAINstream is the top, above You: zooming out there stays put (it went back down to You, Grok Bot's check)
+    if (cid === 'root') { status('This is the top: the MAINstream.'); return; }
     if (centerPath.length > 1) { select(centerPath[centerPath.length - 2], 'now'); return; }
     if (nodes.root) { select(nodes.root, 'now'); return; }
     status('Loading…');

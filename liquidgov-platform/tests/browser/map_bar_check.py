@@ -49,7 +49,11 @@ class BarRun(phone_check.Run):
         if not isinstance(r, dict) or r.get("none"):
             self.rep.setdefault("taps", []).append({"sel": selector, "found": False})
             return False
-        self.ws.call("Input.synthesizeTapGesture", x=r["x"], y=r["y"], duration=60, tapCount=1, gestureSourceType="touch")
+        # A finger down and up (what Puppeteer's tap sends). CI run 43091618237: synthesizeTapGesture landed on the
+        # right element (inside=True) but this headless Chrome sent no click after it, on any element; a phone does.
+        pt = [{"x": r["x"], "y": r["y"], "id": 1}]
+        self.ws.call("Input.dispatchTouchEvent", type="touchStart", touchPoints=pt)
+        self.ws.call("Input.dispatchTouchEvent", type="touchEnd", touchPoints=[])
         time.sleep(1.5)
         r["clicked"] = self.j("JSON.stringify(window.__clicked === true)")
         r["sel"] = selector

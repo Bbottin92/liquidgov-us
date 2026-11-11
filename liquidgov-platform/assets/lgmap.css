@@ -47,18 +47,26 @@
 .lgn:hover .lgs,.lgn:focus .lgs{stroke-width:3;filter:drop-shadow(0 0 12px rgba(255,214,130,.45))}
 .lgn:focus{outline:none}
 /* the MAINstream root: gold with a still glow (an animated filter repaints every frame: too costly on a phone) */
-.lgn-root .lgs,.lgn-you .lgs{fill:var(--accent);stroke:#f3d48f;filter:drop-shadow(0 0 14px rgba(243,212,143,.8))}
+.lgn-root .lgs{fill:var(--accent);stroke:#f3d48f;filter:drop-shadow(0 0 14px rgba(243,212,143,.8))}
+/* M1.1 look (Grok Bot's mockup 1, Brandon 2026-11-11 "i want the map to look the way that grokbot said"): you are a dark
+   circle with a pale gold ring and a soft glow; your kinds are dark cards with a thin gold edge; a faint dotted ring */
+.lgn-you .lgs{fill:#1c1912;stroke:#f3d48f;stroke-width:3;filter:drop-shadow(0 0 16px rgba(243,212,143,.55))}
+.lgm-ring{fill:none;stroke:rgba(243,212,143,.22);stroke-width:1.2;stroke-dasharray:3 6}
 /* phones: no shadow on every box (each one repaints while the map glides or a box is held); stroke only, and the
    selected box and the root keep theirs (side-agent note 2026-11-09: confirm smoothness on a real iPhone) */
 @media (max-width:760px),(hover:none){.lgn:not(.lgn-sel):not(.lgn-root):not(.lgn-you) .lgs{filter:none}}
 .lgn-root text,.lgn-you text{fill:var(--paper);font-weight:700}
 /* M1.1: your kinds of connection (Friends, Groups, Places, Politics, Problems) */
-.lgn-mine .lgs{stroke:var(--accent);stroke-width:2.2;stroke-dasharray:6 3}
-.lgn-mine text{font-weight:700}
+.lgn-mine .lgs{fill:#1d1a14;stroke:#c9a35a;stroke-width:1.4;filter:drop-shadow(0 2px 8px rgba(0,0,0,.45))}
+.lgn-mine .lgs,.lgn-mine:hover .lgs{stroke-dasharray:none}
+.lgn text.lgn-cardtitle{text-anchor:start;font-size:14px;font-weight:700;fill:#f4ecd8}
+.lgn text.lgn-cardsub{text-anchor:start;font-size:10.5px;fill:#a89c88;opacity:1}
+.lgn text.lgn-youname{font-size:14px;font-weight:600;fill:#f4ecd8}
+.lgn text.lgn-youtag{font-size:9.5px;letter-spacing:.14em;fill:#a89c88}
 /* M1.1 look (Grok Bot's mockup 1): second line, your initial, and the visible Open-your-page button */
 .lgn text.lgn-subt{font-size:10px;font-weight:400;opacity:.8}
-.lgn-face{fill:var(--paper);stroke:#f3d48f;stroke-width:1.5}
-.lgn-you text.lgn-initial{fill:var(--accent);font-weight:800}
+.lgn-face{fill:#d1a85c;stroke:none}
+.lgn-you text.lgn-initial{fill:#1c1912;font-weight:800;font-size:19px}
 .lgn-openbtn{cursor:pointer}
 .lgn-openbtn rect{fill:var(--accent);stroke:#f3d48f}
 .lgn-openbtn text{fill:var(--paper);font-size:12px;font-weight:700;text-anchor:middle}

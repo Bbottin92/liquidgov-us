@@ -23,7 +23,7 @@
   function narrow() { return window.matchMedia ? matchMedia('(max-width: 760px)').matches : innerWidth <= 760; }
   // ROWH 56 (was 46): a box can grow to 1.25x (45 px tall), so 46 px rows made the boxes closest to you overlap their
   // neighbours (polish 2026-11-09); 56 leaves ~10 px between even the biggest
-  var W = 200, H = 36, COLW = 270, ROWH = 56;
+  var W = 200, H = 36, COLW = 270, ROWH = 56, YOU_R = 58;
   var nodes = {};   // id -> {id,label,kind,page,rel,x,y,el,expanded}
   var edges = {};   // "a|b" -> {a,b,kind,el}
   var selected = null;
@@ -67,6 +67,7 @@
   // scores it from your own involvement; frequent visits nudge it a little.
   function shade(n) {
     if (typeof n.rel !== 'number' || n.rel < 0) return;
+    if (n.kind === 'mine' || n.kind === 'you') return; // the ring keeps the mockup's dark cards (Brandon 2026-11-11)
     var r = Math.min(1, n.rel + 0.05 * Math.log2(1 + (visits[n.id] || 0)));
     var hue = Math.round(r * 120);
     // the same relevance hue, with more color: .24 alpha read as washed out ("lifeless", polish 2026-11-09)
@@ -79,6 +80,9 @@
   function shapeEl(kind, w, h) {
     var c = 10, poly = function (pts) { return el('polygon', { points: pts.map(function (p) { return p.join(','); }).join(' '), 'class': 'lgs' }); };
     switch (kind) {
+      // M1.1 look (Grok Bot's mockup 1): you are a gold-ringed circle; your kinds are dark cards with a gold edge
+      case 'you': return el('circle', { cx: w / 2, cy: h / 2, r: YOU_R, 'class': 'lgs' });
+      case 'mine': return el('rect', { width: w, height: h + 10, y: -5, rx: 7, 'class': 'lgs' });
       case 'person': return el('rect', { width: w, height: h, rx: h / 2, 'class': 'lgs' });
       case 'group': return el('rect', { width: w, height: h, rx: 3, 'class': 'lgs' });
       case 'city': return el('ellipse', { cx: w / 2, cy: h / 2, rx: w / 2, ry: h / 2, 'class': 'lgs' });
@@ -183,19 +187,30 @@
     var g = el('g', { 'class': 'lgn lgn-' + n.kind + ' lgn-new', tabindex: '0', role: 'button',
       transform: 'translate(' + (n.x + W / 2 * (1 - s)) + ',' + (n.y + H / 2 * (1 - s)) + ') scale(' + s + ')' });
     g.appendChild(shapeEl(n.kind, W, H));
-    var text = el('text', { x: W / 2, y: n.sub ? H / 2 - 1 : H / 2 + 5 });
-    text.textContent = short(n.label, 26);
-    g.appendChild(text);
-    if (n.sub) { // M1.1 look: a short second line (your kind boxes: "3 people", "Fresno, then the rest of the site")
-      var sub = el('text', { x: W / 2, y: H / 2 + 12, 'class': 'lgn-subt' });
-      sub.textContent = short(n.sub, 34);
-      g.appendChild(sub);
-    }
-    if (n.kind === 'you') { // your initial, and a visible "Open your page" under the box (no hidden gesture needed)
-      g.appendChild(el('circle', { cx: 20, cy: H / 2, r: 13, 'class': 'lgn-face' }));
-      var ini = el('text', { x: 20, y: H / 2 + 5, 'class': 'lgn-initial' });
+    if (n.kind === 'you') {
+      // M1.1 look (Grok Bot's mockup 1): a gold disc with your initial, your handle, "YOU", all inside the ringed circle
+      g.appendChild(el('circle', { cx: W / 2, cy: H / 2 - 16, r: 20, 'class': 'lgn-face' }));
+      var ini = el('text', { x: W / 2, y: H / 2 - 9, 'class': 'lgn-initial' });
       ini.textContent = String(n.label || '?').charAt(0).toUpperCase();
       g.appendChild(ini);
+      var nm = el('text', { x: W / 2, y: H / 2 + 22, 'class': 'lgn-youname' });
+      nm.textContent = short(n.label, 18);
+      g.appendChild(nm);
+      var yl = el('text', { x: W / 2, y: H / 2 + 37, 'class': 'lgn-subt lgn-youtag' });
+      yl.textContent = 'YOU';
+      g.appendChild(yl);
+    } else if (n.kind === 'mine') {
+      // a dark card: title, and a short line under it ("3 people", "Fresno, then the rest of the site"), left-aligned
+      var tt = el('text', { x: 14, y: H / 2 - 2, 'class': 'lgn-cardtitle' });
+      tt.textContent = short(n.label, 22);
+      g.appendChild(tt);
+      var st = el('text', { x: 14, y: H / 2 + 13, 'class': 'lgn-subt lgn-cardsub' });
+      st.textContent = short(n.sub, 32);
+      g.appendChild(st);
+    } else {
+      var text = el('text', { x: W / 2, y: H / 2 + 5 });
+      text.textContent = short(n.label, 26);
+      g.appendChild(text);
     }
     var title = el('title', {}); title.textContent = n.label; g.appendChild(title);
     g.addEventListener('click', function (ev) {
@@ -233,8 +248,8 @@
       // centre between box and button, so a press on that centre missed the box; CI phone_check 4/4b, 2026-11-11).
       // aria-hidden: screen readers already get "Open <you>" from the box's own 1px button (one per box, check 6c).
       var ob = el('g', { 'class': 'lgn-openbtn', 'aria-hidden': 'true', transform: 'translate(' + n.x + ',' + n.y + ')' });
-      ob.appendChild(el('rect', { x: W / 2 - 62, y: H + 10, width: 124, height: 24, rx: 12 }));
-      var obt = el('text', { x: W / 2, y: H + 26 }); obt.textContent = 'Open your page'; ob.appendChild(obt);
+      ob.appendChild(el('rect', { x: W / 2 - 62, y: H / 2 + YOU_R + 8, width: 124, height: 24, rx: 12 }));
+      var obt = el('text', { x: W / 2, y: H / 2 + YOU_R + 24 }); obt.textContent = 'Open your page'; ob.appendChild(obt);
       ob.addEventListener('click', function (ev) { ev.stopPropagation(); select(n, true); });
       nodeLayer.appendChild(ob);
     }
@@ -270,8 +285,38 @@
     // a phone, 2026-11-11 screenshot with 4 kinds).
     var step = 2 * Math.PI / Math.max(1, k), turn = k % 2 === 0 ? step / 2 : 0;
     // kind boxes draw at 1.25x (sizeOf), so left/right neighbours need centres >= 250 px apart: rx 200 on a phone
-    var rx = narrow() ? 200 : 300, ry = narrow() ? 190 : 165, a = -Math.PI / 2 + turn + step * i;
-    return { x: Math.round(c.x + rx * Math.cos(a)), y: Math.round(c.y + ry * Math.sin(a)) };
+    var r = ringRadii(), a = -Math.PI / 2 + turn + step * i;
+    return { x: Math.round(c.x + r.rx * Math.cos(a)), y: Math.round(c.y + r.ry * Math.sin(a)) };
+  }
+  function ringRadii() { return narrow() ? { rx: 200, ry: 190 } : { rx: 300, ry: 165 }; }
+
+  // Collapse (Brandon 2026-11-11: "if i select a higher level box, shouldnt the previous branches collapse?"): when a box
+  // is selected, keep only you, your kind ring, the path from you to this box, and what this box opens onto; branches
+  // off that path close. Going back up the trail closes what was open below.
+  function collapseTo(n) {
+    var keep = {};
+    keep['you'] = 1;
+    for (var id in nodes) if (nodes[id].from === 'you') keep[id] = 1;
+    for (var c = n, guard = 0; c && guard < 50; c = c.from ? nodes[c.from] : null, guard++) keep[c.id] = 1;
+    for (var id2 in nodes) if (nodes[id2].from === n.id) keep[id2] = 1;
+    var gone = {};
+    for (var id3 in nodes) {
+      if (keep[id3]) continue;
+      var x = nodes[id3];
+      if (x.el && x.el.parentNode) x.el.parentNode.removeChild(x.el);
+      if (x.sr && x.sr.parentNode) x.sr.parentNode.removeChild(x.sr);
+      gone[id3] = 1;
+      delete nodes[id3];
+    }
+    for (var k in edges) {
+      var e = edges[k];
+      if (gone[e.a] || gone[e.b]) { if (e.el.parentNode) e.el.parentNode.removeChild(e.el); delete edges[k]; }
+    }
+    for (var id4 in nodes) { // a box whose children were closed can open again
+      var m = nodes[id4], kids = false;
+      for (var j in nodes) if (nodes[j].from === id4) { kids = true; break; }
+      if (m.expanded && !kids && id4 !== n.id && id4 !== 'you') { m.expanded = false; m.el.classList.remove('lgn-open'); }
+    }
   }
   function expand(n) {
     if (n.expanded) return Promise.resolve(n);
@@ -279,6 +324,12 @@
     return load(n.id).then(function (data) {
       var fresh = data.links.filter(function (l) { return !nodes[l.node.id]; });
       if (n.kind === 'you') { // M1.1 look (Grok Bot's mockup 1): your kinds on a ring around you
+        // the faint dotted ring behind your kinds (mockup), drawn once under the lines
+        if (!document.getElementById('lgm-ring')) {
+          var ring = el('ellipse', { id: 'lgm-ring', 'class': 'lgm-ring', cx: n.x + W / 2, cy: n.y + H / 2,
+            rx: ringRadii().rx, ry: ringRadii().ry });
+          edgeLayer.insertBefore(ring, edgeLayer.firstChild);
+        }
         fresh.forEach(function (l, i) { var p = ringPlace(n, i, fresh.length); addNode(l.node, p.x, p.y).from = n.id; });
       } else {
         var x = n.x + COLW;
@@ -384,6 +435,7 @@
              : (n.from && edges[edgeKey(n.from, n.id)] ? n.from : null);
     if (from) { var ek = 'e:' + edgeKey(from, n.id); visits[ek] = (visits[ek] || 0) + 1; }
     saveVisits();
+    collapseTo(n);
     shade(n);
     trail(n);
     for (var k in edges) if (edges[k].a === n.id || edges[k].b === n.id) sizeEdge(edges[k]);

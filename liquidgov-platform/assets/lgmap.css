@@ -4,6 +4,14 @@
 .lgm-main{font-weight:700;letter-spacing:.03em;background:var(--accent);color:var(--paper);border:0;border-radius:999px;padding:.45rem 1.1rem;cursor:pointer}
 .lgm-main:hover{filter:brightness(1.08)}
 .lgm-hint{font-size:.9rem}
+/* the trail (M1.1 look): You > Groups > ... over the top-left of the map */
+.lgmap-canvas{position:relative}
+/* its own row at the top of the map, not floating over it: floating, it covered the box a tap brought to the top
+   (2026-11-11 screenshot after tapping Friends) */
+.lgm-trail{display:flex;flex-wrap:wrap;align-items:center;gap:.2rem .35rem;font-size:.85rem;padding:.35rem .7rem 0;min-height:2rem}
+.lgm-trail-step{background:none;border:0;padding:.15rem .25rem;color:#f3d48f;cursor:pointer;text-decoration:underline;font:inherit;min-height:28px}
+.lgm-trail-step.here{text-decoration:none;color:#e9e2cf;cursor:default}
+.lgm-trail-sep{color:#9a927f}
 .lgm-status{font-size:.9rem;color:var(--warn)}
 .lgm-privacy{margin-left:auto;font-size:.9rem}
 .lgmap-body{position:relative;display:flex;gap:.75rem;height:calc(100vh - 210px);min-height:420px}
@@ -53,7 +61,7 @@
 .lgn-you text.lgn-initial{fill:var(--accent);font-weight:800}
 .lgn-openbtn{cursor:pointer}
 .lgn-openbtn rect{fill:var(--accent);stroke:#f3d48f}
-.lgn-you .lgn-openbtn text{fill:var(--paper);font-size:12px;font-weight:700}
+.lgn-openbtn text{fill:var(--paper);font-size:12px;font-weight:700;text-anchor:middle}
 .lgn-city .lgs{stroke:var(--accent);stroke-width:2.6}
 .lgn-city text{font-weight:700}
 .lgn-sitewide .lgs{stroke:#8a5cc2;stroke-width:2}

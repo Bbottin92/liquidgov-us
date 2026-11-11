@@ -1,0 +1,16 @@
+#!/usr/bin/env sh
+# LiquidGov commit-msg: a commit that changes site code must answer Read: / Attacker: / Undo: in its message
+# (scripts/commit_msg_check.py; Brandon 2026-11-11 "figure out why these things are able to be overlooked then correct
+# that"). Binds every agent that commits here. Enable once per clone (worktrees share it): git config core.hooksPath .githooks
+ROOT="$(git rev-parse --show-toplevel)" || exit 1
+PY=""
+for c in python3 python py /c/Python314/python.exe /c/Python313/python.exe; do
+  if command -v "$c" >/dev/null 2>&1 && "$c" -c "import sys; sys.exit(0 if sys.version_info >= (3, 8) else 1)" >/dev/null 2>&1; then
+    PY="$c"; break
+  fi
+done
+if [ -z "$PY" ]; then
+  echo "commit-msg: no working Python 3.8+ found, so the message check could not run; refusing (fix PATH)." >&2
+  exit 1
+fi
+exec "$PY" "$ROOT/scripts/commit_msg_check.py" "$1"

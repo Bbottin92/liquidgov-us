@@ -6897,7 +6897,9 @@ std::string map_page_body(const std::string& user, const std::string& focus) {
             "<span id=\"lgm-status\" class=\"lgm-status\" role=\"status\"></span>"
             "<a class=\"lgm-privacy\" href=\"/settings#map-privacy\">Map privacy</a></div>"
             "<div class=\"lgmap-body\">"
-            "<div class=\"lgmap-canvas\"><svg id=\"lgm-svg\" xmlns=\"http://www.w3.org/2000/svg\" aria-label=\"Map\">"
+            // the trail (M1.1 look): You > Groups > ... ; a div, since the phone CSS hides every <nav>
+            "<div class=\"lgmap-canvas\"><div id=\"lgm-trail\" class=\"lgm-trail\" role=\"navigation\" aria-label=\"Where you are on the map\"></div>"
+            "<svg id=\"lgm-svg\" xmlns=\"http://www.w3.org/2000/svg\" aria-label=\"Map\">"
             "<g id=\"lgm-view\"><g id=\"lgm-edges\"></g><g id=\"lgm-nodes\"></g></g></svg></div>"
             "<aside id=\"lgm-panel\" class=\"lgmap-panel\" hidden>"
             "<div class=\"lgm-ptop\"><strong id=\"lgm-ptitle\"></strong>"

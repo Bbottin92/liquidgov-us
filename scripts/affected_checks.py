@@ -41,6 +41,7 @@ CHECKS = {
     "narration_files_check.py": [SRC, ASSETS],
     "make_go_record_length_check.py": DEPLOY,
     "preflight_retry_check.py": DEPLOY,
+    "commit_msg_check_check.py": [".githooks/commit-msg", "scripts/commit_msg_check.py"],
     "affected_checks_check.py": [],
     "affected_checks_master_check.py": [],
 }

@@ -196,12 +196,6 @@
       var ini = el('text', { x: 20, y: H / 2 + 5, 'class': 'lgn-initial' });
       ini.textContent = String(n.label || '?').charAt(0).toUpperCase();
       g.appendChild(ini);
-      // aria-hidden: screen readers already get "Open <you>" from the box's own 1px button (one per box, phone_check 6c)
-      var ob = el('g', { 'class': 'lgn-openbtn', 'aria-hidden': 'true' });
-      ob.appendChild(el('rect', { x: W / 2 - 62, y: H + 10, width: 124, height: 24, rx: 12 }));
-      var obt = el('text', { x: W / 2, y: H + 26 }); obt.textContent = 'Open your page'; ob.appendChild(obt);
-      ob.addEventListener('click', function (ev) { ev.stopPropagation(); select(n, true); });
-      g.appendChild(ob);
     }
     var title = el('title', {}); title.textContent = n.label; g.appendChild(title);
     g.addEventListener('click', function (ev) {
@@ -233,6 +227,16 @@
       sr.addEventListener('click', function (ev) { ev.stopPropagation(); select(n, true); });
       nodeLayer.appendChild(sr);
       n.sr = sr;
+    }
+    if (n.kind === 'you') {
+      // "Open your page" under the you box, as its OWN element (not inside the box's group: a group that held it had its
+      // centre between box and button, so a press on that centre missed the box; CI phone_check 4/4b, 2026-11-11).
+      // aria-hidden: screen readers already get "Open <you>" from the box's own 1px button (one per box, check 6c).
+      var ob = el('g', { 'class': 'lgn-openbtn', 'aria-hidden': 'true', transform: 'translate(' + n.x + ',' + n.y + ')' });
+      ob.appendChild(el('rect', { x: W / 2 - 62, y: H + 10, width: 124, height: 24, rx: 12 }));
+      var obt = el('text', { x: W / 2, y: H + 26 }); obt.textContent = 'Open your page'; ob.appendChild(obt);
+      ob.addEventListener('click', function (ev) { ev.stopPropagation(); select(n, true); });
+      nodeLayer.appendChild(ob);
     }
     setTimeout(function () { g.classList.remove('lgn-new'); }, 20);
     n.el = g;
@@ -352,6 +356,24 @@
 
   // open: show the box's page (desktop click, Enter, a phone long-press). Without it - a quick tap on a phone -
   // only the connections grow.
+  // The trail (M1.1 look, Grok Bot's mockup 1): how you got to box n, from You, each step a button that goes back there.
+  var trailEl = document.getElementById('lgm-trail');
+  function trail(n) {
+    if (!trailEl) return;
+    var chain = [], seen = {};
+    for (var c = n; c && !seen[c.id] && chain.length < 12; c = c.from ? nodes[c.from] : null) { seen[c.id] = 1; chain.unshift(c); }
+    trailEl.textContent = '';
+    chain.forEach(function (c, i) {
+      if (i) { var sep = document.createElement('span'); sep.className = 'lgm-trail-sep'; sep.textContent = '›'; trailEl.appendChild(sep); }
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'lgm-trail-step' + (i === chain.length - 1 ? ' here' : '');
+      b.textContent = c.kind === 'you' ? 'You' : short(c.label, 22);
+      if (i === chain.length - 1) b.setAttribute('aria-current', 'location');
+      else b.addEventListener('click', function () { select(c, false); });
+      trailEl.appendChild(b);
+    });
+  }
   function select(n, open) {
     var prev = selected;
     if (selected) selected.el.classList.remove('lgn-sel');
@@ -363,6 +385,7 @@
     if (from) { var ek = 'e:' + edgeKey(from, n.id); visits[ek] = (visits[ek] || 0) + 1; }
     saveVisits();
     shade(n);
+    trail(n);
     for (var k in edges) if (edges[k].a === n.id || edges[k].b === n.id) sizeEdge(edges[k]);
     light(n.id);
     if (n.page && open) openPanel(n);
@@ -477,25 +500,29 @@
   ty = box.height / 2 - H / 2;
   apply();
   // Fit every box on the map into view (not under 0.6x; a phone uses focusOn's own rule instead).
-  function fitAll() {
+  // top: place the boxes near the top of the frame instead of centring them (the first view: centred, the Juketube tip
+  // that first-time visitors see covered the you box on a phone, phone_check 4/4b + #jbhint probe 2026-11-11).
+  function fitAll(top) {
     var b = svg.getBoundingClientRect(), ids = Object.keys(nodes);
     if (!b.width || !ids.length) return;
     var x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     ids.forEach(function (id) { var n = nodes[id]; x0 = Math.min(x0, leftX(n)); x1 = Math.max(x1, rightX(n)); y0 = Math.min(y0, n.y); y1 = Math.max(y1, n.y + H); });
+    y1 += 40; // room for "Open your page" under the you box
     scale = Math.max(0.6, Math.min(1.1, (b.width - 40) / (x1 - x0), (b.height - 40) / (y1 - y0)));
     tx = Math.round((b.width - (x1 - x0) * scale) / 2 - x0 * scale);
-    ty = Math.round((b.height - (y1 - y0) * scale) / 2 - y0 * scale);
-    apply(true);
+    ty = top ? Math.round(16 - y0 * scale) : Math.round((b.height - (y1 - y0) * scale) / 2 - y0 * scale);
+    apply(!top); // the first view is placed, not glided in
   }
   // M1.1 (Brandon 2026-11-10): the map starts at you, with your kinds of connection (Friends, Groups, Places,
   // Politics, Problems) as the first ring. The whole site (MAINstream) is under Places, and its button still works.
   load('you').then(function (data) {
     var r = addNode(data.node, 0, 0);
     selected = null;
+    trail(r); // "You" until you step out
     return expand(r);
   }).then(function () {
     var focus = root.getAttribute('data-focus');
-    if (!focus) { fitAll(); return; } // the whole ring in view, phone included (no box cut off at the edge)
+    if (!focus) { fitAll(true); return; } // the whole ring in view near the top, phone included (nothing cut off or covered)
     if (nodes[focus]) { select(nodes[focus], !narrow()); return; }
     return load(focus).then(function (data) {
       var n = addNode(data.node, COLW * 2, 0);

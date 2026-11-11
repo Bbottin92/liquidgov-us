@@ -2468,6 +2468,21 @@ std::optional<GNode> map_gnode(const std::string& id, const std::string& viewer)
     };
     if (id == "root") return GNode{"root", "MAINstream", "root", ""};
     if (id == "sitewide") return GNode{"sitewide", "Sitewide", "sitewide", "/proposals"};
+    // M1.1 (Brandon 2026-11-10): the signed-in map starts at you, and its first ring is kinds of connection. Both are
+    // the viewer's own, derived at read time (no record type); "you" is always the person asking, never anyone else.
+    if (id == "you") {
+        if (viewer.empty()) return std::nullopt;
+        return GNode{"you", viewer, "you", "/u/" + url_encode(viewer)};
+    }
+    if (type == "mine") {
+        if (viewer.empty()) return std::nullopt;
+        if (rest == "friends") return GNode{id, "Friends", "mine", "/friends"};
+        if (rest == "groups") return GNode{id, "Groups", "mine", "/communities"};
+        if (rest == "places") return GNode{id, "Places", "mine", ""};
+        if (rest == "politics") return GNode{id, "Politics", "mine", "/proposals"};
+        if (rest == "problems") return GNode{id, "Problems", "mine", "/problems"};
+        return std::nullopt;
+    }
     if (type == "city") {
         if (rest.empty() || city_key(rest) != rest) return std::nullopt;
         std::string name;
@@ -2522,6 +2537,10 @@ std::optional<GNode> map_gnode(const std::string& id, const std::string& viewer)
     return std::nullopt;
 }
 
+// The items under one of your kind boxes (defined after map_ctx, which it uses).
+void map_mine_links(const std::string& kind, const std::string& viewer,
+                    const std::function<void(const std::string&, const std::string&)>& link);
+
 std::vector<GLink> map_links(const std::string& id, const std::string& viewer) {
     constexpr std::size_t kMax = 40; // per kind, newest first where it matters
     std::vector<GLink> out;
@@ -2546,7 +2565,22 @@ std::vector<GLink> map_links(const std::string& id, const std::string& viewer) {
     const std::string type = colon == std::string::npos ? id : id.substr(0, colon);
     const std::string rest = colon == std::string::npos ? "" : id.substr(colon + 1);
 
-    if (id == "root") {
+    if (id == "you") {
+        if (viewer.empty()) return out;
+        // A kind with nothing in it is left off; Places always has the whole site.
+        for (const char* k : {"friends", "groups", "places", "politics", "problems"}) {
+            bool any = false;
+            map_mine_links(k, viewer, [&](const std::string& to, const std::string&) {
+                if (!any && to != "you" && map_gnode(to, viewer)) any = true;
+            });
+            if (any) link(std::string("mine:") + k, "yours");
+        }
+    } else if (type == "mine") {
+        if (!map_gnode(id, viewer)) return out;
+        link("you", "yours");
+        map_mine_links(rest, viewer, link);
+    } else if (id == "root") {
+        if (!viewer.empty()) link("you", "in");
         for (const auto& cu : g_store.cities_in_use()) link("city:" + cu.key, "in");
         link("sitewide", "in");
     } else if (id == "sitewide") {
@@ -2691,13 +2725,34 @@ MapCtx map_ctx(const std::string& me) {
         if (pp.kept) for (const auto& k : pain_keywords(pp.phrase)) c.keywords.push_back(k);
     return c;
 }
+
+void map_mine_links(const std::string& kind, const std::string& viewer,
+                    const std::function<void(const std::string&, const std::string&)>& link) {
+    if (viewer.empty()) return;
+    if (kind == "friends") {
+        for (const auto& f : g_store.friends_of(viewer)) link("user:" + f, "friends");
+    } else if (kind == "groups") {
+        for (const auto& c : g_store.communities_of(viewer)) link("group:" + c.slug, "member");
+    } else if (kind == "places") {
+        // your cities (a group of yours there, or you listed yourself), then the whole site as its own branch
+        for (const auto& k : map_ctx(viewer).cities) link("city:" + k, "yours");
+        link("root", "in");
+    } else if (kind == "politics") {
+        // proposals you wrote, voted on, reacted to or commented on: the same set the relevance colours use
+        const auto ctx = map_ctx(viewer);
+        for (auto it = ctx.props.rbegin(); it != ctx.props.rend(); ++it) link("prop:" + std::to_string(*it), "yours");
+    } else if (kind == "problems") {
+        for (const auto& p : g_store.pains_of(viewer)) if (p.kept) link("pain:" + std::to_string(p.id), "noticed");
+    }
+}
 // -1 = not scored (the MAINstream itself).
 double map_relevance(const GNode& n, const MapCtx& c) {
     auto colon = n.id.find(':');
     const std::string rest = colon == std::string::npos ? "" : n.id.substr(colon + 1);
     auto words = [&](const std::string& text) { return pain_words_overlap(c.keywords, text) ? 0.2 : 0.0; };
     auto clamp = [](double v) { return v < 0 ? 0.0 : v > 1 ? 1.0 : v; };
-    if (n.kind == "root") return -1;
+    if (n.kind == "root" || n.kind == "you") return -1; // the base boxes are not scored
+    if (n.kind == "mine") return 1;                      // your own kinds of connection
     if (n.kind == "pain") {
         std::uint64_t id = 0;
         try { id = std::stoull(rest); } catch (...) { return 0.35; }

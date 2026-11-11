@@ -39,11 +39,14 @@
 .lgn:hover .lgs,.lgn:focus .lgs{stroke-width:3;filter:drop-shadow(0 0 12px rgba(255,214,130,.45))}
 .lgn:focus{outline:none}
 /* the MAINstream root: gold with a still glow (an animated filter repaints every frame: too costly on a phone) */
-.lgn-root .lgs{fill:var(--accent);stroke:#f3d48f;filter:drop-shadow(0 0 14px rgba(243,212,143,.8))}
+.lgn-root .lgs,.lgn-you .lgs{fill:var(--accent);stroke:#f3d48f;filter:drop-shadow(0 0 14px rgba(243,212,143,.8))}
 /* phones: no shadow on every box (each one repaints while the map glides or a box is held); stroke only, and the
    selected box and the root keep theirs (side-agent note 2026-11-09: confirm smoothness on a real iPhone) */
-@media (max-width:760px),(hover:none){.lgn:not(.lgn-sel):not(.lgn-root) .lgs{filter:none}}
-.lgn-root text{fill:var(--paper);font-weight:700}
+@media (max-width:760px),(hover:none){.lgn:not(.lgn-sel):not(.lgn-root):not(.lgn-you) .lgs{filter:none}}
+.lgn-root text,.lgn-you text{fill:var(--paper);font-weight:700}
+/* M1.1: your kinds of connection (Friends, Groups, Places, Politics, Problems) */
+.lgn-mine .lgs{stroke:var(--accent);stroke-width:2.2;stroke-dasharray:6 3}
+.lgn-mine text{font-weight:700}
 .lgn-city .lgs{stroke:var(--accent);stroke-width:2.6}
 .lgn-city text{font-weight:700}
 .lgn-sitewide .lgs{stroke:#8a5cc2;stroke-width:2}

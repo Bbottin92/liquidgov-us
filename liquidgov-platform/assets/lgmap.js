@@ -57,7 +57,7 @@
   // your city, groups, proposals...). The MAINstream always counts.
   function touched(id) {
     var n = nodes[id];
-    return (visits[id] || 0) > 0 || (n && (n.kind === 'root' || (typeof n.rel === 'number' && n.rel >= 0.95)));
+    return (visits[id] || 0) > 0 || (n && (n.kind === 'root' || n.kind === 'you' || (typeof n.rel === 'number' && n.rel >= 0.95)));
   }
   function sizeEdge(e) {
     e.el.style.setProperty('--w', edgeWidth(e).toFixed(2) + 'px');
@@ -401,7 +401,7 @@
     // MAINstream: shrink the field back to the side and bring the MAINstream into view.
     panel.classList.remove('full');
     document.getElementById('lgm-expand').textContent = 'Expand';
-    var r = nodes.root;
+    var r = nodes.root || nodes.you; // the map starts at you; the MAINstream is loaded once Places is opened
     var box = svg.getBoundingClientRect();
     scale = 1;
     tx = 40;
@@ -452,29 +452,15 @@
     ty = Math.round((b.height - (y1 - y0) * scale) / 2 - y0 * scale);
     apply(true);
   }
-  // Brandon 2026-11-07: the map is the way in, "with your most relevant boxes enlarged and in scope". So the start
-  // opens the MAINstream, then the most relevant of its boxes (your own city or group when you have one), and
-  // brings that branch into view.
-  function mostRelevant(exceptIds) {
-    var best = null;
-    for (var id in nodes) {
-      var n = nodes[id];
-      if (exceptIds[id] || typeof n.rel !== 'number' || n.rel < 0.5) continue;
-      if (!best || n.rel > best.rel) best = n;
-    }
-    return best;
-  }
-  load('root').then(function (data) {
+  // M1.1 (Brandon 2026-11-10): the map starts at you, with your kinds of connection (Friends, Groups, Places,
+  // Politics, Problems) as the first ring. The whole site (MAINstream) is under Places, and its button still works.
+  load('you').then(function (data) {
     var r = addNode(data.node, 0, 0);
     selected = null;
     return expand(r);
   }).then(function () {
     var focus = root.getAttribute('data-focus');
-    if (!focus) {
-      var top = mostRelevant({ root: 1 });
-      if (!top) { if (!narrow()) fitAll(); return; }
-      return expand(top).then(function () { if (narrow()) focusOn(top); else fitAll(); });
-    }
+    if (!focus) { if (narrow()) { var me = nodes['you']; if (me) focusOn(me); } else fitAll(); return; }
     if (nodes[focus]) { select(nodes[focus], !narrow()); return; }
     return load(focus).then(function (data) {
       var n = addNode(data.node, COLW * 2, 0);

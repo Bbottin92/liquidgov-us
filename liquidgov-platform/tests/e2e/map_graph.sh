@@ -74,7 +74,7 @@ check "precondition: ids found" '[ -n "$trees" ] && [ -n "$buses" ] && [ -n "$si
 
 # --- The page and its files
 r=$(get $STRANGER /map page.html)
-check "/map is 200 with the mAInstream button" '[[ "$r" == 200* ]] && grep -q "id=\"lgm-main\"" $W/page.html && grep -q ">mAInstream<" $W/page.html' "$r"
+check "/map is 200 with the MAINstream button" '[[ "$r" == 200* ]] && grep -q "id=\"lgm-main\"" $W/page.html && grep -q ">MAINstream<" $W/page.html' "$r"
 check "/map loads its script and style" 'grep -q "/assets/lgmap.js" $W/page.html && grep -q "/assets/lgmap.css" $W/page.html' "missing"
 check "/map keeps a no-script drawing" 'grep -q "<noscript><div class=\"cmapwrap\"><svg" $W/page.html' "no fallback"
 r=$(get $STRANGER /assets/lgmap.js js.txt)
@@ -146,7 +146,7 @@ EOF
 }
 node $PAL root prel.json >/dev/null
 check "your own city is green (1.00)" '[ "$(rel prel.json city:fresno-ca)" = "1.0" ]' "$(rel prel.json city:fresno-ca)"
-check "the mAInstream itself is not scored" '[ "$(python3 -c "import json;print(\"rel\" in json.load(open(\"$W/prel.json\"))[\"node\"])")" = False ]' "scored"
+check "the MAINstream itself is not scored" '[ "$(python3 -c "import json;print(\"rel\" in json.load(open(\"$W/prel.json\"))[\"node\"])")" = False ]' "scored"
 node $PAL sitewide psw.json >/dev/null
 check "a group you are not in, with no city, is in the middle-low range" 'python3 -c "import sys;v=float(\"$(rel psw.json group:synth)\");sys.exit(0 if 0.2<=v<=0.5 else 1)"' "$(rel psw.json group:synth)"
 node $PAL city:fresno-ca pcity.json >/dev/null

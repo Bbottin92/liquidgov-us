@@ -3526,6 +3526,107 @@ std::string people_search_script() {
            "})();</script>";
 }
 
+// ---- People you may know (Brandon 2026-11-10) ----------------------------
+// "you shouldnt have to know someones specific handle. you should be able to see suggestions before even typing
+// anything in. like people from groups youre in, or from the same town, or anything that might be relevant."
+// Only people findable as you type (his answer); never yourself, a friend, a pending request either way, or a
+// block either way. Friends in common are NAMED, like other social sites, but only through friendships both
+// friends left visible on the map (MapPrefs::friends). Strongest reason first: shared groups, friends in common,
+// the same town, the same problem shared publicly. tests/e2e/friend_suggestions.sh
+struct PersonSuggestion { std::string name; std::vector<std::string> why; int score = 0; };
+
+std::vector<PersonSuggestion> people_suggestions(const std::string& me, std::size_t limit) {
+    std::vector<PersonSuggestion> out;
+    if (me.empty()) return out;
+    const auto mine = g_store.friends_of(me);
+    std::set<std::string> skip(mine.begin(), mine.end());
+    skip.insert(me);
+    for (const auto& u : g_store.incoming_requests(me)) skip.insert(u);
+    for (const auto& u : g_store.outgoing_requests(me)) skip.insert(u);
+    auto eligible = [&](const std::string& u) {
+        return !skip.count(u) && !g_store.is_blocked(me, u) && !g_store.is_blocked(u, me) &&
+               g_store.find_by_username(u).has_value() && g_store.prefs_of(u).findability == Findability::Typeahead;
+    };
+    std::map<std::string, std::vector<std::string>> groups_with, friends_with, towns, problems;
+    for (const auto& c : g_store.communities_of(me))
+        for (const auto& m : g_store.members_of(c.slug)) if (eligible(m)) groups_with[m].push_back(c.name);
+    for (const auto& f : mine) {
+        if (!g_store.map_prefs_of(f).friends) continue; // f hides their friends
+        for (const auto& c : g_store.friends_of(f))
+            if (eligible(c) && g_store.map_prefs_of(c).friends) friends_with[c].push_back(f);
+    }
+    std::set<std::string> my_towns;
+    for (const auto& cu : g_store.cities_in_use()) {
+        bool in = g_store.is_city_listed(cu.key, me);
+        if (!in) for (const auto& c : g_store.communities_of(me)) if (city_key(c.city) == cu.key) { in = true; break; }
+        if (!in || !my_towns.insert(cu.key).second) continue;
+        for (const auto& u : g_store.people_listed_in_city(cu.key)) if (eligible(u)) towns[u].push_back(cu.name);
+    }
+    for (const auto& p : g_store.pains_of(me)) {
+        if (!p.kept || !p.flowed) continue;
+        for (const auto& q : g_store.flowed_with_subject(p.phrase))
+            if (q.owner != me && eligible(q.owner)) problems[q.owner].push_back(p.phrase);
+    }
+    std::set<std::string> everyone;
+    for (const auto* m : {&groups_with, &friends_with, &towns, &problems}) for (const auto& [u, v] : *m) everyone.insert(u);
+    auto names = [](const std::vector<std::string>& v) {
+        if (v.size() == 1) return v[0];
+        if (v.size() == 2) return v[0] + " and " + v[1];
+        return v[0] + ", " + v[1] + " and " + std::to_string(v.size() - 2) + (v.size() == 3 ? " other" : " others");
+    };
+    for (const auto& u : everyone) {
+        PersonSuggestion s{u, {}, 0};
+        if (groups_with.count(u)) {
+            const auto& g = groups_with[u];
+            s.why.push_back(g.size() == 1 ? "In " + g[0] + " with you" : "In " + std::to_string(g.size()) + " of your groups");
+            s.score += 30 * static_cast<int>(g.size());
+        }
+        if (friends_with.count(u)) {
+            s.why.push_back("Friends with " + names(friends_with[u]));
+            s.score += 20 * static_cast<int>(friends_with[u].size());
+        }
+        if (towns.count(u)) { s.why.push_back("Also in " + towns[u][0]); s.score += 10; }
+        if (problems.count(u)) { s.why.push_back("Also noticed " + problems[u][0]); s.score += 8; }
+        out.push_back(std::move(s));
+    }
+    std::sort(out.begin(), out.end(), [](const auto& a, const auto& b) {
+        return a.score != b.score ? a.score > b.score : a.name < b.name;
+    });
+    if (out.size() > limit) out.resize(limit);
+    return out;
+}
+
+// The card: face, name, why, and a one-tap Add friend that comes back to `back`. Empty when nobody fits.
+std::string people_suggestions_html(const std::string& me, std::size_t limit, const std::string& back) {
+    const auto list = people_suggestions(me, limit);
+    if (list.empty()) return "";
+    std::string html = "<div class=\"card\" id=\"suggest\"><h2>People you may know</h2>";
+    for (const auto& s : list) {
+        std::string why;
+        for (const auto& w : s.why) why += (why.empty() ? "" : " &middot; ") + html_escape(w);
+        html += "<div class=\"person suggest\" data-user=\"" + html_escape(s.name) + "\"><div class=\"who\">" +
+                portrait_tag(s.name, "sm") + "<div><a href=\"/u/" + html_escape(s.name) + "\"><strong>" +
+                html_escape(s.name) + "</strong></a><div class=\"muted why\">" + why + "</div></div></div>"
+                "<form class=\"inline\" method=\"POST\" action=\"/friends\">"
+                "<input type=\"hidden\" name=\"who\" value=\"" + html_escape(s.name) + "\">"
+                "<input type=\"hidden\" name=\"next\" value=\"" + html_escape(back) + "\">"
+                "<button type=\"submit\">Add friend</button></form></div><!--/row-->";
+    }
+    if (back != "/friends") html += "<p class=\"muted\"><a href=\"/friends\">More people</a></p>";
+    return html + "</div><!--/suggest-->";
+}
+
+// One-time switch (Brandon 2026-11-10): everyone who never saved Map settings gets the new friends-on default
+// written down, plus a note saying so. Anyone with a saved record keeps what they chose. The record it writes makes
+// this run once per person. New accounts get their record at signup (no note: on was already their default).
+void map_friends_default_on() {
+    for (const auto& u : g_store.all_usernames()) {
+        if (g_store.has_map_prefs(u)) continue;
+        g_store.set_map_prefs(u, MapPrefs{});
+        g_store.add_notice(u, "map_friends_on", "", "");
+    }
+}
+
 // Shared by /notices (full page) and GET /notices/panel (the fragment the
 // header's notifications widget fetches on open) -- one implementation,
 // two callers, so the widget and the page can never drift apart.
@@ -3546,6 +3647,7 @@ std::string notices_list_html(const std::string& user) {
         else if (n.type=="message") { line = html_escape(n.from)+" sent mail."; href="/mail?with="+html_escape(n.from); }
         else if (n.type=="mail_group") { line = html_escape(n.from)+" invited you to a group."; href="/mail/g/"+html_escape(n.extra); }
         else if (n.type=="group_invite") { line = html_escape(n.from)+" added you to /"+html_escape(n.extra)+"."; href="/c/"+html_escape(n.extra); }
+        else if (n.type=="map_friends_on") { line = "Your friends now show on the map and in friend suggestions, so people can find each other. You can change it in Settings &rsaquo; Map."; href="/settings#map"; }
         else line = html_escape(n.type);
         html += "<div class=\"person" + std::string(n.read?"":" notice-unread") + "\">";
         if (!n.from.empty()) html += portrait_tag(n.from, "sm");
@@ -6722,6 +6824,8 @@ std::string map_page_body(const std::string& user, const std::string& focus) {
             "<span class=\"lgm-shapes\" aria-label=\"Shapes\">""<span><svg viewBox=\"0 0 26 12\"><rect class=\"lgs\" width=\"26\" height=\"12\" rx=\"6\"/></svg>people</span>""<span><svg viewBox=\"0 0 26 12\"><rect class=\"lgs\" width=\"26\" height=\"12\" rx=\"1.5\"/></svg>groups</span>""<span><svg viewBox=\"0 0 26 12\"><ellipse class=\"lgs\" cx=\"13\" cy=\"6\" rx=\"13\" ry=\"6\"/></svg>cities</span>""<span><svg viewBox=\"0 0 26 12\"><polygon class=\"lgs\" points=\"4,0 22,0 26,6 22,12 4,12 0,6\"/></svg>proposals</span>""<span><svg viewBox=\"0 0 26 12\"><polygon class=\"lgs\" points=\"3,0 23,0 26,3 26,9 23,12 3,12 0,9 0,3\"/></svg>offices</span>""<span><svg viewBox=\"0 0 26 12\"><polygon class=\"lgs\" points=\"0,0 20,0 26,6 20,12 0,12\"/></svg>problems</span>""<span><svg viewBox=\"0 0 26 12\"><rect class=\"lgs\" width=\"26\" height=\"12\" rx=\"3\"/></svg>posts</span></span>""<a href=\"/home\">Your dashboard</a>""</div>"
             "<p class=\"muted lgm-foot\">Colours come from what you're in and have done; only you see them. "
             "Cities are labels people chose, not governments. You only see what people have made visible.</p></div>"
+            // People you may know, under the map: a signed-in person lands on this page, also right after signup
+            + people_suggestions_html(user, 3, "/") +
             "<script src=\""+asset_url("lgmap.js")+"\" defer></script>";
 }
 
@@ -6820,6 +6924,8 @@ std::string home_dashboard(const std::string& user) {
         out += "<div class=\"card\"><h2>Might fit you</h2>" + matched + "</div>";
     if (!rooms.empty())
         out += "<div class=\"card\"><h2>Your rooms</h2>" + rooms + "</div>";
+    // a few people you may know, also the first thing after signup (it lands here)
+    out += people_suggestions_html(user, 3, "/");
 
     if (friend_posts.empty() && matched.empty() && rooms.empty()) {
         auto sample = g_store.findable_sample(user, 6);
@@ -9929,7 +10035,7 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
     if(method=="GET"&&path=="/friends") {
         if(!acc) return need_login();
         std::string err = flash_error(qs);
-        std::string html = "<h1>People</h1>"+err+
+        std::string html = "<h1>People</h1>"+err+ people_suggestions_html(user, 12, "/friends") +
             "<div class=\"card\"><h2>Find someone</h2>"
             "<form method=\"GET\" action=\"/search\"><label>Type a name</label>"
             "<div class=\"row\"><input name=\"q\" id=\"peopleq\" autocomplete=\"off\" "
@@ -9975,16 +10081,25 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         html += "<div class=\"card\"><h2>Incoming</h2>";
         auto inc = g_store.incoming_requests(user);
         if(inc.empty()) html += "<p class=\"empty\">None.</p>";
+        // a face and a link on every request, Accept and Decline side by side (Brandon 2026-11-10: friendlier)
+        auto who_html = [](const std::string& n) {
+            return "<div class=\"who\">" + portrait_tag(n, "sm") + "<a href=\"/u/" + html_escape(n) + "\"><strong>" +
+                   html_escape(n) + "</strong></a></div>";
+        };
         for (auto& from : inc) {
-            html += "<div class=\"person\"><span>"+html_escape(from)+"</span>"
-                    "<form method=\"POST\" action=\"/friends/accept\">"
-                    "<input type=\"hidden\" name=\"who\" value=\""+html_escape(from)+"\"><button>Accept</button></form></div>";
+            html += "<div class=\"person\">" + who_html(from) + "<div class=\"row\">"
+                    "<form class=\"inline\" method=\"POST\" action=\"/friends/accept\">"
+                    "<input type=\"hidden\" name=\"who\" value=\""+html_escape(from)+"\"><button type=\"submit\">Accept</button></form>"
+                    "<form class=\"inline\" method=\"POST\" action=\"/friends/decline\">"
+                    "<input type=\"hidden\" name=\"who\" value=\""+html_escape(from)+"\"><button class=\"ghost\" type=\"submit\">Decline</button></form>"
+                    "</div></div>";
         }
-        html += "</div><div class=\"card\"><h2>Outgoing</h2>";
+        html += "</div><div class=\"card\"><h2>Outgoing</h2>"
+                "<p class=\"muted\">If someone does not accept, you will not get a notice. That is intentional.</p>";
         auto outg = g_store.outgoing_requests(user);
         if(outg.empty()) html += "<p class=\"empty\">None.</p>";
-        for (auto& to : outg) html += "<div class=\"person\"><span>"+html_escape(to)+"</span><span class=\"muted\">waiting</span></div>";
-        html += "<p class=\"muted\">If someone does not accept, you will not get a notice. That is intentional.</p></div>";
+        for (auto& to : outg) html += "<div class=\"person\">" + who_html(to) + "<span class=\"muted\">waiting</span></div>";
+        html += "</div>";
         return pg("People", html);
     }
 
@@ -10310,10 +10425,24 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
             "<p class=\"muted\">"+(member ? std::string("You're in. Write the first one.") : "Join to post.")+"</p></div>";
         for (const auto& p : posts) html += "<div class=\"card\">"+post_block(p, user)+"</div>";
         html += "<div class=\"card\"><details><summary>Members · "+std::to_string(g_store.members_of(slug).size())+"</summary><ul class=\"plain\">";
+        // Add friend beside each member you could ask (Brandon 2026-11-10): not you, a friend, a pending request or a block
+        std::set<std::string> asked;
+        if (!user.empty()) {
+            for (const auto& u : g_store.incoming_requests(user)) asked.insert(u);
+            for (const auto& u : g_store.outgoing_requests(user)) asked.insert(u);
+        }
         for (auto& n : g_store.members_of(slug)) {
+            const bool can_add = !user.empty() && n != user && !asked.count(n) && !g_store.are_friends(user, n) &&
+                                 !g_store.is_blocked(user, n) && !g_store.is_blocked(n, user);
             html += "<li class=\"who\" style=\"margin:.35rem 0\">"+portrait_tag(n,"sm")+
                     "<div><a href=\"/u/"+html_escape(n)+"\">"+html_escape(n)+"</a>"+
-                    (n==c->owner?" <span class=\"muted\">starter</span>":"")+"</div></li>";
+                    (n==c->owner?" <span class=\"muted\">starter</span>":"")+"</div>";
+            if (can_add)
+                html += "<form class=\"inline\" style=\"margin-left:auto\" method=\"POST\" action=\"/friends\" data-add=\""+html_escape(n)+"\">"
+                        "<input type=\"hidden\" name=\"who\" value=\""+html_escape(n)+"\">"
+                        "<input type=\"hidden\" name=\"next\" value=\"/c/"+html_escape(slug)+"\">"
+                        "<button class=\"ghost\" type=\"submit\">Add friend</button></form>";
+            html += "</li>";
         }
         html += "</ul>";
         if (member) {
@@ -10968,6 +11097,7 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
                 p.career = d.career.substr(0, 80);
                 p.school = d.school.substr(0, 80);
                 g_store.set_profile(d.username, p);
+                g_store.set_map_prefs(d.username, MapPrefs{}); // today's defaults written down: no "now show" note later
             }
             r=login(g_store,g_limiter,d.username,pass,device_label_from(req,ip),ip);
         }
@@ -11101,6 +11231,7 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         AccountId new_id = g_store.create(account);
         if (!email.empty()) g_store.set_email(account.username, email);
         g_store.set_google_id(account.username, sub);
+        g_store.set_map_prefs(account.username, MapPrefs{}); // today's defaults written down: no "now show" note later
         auto session = create_session(g_store, new_id, device_label);
         return http_redir("/", set_cookie(session.id));
     }
@@ -11694,6 +11825,15 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         if(!acc) return need_login();
         auto who=parse_form(body)["who"];
         g_store.accept_friend_request(who, user);
+        if (g_store.incoming_requests(user).empty())
+            g_store.mark_notices_read_of_type(user, "friend_request");
+        return http_redir("/friends");
+    }
+    // Decline (2026-11-10): the request just goes away; the sender is not told (same as never answering).
+    if(method=="POST"&&path=="/friends/decline") {
+        if(!acc) return need_login();
+        auto who=trim_ws(parse_form(body)["who"]);
+        g_store.decline_friend_request(who, user);
         if (g_store.incoming_requests(user).empty())
             g_store.mark_notices_read_of_type(user, "friend_request");
         return http_redir("/friends");
@@ -12330,6 +12470,7 @@ int main() {
         g_blobs.adopt(m.attachment_blob_id, m.attachment_mime.empty() ? "application/octet-stream" : m.attachment_mime);
     constexpr std::int64_t kMailRetention = 7 * 24 * 60 * 60;
     purge_expired_deletions(g_store, now(), kMailRetention);
+    map_friends_default_on(); // once per person: writes the friends-on default + a note (2026-11-10)
     for (const auto& blob_id : g_store.all_canvas_frame_blob_ids())
         g_blobs.adopt(blob_id, "image/png");
     for (const auto& p : g_store.all_posts_with_attachments())

@@ -640,6 +640,16 @@ bool FileStore::accept_friend_request(const std::string& from, const std::string
     return true;
 }
 
+bool FileStore::decline_friend_request(const std::string& from, const std::string& to) {
+    const auto before = requests_.size();
+    requests_.erase(std::remove_if(requests_.begin(), requests_.end(),
+                                   [&](const auto& r) { return r.first == from && r.second == to; }),
+                    requests_.end());
+    if (requests_.size() == before) return false;
+    flush();
+    return true;
+}
+
 void FileStore::drop_requests_between(const std::string& a, const std::string& b) {
     std::vector<std::pair<std::string, std::string>> keep;
     for (const auto& r : requests_) {
@@ -860,6 +870,20 @@ void FileStore::set_prefs(const std::string& username, const AccountPrefs& p) {
 MapPrefs FileStore::map_prefs_of(const std::string& username) const {
     auto it = map_prefs_.find(username);
     return it == map_prefs_.end() ? MapPrefs{} : it->second;
+}
+
+bool FileStore::has_map_prefs(const std::string& username) const {
+    return map_prefs_.count(username) > 0;
+}
+
+std::vector<std::string> FileStore::all_usernames() const {
+    std::vector<std::string> out;
+    out.reserve(by_username_.size());
+    for (const auto& [name, id] : by_username_) {
+        (void)id;
+        out.push_back(name);
+    }
+    return out; // by_username_ is a std::map, so already sorted
 }
 
 void FileStore::set_map_prefs(const std::string& username, const MapPrefs& p) {

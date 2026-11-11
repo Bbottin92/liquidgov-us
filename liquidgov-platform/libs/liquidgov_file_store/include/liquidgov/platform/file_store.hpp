@@ -427,15 +427,19 @@ std::string city_key(const std::string& city);
 
 // What one person lets the map (/map) show about them. Everything that was
 // already public is on by default (Brandon: "I want people to network, not
-// isolate"); friendships were never public, so that one starts off, and a
-// friendship shows to others only when BOTH friends turn it on (Brandon
-// 2026-11-06). You always see your own. Stored in the mapp tag.
+// isolate"). Friendships started off on 2026-11-06 (they had never been
+// public) and turned on by default on 2026-11-10 (Brandon: "im trying to
+// bring people together not separate them"); a friendship shows to others
+// only while BOTH friends leave it on. You always see your own. Stored in
+// the mapp tag.
 struct MapPrefs {
     bool show = true;      // appear on the map at all
     bool groups = true;    // lines to the groups you are in
     bool posts = true;     // your posts as boxes
     bool comments = true;  // lines to proposals you commented on
-    bool friends = false;  // lines to your friends (both must agree)
+    // lines to your friends (both must agree). ON by default since 2026-11-10 (Brandon: "im trying to bring people
+    // together not separate them"); people who had saved Map settings keep what they saved (their mapp record).
+    bool friends = true;
     bool pains = true;     // notice wishes and pain points in your new public words
     // Fields a NEWER version wrote after these, kept verbatim and written back,
     // so rolling back one version never drops (or breaks on) a newer setting.
@@ -786,6 +790,9 @@ public:
     std::vector<std::string> friends_of(const std::string& user) const;
     void add_friend_request(const std::string& from, const std::string& to);
     bool accept_friend_request(const std::string& from, const std::string& to);
+    // The receiver says no: the request from -> to is dropped without a notice (2026-11-10, People page Decline).
+    // False when there was no such request.
+    bool decline_friend_request(const std::string& from, const std::string& to);
     void unfriend(const std::string& actor, const std::string& other);
     std::vector<std::string> incoming_requests(const std::string& user) const;
     std::vector<std::string> outgoing_requests(const std::string& user) const;
@@ -828,6 +835,11 @@ public:
     AccountPrefs prefs_of(const std::string& username) const;
     void set_prefs(const std::string& username, const AccountPrefs& p);
     MapPrefs map_prefs_of(const std::string& username) const;
+    // True once the person has a saved mapp record (they saved Map settings, or the 2026-11-10 friends-on migration
+    // wrote their defaults). Without one, map_prefs_of() gives MapPrefs{} defaults.
+    bool has_map_prefs(const std::string& username) const;
+    // Every account's username, sorted (suggestions and one-time migrations walk them).
+    std::vector<std::string> all_usernames() const;
     // Turning MapPrefs::pains off deletes every pain point the person had.
     void set_map_prefs(const std::string& username, const MapPrefs& p);
     // A new suggestion; 0 when the owner/phrase/source is empty or the same

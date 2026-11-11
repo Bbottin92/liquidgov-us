@@ -83,8 +83,9 @@ r=$(get $STRANGER /assets/lgmap.css css.txt)
 check "lgmap.css is served" '[[ "$r" == 200* ]] && grep -q "lgmap-panel.full" $W/css.txt' "$r"
 get $STRANGER /settings settings.html >/dev/null
 check "the top menu has Map" 'grep -q "<a href=\"/map\">Map</a>" $W/settings.html' "no menu link"
-check "Settings has Map and connections" 'grep -q "Map and connections" $W/settings.html && grep -q "name=\"friends\" value=\"1\">" $W/settings.html' "no section"
-check "friends starts unchecked" '! grep -q "name=\"friends\" value=\"1\" checked" $W/settings.html' "checked"
+# Edited 2026-11-10 with Brandon's OK: friends shows by default since then (was "starts unchecked")
+check "Settings has Map and connections" 'grep -q "Map and connections" $W/settings.html && grep -q "name=\"friends\" value=\"1\"" $W/settings.html' "no section"
+check "friends starts checked (on by default since 2026-11-10)" 'grep -q "name=\"friends\" value=\"1\" checked" $W/settings.html' "unchecked"
 
 # --- One app (Brandon 2026-11-06): every page offers the same manifest and icon
 get $STRANGER "/mail" mailp.html >/dev/null
@@ -156,9 +157,15 @@ check "for stranger, pal (a friend) is close (0.9) but not their own" '[ "$(rel 
 node $STRANGER city:fresno-ca scity.json >/dev/null
 check "relevance differs by viewer: Plant trees is pal's (1.0) but only near stranger" 'v=$(rel scity.json "dept:fresno-ca|Parks"); [ "$v" != "missing" ] && python3 -c "import sys;sys.exit(0 if float(\"$v\")<0.96 else 1)"' "$(rel scity.json "dept:fresno-ca|Parks")"
 
-# --- Friends: your own always; others' only when both opt in
+# --- Friends: your own always; others' only while both leave it on
 check "stranger sees their own friendship with pal" 'has pal.json user:stranger friends' "missing"
-check "stranger does not see pal and Bbottin's friendship (default off)" '! has pal.json user:Bbottin friends' "shown"
+# Edited 2026-11-10 with Brandon's OK: friendships show by default since then ("im trying to bring people together
+# not separate them"; was "default off"). Both then hide theirs, so the opt-in checks below still test "both".
+check "stranger sees pal and Bbottin's friendship by default (on since 2026-11-10)" 'has pal.json user:Bbottin friends' "hidden"
+mapset $ADMIN -d show=1 -d groups=1 -d posts=1 -d comments=1
+mapset $PAL -d show=1 -d groups=1 -d posts=1 -d comments=1
+node $STRANGER user:pal palh.json >/dev/null
+check "both hiding it hides it" '! has palh.json user:Bbottin friends' "shown"
 mapset $PAL -d show=1 -d groups=1 -d posts=1 -d comments=1 -d friends=1
 node $STRANGER user:pal pal2.json >/dev/null
 check "only pal opting in is not enough" '! has pal2.json user:Bbottin friends' "shown"

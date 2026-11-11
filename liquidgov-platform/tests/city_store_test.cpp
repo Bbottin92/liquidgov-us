@@ -590,14 +590,16 @@ int main() {
         {
             FileStore store(mpath);
             MapPrefs d = store.map_prefs_of("ann");
-            assert(d.show && d.groups && d.posts && d.comments && !d.friends); // friends opt-in
+            // friends ON by default since 2026-11-10 (Brandon: "bring people together"; edited with his OK, was opt-in)
+            assert(d.show && d.groups && d.posts && d.comments && d.friends);
             MapPrefs mp;
             mp.show = true; mp.groups = false; mp.posts = true; mp.comments = false; mp.friends = true;
             store.set_map_prefs("ann", mp);
             store.set_map_prefs("", mp); // ignored
             auto got = store.map_prefs_of("ann");
             assert(got.show && !got.groups && got.posts && !got.comments && got.friends);
-            assert(store.map_prefs_of("bob").show && !store.map_prefs_of("bob").friends);
+            // bob never saved: today's defaults, friends ON since 2026-11-10 (edited with Brandon's OK)
+            assert(store.map_prefs_of("bob").show && store.map_prefs_of("bob").friends);
         }
         {
             const std::string disk = slurp(mpath);

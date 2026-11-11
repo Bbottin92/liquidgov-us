@@ -131,7 +131,9 @@ want_row=$(grep "^mapp	stranger	" "$W/before.lgp")
 check "precondition: stranger had a privacy row (posts and comments hidden)" '[ "$want_row" = "mapp	stranger	1	1	0	0	1	0" ]' "$want_row"
 check "precondition: the undone store has no privacy rows" '! grep -q "^mapp	" $W/store.lgp' "has some"
 python3 "$UNDO" --restore-privacy "$bk" "$W/store.lgp" > "$W/rdry.txt" 2>&1; rc=$?
-check "restore dry run changes nothing" '[ $rc = 0 ] && grep -q "1 to restore" $W/rdry.txt && ! grep -q "^mapp	" $W/store.lgp' "$(cat $W/rdry.txt)"
+# "3 to restore" since 2026-11-10 (edited with Brandon's OK, was 1): the friends-on switch writes a row for each of the
+# seed's three people at first start; stranger's own choices are still checked exactly below
+check "restore dry run changes nothing" '[ $rc = 0 ] && grep -q "3 to restore" $W/rdry.txt && ! grep -q "^mapp	" $W/store.lgp' "$(cat $W/rdry.txt)"
 cp "$W/store.lgp" "$W/pre-restore.lgp"
 python3 "$UNDO" --restore-privacy "$bk" "$W/store.lgp" --go > "$W/rgo.txt" 2>&1; rc=$?
 check "restore puts stranger's row back exactly" '[ $rc = 0 ] && [ "$(grep "^mapp	stranger	" $W/store.lgp)" = "$want_row" ]' "$(cat $W/rgo.txt)"

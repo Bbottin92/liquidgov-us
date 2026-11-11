@@ -35,6 +35,9 @@ class Fail(Exception):
     pass
 
 
+VERIFIED = {}  # branch -> the commit sha check() verified
+
+
 def run(cmd, what):
     try:
         p = subprocess.run(cmd, cwd=REPO, capture_output=True, text=True, encoding="utf-8", errors="replace",
@@ -74,6 +77,7 @@ def check(branch, wait_min, out_dir):
     if os.environ.get("SHIP_NO_FETCH") != "1":
         git("fetch", "-q", "origin")
     sha = git("rev-parse", branch)
+    VERIFIED[branch] = sha  # the one commit every check below is about; merge pushes exactly this (review B1)
     try:
         osha = git("rev-parse", "origin/" + branch)
     except Fail:
@@ -172,7 +176,18 @@ def merge(branch, wait_min, out_dir):
     push (git refuses anything but a fast-forward; never --force), and the result is read back."""
     if check(branch, wait_min, out_dir) != 0:
         return 1
-    sha = git("rev-parse", branch)
+    sha = VERIFIED[branch]
+    if os.environ.get("SHIP_NO_FETCH") != "1":
+        git("fetch", "-q", "origin")
+    now_local = git("rev-parse", branch)
+    try:
+        now_origin = git("rev-parse", "origin/" + branch)
+    except Fail:
+        now_origin = ""
+    if now_local != sha or now_origin != sha:
+        # a commit made during the CI wait was never checked (review B1, 2026-11-11): never push it
+        raise Fail("the branch moved during the check (checked %s, now local %s / origin %s); run check again"
+                   % (sha[:7], now_local[:7], now_origin[:7] or "none"))
     run(["git", "push", "origin", "%s:refs/heads/master" % sha], "git push origin master")
     git("fetch", "-q", "origin")
     now = git("rev-parse", "origin/master")
@@ -188,8 +203,19 @@ def merge(branch, wait_min, out_dir):
 # rollback guard and public checks). ship adds no server logic of its own.
 MAIN = os.environ.get("SHIP_MAIN") or ""
 SH = json.loads(os.environ["SHIP_SH"]) if os.environ.get("SHIP_SH") else ["wsl.exe", "bash", "-lc"]
-DEPLOY_SSH = ("/mnt/c/Windows/System32/OpenSSH/ssh.exe -i C:/Users/Brandon/.ssh/id_ed25519_claude "
-              "-o IdentitiesOnly=yes")
+# Claude's own key (CLAUDE.md: the server logs must name who connected). These go INSIDE the command text: wsl.exe does
+# not pass Windows environment variables through (WSLENV is empty here), so the first real dry run used the shared
+# deploy key (Grok Bot's review B3, 2026-11-11). commons-daemon/tests/ship_fixes_check.py
+DEPLOY_KEY = "C:/Users/Brandon/.ssh/id_ed25519_claude"
+DEPLOY_SSH = "/mnt/c/Windows/System32/OpenSSH/ssh.exe -i %s -o IdentitiesOnly=yes" % DEPLOY_KEY
+# `export ...;` (not a `NAME=value cmd` prefix): it covers every command in the line, including shell builtins; a
+# prefix reaches only the first program, and a real-WSL probe with `echo $NAME` showed it empty (2026-11-11).
+KEY_PREFIX = "export LIQUIDGOV_DEPLOY_KEY=%s LIQUIDGOV_DEPLOY_SSH=%s; " % (__import__("shlex").quote(DEPLOY_KEY),
+                                                                         __import__("shlex").quote(DEPLOY_SSH))
+# Emergency switches the deploy scripts honour only with Brandon's explicit OK for that deploy (review M3): never
+# inherited from whatever shell ran ship.
+OVERRIDES = ("LIQUIDGOV_CI_OVERRIDE", "LIQUIDGOV_DEPLOY_ALLOW_DIRTY", "LIQUIDGOV_NO_ROLLBACK_OK",
+             "LIQUIDGOV_LIVE_COMMIT")
 # rsync --itemize-changes: only '<', '>' or 'c' in column 1 move content; '.f....og...' is an owner/group-only
 # difference (the real dry run 2026-11-11 listed 149 of those) and is not a file to deploy.
 ITEM = __import__("re").compile(r"^[<>c]f\S{9} (\S.*)$")
@@ -209,18 +235,31 @@ def log_path(name, what):
     return os.path.join(d, "%s-%s.log" % (name, what))
 
 
-def shell(main, command, log):
-    """Run one bash command in the main checkout (WSL for real); the whole output goes to log; returns (rc, text)."""
-    env = dict(ENV, LIQUIDGOV_DEPLOY_SSH=DEPLOY_SSH)
+def shell(cwd, command, log):
+    """Run one bash command in cwd (WSL for real), with Claude's key in the command text. Output is written to log
+    line by line AS IT RUNS and there is no time limit (review B2: a timeout could kill a deploy mid-way and the log
+    was only written at the end). Returns (rc, text); rc < 0 or >= 128 means the shell was killed."""
+    env = {k: v for k, v in ENV.items() if k not in OVERRIDES}
+    lines = []
     try:
-        p = subprocess.run(SH + [command], cwd=main, capture_output=True, text=True, encoding="utf-8",
-                           errors="replace", timeout=3600, env=env)
-    except (OSError, subprocess.SubprocessError) as e:
+        with open(log, "w", encoding="utf-8") as f:
+            p = subprocess.Popen(SH + [KEY_PREFIX + command], cwd=cwd, stdout=subprocess.PIPE,
+                                 stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace", env=env)
+            for line in p.stdout:
+                f.write(line)
+                f.flush()
+                lines.append(line)
+            rc = p.wait()
+    except OSError as e:
         raise Fail("could not run %r: %s" % (command, e))
-    text = (p.stdout or "") + (p.stderr or "")
-    with open(log, "w", encoding="utf-8") as f:
-        f.write(text)
-    return p.returncode, text
+    return rc, "".join(lines)
+
+
+def no_overrides():
+    found = [k for k in OVERRIDES if os.environ.get(k)]
+    if found:
+        raise Fail("override variable(s) set in this shell: %s. ship never passes them on; an override needs "
+                   "Brandon's explicit OK for that one deploy, run by hand" % ", ".join(found))
 
 
 def gitm(main, *args):
@@ -240,13 +279,28 @@ def master_ready(main):
 def deploy(name, purpose):
     """Only after Brandon's "merge" landed: dry-run file list -> make-go auto -> pair committed + pushed -> go.sh dry.
     Changes nothing on the server. Last line SHIP_DRY_DONE <name>; then show Brandon and wait for his go."""
+    no_overrides()
     main = main_checkout()
     master_ready(main)
     go = "deploy/%s-go.sh" % name
-    if os.path.exists(os.path.join(main, go)):
-        print("1-3. pair %s already committed: reusing it (no make-go, no new commit)" % go)
+    # The pair never goes on master here (review H2): it gets its own wip branch + worktree, pushed, and reaches
+    # master only through `ship.py merge` on Brandon's "merge". A rerun reuses that branch.
+    mine = [b.strip().lstrip("*+ ").strip() for b in gitm(main, "branch", "--list", "wip/*-deploy-" + name).splitlines()]
+    mine = [b for b in mine if __import__("re").fullmatch(r"wip/\d+-deploy-" + name, b)]
+    wt = os.path.join(os.path.dirname(main), os.path.basename(main) + "-deploy-" + name)
+    if mine:
+        branch = mine[0]
+        if not os.path.isdir(wt):
+            gitm(main, "worktree", "add", "-q", wt, branch)
     else:
-        rc, text = shell(main, "LIQUIDGOV_DEPLOY_DRY_RUN=1 bash deploy/sync-to-droplet.sh", log_path(name, "sync-dry"))
+        nums = [int(n) for n in __import__("re").findall(r"wip/(\d+)-", gitm(main, "branch", "-a"))]
+        branch = "wip/%d-deploy-%s" % (max(nums + [0]) + 1, name)
+        gitm(main, "worktree", "add", "-q", "-b", branch, wt, "master")
+    print("0. deploy branch %s in %s" % (branch, wt))
+    if os.path.exists(os.path.join(wt, go)):
+        print("1-3. pair %s already committed on %s: reusing it (no make-go, no new commit)" % (go, branch))
+    else:
+        rc, text = shell(wt, "LIQUIDGOV_DEPLOY_DRY_RUN=1 bash deploy/sync-to-droplet.sh", log_path(name, "sync-dry"))
         if rc != 0:
             raise Fail("the sync dry run failed (exit %d): %s" % (rc, text.strip()[-300:]))
         files = [m.group(1).strip() for m in map(ITEM.match, text.splitlines()) if m]
@@ -255,22 +309,22 @@ def deploy(name, purpose):
         print("1. sync dry run: %d file(s) differ from live:" % len(files))
         for f in files:
             print("     " + f)
-        out = run([sys.executable, os.path.join(main, "deploy", "make-go.py"), "auto", name, purpose] + files,
+        out = run([sys.executable, os.path.join(wt, "deploy", "make-go.py"), "auto", name, purpose] + files,
                   "make-go.py")
         print("2. make-go: " + "; ".join(l for l in out.splitlines() if l.startswith("auto:")))
-        pair = [go, "deploy/%s-remote.sh" % name] + (["naming.toml"] if gitm(main, "status", "--porcelain",
+        pair = [go, "deploy/%s-remote.sh" % name] + (["naming.toml"] if gitm(wt, "status", "--porcelain",
                                                                               "naming.toml") else [])
-        gitm(main, "add", *pair)
-        gitm(main, "commit", "-q", "-m", "deploy: %s pair (%s)\n\nRead: generated by deploy/make-go.py auto from the "
+        gitm(wt, "add", *pair)
+        gitm(wt, "commit", "-q", "-m", "deploy: %s pair (%s)\n\nRead: generated by deploy/make-go.py auto from the "
              "sync dry run's file list (%s).\nAttacker: n/a - a deploy script pair; nothing runs until Brandon's go.\n"
              "Undo: revert this commit; nothing on the server changed." % (name, purpose, ", ".join(files)))
-        gitm(main, "push", "-q", "origin", "master")
-        gitm(main, "fetch", "-q", "origin")
-        if gitm(main, "rev-parse", "master") != gitm(main, "rev-parse", "origin/master"):
-            raise Fail("pushed the pair but origin/master does not match local master")
-        print("3. pair committed and pushed: %s" % gitm(main, "rev-parse", "--short", "master"))
+        gitm(wt, "push", "-q", "origin", branch)
+        gitm(wt, "fetch", "-q", "origin")
+        if gitm(wt, "rev-parse", branch) != gitm(wt, "rev-parse", "origin/" + branch):
+            raise Fail("SHIP_PAIR_PUSHED_UNVERIFIED: pushed %s but origin/%s does not match" % (branch, branch))
+        print("3. pair committed on %s and pushed: %s" % (branch, gitm(wt, "rev-parse", "--short", branch)))
     log = log_path(name, "dry")
-    rc, text = shell(main, "bash %s dry" % go, log)
+    rc, text = shell(wt, "bash %s dry" % go, log)
     shown = [l for l in text.splitlines() if any(k in l for k in ("CI_GATE", "DRY_OK", "DRY_ONLY_DONE", "REFUS",
                                                                   "FAIL", "WARNING"))]
     print("4. %s dry (exit %d; full log %s):" % (go, rc, log))
@@ -280,8 +334,8 @@ def deploy(name, purpose):
         raise Fail("the dry run did not finish (exit %d)" % rc)
     if "CI_GATE_OK" not in text:
         raise Fail("the CI gate would refuse this deploy (see the dry-run lines above)")
-    print("\nShow Brandon the dry run and the screenshots from `ship.py check`; only on his go: "
-          "python scripts/ship.py go %s" % name)
+    print("\nShow Brandon the dry run and the screenshots from `ship.py check`. On his \"merge\": "
+          "python scripts/ship.py merge %s ; then only on his go: python scripts/ship.py go %s" % (branch, name))
     print("SHIP_DRY_DONE %s" % name)
     return 0
 
@@ -289,17 +343,24 @@ def deploy(name, purpose):
 def go_live(name):
     """Only on Brandon's go for THIS change: <name>-go.sh go (CI gate, backup, sync, chown, build/restart, public
     checks, RECORD lines). SHIP_LIVE <name> only with exit 0, CHECK_DONE and both RECORD lines."""
+    no_overrides()
     main = main_checkout()
     go = "deploy/%s-go.sh" % name
-    if not os.path.exists(os.path.join(main, go)):
-        print("SHIP_GO_FAILED %s: no %s (run ship.py deploy first)" % (name, go))
-        return 1
     master_ready(main)
+    if not os.path.exists(os.path.join(main, go)):
+        print("SHIP_GO_FAILED %s: no %s on master (ship.py deploy, then ship.py merge its branch on Brandon's word)"
+              % (name, go))
+        return 1
     log = log_path(name, "go")
     rc, text = shell(main, "bash %s go" % go, log)
     lines = text.splitlines()
     for l in lines[-15:]:
         print("     " + l)
+    if rc < 0 or rc >= 128:  # killed (signal), not a script decision: the server may be half-changed (review B2)
+        print("SHIP_GO_UNKNOWN %s: the go script was killed (exit %d) part-way. Do NOT rerun go blindly: read %s "
+              "for the last step reached, run `bash %s dry` for the server's state (preflight: PID, ACTIVE), and use "
+              "the script's own rollback notes before anything else." % (name, rc, log, go))
+        return 3
     records = [l for l in lines if l.startswith("RECORD ctx log:") or l.startswith("RECORD notes.md:")]
     if rc != 0 or "CHECK_DONE" not in text or "RECORD_FAILED" in text or len(records) < 2:
         why = ("exit %d" % rc if rc != 0 else "no CHECK_DONE" if "CHECK_DONE" not in text

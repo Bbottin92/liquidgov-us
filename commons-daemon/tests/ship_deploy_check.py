@@ -116,9 +116,9 @@ try:
     check("...make-go got auto + name + purpose + exactly the changed FILES (no directory lines, and no "
           "owner/group-only '.f....og...' lines: real dry run 2026-11-11 listed 149 of those)",
           args == ["auto", "thing1", "a thing", "assets/a.css", "src/b.cpp"], args)
-    check("...the pair is committed and origin/master moved to it",
-          om() != before and "deploy/thing1-go.sh" in sh(work, "git", "show", "--name-only", "--format=", "master")
-          and om() == sh(work, "git", "rev-parse", "master"), out)
+    check("...the pair is on its own deploy branch and origin/master did NOT move (H2, 2026-11-11)",
+          om() == before and "deploy/thing1-go.sh" in sh(origin, "git", "show", "--name-only", "--format=",
+          sh(origin, "git", "branch", "--list", "wip/*-deploy-thing1").strip(" *")), out)
     check("...the dry run's own lines are shown", "DRY_ONLY_DONE" in out and "CI_GATE_OK" in out, out)
 
     os.remove(os.path.join(tmp, "make_go_args.json"))
@@ -143,6 +143,9 @@ try:
     rc, out = ship(tmp, work, "deploy", "thing1", "a thing")
     check("deploy refuses when local master is behind origin/master", rc == 1 and "origin/master" in out, out)
     sh(work, "git", "pull", "-q", "--ff-only")
+    dbr = sh(origin, "git", "branch", "--list", "wip/*-deploy-thing1").strip(" *")  # "merge" the pair (H2): go needs it
+    sh(work, "git", "fetch", "-q", "origin"); sh(work, "git", "merge", "-q", "--no-edit", "origin/" + dbr)
+    sh(work, "git", "push", "-q", "origin", "master")
 
     rc, out = ship(tmp, work, "go", "nosuchpair")
     check("go refuses a pair that does not exist", rc == 1 and "SHIP_GO_FAILED" in out, out)

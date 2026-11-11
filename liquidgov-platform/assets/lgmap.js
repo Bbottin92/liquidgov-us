@@ -233,6 +233,15 @@
     g.addEventListener('mouseenter', function () { light(n.id); });
     g.addEventListener('mouseleave', function () { light(selected ? selected.id : null); });
     nodeLayer.appendChild(g);
+    n.el = g;
+    addExtras(n);
+    setTimeout(function () { g.classList.remove('lgn-new'); }, 20);
+    nodes[n.id] = n;
+    shade(n);
+    return n;
+  }
+  // The elements that sit beside a box at its position; recentre() calls this again after moving a box to the middle.
+  function addExtras(n) {
     // Screen readers (Brandon 2026-11-09): VoiceOver and TalkBack turn a double tap into a plain click, which on a
     // phone only grows connections, and they cannot press and hold. So a box with a page gets an "Open <name>" button
     // right after it in reading order: 1x1, transparent, no pointer events, not a Tab stop (Enter on the box opens).
@@ -240,7 +249,7 @@
       var sr = el('g', { 'class': 'lgn-sr', role: 'button', 'aria-label': 'Open ' + n.label });
       sr.appendChild(el('rect', { x: n.x + W - 1, y: n.y + H - 1, width: 1, height: 1 }));
       sr.addEventListener('click', function (ev) { ev.stopPropagation(); select(n, true); });
-      nodeLayer.appendChild(sr);
+      nodeLayer.insertBefore(sr, n.el.nextSibling);
       n.sr = sr;
     }
     if (n.kind === 'you') {
@@ -253,11 +262,6 @@
       ob.addEventListener('click', function (ev) { ev.stopPropagation(); select(n, true); });
       nodeLayer.appendChild(ob);
     }
-    setTimeout(function () { g.classList.remove('lgn-new'); }, 20);
-    n.el = g;
-    nodes[n.id] = n;
-    shade(n);
-    return n;
   }
 
   function light(id) {
@@ -299,17 +303,26 @@
   function centreId() { return centrePath.length ? centrePath[centrePath.length - 1].id : 'you'; }
   function dataOf(n) { return { id: n.id, label: n.label, kind: n.kind, page: n.page, rel: n.rel, sub: n.sub }; }
   function isCentreKind(n) { return n.kind === 'you' || n.kind === 'mine'; }
-  function recentre(d) {
+  // m: the tapped box (its own element is kept and moved to the middle: a replaced element broke anything holding it,
+  // CI phone_check 3, 2026-11-11), or a trail entry's data when that box is no longer drawn.
+  function recentre(m) {
+    var keep = m.el && nodes[m.id] === m ? m : null;
     for (var k in edges) if (edges[k].el.parentNode) edges[k].el.parentNode.removeChild(edges[k].el);
-    while (nodeLayer.firstChild) nodeLayer.removeChild(nodeLayer.firstChild);
+    [].slice.call(nodeLayer.childNodes).forEach(function (c) { if (!keep || c !== keep.el) nodeLayer.removeChild(c); });
     var oldRing = document.getElementById('lgm-ring');
     if (oldRing && oldRing.parentNode) oldRing.parentNode.removeChild(oldRing);
     nodes = {};
     edges = {};
-    var at = -1;
+    var d = dataOf(m), at = -1;
     for (var i = 0; i < centrePath.length; i++) if (centrePath[i].id === d.id) at = i;
     if (at >= 0) centrePath = centrePath.slice(0, at + 1); else centrePath.push(d);
-    return addNode(d, 0, 0);
+    if (!keep) return addNode(d, 0, 0);
+    keep.x = 0; keep.y = 0; keep.expanded = false; delete keep.from;
+    keep.el.classList.remove('lgn-open');
+    keep.el.setAttribute('transform', boxTransform(keep, 1));
+    nodes[keep.id] = keep;
+    addExtras(keep);
+    return keep;
   }
   function collapseTo(n) {
     var keep = {}, cid = centreId();
@@ -449,7 +462,19 @@
   }
   function select(n, open) {
     // you or one of your kinds becomes the centre, with its connections on a ring (Brandon 2026-11-11)
-    if (isCentreKind(n) && n.id !== centreId()) n = recentre(dataOf(n));
+    if (isCentreKind(n) && n.id !== centreId()) {
+      // phone, a tap that did not open: wait the double-tap window first, so a second tap still lands on the box and
+      // opens its page instead of hitting the spot it moved away from (CI phone_check 4c, 2026-11-11)
+      if (narrow() && !open && n.el) {
+        if (selected && selected.el) selected.el.classList.remove('lgn-sel');
+        selected = n;
+        n.el.classList.add('lgn-sel');
+        setTimeout(function () { if (selected === n && centreId() !== n.id) select(n, 'now'); }, GLIDE_WAIT_MS);
+        return;
+      }
+      n = recentre(n);
+      if (open === 'now') open = false;
+    }
     var prev = selected;
     if (selected) selected.el.classList.remove('lgn-sel');
     selected = n;

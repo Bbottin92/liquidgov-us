@@ -4,4 +4,5 @@
 # Why (2026-11-07): side agents caught at least seven missed consequences in one session (the reacted lines,
 # clickjacking, undo dropping privacy settings, the shared worktree, the rollback trap, uncommitted live code, and a
 # restored test blocking pushes). Three sightings is a pattern, and a pattern needs a check (decision 2026-10-26).
-exec sh "$(dirname "$0")/pre-push"
+# 2026-11-10: only the checks the staged files could affect (affected_checks.py; Brandon: test what may be affected).
+LG_CHECK_MODE=--staged exec sh "$(dirname "$0")/pre-push" </dev/null

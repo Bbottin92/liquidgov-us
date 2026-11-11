@@ -28,7 +28,15 @@ fail=0
 # rollback_guard_check.py (2026-11-09): the no-rollback guard, its rules on real history, and the sync's DEPLOYED_COMMIT.
 # narration_files_check.py (2026-11-09): a narration file for every Laws chapter (the route builds the name).
 # preflight_retry_check.py (2026-11-10): generated go scripts retry the preflight once on a WSL accept4 drop.
-for check in lgp1_consistency.py one_app_check.py pwa_files_check.py naming_check.py restart_bypass_check.py make_go_check.py tidy_worktrees_check.py next_port_check.py make_go_records_check.py tidy_cwd_check.py tidy_in_use_check.py make_go_dry_label_check.py ci_gate_check.py sync_gate_check.py rollback_guard_check.py narration_files_check.py make_go_record_length_check.py preflight_retry_check.py; do
+# Only the checks the change could affect run (Brandon 2026-11-10): affected_checks.py holds the list of checks and the
+# files each one reads, and picks from the staged files (pre-commit sets LG_CHECK_MODE=--staged) or the commits being
+# pushed (git's stdin here). It runs every check when the hooks or itself change, or when it can't tell what changed.
+checks="$(git_stdin="$(cat)"; printf '%s\n' "$git_stdin" | "$PY" "$ROOT/scripts/affected_checks.py" "$ROOT" "${LG_CHECK_MODE:---push}")" || {
+  echo "pre-push: affected_checks.py failed, so the checks could not be chosen; refusing." >&2
+  exit 1
+}
+[ -z "$checks" ] && echo "pre-push: no check is affected by this change"
+for check in $checks; do
   out="$("$PY" "$ROOT/commons-daemon/tests/$check" "$ROOT" 2>&1)"; rc=$?
   echo "$out" | tail -1
   if [ $rc -ne 0 ]; then

@@ -47,7 +47,20 @@ export LIQUIDGOV_DEPLOY_KEY="$WINKEY"
 export LIQUIDGOV_DEPLOY_SSH="$SSH -i $WINKEY -o IdentitiesOnly=yes"
 
 PRELOG="${TMPDIR:-/tmp}/care-preflight.txt"
-remote preflight | tee "$PRELOG"
+# WSL vsock accept4/110 can drop the read-only preflight ssh too (polish1, 2026-11-10). One retry; any other
+# failure, or a second drop, stops here (commons-daemon/tests/preflight_retry_check.py).
+try=0
+while true; do
+  try=$((try + 1))
+  if remote preflight 2>&1 | tee "$PRELOG"; then
+    break
+  fi
+  if [ "$try" -ge 2 ] || ! grep -q "accept4 failed" "$PRELOG"; then
+    echo PREFLIGHT_FAILED
+    exit 1
+  fi
+  echo WSL_PREFLIGHT_RETRY
+done
 if ! grep -q '^ACTIVE=active$' "$PRELOG"; then echo PREFLIGHT_REFUSED; exit 1; fi
 if ! grep -q '^PRE_CARE_ABSENT$' "$PRELOG"; then echo PREFLIGHT_REFUSED; exit 1; fi
 if ! grep -q '^PRE_FLOW_PRESENT$' "$PRELOG"; then echo PREFLIGHT_REFUSED; exit 1; fi

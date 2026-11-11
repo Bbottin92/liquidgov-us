@@ -33,19 +33,26 @@ std::string hash_password(const std::string& plaintext) {
     return std::string(hashed);
 }
 
+namespace {
+// The plaintext behind dummy_hash(). Google-only accounts store a hash of it as their "no password" placeholder, so it
+// must never verify: before 2026-11-11 typing it signed in to any Google-only account (tests/placeholder_password_test).
+const char* const kPlaceholderPhrase = "liquidgov-dummy-hash-never-a-real-account-password";
+} // namespace
+
 bool verify_password(const std::string& plaintext, const std::string& stored_hash) {
     if (!ensure_sodium_init()) {
         throw std::runtime_error("libsodium init failed");
     }
-    return crypto_pwhash_str_verify(stored_hash.c_str(), plaintext.c_str(),
-                                     plaintext.size()) == 0;
+    const bool match = crypto_pwhash_str_verify(stored_hash.c_str(), plaintext.c_str(),
+                                                plaintext.size()) == 0;
+    // Do the real verify first either way, so the placeholder costs the same time as any other attempt.
+    return match && plaintext != kPlaceholderPhrase;
 }
 
 const std::string& dummy_hash() {
     // Real argon2id hash of a fixed, never-issued value. Costs the same
-    // shape of work to verify against as any real hash; always fails.
-    static const std::string value =
-        hash_password("liquidgov-dummy-hash-never-a-real-account-password");
+    // shape of work to verify against as any real hash; never verifies (verify_password refuses the phrase).
+    static const std::string value = hash_password(kPlaceholderPhrase);
     return value;
 }
 

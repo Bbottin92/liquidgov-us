@@ -24,6 +24,9 @@ add_subdirectory(libs/liquidgov_websocket)
 
 add_executable(liquidgov_platform_auth_test tests/auth_test.cpp)
 target_link_libraries(liquidgov_platform_auth_test PRIVATE liquidgov_auth)
+# The "no password" placeholder never signs anyone in (2026-11-11).
+add_executable(liquidgov_platform_placeholder_password_test tests/placeholder_password_test.cpp)
+target_link_libraries(liquidgov_platform_placeholder_password_test PRIVATE liquidgov_auth)
 
 add_executable(liquidgov_platform_file_store_test tests/file_store_test.cpp)
 target_link_libraries(liquidgov_platform_file_store_test PRIVATE liquidgov_auth liquidgov_file_store)

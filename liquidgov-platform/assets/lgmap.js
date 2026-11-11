@@ -157,7 +157,7 @@
     var A = nodes[e.a], B = nodes[e.b];
     if (A.x > B.x) { var t = A; A = B; B = t; }
     var x1, y1 = A.y + H / 2, x2, y2 = B.y + H / 2;
-    if (A.kind === 'you' || B.kind === 'you' || A.kind === 'mine' || B.kind === 'mine') { // a ring: straight spokes, center to center
+    if (isCenterKind(A) || isCenterKind(B)) { // a ring: straight spokes, center to center
       return 'M' + (A.x + W / 2) + ' ' + y1 + ' L' + (B.x + W / 2) + ' ' + y2;
     }
     if (Math.abs(A.x - B.x) < 1) { // same column: bow out to the right
@@ -395,19 +395,17 @@
     var cid = centerId();
     if (selected && selected.id !== cid) { select(nodes[cid] || centerPath[centerPath.length - 1], 'now'); return; }
     if (centerPath.length > 1) { select(centerPath[centerPath.length - 2], 'now'); return; }
-    if (nodes.root) { select(nodes.root, false); return; }
+    if (nodes.root) { select(nodes.root, 'now'); return; }
     status('Loading…');
-    load('root').then(function (data) {
-      // below the ring, so it and the column it grows do not cover your kinds
-      var r = addNode(data.node, -COLW, ringRadii().ry + 2 * ROWH);
-      r.from = null;
-      select(r, false);
-    }).catch(function (err) { status(err.message); });
+    // the MAINstream becomes the center: your ring clears, its cities and Sitewide go round it; the trail says You > MAINstream
+    load('root').then(function (data) { select(data.node, 'now'); }).catch(function (err) { status(err.message); });
   }
   var zoomBtn = document.getElementById('lgm-zoomout');
   if (zoomBtn) zoomBtn.addEventListener('click', zoomOut);
   function dataOf(n) { return { id: n.id, label: n.label, kind: n.kind, page: n.page, rel: n.rel, sub: n.sub }; }
-  function isCenterKind(n) { return n.kind === 'you' || n.kind === 'mine'; }
+  // the MAINstream is a center too (2026-11-11 CI shot: zoomed out from You, its column of cities crowded your ring and
+  // ran off the left edge); it opens onto the cities and Sitewide on a ring of their own
+  function isCenterKind(n) { return n.kind === 'you' || n.kind === 'mine' || n.kind === 'root'; }
   // m: the tapped box (its own element is kept and moved to the middle: a replaced element broke anything holding it,
   // CI phone_check 3, 2026-11-11), or a trail entry's data when that box is no longer drawn.
   function recenter(m) {
@@ -465,7 +463,7 @@
     status('Loading…');
     return load(n.id).then(function (data) {
       // around a kind, "you" is the way back (the trail), not one of its items
-      var links = n.kind === 'mine' ? data.links.filter(function (l) { return l.node.id !== 'you'; }) : data.links;
+      var links = n.kind === 'mine' || n.kind === 'root' ? data.links.filter(function (l) { return l.node.id !== 'you'; }) : data.links;
       var fresh = links.filter(function (l) { return !nodes[l.node.id]; });
       if (isCenterKind(n) && n.id === centerId()) { // M1.1 look (Grok Bot's mockup 1): the center's connections on a ring
         // the faint dotted ring behind them (mockup), drawn once under the lines

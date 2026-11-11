@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Slice 6: the map view. /map (mAInstream -> each city's Current -> groups and
+# Slice 6: the map view. /map (MAINstream -> each city's Current -> groups and
 # proposals, plus Sitewide) and /city/<key>/map (people here | groups | city |
 # departments | proposals, with lines). Only opted-in people; blocks respected.
 # Usage: bash city_map.sh <path to liquidgov_http> <path to liquidgov_e2e_seed>
@@ -62,18 +62,18 @@ post $PAL /proposals/react -d "id=$buses" -d "kind=support" >/dev/null
 post $STRANGER /proposals/reply -d "id=$buses" --data-urlencode "text=unlisted commenter" >/dev/null
 check "precondition: two people listed, stranger not" 'grep -c "^clist	fresno-ca	" $W/store.lgp | grep -qx 2' "$(grep ^clist $W/store.lgp)"
 
-# mAInstream
+# MAINstream
 r=$(get $STRANGER /map ms.html)
 check "/map is 200" '[[ "$r" == 200* ]]' "$r"
-check "mAInstream root box" 'grep -q "<title>mAInstream</title>" $W/ms.html' "no root"
+check "MAINstream root box" 'grep -q "<title>MAINstream</title>" $W/ms.html' "no root"
 check "Fresno branch opens the Fresno map" 'grep -q "href=\"/city/fresno-ca/map\"" $W/ms.html' "no link"
 check "Oakland branch too" 'grep -q "href=\"/city/oakland-ca/map\"" $W/ms.html' "no link"
 check "Sitewide branch holds the city-less poll" 'grep -q "<title>Proposals not about any one city</title>" $W/ms.html && grep -q "<title>Proposal: Sitewide poll</title>" $W/ms.html' "missing"
 check "a Fresno proposal leaf" 'grep -q "<title>Proposal: Plant trees</title>" $W/ms.html' "missing"
 check "group names are escaped" '! grep -q "<b>Bold</b>" $W/ms.html && grep -q "&lt;b&gt;Bold&lt;/b&gt; Gardens" $W/ms.html' "unescaped"
 svgonly ms.html msv.html
-check "precondition: the mAInstream svg was found" '[ -s $W/msv.html ]' "empty"
-check "no people on the mAInstream" '! grep -q "/u/" $W/msv.html' "people shown"
+check "precondition: the MAINstream svg was found" '[ -s $W/msv.html ]' "empty"
+check "no people on the MAINstream" '! grep -q "/u/" $W/msv.html' "people shown"
 froot=$(nid msv.html "Fresno, CA&#39;s Current"); [ -z "$froot" ] && froot=$(nid msv.html "Fresno, CA's Current")
 check "root connects to Fresno" '[ -n "$froot" ] && [ "$(edge msv.html in root $froot)" = 1 ]' "id=$froot"
 
@@ -82,7 +82,7 @@ r=$(get $STRANGER /city/fresno-ca/map cm.html)
 svgonly cm.html cmv.html
 check "precondition: the city map svg was found" '[ -s $W/cmv.html ]' "empty"
 check "/city/fresno-ca/map is 200" '[[ "$r" == 200* ]]' "$r"
-check "breadcrumb back to mAInstream" 'grep -q "<a href=\"/map\">mAInstream</a> &rsaquo; Fresno, CA" $W/cm.html' "no crumb"
+check "breadcrumb back to MAINstream" 'grep -q "<a href=\"/map\">MAINstream</a> &rsaquo; Fresno, CA" $W/cm.html' "no crumb"
 check "both Fresno groups, not Oakland" 'grep -q "href=\"/c/fres1\"" $W/cm.html && grep -q "href=\"/c/fres2\"" $W/cm.html && ! grep -q "/c/oak1" $W/cm.html' "groups"
 check "listed people shown" 'grep -q "href=\"/u/pal\"" $W/cmv.html && grep -q "href=\"/u/Bbottin\"" $W/cmv.html' "people"
 check "unlisted member not shown" '! grep -q "href=\"/u/stranger\"" $W/cmv.html' "stranger shown"
@@ -115,9 +115,9 @@ check "people not involved in the block still see Bbottin" 'grep -q "href=\"/u/B
 
 # Links in and out
 get $STRANGER /city/fresno-ca city.html >/dev/null
-check "city page links its map and the mAInstream" 'grep -q "href=\"/city/fresno-ca/map\">Map view" $W/city.html && grep -q "href=\"/map\">mAInstream" $W/city.html' "no links"
+check "city page links its map and the MAINstream" 'grep -q "href=\"/city/fresno-ca/map\">Map view" $W/city.html && grep -q "href=\"/map\">MAINstream" $W/city.html' "no links"
 get $STRANGER /communities groups.html >/dev/null
-check "Groups page links the mAInstream map" 'grep -q "href=\"/map\">See them on the mAInstream map" $W/groups.html' "no link"
+check "Groups page links the MAINstream map" 'grep -q "href=\"/map\">See them on the MAINstream map" $W/groups.html' "no link"
 
 # Edge cases
 r=$(get $STRANGER "/city/Fresno,%20CA/map" x.html)
@@ -125,7 +125,7 @@ check "typed city map url redirects to its key" '[[ "$r" == 30*"/city/fresno-ca/
 r=$(get $STRANGER /city/nowhere/map x.html)
 check "unknown city map is 404" '[[ "$r" == 404* ]]' "$r"
 r=$(get "" /map x.html)
-check "signed-out visitor gets no map" '! grep -q "mAInstream</title>" $W/x.html' "$r"
+check "signed-out visitor gets no map" '! grep -q "MAINstream</title>" $W/x.html' "$r"
 r=$(get "" /city/fresno-ca/map x.html)
 check "signed-out visitor gets no city map" '! grep -q "/u/pal" $W/x.html' "$r"
 check "server log has no crash lines" '! grep -qiE "abort|segfault|terminate called" $W/server.log' "$(tail -3 $W/server.log)"

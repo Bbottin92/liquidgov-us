@@ -38,7 +38,7 @@
 .lgn text{font-size:14px;font-weight:600;letter-spacing:.01em;fill:var(--ink);text-anchor:middle;pointer-events:none}
 .lgn:hover .lgs,.lgn:focus .lgs{stroke-width:3;filter:drop-shadow(0 0 12px rgba(255,214,130,.45))}
 .lgn:focus{outline:none}
-/* the mAInstream root: gold with a still glow (an animated filter repaints every frame: too costly on a phone) */
+/* the MAINstream root: gold with a still glow (an animated filter repaints every frame: too costly on a phone) */
 .lgn-root .lgs{fill:var(--accent);stroke:#f3d48f;filter:drop-shadow(0 0 14px rgba(243,212,143,.8))}
 /* phones: no shadow on every box (each one repaints while the map glides or a box is held); stroke only, and the
    selected box and the root keep theirs (side-agent note 2026-11-09: confirm smoothness on a real iPhone) */
@@ -68,7 +68,7 @@
 .lge-friends{stroke:var(--ok);stroke-dasharray:8 3}
 .lge.lge-faint{opacity:.22}
 #lgm-svg.lgm-focus .lge{opacity:.12}
-/* the connections you are looking at flow like a current: the mAInstream (polish 2026-11-09) */
+/* the connections you are looking at flow like a current: the MAINstream (polish 2026-11-09) */
 #lgm-svg.lgm-focus .lge.hi{opacity:1;stroke:#f3d48f;stroke-width:calc(var(--w,2px) + 1.5px);stroke-dasharray:10 7}
 /* ...and moves only on a mouse-and-hover computer that hasn't asked for less motion; a phone shows it still */
 @media (hover:hover) and (pointer:fine) and (prefers-reduced-motion:no-preference){
@@ -101,7 +101,7 @@
      back to SVG's default 150 px (boxes squeezed into a strip; found 2026-11-07). 60vh where svh is unknown. */
   .lgmap-canvas{flex:none;height:60vh;height:calc(100svh - 220px);min-height:340px}
   /* Brandon 2026-11-07: on a phone a tapped box's page is a full-screen sheet over the map; the bar at the top
-     ("< mAInstream") returns to the same spot. Above the Juketube button (z 56/57). */
+     ("< MAINstream") returns to the same spot. Above the Juketube button (z 56/57). */
   .lgmap-panel:not([hidden]){position:fixed;inset:0;z-index:70;width:auto;height:auto;border:0;border-radius:0;
     padding-top:env(safe-area-inset-top,0px);box-shadow:none}
   #lgm-expand{display:none}

@@ -1,8 +1,8 @@
 # Naming standard (Brandon 2026-11-07). naming_check.py reads this file.
 # A new file must match its pattern. A path listed under grandfather keeps its old name.
 # Frozen on purpose, never renamed: LGP1 store tags (lgp1_consistency.py), the asset URLs
-# below, the mAInstream button, and the grandfathered test names. (Renamed once, on purpose: Brandon 2026-11-07
-# "lets go with mAInstream"; the freeze now guards the new name.)
+# below, the MAINstream button, and the grandfathered test names. (Renamed on purpose twice: Brandon 2026-11-07
+# "lets go with mAInstream", then 2026-11-10 "lets change mAInstream to MAINstream"; the freeze guards the new name.)
 
 [e2e]
 root = "liquidgov-platform/tests/e2e"
@@ -42,6 +42,6 @@ deploy = []
 branches = ["master", "city-slice1", "wip/program-messaging", "wip/sigpipe-guard"]
 
 [frozen]
-button = "mAInstream</button>"
+button = "MAINstream</button>"
 store_tags_check = "commons-daemon/tests/lgp1_consistency.py"
 assets = ["/manifest.webmanifest", "/manifest-mail.webmanifest", "/manifest-social.webmanifest", "/manifest-civic.webmanifest", "/apple-touch-icon.png", "/icon-192.png", "/icon-512.png", "/icon-mail-192.png", "/icon-mail-512.png", "/icon-social-192.png", "/icon-social-512.png", "/icon-civic-192.png", "/icon-civic-512.png"]

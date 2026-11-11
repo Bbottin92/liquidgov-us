@@ -1,7 +1,7 @@
 // LiquidGov interactive map (/map). Brandon 2026-11-06: click a box and its
 // connections expand out of it; if the box is something people engage with,
 // its page shows in the field on the right; the field can fill the window, and
-// the mAInstream button at the top shrinks it back.
+// the MAINstream button at the top shrinks it back.
 // Data: GET /map/node?n=<id> -> {node:{id,label,kind,page}, links:[{node, edge}]}.
 // The server decides what this viewer may see (privacy settings, blocks); this
 // file only draws it.
@@ -54,7 +54,7 @@
   // Brandon 2026-11-06: "if you've never actually connected with a box, then
   // maybe there's no distinct line, only a translucent one". A box counts as
   // touched once you've visited it here, or when it's yours (relevance 1:
-  // your city, groups, proposals...). The mAInstream always counts.
+  // your city, groups, proposals...). The MAINstream always counts.
   function touched(id) {
     var n = nodes[id];
     return (visits[id] || 0) > 0 || (n && (n.kind === 'root' || (typeof n.rel === 'number' && n.rel >= 0.95)));
@@ -88,7 +88,7 @@
       default: return el('rect', { width: w, height: h, rx: 9, 'class': 'lgs' });
     }
   }
-  // Size from relevance: your own things are bigger (0.85x far .. 1.25x yours); the mAInstream stays 1x.
+  // Size from relevance: your own things are bigger (0.85x far .. 1.25x yours); the MAINstream stays 1x.
   function sizeOf(n) {
     return (typeof n.rel === 'number' && n.rel >= 0) ? 0.85 + 0.4 * Math.min(1, n.rel) : 1;
   }
@@ -353,7 +353,7 @@
     // button says where it goes back to (Brandon 2026-11-07: "full-screen sheet over the map").
     if (narrow()) {
       document.documentElement.classList.add('lgm-sheet-open');
-      closeBtn.textContent = '‹ mAInstream';
+      closeBtn.textContent = '‹ MAINstream';
     } else {
       closeBtn.innerHTML = '&times;';
     }
@@ -398,7 +398,7 @@
     status('Visits forgotten on this device.');
   });
   document.getElementById('lgm-main').addEventListener('click', function () {
-    // mAInstream: shrink the field back to the side and bring the mAInstream into view.
+    // MAINstream: shrink the field back to the side and bring the MAINstream into view.
     panel.classList.remove('full');
     document.getElementById('lgm-expand').textContent = 'Expand';
     var r = nodes.root;
@@ -437,7 +437,7 @@
     apply();
   }, { passive: false });
 
-  // Start: the mAInstream and its Currents. ?focus=<id> also opens that box.
+  // Start: the MAINstream and its Currents. ?focus=<id> also opens that box.
   var box = svg.getBoundingClientRect();
   ty = box.height / 2 - H / 2;
   apply();
@@ -453,7 +453,7 @@
     apply(true);
   }
   // Brandon 2026-11-07: the map is the way in, "with your most relevant boxes enlarged and in scope". So the start
-  // opens the mAInstream, then the most relevant of its boxes (your own city or group when you have one), and
+  // opens the MAINstream, then the most relevant of its boxes (your own city or group when you have one), and
   // brings that branch into view.
   function mostRelevant(exceptIds) {
     var best = null;

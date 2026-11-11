@@ -98,8 +98,14 @@ jobs:
           export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
           python3 liquidgov-platform/tests/browser/ci_map_hidden_check.py "$RUNNER_TEMP/lg" "$PWD/liquidgov-platform" ci "$RUNNER_TEMP/phone"
 
+      # Bounded (2026-11-11): run 43094476050 sat in this upload for hours while GitHub's artifact API returned 502s,
+      # so the run never finished and ship.py could not call the commit CI-proven. A stuck upload is cancelled after
+      # 5 minutes and does not turn the run red; ship.py still refuses a site change with no screenshots (fails closed
+      # there). commons-daemon/tests/ci_upload_bounds_check.py
       - name: keep the phone screenshots
         if: always()
+        timeout-minutes: 5
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: phone-screenshots
@@ -108,6 +114,8 @@ jobs:
 
       - name: keep the suite logs on failure
         if: failure()
+        timeout-minutes: 5
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: lgcheck-logs

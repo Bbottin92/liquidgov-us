@@ -79,6 +79,16 @@ jobs:
           echo "browser: $LG_BROWSER"
           python3 liquidgov-platform/tests/browser/ci_phone_check.py "$RUNNER_TEMP/lg" "$PWD/liquidgov-platform" ci "$RUNNER_TEMP/phone"
 
+      # Map SPEC phase 1 (Brandon 2026-11-11): the filter bar, Back, Zoom out, sticky bars. Report-only for the same reason
+      # as the step above; its "VERDICT bar-ci" line is read by ship.py like the phone VERDICT. Same screenshot folder.
+      - name: map bar check (browser, report-only)
+        if: always()
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
+          python3 liquidgov-platform/tests/browser/ci_map_bar_check.py "$RUNNER_TEMP/lg" "$PWD/liquidgov-platform" ci "$RUNNER_TEMP/phone"
+
       - name: keep the phone screenshots
         if: always()
         uses: actions/upload-artifact@v4

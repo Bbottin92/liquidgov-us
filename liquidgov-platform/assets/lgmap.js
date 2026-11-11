@@ -285,6 +285,15 @@
   // Box i of k on an ellipse around box c, starting at the top and going clockwise. A phone gets a narrower, taller
   // ring so the whole ring fits the width at a readable scale.
   function ringPlace(c, i, k) {
+    // Phone (map SPEC phase 1 added Feeds, Interests, Events: 5 or more kinds ran off the edges and overlapped, CI
+    // phone_check 2, 2026-11-11): the look Brandon saw with 4 kinds - two columns, a row above you and a row below - kept
+    // and grown downward and upward, two cards a row, in reading order; an odd last card sits centered under you.
+    if (narrow()) {
+      var rows = Math.ceil(k / 2), above = Math.ceil(rows / 2), row = Math.floor(i / 2), col = i % 2;
+      var y = row < above ? -(PHONE_BASE + (above - 1 - row) * PHONE_GAP) : PHONE_BASE + 40 + (row - above) * PHONE_GAP;
+      var alone = i === k - 1 && k % 2 === 1;
+      return { x: Math.round(c.x + (alone ? 0 : (col ? 1 : -1) * PHONE_DX)), y: Math.round(c.y + y) };
+    }
     // An even count is turned half a step, so no box sits level with you (left/right boxes overlapped the you box on
     // a phone, 2026-11-11 screenshot with 4 kinds).
     var step = 2 * Math.PI / Math.max(1, k), turn = k % 2 === 0 ? step / 2 : 0;
@@ -292,7 +301,15 @@
     var r = ringRadii(), a = -Math.PI / 2 + turn + step * i;
     return { x: Math.round(c.x + r.rx * Math.cos(a)), y: Math.round(c.y + r.ry * Math.sin(a)) };
   }
-  function ringRadii() { return narrow() ? { rx: 200, ry: 190 } : { rx: 300, ry: 165 }; }
+  // phone rows: the first row clears your circle (58) + half a card; the first row below also clears "Open your page";
+  // columns 141 px either side (the 4-kind look: cards 250 wide at 1.25x never touch)
+  var PHONE_BASE = 120, PHONE_GAP = 64, PHONE_DX = 141;
+  // k: how many boxes go round the center. On a phone the dotted ring is as tall as the rows it encloses.
+  function ringRadii(k) {
+    if (!narrow()) return { rx: 300, ry: 165 };
+    var rows = Math.ceil((k || 4) / 2), above = Math.ceil(rows / 2), below = rows - above;
+    return { rx: 200, ry: Math.max(150, PHONE_BASE + 40 + Math.max(above, below) * PHONE_GAP - PHONE_GAP + 30) };
+  }
 
   // Collapse (Brandon 2026-11-11: "if i select a higher level box, shouldnt the previous branches collapse?"): when a box
   // is selected, keep only you, your kind ring, the path from you to this box, and what this box opens onto; branches
@@ -450,8 +467,8 @@
       if (isCenterKind(n) && n.id === centerId()) { // M1.1 look (Grok Bot's mockup 1): the center's connections on a ring
         // the faint dotted ring behind them (mockup), drawn once under the lines
         if (!document.getElementById('lgm-ring')) {
-          var ring = el('ellipse', { id: 'lgm-ring', 'class': 'lgm-ring', cx: n.x + W / 2, cy: n.y + H / 2,
-            rx: ringRadii().rx, ry: ringRadii().ry });
+          var rr = ringRadii(fresh.length);
+          var ring = el('ellipse', { id: 'lgm-ring', 'class': 'lgm-ring', cx: n.x + W / 2, cy: n.y + H / 2, rx: rr.rx, ry: rr.ry });
           edgeLayer.insertBefore(ring, edgeLayer.firstChild);
         }
         fresh.forEach(function (l, i) { var p = ringPlace(n, i, fresh.length); addNode(l.node, p.x, p.y).from = n.id; });

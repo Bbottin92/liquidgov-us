@@ -43,6 +43,8 @@ CHECKS = {
     "preflight_retry_check.py": DEPLOY,
     "commit_msg_check_check.py": [".githooks/commit-msg", "scripts/commit_msg_check.py"],
     "ship_check.py": ["scripts/ship.py"] + DEPLOY,
+    "ship_deploy_check.py": ["scripts/ship.py"] + DEPLOY,
+    "ship_workflows_check.py": ["scripts/ship.py"],
     "affected_checks_check.py": [],
     "affected_checks_master_check.py": [],
 }

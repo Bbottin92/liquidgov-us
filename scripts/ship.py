@@ -25,6 +25,7 @@ GH = json.loads(os.environ["SHIP_GH"]) if os.environ.get("SHIP_GH") else ["gh"]
 GH_REPO = ["--repo", "Bbottin92/liquidgov-us"]
 POLL = float(os.environ.get("SHIP_POLL_SECONDS") or 30)
 PLATFORM = "liquidgov-platform/"
+PLATFORM_NAME = "platform"  # the `name:` of .github/workflows/platform.yml (read via gh, 2026-11-11)
 NO_RESTART = (PLATFORM + "assets/", PLATFORM + "tests/")
 SITE = (PLATFORM + "src/", PLATFORM + "assets/")
 ENV = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
@@ -136,6 +137,22 @@ def check(branch, wait_min, out_dir):
                     print("     " + p)
             if site_changed and not pngs:
                 reasons.append("no phone screenshots")
+    # Every other workflow on this commit counts too (2026-11-11: a red commons run was invisible to ship).
+    # commons-daemon/tests/ship_workflows_check.py
+    out = run(GH + ["run", "list"] + GH_REPO + ["--commit", sha, "--limit", "50",
+                                                "--json", "workflowName,status,conclusion"], "gh run list (all)")
+    try:
+        others = [o for o in json.loads(out or "[]") if o.get("workflowName") not in (None, "", PLATFORM_NAME)]
+    except ValueError:
+        raise Fail("gh run list (all) printed something that is not JSON: %r" % out[:200])
+    for o in others:
+        name = o["workflowName"]
+        if o.get("status") != "completed":
+            reasons.append("%s still running" % name)
+        elif o.get("conclusion") not in ("success", "skipped", "neutral"):
+            reasons.append("%s %s" % (name, o.get("conclusion")))
+    print("7. other workflows on this commit: " + (", ".join("%s %s" % (o["workflowName"], o.get("conclusion")
+                                                                        or o.get("status")) for o in others) or "none"))
     print()
     if reasons:
         print("SHIP_NOT_READY %s: %s" % (branch, "; ".join(reasons)))
@@ -166,7 +183,147 @@ def merge(branch, wait_min, out_dir):
     return 0
 
 
+# ---- deploy / go (Brandon 2026-11-11 "yes build it"): the liquidgov-deploy order, steps 3-9, driven by the scripts
+# that already hold the guards (sync-to-droplet.sh dry run, make-go.py auto, <name>-go.sh with the CI gate, backup,
+# rollback guard and public checks). ship adds no server logic of its own.
+MAIN = os.environ.get("SHIP_MAIN") or ""
+SH = json.loads(os.environ["SHIP_SH"]) if os.environ.get("SHIP_SH") else ["wsl.exe", "bash", "-lc"]
+DEPLOY_SSH = ("/mnt/c/Windows/System32/OpenSSH/ssh.exe -i C:/Users/Brandon/.ssh/id_ed25519_claude "
+              "-o IdentitiesOnly=yes")
+# rsync --itemize-changes: only '<', '>' or 'c' in column 1 move content; '.f....og...' is an owner/group-only
+# difference (the real dry run 2026-11-11 listed 149 of those) and is not a file to deploy.
+ITEM = __import__("re").compile(r"^[<>c]f\S{9} (\S.*)$")
+
+
+def main_checkout():
+    if MAIN:
+        return MAIN
+    common = run(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"], "git rev-parse").strip()
+    return os.path.dirname(common)
+
+
+def log_path(name, what):
+    d = os.environ.get("SHIP_LOG_DIR") or os.path.join(os.path.expanduser("~"), "scratch",
+                                                      datetime.date.today().isoformat() + "-claude-ship")
+    os.makedirs(d, exist_ok=True)
+    return os.path.join(d, "%s-%s.log" % (name, what))
+
+
+def shell(main, command, log):
+    """Run one bash command in the main checkout (WSL for real); the whole output goes to log; returns (rc, text)."""
+    env = dict(ENV, LIQUIDGOV_DEPLOY_SSH=DEPLOY_SSH)
+    try:
+        p = subprocess.run(SH + [command], cwd=main, capture_output=True, text=True, encoding="utf-8",
+                           errors="replace", timeout=3600, env=env)
+    except (OSError, subprocess.SubprocessError) as e:
+        raise Fail("could not run %r: %s" % (command, e))
+    text = (p.stdout or "") + (p.stderr or "")
+    with open(log, "w", encoding="utf-8") as f:
+        f.write(text)
+    return p.returncode, text
+
+
+def gitm(main, *args):
+    return run(["git", "-C", main] + list(args), "git " + args[0]).strip()
+
+
+def master_ready(main):
+    if gitm(main, "rev-parse", "--abbrev-ref", "HEAD") != "master":
+        raise Fail("the main checkout %s is not on master" % main)
+    if gitm(main, "status", "--porcelain"):
+        raise Fail("the main checkout is not clean (only committed code goes live)")
+    gitm(main, "fetch", "-q", "origin")
+    if gitm(main, "rev-parse", "master") != gitm(main, "rev-parse", "origin/master"):
+        raise Fail("local master != origin/master (pull or merge first; GitHub and live must agree)")
+
+
+def deploy(name, purpose):
+    """Only after Brandon's "merge" landed: dry-run file list -> make-go auto -> pair committed + pushed -> go.sh dry.
+    Changes nothing on the server. Last line SHIP_DRY_DONE <name>; then show Brandon and wait for his go."""
+    main = main_checkout()
+    master_ready(main)
+    go = "deploy/%s-go.sh" % name
+    if os.path.exists(os.path.join(main, go)):
+        print("1-3. pair %s already committed: reusing it (no make-go, no new commit)" % go)
+    else:
+        rc, text = shell(main, "LIQUIDGOV_DEPLOY_DRY_RUN=1 bash deploy/sync-to-droplet.sh", log_path(name, "sync-dry"))
+        if rc != 0:
+            raise Fail("the sync dry run failed (exit %d): %s" % (rc, text.strip()[-300:]))
+        files = [m.group(1).strip() for m in map(ITEM.match, text.splitlines()) if m]
+        if not files:
+            raise Fail("nothing differs from live (sync dry run listed no files)")
+        print("1. sync dry run: %d file(s) differ from live:" % len(files))
+        for f in files:
+            print("     " + f)
+        out = run([sys.executable, os.path.join(main, "deploy", "make-go.py"), "auto", name, purpose] + files,
+                  "make-go.py")
+        print("2. make-go: " + "; ".join(l for l in out.splitlines() if l.startswith("auto:")))
+        pair = [go, "deploy/%s-remote.sh" % name] + (["naming.toml"] if gitm(main, "status", "--porcelain",
+                                                                              "naming.toml") else [])
+        gitm(main, "add", *pair)
+        gitm(main, "commit", "-q", "-m", "deploy: %s pair (%s)\n\nRead: generated by deploy/make-go.py auto from the "
+             "sync dry run's file list (%s).\nAttacker: n/a - a deploy script pair; nothing runs until Brandon's go.\n"
+             "Undo: revert this commit; nothing on the server changed." % (name, purpose, ", ".join(files)))
+        gitm(main, "push", "-q", "origin", "master")
+        gitm(main, "fetch", "-q", "origin")
+        if gitm(main, "rev-parse", "master") != gitm(main, "rev-parse", "origin/master"):
+            raise Fail("pushed the pair but origin/master does not match local master")
+        print("3. pair committed and pushed: %s" % gitm(main, "rev-parse", "--short", "master"))
+    log = log_path(name, "dry")
+    rc, text = shell(main, "bash %s dry" % go, log)
+    shown = [l for l in text.splitlines() if any(k in l for k in ("CI_GATE", "DRY_OK", "DRY_ONLY_DONE", "REFUS",
+                                                                  "FAIL", "WARNING"))]
+    print("4. %s dry (exit %d; full log %s):" % (go, rc, log))
+    for l in shown:
+        print("     " + l)
+    if rc != 0 or "DRY_ONLY_DONE" not in text:
+        raise Fail("the dry run did not finish (exit %d)" % rc)
+    if "CI_GATE_OK" not in text:
+        raise Fail("the CI gate would refuse this deploy (see the dry-run lines above)")
+    print("\nShow Brandon the dry run and the screenshots from `ship.py check`; only on his go: "
+          "python scripts/ship.py go %s" % name)
+    print("SHIP_DRY_DONE %s" % name)
+    return 0
+
+
+def go_live(name):
+    """Only on Brandon's go for THIS change: <name>-go.sh go (CI gate, backup, sync, chown, build/restart, public
+    checks, RECORD lines). SHIP_LIVE <name> only with exit 0, CHECK_DONE and both RECORD lines."""
+    main = main_checkout()
+    go = "deploy/%s-go.sh" % name
+    if not os.path.exists(os.path.join(main, go)):
+        print("SHIP_GO_FAILED %s: no %s (run ship.py deploy first)" % (name, go))
+        return 1
+    master_ready(main)
+    log = log_path(name, "go")
+    rc, text = shell(main, "bash %s go" % go, log)
+    lines = text.splitlines()
+    for l in lines[-15:]:
+        print("     " + l)
+    records = [l for l in lines if l.startswith("RECORD ctx log:") or l.startswith("RECORD notes.md:")]
+    if rc != 0 or "CHECK_DONE" not in text or "RECORD_FAILED" in text or len(records) < 2:
+        why = ("exit %d" % rc if rc != 0 else "no CHECK_DONE" if "CHECK_DONE" not in text
+               else "RECORD_FAILED (write the records by hand from the log)")
+        print("SHIP_GO_FAILED %s: %s; full log %s" % (name, why, log))
+        return 1
+    print("Records from this run (use these, never from memory):")
+    for r in records:
+        print("  " + r)
+    print("SHIP_LIVE %s" % name)
+    return 0
+
+
 def main(argv):
+    import re
+    if len(argv) >= 2 and argv[0] in ("deploy", "go"):
+        if not re.fullmatch(r"[a-z][a-z0-9]*", argv[1]) or (argv[0] == "deploy" and len(argv) != 3):
+            print(__doc__)
+            return 2
+        try:
+            return deploy(argv[1], argv[2]) if argv[0] == "deploy" else go_live(argv[1])
+        except Fail as e:
+            print(("SHIP_NOT_READY %s: %s" if argv[0] == "deploy" else "SHIP_GO_FAILED %s: %s") % (argv[1], e))
+            return 1
     if len(argv) < 2 or argv[0] not in ("check", "merge"):
         print(__doc__)
         return 2

@@ -293,10 +293,28 @@
   // Collapse (Brandon 2026-11-11: "if i select a higher level box, shouldnt the previous branches collapse?"): when a box
   // is selected, keep only you, your kind ring, the path from you to this box, and what this box opens onto; branches
   // off that path close. Going back up the trail closes what was open below.
+  // The centre (Grok Bot's mockup 1: "tap a kind, its items branch out; tap an item, it becomes the centre"): you or one
+  // of your kinds sits in the middle with its connections on a ring; centrePath is the trail back (You > Friends).
+  var centrePath = [];
+  function centreId() { return centrePath.length ? centrePath[centrePath.length - 1].id : 'you'; }
+  function dataOf(n) { return { id: n.id, label: n.label, kind: n.kind, page: n.page, rel: n.rel, sub: n.sub }; }
+  function isCentreKind(n) { return n.kind === 'you' || n.kind === 'mine'; }
+  function recentre(d) {
+    for (var k in edges) if (edges[k].el.parentNode) edges[k].el.parentNode.removeChild(edges[k].el);
+    while (nodeLayer.firstChild) nodeLayer.removeChild(nodeLayer.firstChild);
+    var oldRing = document.getElementById('lgm-ring');
+    if (oldRing && oldRing.parentNode) oldRing.parentNode.removeChild(oldRing);
+    nodes = {};
+    edges = {};
+    var at = -1;
+    for (var i = 0; i < centrePath.length; i++) if (centrePath[i].id === d.id) at = i;
+    if (at >= 0) centrePath = centrePath.slice(0, at + 1); else centrePath.push(d);
+    return addNode(d, 0, 0);
+  }
   function collapseTo(n) {
-    var keep = {};
-    keep['you'] = 1;
-    for (var id in nodes) if (nodes[id].from === 'you') keep[id] = 1;
+    var keep = {}, cid = centreId();
+    keep[cid] = 1;
+    for (var id in nodes) if (nodes[id].from === cid) keep[id] = 1;
     for (var c = n, guard = 0; c && guard < 50; c = c.from ? nodes[c.from] : null, guard++) keep[c.id] = 1;
     for (var id2 in nodes) if (nodes[id2].from === n.id) keep[id2] = 1;
     var gone = {};
@@ -315,16 +333,18 @@
     for (var id4 in nodes) { // a box whose children were closed can open again
       var m = nodes[id4], kids = false;
       for (var j in nodes) if (nodes[j].from === id4) { kids = true; break; }
-      if (m.expanded && !kids && id4 !== n.id && id4 !== 'you') { m.expanded = false; m.el.classList.remove('lgn-open'); }
+      if (m.expanded && !kids && id4 !== n.id && id4 !== cid) { m.expanded = false; m.el.classList.remove('lgn-open'); }
     }
   }
   function expand(n) {
     if (n.expanded) return Promise.resolve(n);
     status('Loading…');
     return load(n.id).then(function (data) {
-      var fresh = data.links.filter(function (l) { return !nodes[l.node.id]; });
-      if (n.kind === 'you') { // M1.1 look (Grok Bot's mockup 1): your kinds on a ring around you
-        // the faint dotted ring behind your kinds (mockup), drawn once under the lines
+      // around a kind, "you" is the way back (the trail), not one of its items
+      var links = n.kind === 'mine' ? data.links.filter(function (l) { return l.node.id !== 'you'; }) : data.links;
+      var fresh = links.filter(function (l) { return !nodes[l.node.id]; });
+      if (isCentreKind(n) && n.id === centreId()) { // M1.1 look (Grok Bot's mockup 1): the centre's connections on a ring
+        // the faint dotted ring behind them (mockup), drawn once under the lines
         if (!document.getElementById('lgm-ring')) {
           var ring = el('ellipse', { id: 'lgm-ring', 'class': 'lgm-ring', cx: n.x + W / 2, cy: n.y + H / 2,
             rx: ringRadii().rx, ry: ringRadii().ry });
@@ -336,7 +356,7 @@
         var start = n.y - (fresh.length - 1) * ROWH / 2;
         fresh.forEach(function (l, i) { addNode(l.node, x, start + i * ROWH).from = n.id; });
       }
-      data.links.forEach(function (l) { addEdge(n.id, l.node.id, l.edge); });
+      links.forEach(function (l) { addEdge(n.id, l.node.id, l.edge); });
       n.expanded = true;
       n.el.classList.add('lgn-open');
       status(data.links.length ? '' : 'Nothing else connects here yet.');
@@ -411,8 +431,10 @@
   var trailEl = document.getElementById('lgm-trail');
   function trail(n) {
     if (!trailEl) return;
-    var chain = [], seen = {};
-    for (var c = n; c && !seen[c.id] && chain.length < 12; c = c.from ? nodes[c.from] : null) { seen[c.id] = 1; chain.unshift(c); }
+    // the centres you stepped through (You > Friends), then the boxes from the centre out to n
+    var tail = [], seen = {}, cid = centreId();
+    for (var c = n; c && c.id !== cid && !seen[c.id] && tail.length < 12; c = c.from ? nodes[c.from] : null) { seen[c.id] = 1; tail.unshift(c); }
+    var chain = centrePath.concat(tail);
     trailEl.textContent = '';
     chain.forEach(function (c, i) {
       if (i) { var sep = document.createElement('span'); sep.className = 'lgm-trail-sep'; sep.textContent = '›'; trailEl.appendChild(sep); }
@@ -421,11 +443,13 @@
       b.className = 'lgm-trail-step' + (i === chain.length - 1 ? ' here' : '');
       b.textContent = c.kind === 'you' ? 'You' : short(c.label, 22);
       if (i === chain.length - 1) b.setAttribute('aria-current', 'location');
-      else b.addEventListener('click', function () { select(c, false); });
+      else b.addEventListener('click', function () { select(nodes[c.id] || c, false); });
       trailEl.appendChild(b);
     });
   }
   function select(n, open) {
+    // you or one of your kinds becomes the centre, with its connections on a ring (Brandon 2026-11-11)
+    if (isCentreKind(n) && n.id !== centreId()) n = recentre(dataOf(n));
     var prev = selected;
     if (selected) selected.el.classList.remove('lgn-sel');
     selected = n;
@@ -450,7 +474,7 @@
       light(n.id);
       // on the ring (you or one of your kinds) keep the whole open map in view instead of sliding the tapped box to the
       // edge (2026-11-11 CI screenshot: tapping Friends cut the cards off at the left)
-      setTimeout(function () { if (selected === n) { if (n.kind === 'mine' || n.kind === 'you') fitAll(); else focusOn(n); } }, wait);
+      setTimeout(function () { if (selected === n) { if (isCentreKind(n)) fitAll(true); else focusOn(n); } }, wait);
     });
   }
 
@@ -571,6 +595,7 @@
   // Politics, Problems) as the first ring. The whole site (MAINstream) is under Places, and its button still works.
   load('you').then(function (data) {
     var r = addNode(data.node, 0, 0);
+    centrePath = [dataOf(r)];
     selected = null;
     trail(r); // "You" until you step out
     return expand(r);

@@ -53,6 +53,12 @@ target_link_libraries(liquidgov_platform_program_messaging_test PRIVATE
     liquidgov_auth liquidgov_file_store liquidgov_file_transfer liquidgov_file_type liquidgov_image third_party_miniz)
 target_compile_definitions(liquidgov_platform_program_messaging_test PRIVATE LG_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 
+# The store reads and writes the same bytes as before the file_store.cpp split (2026-11-12): every record type, every
+# field-count variant, bad rows and their error messages, against answers written by the code before the split.
+add_executable(liquidgov_platform_store_roundtrip_test tests/store_roundtrip_test.cpp)
+target_link_libraries(liquidgov_platform_store_roundtrip_test PRIVATE liquidgov_auth liquidgov_file_store)
+target_compile_definitions(liquidgov_platform_store_roundtrip_test PRIVATE LG_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+
 # End-to-end check of programs in mail against the real server on port 18080 with a throwaway store:
 #   bash tests/e2e/program_mail.sh build/liquidgov_http build/liquidgov_e2e_seed
 add_executable(liquidgov_e2e_seed tests/e2e/seed.cpp)

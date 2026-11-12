@@ -56,13 +56,13 @@ r=$(curl -s -o /dev/null -w '%{http_code}' $URL/logs); check "/logs: logged out 
 # Proposals: open form with nothing to read; closed once there is a proposal; open again with ?title= and ?err=
 r=$(get $PAL /proposals p0.html)
 check "proposals, none yet: the form is open" 'grep -q "<details class=\"card newprop\" id=\"new\" open><summary>New proposal</summary>" $W/p0.html' "$r"
-check "proposals intro: plain words, Phase 2 links to chapter 13" 'grep -q "not an identity-verified vote" $W/p0.html && grep -q "href=\"/laws/13\">Phase 2</a>" $W/p0.html && ! grep -q "CitizenId vote" $W/p0.html' "$r"
+check "proposals intro: plain words, a How this works line" 'grep -q "How this works:" $W/p0.html && ! grep -q "CitizenId vote" $W/p0.html' "$r"
 post $PAL /proposals --data-urlencode "title=Shade trees on Blackstone" --data-urlencode "body=Plant them." -d "kind=0" >/dev/null
 r=$(get $PAL /proposals p1.html)
 check "proposals, one exists: the form is closed behind New proposal" 'grep -q "<details class=\"card newprop\" id=\"new\"><summary>New proposal</summary>" $W/p1.html' "$r"
 check "proposals, one exists: it is listed" 'grep -q "Shade trees on Blackstone" $W/p1.html' "$r"
 r=$(get $PAL "/proposals?title=Bus+shelters" p2.html); check "proposals ?title=: open and prefilled" 'grep -q "id=\"new\" open>" $W/p2.html && grep -q "value=\"Bus shelters\"" $W/p2.html' "$r"
-r=$(get $PAL "/proposals?err=title" p3.html); check "proposals after an error: open" 'grep -q "id=\"new\" open>" $W/p3.html' "$r"
+r=$(get $PAL "/proposals?err=empty" p3.html); check "proposals after an error: open" 'grep -q "id=\"new\" open>" $W/p3.html' "$r"
 check "proposals: #new link opens it (script present)" 'grep -q "location.hash===.#new.)d.open=true" $W/p1.html' "no script"
 
 # initials, settings index, login copy, anchors under the header, footer

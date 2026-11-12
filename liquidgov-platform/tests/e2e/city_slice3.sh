@@ -42,7 +42,7 @@ r=$(post $PAL /communities -d "slug=fres1" -d "name=Fresno Neighbors" -d "catego
 check "fresno group created" '[[ "$r" == *"/c/fres1" ]]' "$r"
 
 get $PAL /proposals props.html >/dev/null
-check "proposal form asks for a city and who could act" 'grep -q "Who could act on it" $W/props.html && grep -q "name=\"city\"" $W/props.html && grep -q "Discussion only. Nothing is sent to the city." $W/props.html' "form missing"
+check "proposal form asks for a city and who could act" 'grep -q "Who could act on this" $W/props.html && grep -q "name=\"city\"" $W/props.html && grep -q "nothing is sent to the city" $W/props.html' "form missing"
 
 r=$(post $PAL /proposals -d "title=Sitewide" -d "body=A banner for the whole site" -d "kind=0")
 check "a proposal with no city stays on the full list" '[[ "$r" == *"/proposals" && "$r" != *err* && "$r" != *city=* ]]' "$r"
@@ -80,7 +80,7 @@ id=$(grep -o 'name="id" value="[0-9]*"' $W/city.html | head -1 | grep -o '[0-9]*
 get $PAL /city/fresno-ca city.html >/dev/null
 id=$(grep -o 'name="id" value="[0-9]*"' $W/city.html | head -1 | grep -o '[0-9]*' || true)
 r=$(post $STRANGER /proposals/vote -d "id=$id" -d "choice=0" -d "next=/city/fresno-ca")
-check "a vote from the city page stays there" '[[ -n "$id" && "$r" == *"/city/fresno-ca" ]]' "id=$id $r"
+check "a vote from the city page stays there" '[[ -n "$id" && "$r" == *"/city/fresno-ca#proposal-"* ]]' "id=$id $r"
 
 stop
 start

@@ -80,7 +80,7 @@ check "P2 a choice vote goes back at #proposal-$CH" '[ "$l" = "$URL/proposals#pr
 l=$(loc $ADMIN /proposals/option -d "id=$CH" -d "label=Friday" -d "next=/proposals")
 check "P2 an added choice goes back at #proposal-$CH" '[ "$l" = "$URL/proposals#proposal-$CH" ]' "$l"
 
-l=$(loc $ADMIN /proposals/vote -d "id=$RACE" -d "value=Ann")
+l=$(loc $ADMIN /proposals/vote -d "id=$RACE" -d "value=0")
 check "P3 a race vote (no next=) goes back to /officials#proposal-$RACE" '[ "$l" = "$URL/officials#proposal-$RACE" ]' "$l"
 l=$(loc $ADMIN /proposals/option -d "id=$RACE" -d "label=Cy")
 check "P3 an added candidate (no next=) goes back to /officials#proposal-$RACE" '[ "$l" = "$URL/officials#proposal-$RACE" ]' "$l"

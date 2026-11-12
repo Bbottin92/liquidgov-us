@@ -53,9 +53,9 @@ check "a missing proposal is not commented" '[[ "$r" == *"/proposals" && "$r" !=
 check "no comment row yet" 'grep -c "^prply" $W/store.lgp | grep -qx 0' "$(grep "^prply" $W/store.lgp || true)"
 
 r=$(post $STRANGER /proposals/reply -d "id=$pid" --data-urlencode "text=More shade on the street" --data-urlencode "next=/proposals?city=fresno-ca")
-check "a comment is accepted" '[[ "$r" == *"/proposals?city=fresno-ca" && "$r" != *err* ]]' "$r"
+check "a comment is accepted" '[[ "$r" == *"/proposals?city=fresno-ca#proposal-"* && "$r" != *err* ]]' "$r"
 r=$(post $STRANGER /proposals/reply -d "id=$pid" --data-urlencode "text=   " --data-urlencode "next=/proposals?city=fresno-ca")
-check "a blank comment stays on the list" '[[ "$r" == *"/proposals?city=fresno-ca" ]]' "$r"
+check "a blank comment stays on the list" '[[ "$r" == *"/proposals?city=fresno-ca#proposal-"* ]]' "$r"
 check "one comment row" 'grep -c "^prply" $W/store.lgp | grep -qx 1' "$(grep "^prply" $W/store.lgp)"
 
 get $ADMIN "/proposals?city=fresno-ca" admin.html >/dev/null
@@ -64,10 +64,10 @@ get $PAL /city/fresno-ca city.html >/dev/null
 check "the city page shows the comment" 'grep -q "More shade on the street" $W/city.html' "city"
 
 r=$(post $PAL /proposals/react -d "id=$pid" -d "kind=support" --data-urlencode "next=/proposals?city=fresno-ca")
-check "a reaction is accepted" '[[ "$r" == *"/proposals?city=fresno-ca" ]]' "$r"
+check "a reaction is accepted" '[[ "$r" == *"/proposals?city=fresno-ca#proposal-"* ]]' "$r"
 check "one support row" 'grep -c "^prx" $W/store.lgp | grep -qx 1 && grep -q "^prx	$pid	pal	support$" $W/store.lgp' "$(grep "^prx" $W/store.lgp)"
 r=$(post $PAL /proposals/react -d "id=$pid" -d "kind=support" --data-urlencode "next=/proposals?city=fresno-ca")
-check "the same reaction again clears it" '[[ "$r" == *"/proposals?city=fresno-ca" ]]' "$r"
+check "the same reaction again clears it" '[[ "$r" == *"/proposals?city=fresno-ca#proposal-"* ]]' "$r"
 check "the reaction row is gone" 'grep -c "^prx" $W/store.lgp | grep -qx 0' "$(grep "^prx" $W/store.lgp || true)"
 
 r=$(post $PAL /proposals/react -d "id=$pid" -d "kind=oppose" --data-urlencode "next=/proposals?city=fresno-ca")
@@ -85,7 +85,7 @@ check "the officials page shows the race" 'grep -q "<h2>Mayor</h2>" $W/off.html'
 oid=$(awk 'BEGIN{RS="<h2>"} /^Mayor/{ if (match($0, /name="id" value="[0-9]+"/)) { s=substr($0,RSTART,RLENGTH); gsub(/[^0-9]/,"",s); print s; exit } }' "$W/off.html")
 check "the race has an id" '[ -n "$oid" ]' "no id"
 r=$(post $STRANGER /proposals/reply -d "id=$oid" --data-urlencode "text=Ask about the parks budget" --data-urlencode "next=/officials")
-check "a race comment stays on officials" '[[ "$r" == *"/officials" ]]' "$r"
+check "a race comment stays on officials" '[[ "$r" == *"/officials#proposal-"* ]]' "$r"
 get $ADMIN /officials off.html >/dev/null
 check "another member sees the race comment" 'grep -q "Ask about the parks budget" $W/off.html && grep -q "A reaction is not a vote." $W/off.html' "hidden"
 

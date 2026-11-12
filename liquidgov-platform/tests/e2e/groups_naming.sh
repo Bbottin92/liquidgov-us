@@ -6,7 +6,7 @@
 #   - /home: the dashboard's list of your groups is headed "Your groups" (not "Your rooms"); the stats say Groups
 #   - signed out /: the stats tile says Groups (not Communities)
 #   - /u/<name> of a member: the profile's group list is headed Groups (not Committees)
-#   - /settings: the notification is "Group invites"; the Juketube search says "people and groups"
+#   - /settings: the notification is "Group invites"; /listen: the Juketube search says "people and groups"
 #   - /communities still answers 200
 # Usage: bash groups_naming.sh <path to liquidgov_http> <path to liquidgov_e2e_seed>
 # Throwaway store, port 18113. Never touches the live site. New file: committed suites are frozen (feed_no_drawings.sh
@@ -65,7 +65,7 @@ check "/u/Bbottin: the group list is headed Groups, not Committees" '! grep -q "
 
 get $ADMIN /settings s.html >/dev/null
 check "/settings: the notification says Group invites" 'grep -q "Group invites" $W/s.html && ! grep -q "Community invites" $W/s.html' "missing"
-check "the Juketube search says people and groups" 'grep -q "Search people and groups" $W/s.html && ! grep -q "Search people and communities" $W/s.html' "$(grep -o 'placeholder="Search people[^"]*"' $W/s.html | head -1)"
+get $ADMIN /listen l.html >/dev/null; check "the Juketube search says people and groups" 'grep -q "Search people and groups" $W/l.html && ! grep -q "Search people and communities" $W/l.html' "$(grep -o 'placeholder="Search people[^"]*"' $W/l.html | head -1)"
 
 r=$(get $ADMIN /communities c.html)
 check "/communities still answers 200" '[ "$r" = 200 ]' "$r"

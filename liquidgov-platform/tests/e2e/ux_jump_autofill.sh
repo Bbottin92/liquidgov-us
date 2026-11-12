@@ -48,7 +48,7 @@ post() { local s=$1 p=$2; shift 2; curl -s -o /dev/null -w '%{http_code}' -b "lg
 loc() { local s=$1 p=$2; shift 2; curl -s -o /dev/null -w '%{redirect_url}' -b "lg_session=$s" "$@" "$URL$p"; }
 get()  { curl -s -o "$W/$3" -w '%{http_code}' -b "lg_session=$1" "$URL$2"; }
 # the opening tag of the first element matching a regex on its attributes
-tag() { python3 -c 'import re,sys; m=re.search(r"<"+sys.argv[2]+r"\b[^>]*>", open(sys.argv[1]).read()); print(m.group(0) if m else "")' "$W/$1" "$2"; }
+tag() { python3 -c 'import re,sys; m=re.search(r"<"+sys.argv[2]+r"(?=[\s/>])[^>]*>", open(sys.argv[1]).read()); print(m.group(0) if m else "")' "$W/$1" "$2"; }
 
 start
 post $PAL /feed -F "text=Public hello from pal" -F "anybody=1" >/dev/null
@@ -56,13 +56,13 @@ get $ADMIN /feed f.html >/dev/null
 PID=$(grep -o 'action="/post/[0-9]*/second"' $W/f.html | head -1 | grep -o '[0-9]\+')
 check "precondition: the feed shows pal's post with a Second button" '[ -n "$PID" ]' "no post"
 check "A1 the post's article has id=post-$PID" 'grep -q "<article class=\"post\" id=\"post-$PID\"" $W/f.html' "$(grep -o '<article[^>]*>' $W/f.html | head -2)"
-l=$(loc $ADMIN /post/$PID/second -H "Referer: $URL/feed?filter=friends#post-999")
+l=$(loc $ADMIN /post/$PID/second -X POST -H "Referer: $URL/feed?filter=friends#post-999")
 check "A1 Second goes back to the same page at #post-$PID (old fragment replaced)" '[ "$l" = "$URL/feed?filter=friends#post-$PID" ]' "$l"
 l=$(loc $ADMIN /post/$PID/reply -H "Referer: $URL/u/pal" -d "text=hi")
 check "A1 Reply goes back to the same page at #post-$PID" '[ "$l" = "$URL/u/pal#post-$PID" ]' "$l"
 l=$(loc $ADMIN /me/repost -H "Referer: $URL/feed" -d "post_id=$PID")
 check "A1 Repost goes back to the page it was tapped on at #post-$PID, not to /me" '[ "$l" = "$URL/feed#post-$PID" ]' "$l"
-l=$(loc $ADMIN /post/$PID/second)
+l=$(loc $ADMIN /post/$PID/second -X POST)
 check "A1 no Referer: /feed at #post-$PID" '[ "$l" = "$URL/feed#post-$PID" ]' "$l"
 
 get $ADMIN /map m.html >/dev/null

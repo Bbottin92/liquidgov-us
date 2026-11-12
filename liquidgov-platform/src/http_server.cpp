@@ -4555,7 +4555,7 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         // than stacking (that's what actually broke the first version of
         // this layout, live), so they need to be one single grid item
         // that stacks its own children by normal block flow internally.
-        "<div class=\"ctgroup cprops\" role=\"group\" aria-label=\"Size, opacity and colour\">"
+        "<div class=\"ctgroup cprops\" role=\"group\" aria-label=\"Size, opacity and color\">"
         "<div class=\"row\" style=\"flex-wrap:wrap;gap:.4rem 1rem;align-items:center;margin-bottom:.4rem\">"
         "<input type=\"color\" id=\"ccolor\" value=\"#1a1814\" aria-label=\"Color\" "
         "style=\"width:36px;min-height:36px;padding:2px;flex:0 0 auto\">"
@@ -4627,7 +4627,7 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "style=\"padding:.5rem .75rem;text-decoration:underline\">U</button>"
         "<button type=\"button\" class=\"ghost fmtbtn\" id=\"ctextbg\" data-on=\"0\" title=\"Text background\" "
         "style=\"padding:.5rem .6rem\">"+kIconHighlight+"</button>"
-        "<input type=\"color\" id=\"ctextbgcolor\" value=\"#ffffff\" aria-label=\"Text background colour\" "
+        "<input type=\"color\" id=\"ctextbgcolor\" value=\"#ffffff\" aria-label=\"Text background color\" "
         "style=\"width:36px;min-height:36px;padding:2px;flex:0 0 auto\">"
         "</div>"
         "</div>"
@@ -7182,7 +7182,7 @@ std::string map_page_body(const std::string& user, const std::string& focus) {
             "<span>Thicker lines: paths you use often (kept on this device only)</span>"
             "<button type=\"button\" id=\"lgm-forget\" class=\"ghost\">Forget my visits</button>"
             "<span class=\"lgm-shapes\" aria-label=\"Shapes\">""<span><svg viewBox=\"0 0 26 12\"><rect class=\"lgs\" width=\"26\" height=\"12\" rx=\"6\"/></svg>people</span>""<span><svg viewBox=\"0 0 26 12\"><rect class=\"lgs\" width=\"26\" height=\"12\" rx=\"1.5\"/></svg>groups</span>""<span><svg viewBox=\"0 0 26 12\"><ellipse class=\"lgs\" cx=\"13\" cy=\"6\" rx=\"13\" ry=\"6\"/></svg>cities</span>""<span><svg viewBox=\"0 0 26 12\"><polygon class=\"lgs\" points=\"4,0 22,0 26,6 22,12 4,12 0,6\"/></svg>proposals</span>""<span><svg viewBox=\"0 0 26 12\"><polygon class=\"lgs\" points=\"3,0 23,0 26,3 26,9 23,12 3,12 0,9 0,3\"/></svg>offices</span>""<span><svg viewBox=\"0 0 26 12\"><polygon class=\"lgs\" points=\"0,0 20,0 26,6 20,12 0,12\"/></svg>problems</span>""<span><svg viewBox=\"0 0 26 12\"><rect class=\"lgs\" width=\"26\" height=\"12\" rx=\"3\"/></svg>posts</span></span>""<a href=\"/home\">Your dashboard</a>""</div>"
-            "<p class=\"muted lgm-foot\">Colours come from what you're in and have done; only you see them. "
+            "<p class=\"muted lgm-foot\">Colors come from what you're in and have done; only you see them. "
             "Cities are labels people chose, not governments. You only see what people have made visible.</p></div>"
             // People you may know, under the map: a signed-in person lands on this page, also right after signup
             + people_suggestions_html(user, 3, "/") +

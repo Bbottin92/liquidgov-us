@@ -191,6 +191,12 @@ jobs:
         continue-on-error: true
         run: python3 liquidgov-platform/tests/browser/site_spelling_check.py "$PWD/liquidgov-platform"
 
+      - name: every repo file a workflow names exists (workflow_paths_check, report-only)
+        if: always()
+        timeout-minutes: 5
+        continue-on-error: true
+        run: python3 liquidgov-platform/tests/browser/workflow_paths_check.py "$PWD"
+
       - name: browser checks wired into CI (workflow_browser_steps_check, report-only)
         if: always()
         timeout-minutes: 5

@@ -20,6 +20,31 @@
   var openLink = document.getElementById('lgm-open');
   var statusEl = document.getElementById('lgm-status');
   var closeBtn = document.getElementById('lgm-close');
+  // The side panel is view-only until Edit (Brandon 2026-11-11 4:30 PM decision 2; live map finding #11: Interests
+  // opened the whole profile editor, The Gov the composer and Leave, Politics New proposal). Every form that changes
+  // something (method=post) is hidden in the panel's page; Edit shows them, Done hides them. Opening another box
+  // starts view-only again; a reload in the panel (a form was sent) keeps editing.
+  var editBtn = document.getElementById('lgm-edit'), editing = false;
+  var EDIT_FORMS = 'form[method="post" i]';
+  function applyView() {
+    var doc;
+    try { doc = frame.contentDocument; } catch (e) { doc = null; } // err-ok: a page from another site is left as it is
+    var has = !!(doc && doc.querySelector && doc.querySelector(EDIT_FORMS));
+    if (editBtn) {
+      editBtn.hidden = !has;
+      editBtn.textContent = editing ? 'Done' : 'Edit';
+      editBtn.setAttribute('aria-pressed', editing ? 'true' : 'false');
+    }
+    if (!doc || !doc.documentElement) return;
+    var st = doc.getElementById('lgm-viewonly');
+    if (!editing && !st) {
+      st = doc.createElement('style');
+      st.id = 'lgm-viewonly';
+      st.textContent = EDIT_FORMS + '{display:none!important}';
+      (doc.head || doc.documentElement).appendChild(st);
+    } else if (editing && st) st.parentNode.removeChild(st);
+  }
+  if (editBtn) editBtn.addEventListener('click', function () { editing = !editing; applyView(); });
   function narrow() { return window.matchMedia ? matchMedia('(max-width: 760px)').matches : innerWidth <= 760; }
   var W = 200, H = 36, YOU_R = 58;
   var nodes = {};   // id -> {id,label,kind,page,rel,x,y,el,expanded}
@@ -751,6 +776,8 @@
     // location.replace: a new page in the panel is not a history entry, so Back steps through the map (live look #5)
     if (frame.getAttribute('data-page') !== n.page) {
       frame.setAttribute('data-page', n.page);
+      editing = false;
+      if (editBtn) { editBtn.hidden = true; editBtn.textContent = 'Edit'; }
       try { frame.contentWindow.location.replace(n.page); } catch (e) { frame.setAttribute('src', n.page); } // err-ok: a frame showing another site can't be replaced; src still loads it
     }
     // Phone: the page is a full-screen sheet over the map (CSS); the page behind must not scroll, and the close
@@ -764,6 +791,8 @@
   }
   function closePanel() {
     panel.hidden = true;
+    editing = false;
+    applyView();
     panel.classList.remove('full');
     root.classList.remove('lgm-has-panel');
     document.documentElement.classList.remove('lgm-sheet-open');
@@ -772,6 +801,7 @@
   // A link inside the framed page that goes to the map would open a map inside the map (advisor catch,
   // 2026-11-07): take it at the top level instead, focusing the box when it is on the map already.
   frame.addEventListener('load', function () {
+    applyView();
     var doc;
     try { doc = frame.contentDocument; } catch (e) { return; } // err-ok: a cross-origin page has no map links to fix
     if (!doc) return;

@@ -7122,6 +7122,9 @@ std::string map_page_body(const std::string& user, const std::string& focus) {
             "<g id=\"lgm-view\"><g id=\"lgm-edges\"></g><g id=\"lgm-nodes\"></g></g></svg></div>"
             "<aside id=\"lgm-panel\" class=\"lgmap-panel\" hidden>"
             "<div class=\"lgm-ptop\"><strong id=\"lgm-ptitle\"></strong>"
+            // view-only until Edit (Brandon 2026-11-11 4:30 PM decision 2; live map #11): lgmap.js shows this button
+            // only when the page in the panel has edit forms
+            "<button type=\"button\" id=\"lgm-edit\" hidden>Edit</button>"
             "<button type=\"button\" id=\"lgm-expand\" title=\"Fill the window\">Expand</button>"
             "<a id=\"lgm-open\" href=\"#\" target=\"_top\">Open page</a>"
             "<button type=\"button\" id=\"lgm-close\" aria-label=\"Close\">&times;</button></div>"

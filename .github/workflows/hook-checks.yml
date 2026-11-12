@@ -1,0 +1,39 @@
+name: hook-checks
+
+# Every check the git hooks run (.githooks/pre-commit, pre-push), on GitHub too: waste-audit PLAN 0.3 (Grok Bot
+# 2026-11-11; Brandon 2026-11-12 "you take 0.3"). Until then 0 of the 27 checks in commons-daemon/tests ran in any
+# workflow, so a clone without core.hooksPath, or a push that skipped the hooks, got past all of them.
+# scripts/run_hook_checks.py takes the list from scripts/affected_checks.py (the hooks' list) and runs all of it.
+# No paths: filter on purpose: the checks read deploy/, scripts/, naming.toml, src/ and more, take seconds, and need
+# no build, droplet or secret. commons-daemon/tests/ci_runs_checks_check.py keeps this file wired.
+
+on:
+  push:
+    branches: [master, "wip/**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hook-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      # full history: some checks read real history (rollback_guard_check.py) or diff against origin/master
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      # several checks commit in throwaway repos; a runner has no git identity
+      - name: git identity for throwaway repos
+        run: |
+          git config --global user.email "ci@localhost"
+          git config --global user.name "ci"
+
+      - name: every hook check (run_hook_checks)
+        run: python3 scripts/run_hook_checks.py "$PWD"

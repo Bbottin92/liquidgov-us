@@ -49,6 +49,7 @@ CHECKS = {
     "ship_fixes_check.py": ["scripts/ship.py"] + DEPLOY,
     "affected_checks_check.py": [],
     "affected_checks_master_check.py": [],
+    "ci_runs_checks_check.py": [".github/workflows/*", "scripts/run_hook_checks.py", "commons-daemon/tests/*"],
 }
 EVERYTHING = [".githooks/*", "scripts/affected_checks.py"]
 

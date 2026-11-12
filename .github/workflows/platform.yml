@@ -5,8 +5,10 @@ name: platform
 # compile -> every unit test -> every e2e suite, each judged by its own passes=/fails=/EXIT= line. One script for
 # both, so CI and the laptop cannot drift apart. No droplet, no ssh, no secrets: the suites start the server on
 # loopback against a throwaway store made by liquidgov_e2e_seed.
-# Not covered here: city_undo (lgcheck skips it; it needs an old binary), browser tests (scratch, headless Edge on
-# Windows), and the "new suite must fail on the previous build" step (lgcheck's extra arguments; done locally).
+# Browser checks run below as report-only steps, each bounded by timeout-minutes (Brief 5 item 1;
+# liquidgov-platform/tests/browser/workflow_browser_steps_check.py keeps every tests/browser/*_check.py in a step).
+# Not covered here: city_undo (lgcheck skips it; it needs an old binary) and the "new suite must fail on the previous
+# build" step (lgcheck's extra arguments; done locally).
 
 on:
   push:
@@ -72,6 +74,7 @@ jobs:
       # pictures and prints its verdict; make it gating only after it has passed on several pushes and Brandon says so.
       - name: phone screenshots (browser check, report-only)
         if: always()
+        timeout-minutes: 10
         continue-on-error: true
         run: |
           set -uo pipefail
@@ -83,6 +86,7 @@ jobs:
       # as the step above; its "VERDICT bar-ci" line is read by ship.py like the phone VERDICT. Same screenshot folder.
       - name: map bar check (browser, report-only)
         if: always()
+        timeout-minutes: 10
         continue-on-error: true
         run: |
           set -uo pipefail
@@ -92,6 +96,7 @@ jobs:
       # The map's Hidden mode (Brandon 2026-11-11). Report-only like the two above; "VERDICT hidden-ci" is gated by ship.py.
       - name: map hidden-mode check (browser, report-only)
         if: always()
+        timeout-minutes: 10
         continue-on-error: true
         run: |
           set -uo pipefail
@@ -102,11 +107,97 @@ jobs:
       # only the computed style, which stays "sticky" when an ancestor traps it). Report-only like the three above.
       - name: map sticky-bars check (browser, report-only)
         if: always()
+        timeout-minutes: 10
         continue-on-error: true
         run: |
           set -uo pipefail
           export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
           python3 liquidgov-platform/tests/browser/ci_map_sticky_check.py "$RUNNER_TEMP/lg" "$PWD/liquidgov-platform" ci "$RUNNER_TEMP/phone"
+
+      # Browser checks with no C++ server (Grok Bot's audit, ranked fix 1; Brief 5 item 1): each cuts the page's markup
+      # from src/http_server.cpp and serves it with the real assets from a small stdlib server, so they run even when the
+      # build above failed. Report-only and bounded like the steps above: a flaky Chrome must never turn the run red
+      # (deploy/ci-gate.sh) or hold it. scripts/ship.py still reads every "VERDICT" line and wants ALL-PASS for a site
+      # change. me_autosave_check.py is left out on purpose: its A3 is timing-flaky on a fast mock; the slow variant
+      # runs the same 8 cases. Pictures go to the screenshot folder kept below.
+      - name: live map faults (map_live_check) (browser, report-only)
+        if: always()
+        timeout-minutes: 5
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
+          python3 liquidgov-platform/tests/browser/map_live_check.py "$PWD/liquidgov-platform" "$RUNNER_TEMP/phone"
+
+      - name: map side panel view-only (map_view_only_check) (browser, report-only)
+        if: always()
+        timeout-minutes: 5
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
+          python3 liquidgov-platform/tests/browser/map_view_only_check.py "$PWD/liquidgov-platform" "$RUNNER_TEMP/phone"
+
+      - name: Juketube button overlap (juketube_overlap_check) (browser, report-only)
+        if: always()
+        timeout-minutes: 5
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
+          python3 liquidgov-platform/tests/browser/juketube_overlap_check.py "$PWD/liquidgov-platform" "$RUNNER_TEMP/phone"
+
+      - name: drawing canvas layout (canvas_layout_check) (browser, report-only)
+        if: always()
+        timeout-minutes: 5
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
+          python3 liquidgov-platform/tests/browser/canvas_layout_check.py "$PWD/liquidgov-platform" "$RUNNER_TEMP/phone"
+
+      - name: Messages page layout (messenger_layout_check) (browser, report-only)
+        if: always()
+        timeout-minutes: 5
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
+          python3 liquidgov-platform/tests/browser/messenger_layout_check.py "$PWD/liquidgov-platform"
+
+      - name: iPhone alerts strip (push_banner_check) (browser, report-only)
+        if: always()
+        timeout-minutes: 5
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
+          python3 liquidgov-platform/tests/browser/push_banner_check.py "$PWD/liquidgov-platform"
+
+      - name: /me autosave, slow server (me_autosave_slow_check) (browser, report-only)
+        if: always()
+        timeout-minutes: 5
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
+          python3 liquidgov-platform/tests/browser/me_autosave_slow_check.py "$PWD/liquidgov-platform"
+
+      # Static checks (no browser): American spelling in the site's strings, and this file keeping every browser
+      # check in a report-only, bounded step.
+      - name: site spelling (site_spelling_check, report-only)
+        if: always()
+        timeout-minutes: 5
+        continue-on-error: true
+        run: python3 liquidgov-platform/tests/browser/site_spelling_check.py "$PWD/liquidgov-platform"
+
+      - name: browser checks wired into CI (workflow_browser_steps_check, report-only)
+        if: always()
+        timeout-minutes: 5
+        continue-on-error: true
+        # The second argument is unused: the check's W3 reads its own text as "takes an <out dir>" (a false positive in
+        # that committed check, reported in REPORT5, not edited).
+        run: python3 liquidgov-platform/tests/browser/workflow_browser_steps_check.py "$PWD" "$RUNNER_TEMP/phone"
 
       # Bounded (2026-11-11): run 43094476050 sat in this upload for hours while GitHub's artifact API returned 502s,
       # so the run never finished and ship.py could not call the commit CI-proven. A stuck upload is cancelled after

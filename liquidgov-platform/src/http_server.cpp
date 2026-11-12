@@ -5800,7 +5800,7 @@ std::string jukebox_panel_body(bool standalone) {
         "<option value=\"all\">All</option><option value=\"group\">Group</option>"
         "<option value=\"friends\">Friends</option><option value=\"others\">Others</option>"
         "<option value=\"self\">Self</option></select>"
-        "<input id=\"jbsearch\" placeholder=\"Search people and communities\" autocomplete=\"off\" "
+        "<input id=\"jbsearch\" placeholder=\"Search people and groups\" autocomplete=\"off\" "
         "style=\"margin-top:.4rem;width:100%\">"
         "<div id=\"jbsearchresults\" style=\"margin-top:.3rem;display:flex;flex-direction:column;gap:.15rem\"></div>"
         "<label class=\"muted\" style=\"display:block;margin-top:.7rem;font-size:.72rem;letter-spacing:.08em;"
@@ -6962,7 +6962,7 @@ std::string genesis_body() {
         "<div class=\"stattile\"><strong>" + std::to_string(g_store.account_count()) + "</strong><span>" +
         std::string(g_store.account_count()==1?"Account":"Accounts") + "</span></div>"
         "<div class=\"stattile\"><strong>" + std::to_string(g_store.all_communities().size()) + "</strong><span>" +
-        std::string(g_store.all_communities().size()==1?"Community":"Communities") + "</span></div>"
+        std::string(g_store.all_communities().size()==1?"Group":"Groups") + "</span></div>"
         "<div class=\"stattile\"><strong>0</strong><span>Elections held</span></div>"
         "</div>";
     // The scrolling problems ticker and the two pull-quotes, pulled from
@@ -7125,7 +7125,7 @@ std::string genesis_body() {
            "<div class=\"clocks\">"
            "<div class=\"card\"><h2>Two clocks</h2><p><strong>Site control</strong> ends when a working election exists among enrolled citizens.</p>"
            "<p><strong>Governmental authority</strong> stays a later landslide — more than half of the eligible citizen population. However long that takes.</p></div>"
-           "<div class=\"card\"><h2>This website is the door</h2><p>Feed, friends, mail, and communities live here. "
+           "<div class=\"card\"><h2>This website is the door</h2><p>Feed, friends, mail, and groups live here. "
            "Voting weight, offices, land, and judgments live in a separate governance kernel. "
            "A platform account is not a citizen identity. Combined verification for civic acts is not live.</p></div>"
            "</div>" +
@@ -7234,7 +7234,7 @@ std::string home_dashboard(const std::string& user) {
         "<div class=\"stattile\"><strong>" + std::to_string(friends) + "</strong><span>" +
         std::string(friends==1?"Friend":"Friends") + "</span></div>"
         "<div class=\"stattile\"><strong>" + std::to_string(committees.size()) + "</strong><span>" +
-        std::string(committees.size()==1?"Community":"Communities") + "</span></div>"
+        std::string(committees.size()==1?"Group":"Groups") + "</span></div>"
         "</div>"
         + next + "</div>" +
         quadCard;
@@ -7283,7 +7283,7 @@ std::string home_dashboard(const std::string& user) {
     if (!matched.empty())
         out += "<div class=\"card\"><h2>Might fit you</h2>" + matched + "</div>";
     if (!rooms.empty())
-        out += "<div class=\"card\"><h2>Your rooms</h2>" + rooms + "</div>";
+        out += "<div class=\"card\"><h2>Your groups</h2>" + rooms + "</div>";
     // a few people you may know, also the first thing after signup (it lands here)
     out += people_suggestions_html(user, 3, "/");
 
@@ -7725,7 +7725,7 @@ std::string admin_nav(const char* active) {
         +tab("/admin/proposals","proposals","Proposals")
         +tab("/admin/comments","comments","Comments")
         +tab("/admin/departments","departments","Departments")
-        +tab("/admin/communities","communities","Communities")
+        +tab("/admin/communities","communities","Groups")
         +tab("/admin/log","log","Log")
         +"</div>";
 }
@@ -7751,7 +7751,7 @@ std::string admin_overview_page() {
     return admin_header() + admin_nav("overview") +
         "<div class=\"stattiles\">"
         "<div class=\"stattile\"><strong>"+std::to_string(g_store.account_count())+"</strong><span>Accounts</span></div>"
-        "<div class=\"stattile\"><strong>"+std::to_string(g_store.all_communities().size())+"</strong><span>Communities</span></div>"
+        "<div class=\"stattile\"><strong>"+std::to_string(g_store.all_communities().size())+"</strong><span>Groups</span></div>"
         "<div class=\"stattile\"><strong>"+std::to_string(g_store.post_count())+"</strong><span>Posts</span></div>"
         "<div class=\"stattile\"><strong>"+std::to_string(g_store.all_proposals().size())+"</strong><span>Open proposals</span></div>"
         "</div>"
@@ -8066,7 +8066,7 @@ std::string admin_communities_page() {
     std::string html = admin_header() + admin_nav("communities");
     auto communities = g_store.all_communities();
     if (communities.empty()) {
-        html += "<p class=\"empty\">No communities yet.</p>";
+        html += "<p class=\"empty\">No groups yet.</p>";
         return html;
     }
     html += "<div style=\"overflow-x:auto\"><table class=\"register\"><tr>"
@@ -8080,7 +8080,7 @@ std::string admin_communities_page() {
                 "<form method=\"POST\" action=\"/admin/communities/delete\" style=\"margin-top:.3rem\">"
                 "<input type=\"hidden\" name=\"slug\" value=\""+html_escape(c.slug)+"\">"
                 "<input name=\"confirm\" placeholder=\"type &ldquo;delete&rdquo;\" autocomplete=\"off\">"
-                "<button class=\"danger\" type=\"submit\">Delete community</button></form></details>"
+                "<button class=\"danger\" type=\"submit\">Delete group</button></form></details>"
                 "<p class=\"muted\" style=\"margin:.3rem 0 0\">Posts already made here keep their room "
                 "name but stop being reachable -- they are not deleted.</p></td></tr>";
     }
@@ -9799,7 +9799,7 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         std::string html = "<h1>Feed</h1><p class=\"muted eyebrow\">"+html_escape(fmt_time(now()))+
             " &middot; "+std::to_string(g_store.account_count())+" members</p>"
             "<div class=\"segtabs\">"+
-            tab("all","All")+tab("friends","Friends")+tab("committees","Communities")+
+            tab("all","All")+tab("friends","Friends")+tab("committees","Groups")+
             "</div>"+
             flash_error(qs)+
             feed_composer_card(user);
@@ -10207,7 +10207,7 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         auto committees = g_store.communities_of(found->username);
         std::string committees_html;
         if (!committees.empty()) {
-            committees_html = "<p class=\"eyebrow\" style=\"margin-top:1rem\">Committees</p>"
+            committees_html = "<p class=\"eyebrow\" style=\"margin-top:1rem\">Groups</p>"
                                "<div style=\"display:flex;flex-wrap:wrap;gap:.4rem\">";
             for (const auto& c : committees) {
                 committees_html += "<a class=\"chip\" href=\"/c/"+html_escape(c.slug)+"\" style=\"text-decoration:none\">"+
@@ -10707,7 +10707,7 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         const std::string slug = path.substr(3);
         auto c = g_store.community(slug);
         if (!c)
-            return http_code("404 Not Found", wrap("Not found", user, unread, "<div class=\"card\"><p>No such community.</p></div>"));
+            return http_code("404 Not Found", wrap("Not found", user, unread, "<div class=\"card\"><p>No such group.</p></div>"));
         const bool member = g_store.is_member(slug, user);
         const bool owner = c->owner == user;
         std::string html = "<h1>"+html_escape(c->name)+"</h1>"
@@ -11334,7 +11334,7 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
 
         html += "<div class=\"card\"><h2 id=\"data\">Data</h2>"
             "<p><a class=\"btn ghost\" href=\"/export\">Download your export</a></p>"
-            "<p class=\"muted\">Export includes username, blurb, profile CSS, your friend list, communities you started or joined, "
+            "<p class=\"muted\">Export includes username, blurb, profile CSS, your friend list, groups you started or joined, "
             "posts you wrote, settings, and messages you sent. It does not include other people’s text or your password hash.</p>"
             "<form method=\"POST\" action=\"/settings/delete\">"
             // the name only in the label, never as a placeholder (CODE-SCAN-UX B1: a keychain-style fill target)
@@ -11347,7 +11347,7 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         html += std::string("<div class=\"card\"><h2 id=\"notifications\">Notifications</h2><form method=\"POST\" action=\"/settings/notify\">")
             + "<p><label><input type=\"checkbox\" name=\"notify_friend\" value=\"1\"" + (p.notify_friend?" checked":"") + "> Friend requests and accepts</label></p>"
             + "<p><label><input type=\"checkbox\" name=\"notify_message\" value=\"1\"" + (p.notify_message?" checked":"") + "> New mail</label></p>"
-            + "<p><label><input type=\"checkbox\" name=\"notify_group\" value=\"1\"" + (p.notify_group?" checked":"") + "> Community invites</label></p>"
+            + "<p><label><input type=\"checkbox\" name=\"notify_group\" value=\"1\"" + (p.notify_group?" checked":"") + "> Group invites</label></p>"
             + "<p class=\"muted\">Login alerts stay on.</p>"
             + "<p><label><input type=\"checkbox\" name=\"intro_every_visit\" value=\"1\"" + (p.intro_every_visit?" checked":"") + "> Play the landing intro every visit</label></p>"
             + "<p class=\"muted\">Off plays it just the first time you land on the site, on this browser.</p>"

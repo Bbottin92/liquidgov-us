@@ -8782,11 +8782,12 @@ std::string feed_composer_card(const std::string& user) {
 }
 
 // /me saves itself (Brandon 2026-11-11 4:50 PM, Brief 4 item 11; replaced the "Editing /me" bar with Publish
-// revision and Discard): each form[data-draft] -- currently Profile CSS -- is sent to its own, unchanged endpoint with
-// fetch about 800 ms after the last change, so there is no page load (no jump to the top). A small status under the
-// form says Saving..., Saved, or Couldn't save with a Retry button: a refused value (the endpoint redirects with err=)
-// or a failed request. The form's own submit button stays in the markup for no-script use and is hidden here; Enter
-// or a submit saves at once. The name is kept (draft_publish_script) so its callers and checks still find it.
+// revision and Discard): each form[data-draft] -- About you, Profile CSS and Play settings (Brief 6 item 4) -- is
+// sent to its own, unchanged endpoint with fetch about 800 ms after the last change, so there is no page load (no
+// jump to the top). A small status under the form says Saving..., Saved, or Couldn't save with a Retry button: a
+// refused value (the endpoint redirects with err=) or a failed request. These forms have no Save button (Brief 6
+// item 4); a submit button, if one is ever added, is hidden here. Enter or a submit saves at once. The name is kept
+// (draft_publish_script) so its callers and checks still find it.
 std::string draft_publish_script() {
     return
         "<script>(function(){"
@@ -8804,6 +8805,11 @@ std::string draft_publish_script() {
         "return p.sort().join('&');}"
         "var saved=ser(),timer=null,busy=false,again=false;"
         "function show(t,retry){st.textContent=t;rb.hidden=!retry;}"
+        // Without a Save button the browser no longer points at a required field left empty (a Google-only account
+        // has no display name, so /me/profile refuses every About you save): name the field in the status instead.
+        "function why(){var e=f.querySelector(':invalid');if(!e)return '';"
+        "var l=e.previousElementSibling,n=l&&l.tagName==='LABEL'?l.textContent.trim():e.name;"
+        "return ': '+n+' \\u2014 '+e.validationMessage;}"
         "function save(){"
         "clearTimeout(timer);"
         "if(busy){again=true;return;}"
@@ -8813,7 +8819,7 @@ std::string draft_publish_script() {
         "headers:{'Content-Type':'application/x-www-form-urlencoded'},"
         "body:new URLSearchParams(new FormData(f)).toString()})"
         ".then(function(r){if(!r.ok||/[?&]err=/.test(r.url||''))throw new Error('refused');saved=now;show('Saved',false);})"
-        ".catch(function(){show('Couldn\\u2019t save',true);})"
+        ".catch(function(){show('Couldn\\u2019t save'+why(),true);})"
         ".then(function(){busy=false;if(again){again=false;save();}});"
         "}"
         "function later(){clearTimeout(timer);timer=setTimeout(save,800);}"
@@ -10055,7 +10061,7 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
             auto prof = g_store.profile_of(user);
             auto bio = g_store.blurb(acc->id);
             html += "<div class=\"card\"><h2>About you</h2>"
-                "<form method=\"POST\" action=\"/me/profile\">"
+                "<form method=\"POST\" action=\"/me/profile\" data-draft=\"1\">"
                 "<label>Display name</label><input name=\"display_name\" required maxlength=\"80\" autocomplete=\"nickname\" value=\""+html_escape(prof.display_name)+"\">"
                 "<label>Hometown</label><input name=\"hometown\" maxlength=\"80\" value=\""+html_escape(prof.hometown)+"\">"
                 "<label>Where you live now</label><input name=\"living\" maxlength=\"80\" value=\""+html_escape(prof.living)+"\">"
@@ -10063,7 +10069,7 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
                 "<label>Interests</label><input name=\"interests\" maxlength=\"200\" placeholder=\"comma-separated\" value=\""+html_escape(prof.interests)+"\">"
                 "<label>Career</label><input name=\"career\" maxlength=\"80\" value=\""+html_escape(prof.career)+"\">"
                 "<label>School</label><input name=\"school\" maxlength=\"80\" value=\""+html_escape(prof.school)+"\">"
-                "<button>Save profile</button></form>"
+                "</form>"
                 "<p class=\"muted\">Email stays a fingerprint from signup. It is not shown and cannot be changed here.</p></div>";
         }
         {
@@ -10105,14 +10111,14 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
             // elsewhere: a miss looks like a miss, not an error message.
             std::string jmsg = qs["ok"]=="jplay" ? "<p class=\"ok\">Saved.</p>" : "";
             html += "<div class=\"card\"><h2>Play settings</h2>"+jmsg+
-                "<form method=\"POST\" action=\"/me/jukebox/play-settings\">"
+                "<form method=\"POST\" action=\"/me/jukebox/play-settings\" data-draft=\"1\">"
                 "<label><input type=\"checkbox\" name=\"autoplay\" value=\"1\""+
                 (g_store.jukebox_autoplay(user) ? " checked" : "")+
                 "> Play my Juketube when someone opens my profile</label>"
                 "<label style=\"display:block;margin-top:.5rem\">Play this Juketube instead</label>"
                 "<input name=\"relay\" placeholder=\"another person&rsquo;s Juketube, or empty for your own\" autocomplete=\"off\" "
                 "value=\""+html_escape(g_store.jukebox_relay_target(user))+"\">"
-                "<button type=\"submit\">Save</button></form></div>";
+                "</form></div>";
         }
         html += draft_publish_script();
         return pg("Profile", html);

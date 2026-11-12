@@ -9,7 +9,7 @@ libs/liquidgov_file_store/sources.cmake lists, joined in order. This keeps that 
      before the next type's `tag == ` (the guard reads the FIRST check after each type: a type whose check moved
      elsewhere would be judged by its neighbour's);
   4. record literals live only in listed .cpp files: no `tag == "` or `<< "x\t` in the store's headers;
-  5. the round-trip fixture (tests/fixtures/lgp1_roundtrip/store_all_tags.lgp1) has a row of every type the loader
+  5. the round-trip fixtures (tests/fixtures/lgp1_roundtrip*/store_all_tags.lgp1) have a row of every type the loader
      reads, so the byte-for-byte round trip (store_roundtrip_test.cpp) covers every type, including new ones.
 Usage: python commons-daemon/tests/store_split_check.py <repo root>  -> last line passes=N fails=M; exit 1 on FAIL."""
 import os
@@ -74,11 +74,13 @@ in_headers = [h for h in headers if re.search(r'tag == "|<< "[a-z]+\\t', read(h.
 check("no record literal in the store's headers (%d headers)" % len(headers), not in_headers, in_headers)
 
 have = set()
-if os.path.isfile(FIXTURE):
-    with open(FIXTURE, encoding="utf-8", newline="") as f:
-        have = {line.split("\t", 1)[0] for line in f.read().split("\n")[1:] if line}
+# the first fixture, plus the one for the types added after it (styles, here: tests/store_roundtrip_styles_here_test.cpp)
+for fx in (FIXTURE, FIXTURE.replace("lgp1_roundtrip" + os.sep, "lgp1_roundtrip_styles_here" + os.sep)):
+    if os.path.isfile(fx):
+        with open(fx, encoding="utf-8", newline="") as f:
+            have |= {line.split("\t", 1)[0] for line in f.read().split("\n")[1:] if line}
 missing = sorted(set(tags) - have)
-check("the round-trip fixture has a row of every record type (%d)" % len(have), not missing, missing)
+check("the round-trip fixtures have a row of every record type (%d)" % len(have), not missing, missing)
 
 print("passes=%d fails=%d" % (passes, fails))
 sys.exit(1 if fails else 0)

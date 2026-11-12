@@ -269,7 +269,22 @@
 #include "liquidgov/platform/auth.hpp"
 #include "liquidgov/platform/avatar.hpp"
 #include "liquidgov/platform/messenger.hpp"
+#include "liquidgov/platform/records/social.hpp"
+#include "liquidgov/platform/records/accounts.hpp"
+#include "liquidgov/platform/records/mail.hpp"
+#include "liquidgov/platform/records/admin.hpp"
+#include "liquidgov/platform/records/prefs.hpp"
+#include "liquidgov/platform/records/posts.hpp"
+#include "liquidgov/platform/records/communities.hpp"
+#include "liquidgov/platform/records/city.hpp"
+#include "liquidgov/platform/records/pains.hpp"
+#include "liquidgov/platform/records/proposals.hpp"
+#include "liquidgov/platform/records/styles.hpp"
+#include "liquidgov/platform/records/profile.hpp"
+#include "liquidgov/platform/records/notices.hpp"
+#include "liquidgov/platform/records/jukebox.hpp"
 
+#include <iosfwd>
 #include <map>
 #include <optional>
 #include <set>
@@ -279,485 +294,7 @@
 
 namespace liquidgov::platform {
 
-inline constexpr int kInnerCircleCap = 12;
-inline constexpr std::int64_t kPhoneQuarantineSeconds = 90 * 24 * 60 * 60;
-
-enum class Findability : int {
-    FriendsOnly = 0,
-    ExactMatch = 1,
-    Typeahead = 2,
-};
-
-struct MailMessage {
-    std::string from;
-    std::string to;
-    std::string text;
-    std::int64_t ts = 0;
-    // Set only for messages carrying a file_transfer-ingested attachment.
-    // blob_id/mime come straight out of FileTransferResult; the original
-    // filename is deliberately not kept (avoids header-injection surface
-    // and lets the store name the download itself from mime).
-    std::optional<std::string> attachment_blob_id;
-    std::optional<std::string> attachment_mime;
-};
-
-// An operator's permission for one person to send programs (archives,
-// installers, executables -- ProgramKind in file_type.hpp) in mail: which
-// kinds and how big. Operators themselves need no grant (is_operator in
-// http_server.cpp gives them every kind up to the server ceiling).
-struct ProgramGrant {
-    std::string username;
-    std::uint32_t kinds = 0;      // bitmask of ProgramKind
-    std::uint64_t max_bytes = 0;
-    std::string granted_by;
-    std::int64_t granted_at = 0;
-};
-
-// The "afn" key of a message's attachment name: one per message, so the
-// same bytes sent twice keep each send's own name. Usernames can't hold
-// '|' (valid_username), so the key splits back unambiguously.
-inline std::string attachment_name_key(const MailMessage& m) {
-    return "d|" + m.from + "|" + m.to + "|" + std::to_string(m.ts) + "|" + m.attachment_blob_id.value_or("");
-}
-inline std::string attachment_name_key(const Message& m) { return "g|" + std::to_string(m.id); }
-
-// A minimum-trust ladder, most to least open: anyone at all, then anyone
-// signed in, then friends only, then the owner alone. Each level implies
-// every level after it can also see it -- there's no way to express "show
-// strangers but hide friends" here. Used for whole-account defaults
-// (AccountPrefs' profile_visibility/posts_visibility) and the
-// Visibility-tiered /u/<username> gating -- NOT for a post's own audience,
-// which needs per-post exceptions/allowlists a flat ladder can't express
-// (see PostAudience below).
-enum class Visibility : int {
-    Public = 0,
-    Members = 1,
-    Friends = 2,
-    OnlyMe = 3,
-};
-
-// A post's own audience -- the /feed "Anybody"/"Friends"/"Groups" chips.
-// Unlike Visibility, this isn't a ladder: Anybody and GroupsOnly are two
-// distinct, non-nested reach shapes (public-minus-exceptions vs.
-// community-membership-only), and Friends carries its own allow-list
-// rather than a single yes/no. See the "pau" LGP1 tag's comment for the
-// exact semantics of each value, including how "Friends + Groups" is
-// represented (Friends here, plus Post::community/extra_groups set).
-enum class PostAudience : int {
-    Friends = 0,
-    Anybody = 1,
-    GroupsOnly = 2,
-};
-
-struct Post {
-    std::uint64_t id = 0;
-    std::string author;
-    std::int64_t ts = 0;
-    std::string text;
-    std::string community; // empty = no community; else the first/primary slug
-    // Which /feed chip chose this post's reach -- see PostAudience's own
-    // comment. Friends is the default and the only value every post had
-    // before this field existed.
-    PostAudience audience = PostAudience::Friends;
-    // Anybody hide-list: these usernames don't see the post even though
-    // Anybody would otherwise show it to them. Only meaningful when
-    // audience == Anybody.
-    std::vector<std::string> exceptions;
-    // Friends show-list: only these usernames (plus the author) see the post
-    // in the personal/friends feed. Empty means every current friend --
-    // today's only behavior, and still the default for a brand new post.
-    // Only meaningful when audience == Friends.
-    std::vector<std::string> friend_allowlist;
-    // Extra communities this post also appears in, beyond `community`
-    // itself (which stays the first/primary slug for every reader that only
-    // ever looked at that one field). "Friends + Groups" together is
-    // audience == Friends with community/extra_groups set -- there is no
-    // separate combined value.
-    std::vector<std::string> extra_groups;
-    // A repost is its own Post row (its own id/author/ts, in the reposting
-    // user's own feed) that additionally names the ORIGINAL author/id --
-    // not the post it was reposted from, if that itself was a repost, so
-    // reposting a repost always credits the true original, same as
-    // resharing an already-shared post.
-    std::string repost_of_author; // empty = not a repost
-    std::uint64_t repost_of_id = 0;
-    // Optional single image/video attachment, already normalized/ingested
-    // through liquidgov_file_transfer and living in the shared blob store
-    // by the time it lands here -- this struct just carries the id/mime,
-    // the same shape as Message's attachment fields.
-    std::string attachment_blob_id; // empty = no attachment
-    std::string attachment_mime;
-};
-
-struct PostReply {
-    std::uint64_t id = 0;
-    std::uint64_t post_id = 0;
-    std::string author;
-    std::int64_t ts = 0;
-    std::string text;
-};
-
-// A fixed, curated top level for browsing communities -- fixed so the
-// directory stays navigable as the platform grows instead of accumulating
-// near-duplicate categories ("Gaming" vs "gaming" vs "Games") the way a
-// fully open list would. Subcategory (below) is deliberately not an enum:
-// that's the axis meant to stay open for people to actually name.
-enum class CommunityCategory : int {
-    LocalCivic = 0,
-    PolicyGovernment = 1,
-    ArtsCulture = 2,
-    HobbiesInterests = 3,
-    SportsRecreation = 4,
-    Technology = 5,
-    BusinessTrade = 6,
-    LearningEducation = 7,
-    SupportWellbeing = 8,
-    FaithSpirituality = 9,
-    General = 10,
-};
-
-struct Community {
-    std::string slug;
-    std::string name;
-    std::string owner;
-    std::string about;
-    std::int64_t created_at = 0;
-    CommunityCategory category = CommunityCategory::General;
-    // Free text, not an enum -- e.g. "Neighborhood Watch" under Local &
-    // Civic. Deliberately open for whoever creates a community to name
-    // (see CommunityCategory's own comment); subcategories_of() surfaces
-    // whatever's already in use under a category so a new community can
-    // reuse an existing name instead of always minting a new one.
-    std::string subcategory;
-    // Free text the group's starter typed, e.g. "Fresno, CA". Empty = no
-    // city. A city on LiquidGov is a label people chose so neighbours can
-    // find each other, not a government or an AVND locality. Groups with
-    // the same city_key() are listed together on /city/<key>.
-    std::string city;
-};
-
-// Tidied city text as stored: control characters dropped, runs of
-// whitespace collapsed to one space, trimmed, cut to 80 bytes (never in the
-// middle of a UTF-8 character). Empty when nothing usable is left.
-std::string clean_city(const std::string& raw);
-// The key cities are grouped and linked by: ASCII letters lowercased,
-// every run of other ASCII characters (spaces, commas, dots...) turned into
-// one '-', leading/trailing '-' dropped; non-ASCII bytes kept as they are.
-// "Fresno, CA" and "fresno ca" both give "fresno-ca". Empty when the city
-// has no letters or digits. No geocoding and no official list.
-std::string city_key(const std::string& city);
-
-// What one person lets the map (/map) show about them. Everything that was
-// already public is on by default (Brandon: "I want people to network, not
-// isolate"). Friendships started off on 2026-11-06 (they had never been
-// public) and turned on by default on 2026-11-10 (Brandon: "im trying to
-// bring people together not separate them"); a friendship shows to others
-// only while BOTH friends leave it on. You always see your own. Stored in
-// the mapp tag.
-struct MapPrefs {
-    bool show = true;      // appear on the map at all
-    bool groups = true;    // lines to the groups you are in
-    bool posts = true;     // your posts as boxes
-    bool comments = true;  // lines to proposals you commented on
-    // lines to your friends (both must agree). ON by default since 2026-11-10 (Brandon: "im trying to bring people
-    // together not separate them"); people who had saved Map settings keep what they saved (their mapp record).
-    bool friends = true;
-    bool pains = true;     // notice wishes and pain points in your new public words
-    // Fields a NEWER version wrote after these, kept verbatim and written back,
-    // so rolling back one version never drops (or breaks on) a newer setting.
-    // Any new field must default to the privacy-safe value when absent.
-    std::vector<std::string> extra_fields;
-};
-
-// ---- Wishes and pain points (Brandon 2026-11-06; first slice per Grok's review) ----
-// The site notices "I wish ...", "I hate when ...", "I'm tired of ..." in a
-// person's OWN new public words (Anybody posts, proposals, proposal comments),
-// and offers each as a suggestion they Keep or Forget. A kept one starts as a
-// private box on their own map. Flow shows that one subject to people who may
-// see them; Still makes it private again. The list itself stays the owner's.
-// Nothing is sent to an outside AI. Only a short phrase and the source id are
-// stored, never a copy of the text.
-struct PainHit {
-    std::string kind;    // "wish" or "pain"
-    std::string phrase;  // the clause after the trigger, <= 12 words / 80 bytes
-};
-struct PainScan {
-    std::vector<PainHit> hits;
-    bool crisis = false; // words like "I wish I wasn't here": store nothing, show 988
-};
-// Pure function, no I/O. At most 3 hits. Skips text inside quotes and lines
-// starting with '>'. "someone should" / "why can't" are deliberately not
-// triggers (they match sarcasm and debate).
-PainScan find_pain_points(const std::string& text);
-// Lowercase words of 4+ letters that are not filler, for matching a phrase to
-// departments, proposals and groups ("buses" also matches "bus").
-std::vector<std::string> pain_keywords(const std::string& phrase);
-// The subject two Flowed boxes share: case-folded, with whitespace runs
-// collapsed. Punctuation stays, so a shared word is not the same subject.
-std::string pain_subject_key(const std::string& phrase);
-// True when any keyword appears as a word in `text` (case-folded; a simple
-// plural rule so "buses" matches "bus" and "trees" matches "tree").
-bool pain_words_overlap(const std::vector<std::string>& keywords, const std::string& text);
-
-struct PainPoint {
-    std::uint64_t id = 0;
-    std::string owner;
-    std::string kind;    // wish | pain
-    std::string phrase;
-    std::string source;  // post:<id> | prop:<id> | prply:<id>
-    std::int64_t ts = 0;
-    bool kept = false;   // false = a suggestion; unkept ones expire after 30 days
-    bool flowed = false; // true only after the owner Flows a kept box
-    std::vector<std::string> extra_fields; // a newer version's fields after flowed, kept verbatim (see MapPrefs)
-};
-
-struct CityUse {
-    std::string key;
-    std::string name;   // the spelling most of its groups use (ties: first A-Z)
-    std::size_t groups = 0;
-};
-
-enum class BallotKind : int {
-    YesNo = 0,   // existing For / Against / Abstain
-    Number = 1,  // pick a value (deadline in days, a budget, a cap)
-    Date = 2,    // pick a calendar date
-    Choice = 3,  // pick one of the author's labels
-    Scale = 4,   // 0–100 slider
-};
-
-// Reserved answers (Brief 7 item 4). Whole-value, exact-case matches only.
-inline constexpr const char* kBallotSkip = "skip"; // Skip / no preference, any kind but YesNo (YesNo uses Abstain)
-inline constexpr const char* kBallotNone = "none"; // None of these, Choice only
-
-// True when no two labels are the same ignoring ASCII letter case (Brief 7 item 5: "Park" and "park" at create).
-bool ballot_options_unique(const std::vector<std::string>& options);
-
-struct BallotSpec {
-    BallotKind kind = BallotKind::YesNo;
-    std::string unit;   // Number: "days", "$" — empty is fine
-    double min_v = 0;   // Number: both 0 means unbounded (still clamped)
-    double max_v = 0;
-    double step = 1;
-    std::vector<std::string> options; // Choice: 2–12 closed, 1–48 if open_choice; Scale: optional left/right
-    bool open_choice = false;         // people may append a choice (non-author: one each)
-    std::vector<std::string> option_authors; // parallel to options; empty = creator-seeded
-};
-
-// A site-wide, unofficial straw poll -- explicitly not a binding vote (the
-// genesis-phase copy is clear real governmental authority is a later,
-// separate landslide). Any member can open one and any member can cast one
-// vote on it, changeable, to gauge sentiment on something not yet decided.
-// A published profile style (sty): see the tag's comment above.
-struct ProfileStyle {
-    std::uint64_t id = 0;
-    std::string author;
-    std::int64_t created_at = 0;
-    std::string name;
-    std::string css;
-};
-
-// One report of a style (str).
-struct StyleReport {
-    std::uint64_t style_id = 0;
-    std::string reporter;
-    std::int64_t at = 0;
-    std::string reason;
-};
-
-struct Proposal {
-    std::uint64_t id = 0;
-    std::string author;
-    std::int64_t ts = 0;
-    std::string title;
-    std::string body;
-    BallotSpec ballot;
-    bool is_office = false;
-    std::string jurisdiction; // /officials only. A city's proposal does not use this.
-    std::string city;         // city_key, empty when the proposal names no city
-    std::string who_acts;     // "who could act on it"; empty when the author left it blank
-    std::vector<std::string> tags; // department/council spellings from that city's list
-};
-
-// A comment on a proposal. Same fields as a post reply. Public to every
-// signed-in member, which is who can see proposals.
-struct ProposalReply {
-    std::uint64_t id = 0;
-    std::uint64_t proposal_id = 0;
-    std::string author;
-    std::int64_t ts = 0;
-    std::string text;
-};
-
-enum class ProposalVote : int {
-    Yes = 0,
-    No = 1,
-    Abstain = 2,
-};
-
-struct ProposalTally {
-    int yes = 0;
-    int no = 0;
-    int abstain = 0;
-};
-
-// For Number / Date / Scale / Choice. YesNo keeps using ProposalTally.
-struct BallotTally {
-    int n = 0;
-    double median = 0;
-    double lo = 0;
-    double hi = 0;
-    std::string median_date;
-    std::string lo_date;
-    std::string hi_date;
-    std::vector<int> option_counts;
-    int skipped = 0;      // "skip" answers: not in n, the median, the range or option_counts
-    int none_of_these = 0; // Choice "none" answers: counted in n, not in option_counts
-};
-
-// Who besides the owner may add tracks to an account's jukebox. The owner can
-// always curate their own queue (subject only to kJukeboxQueueCap) regardless
-// of this setting.
-enum class JukeboxPolicy : int {
-    OwnerOnly = 0,
-    Friends = 1,
-    Anyone = 2,
-};
-
-// Which slice of activity /feed shows -- see feed_view's comment for what
-// each one actually pulls in.
-enum class FeedFilter : int {
-    All = 0,
-    Friends = 1,
-    Committees = 2,
-    // 3 was Drawings (removed: Brandon 2026-11-10, no Drawings feed category)
-};
-
-struct AccountPrefs {
-    // Most open by default (Brandon: "all of the settings should be set to
-    // the highest amount of visibility by default... I want people to
-    // network, not isolate"). profile_visibility/posts_visibility were
-    // already Public, the most open point on their own ladder; findability
-    // was the one still defaulting to the middle setting. There's no
-    // age-based exception here because there's nothing to condition it on
-    // yet -- is_minor() is hardcoded false everywhere (see http_server.cpp)
-    // until real age assurance exists.
-    Findability findability = Findability::Typeahead;
-    bool friends_only_dm = true;
-    bool group_invite_confirm = true;
-    bool presence_hide = false;
-    bool notify_friend = true;
-    bool notify_message = true;
-    bool notify_group = true;
-    JukeboxPolicy jukebox_policy = JukeboxPolicy::OwnerOnly;
-    Visibility profile_visibility = Visibility::Public;
-    Visibility posts_visibility = Visibility::Public;
-    // Off by default: the landing intro plays once per browser (see
-    // intro_overlay_html), tracked client-side in localStorage. Turning
-    // this on makes it play on every visit instead.
-    bool intro_every_visit = false;
-};
-
-// Public profile extras (not login). email_fp is the same blake2 as phone —
-// the address itself is not stored. display_name is shown on /u/<user>.
-// bio lives in the existing blurb field.
-struct Profile {
-    std::string display_name;
-    std::string email_fp;
-    std::string hometown;
-    std::string living;
-    std::string interests;
-    std::string career;
-    std::string school;
-};
-
-// One block, with the context a settings page actually wants to show back
-// -- when, and why (freeform, actor's own words, never shown to the
-// blocked party). is_blocked/blocked_by stay the cheap boolean/list lookup
-// they always were; this is the richer read for rendering the block list.
-struct BlockEntry {
-    std::string actor;
-    std::string other;
-    std::int64_t at = 0;
-    std::string reason;
-};
-
-struct Notice {
-    std::uint64_t id = 0;
-    std::string to;
-    std::string type; // friend_request | friend_accept | message | group_invite
-    std::string from;
-    std::int64_t ts = 0;
-    bool read = false;
-    std::string extra;
-};
-
-// Page-local jukebox queue entry for a profile (design: LIQUIDGOV_CONTEXT_HANDOFF.md
-// "Jukebox", navigation option A — MPA, no site-wide SPA, stop on navigate away).
-// The owner always curates their own queue; depending on the owner's
-// JukeboxPolicy, friends or anyone else may also queue a track (see
-// queued_by below). Only the owner can remove. No WebSocket sync — that is
-// the in-world jukebox, a separate, unbuilt slice.
-struct JukeboxTrack {
-    std::string owner;      // username
-    std::string video_id;   // validated 11-char YouTube id, never a raw URL
-    std::int64_t added_at = 0;
-    // Who requested this track. Equal to owner for the owner's own curated
-    // additions, which stay queued after playing (today's behavior,
-    // unaffected). Anything else is a guest request: one shot, removed from
-    // the queue and logged to history the moment it finishes playing (see
-    // complete_jukebox_track), and limited to one outstanding request per
-    // guest at a time (enforced by the caller, same as policy/block checks).
-    std::string queued_by;
-};
-
-// One past play, kept so a profile can show "things played in the past"
-// even after a guest-requested track is gone from the live queue.
-struct JukeboxHistoryEntry {
-    std::string owner;
-    std::string video_id;
-    std::string queued_by;
-    std::int64_t played_at = 0;
-};
-
-inline constexpr std::size_t kJukeboxQueueCap = 50;
-inline constexpr std::size_t kJukeboxHistoryCap = 30;
-
-// A station's saved playhead -- see the jpos tag comment above. offset_sec
-// is seconds into video_id; updated_at is when this was last written, kept
-// mostly for debugging/future use, not currently read for any decision.
-struct JukeboxPos {
-    std::string video_id;
-    std::int64_t offset_sec = 0;
-    std::int64_t updated_at = 0;
-};
-
-// One outstanding password-reset token -- see the "pr" LGP1 tag comment.
-struct ResetToken {
-    std::string token_hash; // sha256_hex of the raw token; the raw token is never stored
-    std::int64_t until_unix = 0;
-};
-
-// One operator-panel action -- see the "alog" LGP1 tag's own comment for
-// what action/target hold.
-struct AuditLogEntry {
-    std::int64_t ts = 0;
-    std::string operator_name;
-    std::string action;
-    std::string target;
-};
-inline constexpr std::size_t kAuditLogCap = 500;
-
-bool valid_username(const std::string& username);
-std::string fingerprint_phone(const std::string& e164);
-
-// Extracts an 11-char YouTube video id from a small allow-listed set of URL
-// shapes (youtube.com/watch?v=, youtu.be/<id>, youtube.com/embed/<id>,
-// youtube-nocookie.com/embed/<id>). Returns nullopt for anything else. This
-// is the only thing ever stored or rendered from a submitted URL — never the
-// URL itself, never author HTML; the embed src is built by the platform from
-// this id alone.
-std::optional<std::string> extract_youtube_id(const std::string& url);
-
+// Each record family's types live in its own header (include/liquidgov/platform/records/<family>.hpp).
 class FileStore : public AccountStore, public AvatarStore, public ConversationStore {
 public:
     explicit FileStore(std::string path);
@@ -1212,11 +749,70 @@ public:
 private:
     void load();
     void flush();
+    // The LGP1 load and save, split by record module (src/records/<module>.cpp; 2026-11-12). load() offers each line
+    // to every read_* until one claims its type, then runs the finish_* in a fixed order; flush() calls the write_*
+    // sections in the order the store has always been written. Both orders live in src/file_store.cpp only.
+    struct LoadPending; // rows parked until every line is read (src/core/load_pending.hpp)
+    bool read_accounts(const std::vector<std::string>& f, LoadPending& pending);
+    bool read_admin(const std::vector<std::string>& f, LoadPending& pending);
+    bool read_avatars(const std::vector<std::string>& f, LoadPending& pending);
+    bool read_city(const std::vector<std::string>& f, LoadPending& pending);
+    bool read_communities(const std::vector<std::string>& f, LoadPending& pending);
+    bool read_conversations(const std::vector<std::string>& f, LoadPending& pending);
+    bool read_counters(const std::vector<std::string>& f, LoadPending& pending);
+    bool read_jukebox(const std::vector<std::string>& f, LoadPending& pending);
+    bool read_mail(const std::vector<std::string>& f, LoadPending& pending);
+    bool read_notices(const std::vector<std::string>& f, LoadPending& pending);
+    bool read_pains(const std::vector<std::string>& f, LoadPending& pending);
+    bool read_posts(const std::vector<std::string>& f, LoadPending& pending);
+    bool read_prefs(const std::vector<std::string>& f, LoadPending& pending);
+    bool read_profile(const std::vector<std::string>& f, LoadPending& pending);
+    bool read_here(const std::vector<std::string>& f, LoadPending& pending);
+    bool read_styles(const std::vector<std::string>& f, LoadPending& pending);
+    bool read_proposal_comments(const std::vector<std::string>& f, LoadPending& pending);
+    bool read_proposals(const std::vector<std::string>& f, LoadPending& pending);
+    bool read_social(const std::vector<std::string>& f, LoadPending& pending);
+    void finish_city_lists(LoadPending& pending);
+    void finish_city_tags(LoadPending& pending);
+    void finish_communities(LoadPending& pending);
+    void finish_posts(LoadPending& pending);
+    void finish_proposal_comments(LoadPending& pending);
+    void finish_proposals(LoadPending& pending);
+    void finish_here();
+    void finish_styles();
+    void write_accounts(std::ostream& body);
+    void write_admin(std::ostream& body);
+    void write_attachment_names(std::ostream& body);
+    void write_avatars(std::ostream& body);
+    void write_blocks(std::ostream& body);
+    void write_author_css(std::ostream& body);
+    void write_canvas(std::ostream& body);
+    void write_here(std::ostream& body);
+    void write_styles(std::ostream& body);
+    void forget_styles_of(const std::string& name);   // account deletion (records/styles.cpp)
+    void write_city_lists(std::ostream& body);
+    void write_city_tags(std::ostream& body);
+    void write_communities(std::ostream& body);
+    void write_conversations(std::ostream& body);
+    void write_counters(std::ostream& body);
+    void write_friend_links(std::ostream& body);
+    void write_jukebox(std::ostream& body);
+    void write_mail(std::ostream& body);
+    void write_mail_read(std::ostream& body);
+    void write_map_prefs(std::ostream& body);
+    void write_members(std::ostream& body);
+    void write_notices(std::ostream& body);
+    void write_pains(std::ostream& body);
+    void write_posts(std::ostream& body);
+    void write_prefs(std::ostream& body);
+    void write_profiles(std::ostream& body);
+    void write_proposal_comments(std::ostream& body);
+    void write_proposals(std::ostream& body);
     void drop_requests_between(const std::string& a, const std::string& b);
     void strip_inner_both(const std::string& a, const std::string& b);
     // Shared by feed_for/feed_view: whether a confirmed, non-blocked friend
     // gets to see this Friends/Anybody post at all. See its own comment in
-    // file_store.cpp.
+    // src/records/posts.cpp.
     bool friend_sees_post(const Post& p, const std::string& viewer) const;
 
     std::string path_;

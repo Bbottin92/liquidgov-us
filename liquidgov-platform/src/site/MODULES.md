@@ -33,7 +33,28 @@ module `.cpp` files, in build order, lives in one place: `sources.cmake` (CMakeL
   inside C++ strings. A script that needs per-page values gets them from a one-line inline settings object set just
   before it loads (`jukebox.js` reads `window.LG_JUKEBOX`). Still inline: `canvas_tool_page`.
 
-## Not split yet
+## The store (`libs/liquidgov_file_store`)
 
-- `libs/liquidgov_file_store/src/file_store.cpp` (3,551 lines): its own library already; split after this deploy,
-  together with `deploy/rollback_guard.py`, which reads it by path (Brandon 2026-11-12).
+Split the same way on 2026-11-12 (was one 3,809-line `file_store.cpp`; code moved, not rewritten; the store's bytes
+on disk are unchanged, proven by `tests/store_roundtrip_test.cpp`; redone on 2026-11-13 on top of the styles and here
+records, proven again for those by `tests/store_roundtrip_styles_here_test.cpp`). Its file list is `libs/liquidgov_file_store/sources.cmake`
+(CMake, `deploy/rollback_guard.py`, `lgp1_consistency.py`, `program_messaging_test.cpp` and `store_split_check.py`
+all read it).
+
+| File | What lives there |
+|---|---|
+| `src/file_store.cpp` | The frame: `load()` (offers each line to every module's `read_*`, then runs the `finish_*` in order) and `flush()` (calls the `write_*` sections in the order the store has always been written). Both orders live here only. |
+| `src/core/codec` | The field encoding every module uses (percent-encoding, tab split, number parsing). |
+| `src/core/load_pending.hpp` | Rows `load()` parks until every line is read. |
+| `src/records/<module>.cpp` | One family of record types: its store methods, `read_<module>`, `finish_*`, `write_*`. Modules: `accounts`, `admin`, `avatars`, `city`, `communities`, `conversations`, `counters`, `jukebox`, `mail`, `notices`, `pains`, `posts`, `prefs`, `profile`, `proposal_comments`, `proposals`, `social`, `styles`, `here`. |
+| `include/liquidgov/platform/records/<family>.hpp` | One family's types and helpers (structs, enums, constants, free functions): `accounts`, `admin`, `city`, `communities`, `jukebox`, `mail`, `notices`, `pains`, `posts`, `prefs`, `profile`, `proposals`, `social`, `styles`. `file_store.hpp` includes them all and declares `FileStore`; its header comment still holds every record type's LGP1 format (the checks read it there). |
+
+A new LGP1 record type: document it in `file_store.hpp`'s header comment; put its types in its family's
+`records/<family>.hpp`; read it in its module's `read_*` (the
+field-count check first, as every type does: the rollback guard reads the first one) and write it in its `write_*`;
+a new module goes in `sources.cmake` and its calls in `file_store.cpp`; add rows for it to a
+NEW round-trip fixture and test (the existing ones are frozen; store_split_check.py requires a row of every type across
+`tests/fixtures/lgp1_roundtrip*/`), with expected answers written by the code before the change; give it a
+`deploy/<feature>-undo.py` with a `<NAME>_TAGS` tuple and a `tests/rollback/<feature>_undo.sh` (undo_lists_check.py).
+`FileStore` itself is still one class: a new record type changes it, so every file that includes `file_store.hpp`
+recompiles. Only the record types' own declarations are split out. `lgp1_consistency.py` checks all of that.

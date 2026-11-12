@@ -50,6 +50,7 @@ CHECKS = {
     "affected_checks_check.py": [],
     "affected_checks_master_check.py": [],
     "ci_runs_checks_check.py": [".github/workflows/*", "scripts/run_hook_checks.py", "commons-daemon/tests/*"],
+    "ci_skip_list_check.py": ["scripts/run_hook_checks.py", "commons-daemon/tests/*"],
 }
 EVERYTHING = [".githooks/*", "scripts/affected_checks.py"]
 

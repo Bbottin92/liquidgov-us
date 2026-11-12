@@ -8,15 +8,23 @@ The list is affected_checks.py's (is_check + run_order), the same one the hooks 
 run here without editing this script or the workflow. Each check gets the repo root as its argument, as in pre-push.
 Prints each check's last line, the FAIL lines of a failing one, then "SUMMARY hook-checks passes=N fails=M".
 Exit 1 when any check fails, times out or can't start, or when no check is found (an empty run is not a pass).
+A check that exits 0 but prints passes=0 ran no cases: that fails the run too.
+WINDOWS_ONLY checks test PC-only tools (tidy_worktrees.py: Windows junctions via cmd /c mklink, in-use folders). Off
+Windows they are not run and are listed on a "SKIPPED (Windows-only)" line, never counted as passed; the git hooks on
+the PC still run them (Brandon 2026-11-12, after GitHub run 43302640573). LG_CHECKS_PLATFORM overrides sys.platform
+(for ci_skip_list_check.py).
 
 Usage: python3 scripts/run_hook_checks.py <repo root> [--list]   (--list prints the check names and runs nothing)"""
 import importlib.util
 import os
+import re
 import subprocess
 import sys
 import time
 
 TIMEOUT = 600  # seconds per check; the slowest (temp git repos, fake gh) take a few seconds
+WINDOWS_ONLY = ("tidy_worktrees_check.py", "tidy_in_use_check.py")
+NO_CASES = re.compile(r"\bpasses=0\b")
 
 
 def load_selector(root):
@@ -51,6 +59,9 @@ def main(argv):
         print("SUMMARY hook-checks passes=0 fails=1")
         return 1
     env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    on_windows = os.environ.get("LG_CHECKS_PLATFORM", sys.platform).startswith("win")
+    skipped = [] if on_windows else [n for n in names if n in WINDOWS_ONLY]
+    names = [n for n in names if n not in skipped]
     failed = []
     for name in names:
         start = time.time()
@@ -64,10 +75,15 @@ def main(argv):
             rc, out = "error", "FAIL could not start: %r" % e
         lines = out.splitlines() or ["(no output)"]
         print("== %s: exit %s (%.1f s) | %s" % (name, rc, time.time() - start, lines[-1]), flush=True)
-        if rc != 0:
+        if rc == 0 and NO_CASES.search(lines[-1]):
+            failed.append(name)
+            print("   FAIL %s ran no cases (passes=0): not a pass" % name, flush=True)
+        elif rc != 0:
             failed.append(name)
             shown = [l for l in lines if "FAIL" in l][:30] or lines[-20:]
             print("\n".join("   " + l for l in shown), flush=True)
+    if skipped:
+        print("SKIPPED (Windows-only): %s  (not passed; the PC's git hooks run them)" % " ".join(skipped))
     print("SUMMARY hook-checks passes=%d fails=%d" % (len(names) - len(failed), len(failed)))
     if failed:
         print("failed: " + " ".join(failed))

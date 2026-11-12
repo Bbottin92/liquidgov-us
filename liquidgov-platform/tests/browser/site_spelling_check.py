@@ -15,7 +15,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 BRITISH = re.compile(r"\b(colours?|coloured|centres?|centred|cancell(?:ed|ing)|behaviours?|favourites?|"
                      r"organis(?:e|ed|es|ing|ation|ations)|recognis(?:e|ed|es|ing)|licences?|neighbours?|honours?)\b",
                      re.IGNORECASE)
-LIT = {".cpp": re.compile(r'"((?:[^"\\\n]|\\.)*)"'), ".js": re.compile(r"'((?:[^'\\\n]|\\.)*)'|\"((?:[^\"\\\n]|\\.)*)\"")}
+LIT = {".cpp": re.compile(r'"((?:[^"\\\n]|\\.)*)"'), ".hpp": re.compile(r'"((?:[^"\\\n]|\\.)*)"'), ".js":re.compile(r"'((?:[^'\\\n]|\\.)*)'|\"((?:[^\"\\\n]|\\.)*)\"")}
 
 
 def hits(path):

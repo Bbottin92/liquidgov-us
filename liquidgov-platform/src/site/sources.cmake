@@ -1,0 +1,43 @@
+# Site modules, in their original order (CMakeLists.txt and tests/browser/server_source.py read this).
+set(LG_SITE_SOURCES
+  src/site/core/state.cpp
+  src/site/core/adapters_store.cpp
+  src/site/core/text.cpp
+  src/site/core/net.cpp
+  src/site/core/html.cpp
+  src/site/features/profile/profile_css.cpp
+  src/site/ui/assets.cpp
+  src/site/ui/site_css.cpp
+  src/site/ui/favicon_cookies.cpp
+  src/site/ui/shell.cpp
+  src/site/core/http.cpp
+  src/site/ui/wrap.cpp
+  src/site/core/multipart.cpp
+  src/site/core/names_categories.cpp
+  src/site/features/pains/pains.cpp
+  src/site/features/map/map_rules.cpp
+  src/site/features/map/map_graph.cpp
+  src/site/features/map/map_svg.cpp
+  src/site/features/mail/mail_attachments.cpp
+  src/site/features/profile/portrait.cpp
+  src/site/features/jukebox/jukebox_browse.cpp
+  src/site/features/people/people.cpp
+  src/site/features/notices/notices.cpp
+  src/site/features/mail/mail_pages.cpp
+  src/site/features/canvas/canvas.cpp
+  src/site/features/live/live_sessions.cpp
+  src/site/features/jukebox/jukebox_script.cpp
+  src/site/features/jukebox/jukebox_widget.cpp
+  src/site/features/pages/genesis.cpp
+  src/site/features/map/map_page.cpp
+  src/site/features/pages/home.cpp
+  src/site/features/pages/static_pages.cpp
+  src/site/features/admin/admin.cpp
+  src/site/features/auth/signup.cpp
+  src/site/features/feed/post_block.cpp
+  src/site/features/proposals/proposals.cpp
+  src/site/features/feed/composer.cpp
+  src/site/features/jukebox/jukebox_personal.cpp
+  src/site/features/push/push_subs.cpp
+  src/site/router.cpp
+)

@@ -58,9 +58,12 @@ target_compile_definitions(liquidgov_platform_program_messaging_test PRIVATE LG_
 add_executable(liquidgov_e2e_seed tests/e2e/seed.cpp)
 target_link_libraries(liquidgov_e2e_seed PRIVATE liquidgov_auth liquidgov_file_store)
 
-# Site process. Links every feature library http_server.cpp talks to directly.
+# Site process: src/http_server.cpp is main(); the site's modules are listed in src/site/sources.cmake (one .cpp +
+# .hpp per feature under src/site/core, ui and features/<name>). Links every feature library the site talks to.
 find_package(Threads REQUIRED)
-add_executable(liquidgov_http src/http_server.cpp)
+include(${CMAKE_CURRENT_SOURCE_DIR}/src/site/sources.cmake)
+add_executable(liquidgov_http src/http_server.cpp ${LG_SITE_SOURCES})
+target_include_directories(liquidgov_http PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(liquidgov_http PRIVATE
     liquidgov_auth
     liquidgov_avatar

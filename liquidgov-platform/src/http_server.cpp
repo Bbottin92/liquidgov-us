@@ -1207,7 +1207,13 @@ std::string css() {
         // widths before -- the decorative tagline was the difference
         // between fitting on one row and wrapping to two in testing.
         "@media(max-width:480px){.brand .tagline{display:none}.topinner{gap:.45rem .3rem;padding-left:.7rem;padding-right:.7rem}}"
-        "@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}";
+        "@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}"
+        // Last, so it beats every element and one-class rule above (button,.btn{display:inline-flex}, .row{display:
+        // flex}, ...) that would otherwise beat the browser's own [hidden]{display:none}: a hidden Retry showed on
+        // /me (Brief 6). Not !important, so a deliberate [hidden] rule with more weight (lgmap.css's
+        // .lgm-filter-note[hidden], visibility only) still wins. Covers the case the .dropdown-panel[hidden] rule and
+        // ctextrow's style.display work around one at a time.
+        "[hidden]{display:none}";
 }
 
 std::string favicon_svg() {

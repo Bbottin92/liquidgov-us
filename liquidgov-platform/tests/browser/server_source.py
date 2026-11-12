@@ -3,8 +3,8 @@
 The site server was one file, liquidgov-platform/src/http_server.cpp. It is now split into modules (Brandon
 2026-11-12, "make it modular"): src/http_server.cpp is main(), and src/site/sources.cmake lists the module .cpp files
 (each with its .hpp beside it), in the original order. CMakeLists.txt builds from that same list. Checks that read the
-server's literals (CSS, markup, routes) call read(platform_dir) to get every module's text: site/common.hpp, then each
-module's .hpp and .cpp in sources.cmake order, then http_server.cpp.
+server's literals (CSS, markup, routes) call read(platform_dir) to get every module's text: each module's .cpp in
+sources.cmake order, then site/common.hpp and the module headers, then http_server.cpp.
 
 Older layouts still read correctly: stage A (http_server.cpp #includes "site/....inc" pieces, expanded in place) and
 the single http_server.cpp of old trees and of the fake roots some self-tests build (returned as is).
@@ -54,15 +54,17 @@ def pieces(platform_dir):
         cpps = SOURCE.findall(_read(listing))
         if not cpps:
             raise ValueError("server_source: %s lists no src/site/*.cpp files" % listing)
-        out = ["site/common.hpp"] if os.path.isfile(os.path.join(src_dir, "site", "common.hpp")) else []
+        # Every .cpp (original order) comes before every header, so a check's src.index("std::string f(") finds f's
+        # definition, never its one-line declaration in a header (that cut the wrong text: 3 autosave checks, CI
+        # run 43218792081).
+        headers = ["site/common.hpp"] if os.path.isfile(os.path.join(src_dir, "site", "common.hpp")) else []
         for c in cpps:
-            h = c[:-4] + ".hpp"
-            if os.path.isfile(os.path.join(src_dir, h.replace("/", os.sep))):
-                out.append(h)
             if not os.path.isfile(os.path.join(src_dir, c.replace("/", os.sep))):
                 raise FileNotFoundError("server_source: sources.cmake lists %s, which does not exist" % c)
-            out.append(c)
-        return out
+            h = c[:-4] + ".hpp"
+            if os.path.isfile(os.path.join(src_dir, h.replace("/", os.sep))):
+                headers.append(h)
+        return list(cpps) + headers
     return [m.group(1) for m in (PIECE.match(l) for l in _read(os.path.join(src_dir, "http_server.cpp"))
                                  .splitlines(keepends=True)) if m]
 

@@ -8309,6 +8309,13 @@ std::string fmt_ballot_num(double v) {
     return o.str();
 }
 
+// The one-line how-to on /proposals and /officials (Brief 7 item 2, the audit's wording).
+std::string how_proposals_work_html() {
+    return "<p class=\"muted\"><strong>How this works:</strong> Anyone with an account can start a question or add "
+           "their answer. You can change your answer at any time. This is a straw poll, not an official election, and "
+           "nothing is sent to the city.</p>";
+}
+
 std::string proposal_talk(const Proposal& p, const std::string& viewer, const std::string& next_in);
 
 // The Choice answer: one button per option with its count, posting the option INDEX (payload_ok takes only an
@@ -8370,10 +8377,10 @@ std::string proposal_block(const Proposal& p, const std::string& viewer, const s
         : "<input type=\"hidden\" name=\"next\" value=\""+html_escape(back)+"\">";
     std::string kindEyebrow;
     switch (p.ballot.kind) {
-        case BallotKind::YesNo: kindEyebrow = "Yes / No"; break;
+        case BallotKind::YesNo: kindEyebrow = "Yes, no, or skip"; break;
         case BallotKind::Number: kindEyebrow = p.ballot.unit.empty() ? "Number" : html_escape(p.ballot.unit); break;
         case BallotKind::Date: kindEyebrow = "Date"; break;
-        case BallotKind::Choice: kindEyebrow = p.ballot.open_choice ? "Open choice" : "Choice"; break;
+        case BallotKind::Choice: kindEyebrow = p.ballot.open_choice ? "Pick one (people can add options)" : "Pick one"; break;
         case BallotKind::Scale: kindEyebrow = "Scale"; break;
     }
     std::string body;
@@ -8455,7 +8462,7 @@ std::string proposal_block(const Proposal& p, const std::string& viewer, const s
                 if (mine) voteForm += " value=\""+html_escape(*mine)+"\"";
                 voteForm += ">";
             }
-            voteForm += "<button>Cast</button></form>";
+            voteForm += "<button>Save my answer</button></form>";
         }
         body = summary + voteForm;
     }
@@ -9890,10 +9897,9 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
                 tag_fields = "<label>Departments and councils</label>" + tag_fields;
         }
         std::string html = "<h1>Proposals</h1>"
-            // Plain words (sweep 2026-11-09): same honesty as before, without "CitizenId" and an unexplained "Phase 2".
-            "<p class=\"muted\">Unofficial straw polls &mdash; a way to see how people feel about something not yet "
-            "decided. Not binding, and not an identity-verified vote: that only comes later, in "
-            "<a href=\"/laws/13\">Phase 2</a>. Discussion only. Nothing is sent to the city.</p>";
+            // Brief 7 item 2 (PROPOSALS-AUDIT section 4): how to use the page, in one line. The Phase 2 link to /laws/13 sent
+            // members into charter text; it stays in Laws and on /control.
+            + how_proposals_work_html();
         html += "<p class=\"muted\"><a href=\"/officials\">Races for office</a> are on their own page.</p>";
         if (!filter_key.empty()) {
             std::string name = filter_key;
@@ -9920,7 +9926,7 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
                 "<textarea name=\"body\" maxlength=\"4000\" required placeholder=\"Plain text.\"></textarea>"
                 "<label>How should people answer?</label>"
                 "<select name=\"kind\" id=\"bkind\">"
-                "<option value=\"0\">Yes / No / Abstain</option>"
+                "<option value=\"0\">Yes, no, or skip</option>"
                 "<option value=\"1\">A number</option>"
                 "<option value=\"2\">A date</option>"
                 "<option value=\"3\">Pick one option</option>"
@@ -9936,7 +9942,7 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
                 "<textarea name=\"options\" maxlength=\"800\" placeholder=\"One option per line\"></textarea>"
                 "<label class=\"row\" style=\"gap:.4rem;align-items:center;margin-top:.4rem\">"
                 "<input type=\"checkbox\" name=\"open\" value=\"1\"> "
-                "Allow people to add a choice (one each, besides you)</label>"
+                "Let people add another option <span class=\"muted\">(one each, besides you)</span></label>"
                 "</div>"
                 "<div id=\"bscale\" hidden>"
                 "<label>Left label</label><input name=\"left\" maxlength=\"40\" placeholder=\"Too little\">"
@@ -9945,10 +9951,10 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
                 "<label>City (optional)</label>"
                 "<input name=\"city\" list=\"citylist\" maxlength=\"80\" autocomplete=\"off\" placeholder=\"Fresno, CA\""
                 + city_value + ">"
-                "<label>Who could act on it (optional)</label>"
+                "<label>Who could act on this? <span class=\"muted\">(optional, for example &ldquo;The city council&rdquo;)</span></label>"
                 "<input name=\"who\" maxlength=\"80\" placeholder=\"The city council\">"
                 + tag_fields +
-                "<button>Open for votes</button></form>"
+                "<button>Publish</button></form>"
                 + city_datalist_html() +
                 "<script>"
                 "(function(){var s=document.getElementById('bkind');if(!s)return;"
@@ -12099,6 +12105,7 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         return http_ok(wrap("Officials", user, unread,
             std::string("<h1>Officials</h1>"
             "<p class=\"muted\">Account vote only. Not a certified election and not proof of residency.</p>")
+            + how_proposals_work_html()
             + cards + form));
     }
     if(method=="POST"&&path=="/officials") {

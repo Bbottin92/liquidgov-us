@@ -516,7 +516,7 @@
   // the button only panned the map, and did nothing at deep levels). The MAINstream becomes the center: the ring clears,
   // its cities and Sitewide go round it; the trail says You > MAINstream, whatever level you came from.
   function toMainstream() {
-    if (centerId() === 'root') { fitAll(true); return; }
+    if (centerId() === 'root') { fitAll(narrow()); return; }
     var go = function (d) { centerPath = centerPath.slice(0, 1); select(nodes.root || d, 'now'); };
     if (nodes.root) { go(nodes.root); return; }
     status('Loading…');
@@ -735,7 +735,7 @@
       light(n.id);
       // on the ring (you or one of your kinds) keep the whole open map in view instead of sliding the tapped box to the
       // edge (2026-11-11 CI screenshot: tapping Friends cut the cards off at the left)
-      setTimeout(function () { if (selected === n) fitAll(true); }, wait);
+      setTimeout(function () { if (selected === n) fitAll(narrow()); }, wait);
     });
   }
 
@@ -764,7 +764,7 @@
     panel.classList.remove('full');
     root.classList.remove('lgm-has-panel');
     document.documentElement.classList.remove('lgm-sheet-open');
-    if (selected) fitAll(true);   // the map gets its width back: fit the ring to it again
+    if (selected) fitAll(narrow());   // the map gets its width back: fit the ring to it again
   }
   // A link inside the framed page that goes to the map would open a map inside the map (advisor catch,
   // 2026-11-07): take it at the top level instead, focusing the box when it is on the map already.
@@ -837,25 +837,41 @@
   var box = svg.getBoundingClientRect();
   ty = box.height / 2 - H / 2;
   apply();
-  // Fit every box on the map into view (not under 0.6x; a phone uses focusOn's own rule instead).
-  // top: place the boxes near the top of the frame instead of centering them (the first view: centered, the Juketube tip
-  // that first-time visitors see covered the you box on a phone, phone_check 4/4b + #jbhint probe 2026-11-11).
+  // Fit every box on the map into the frame, centered (live look #3 and #8: boxes ran off the left edge with the side
+  // panel open, and the ring sat in the top half with the bottom empty). Not over 1x; not under 0.4x on a desktop
+  // (0.6x on a phone), so a ring too big for the frame is the only thing that can still be cut off.
+  // top: place the boxes near the top of the frame instead (phones: the Juketube tip that first-time visitors see
+  // covered the you box when centered, phone_check 4/4b + #jbhint probe 2026-11-11).
   function fitAll(top) {
     var b = svg.getBoundingClientRect(), ids = Object.keys(nodes);
     if (!b.width || !ids.length) return;
     var x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-    ids.forEach(function (id) { var n = nodes[id]; x0 = Math.min(x0, leftX(n)); x1 = Math.max(x1, rightX(n)); y0 = Math.min(y0, n.y); y1 = Math.max(y1, n.y + H); });
-    y1 += 40; // room for "Open your page" under the you box
+    ids.forEach(function (id) {
+      // each box's real height at its size: the you circle reaches well above and below its row, and "Open your page" under it
+      var n = nodes[id], s = sizeOf(n), c = n.y + H / 2;
+      var up = n.kind === 'you' ? YOU_R * s : (n.kind === 'mine' ? H + 10 : H) / 2 * s, down = n.kind === 'you' ? YOU_R + 34 : up;
+      x0 = Math.min(x0, leftX(n)); x1 = Math.max(x1, rightX(n)); y0 = Math.min(y0, c - up); y1 = Math.max(y1, c + down);
+    });
     var ring = document.getElementById('lgm-ring'); // the whole dotted ring stays in view too (a 1-item ring zoomed in
     if (ring) {                                      // and cut it off, CI screenshot 2026-11-11)
       var cx = +ring.getAttribute('cx'), cy = +ring.getAttribute('cy'), rx = +ring.getAttribute('rx'), ry = +ring.getAttribute('ry');
       x0 = Math.min(x0, cx - rx); x1 = Math.max(x1, cx + rx); y0 = Math.min(y0, cy - ry); y1 = Math.max(y1, cy + ry);
     }
-    scale = Math.max(0.6, Math.min(top ? 1 : 1.1, (b.width - 40) / (x1 - x0), (b.height - 40) / (y1 - y0)));
+    scale = Math.max(narrow() ? 0.6 : 0.4, Math.min(1, (b.width - 40) / (x1 - x0), (b.height - 40) / (y1 - y0)));
     tx = Math.round((b.width - (x1 - x0) * scale) / 2 - x0 * scale);
     ty = top ? Math.round(16 - y0 * scale) : Math.round((b.height - (y1 - y0) * scale) / 2 - y0 * scale);
-    apply(!top); // the first view is placed, not glided in
+    apply(false); // placed, not glided in
   }
+  // the map's width changed (window resized, side panel): fit again. Height alone is a phone's address bar coming and
+  // going while the page scrolls; that must not move the map.
+  var fitW = 0, fitTimer = 0;
+  window.addEventListener('resize', function () {
+    clearTimeout(fitTimer);
+    fitTimer = setTimeout(function () {
+      var w = svg.getBoundingClientRect().width;
+      if (w && Math.abs(w - fitW) > 1) { fitW = w; fitAll(narrow()); }
+    }, 150);
+  });
   // M1.1 (Brandon 2026-11-10): the map starts at you, with your kinds of connection (Friends, Groups, Places,
   // Politics, Problems) as the first ring. The whole site (MAINstream) is under Places, and its button still works.
   load('you').then(function (data) {
@@ -868,7 +884,7 @@
     return expand(r);
   }).then(function () {
     var focus = root.getAttribute('data-focus');
-    if (!focus) { fitAll(true); return; } // the whole ring in view near the top, phone included (nothing cut off or covered)
+    if (!focus) { fitAll(narrow()); return; } // the whole ring in view near the top, phone included (nothing cut off or covered)
     if (nodes[focus]) { select(nodes[focus], !narrow()); return; }
     return load(focus).then(function (data) {
       var n = addNode(data.node, 0, 0);

@@ -961,39 +961,21 @@ std::string css() {
         "button.danger,.btn.danger{background:var(--danger);color:#f7f1e4}"
         ".row{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}"
         ".toolgroup-sep{width:1px;align-self:stretch;background:var(--rule);margin:0 .15rem}"
-        // Below this width .canvas-frame's three children (tool row,
-        // the .cprops wrapper, and the canvas+layers row) just stack in
-        // that order -- exactly what rendered before this rule existed.
-        // At or above it, the tool icons wrap vertically down the
-        // canvas's left edge (a real toolbox column, full height); the
-        // .cprops wrapper -- itself holding the colour/size/opacity row,
-        // the glow/mirror/fill row, and the hidden text row, stacked by
-        // normal block flow -- wraps horizontally across the top edge (a
-        // real options bar). That's deliberately one wrapping element
-        // grid-placed once, not three separate items placed at the same
-        // grid-row/grid-column: CSS Grid overlaps same-cell items rather
-        // than stacking them, which is exactly what broke the first
-        // version of this layout live. Together this forms an L-shaped
-        // frame around two adjacent sides of the canvas+layers area at
-        // bottom-right, the same corner arrangement Photoshop/Procreate/
-        // every real paint app uses, without moving any of the underlying
-        // markup (so DOM/tab/reading order is identical at every width).
-        // A fourth edge (undo/redo/clear plus the selection actions)
-        // closes out the frame along the canvas's bottom, so the tool
-        // column now spans three rows instead of two to stay one
-        // continuous edge alongside all of them.
-        "@media(min-width:900px){.canvas-frame{display:grid;"
-        "grid-template-columns:auto 1fr;grid-template-rows:auto auto auto;gap:.6rem;align-items:stretch}"
-        // A single-file column, one icon wide -- not a 2-up grid, which
-        // read as a block of icons rather than a strip wrapping the
-        // canvas's edge.
-        ".canvas-frame>:nth-child(1){grid-column:1;grid-row:1/4;display:flex;"
-        "flex-direction:column;flex-wrap:nowrap;justify-content:space-between}"
-        ".canvas-frame>:nth-child(1) .toolgroup-sep{width:100%;height:1px;margin:.2rem 0}"
-        ".canvas-frame>:nth-child(2){grid-column:2;grid-row:1}"
-        ".canvas-frame>:nth-child(3){grid-column:2;grid-row:2}"
-        ".canvas-frame>:nth-child(4){grid-column:2;grid-row:3}"
-        "}"
+        // Drawing canvas (Brandon 2026-11-11 4:37 PM, Brief 4 item 7; site-look2 FINDINGS 1 found the surface using
+        // under half the card and the controls on three sides): one toolbar above a drawing surface that fills the
+        // card's width at its own shape. The toolbar's four groups (tools | size, opacity, colour | layers | undo and
+        // clipboard) sit side by side with a hairline between, and wrap whole lines at narrow widths, so nothing is cut
+        // off sideways. On a phone the inner frame drops its own card padding so the surface stays large.
+        ".ctoolbar{display:flex;flex-wrap:wrap;gap:.5rem .7rem;align-items:center;margin-bottom:.7rem}"
+        ".ctgroup{display:flex;flex-wrap:wrap;gap:.3rem;align-items:center;min-width:0;max-width:100%;"
+        "padding-right:.7rem;border-right:1px solid var(--rule)}"
+        ".ctgroup:last-child{padding-right:0;border-right:0}"
+        ".cprops .row{margin-bottom:0!important}"
+        ".clayers>div{flex-direction:column}"
+        ".ccanvasrow #ccanvaswrap{width:100%}"
+        "@media(max-width:600px){.canvascard{padding:.8rem .7rem}"
+        ".canvas-frame{padding:0;border:0;box-shadow:none;background:none}"
+        ".ctgroup{padding-right:0;border-right:0}}"
         ".person,.sess,.msg,.post{border-top:1px solid var(--rule);padding:.7rem 0;display:flex;"
         "justify-content:space-between;gap:.8rem;flex-wrap:wrap;align-items:flex-start}"
         ".person:first-of-type,.sess:first-of-type,.msg:first-of-type,.post:first-of-type{border-top:0}"
@@ -4511,7 +4493,7 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         : "Draw, then save it as your profile background &mdash; a still image, "
           "or a loop of the drawing as it happened.";
     std::string html =
-        "<div class=\"card\"><h1>"+title+"</h1>"
+        "<div class=\"card canvascard\"><h1>"+title+"</h1>"
         "<p class=\"muted\">"+intro+"</p>"+errHtml+
         // Everything about "what am I about to draw with" lives in one
         // bounded panel -- tool, then that tool's own properties, then
@@ -4531,11 +4513,14 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         // below that width it's simply the original stacked column, no
         // media query applies at all.
         "<div class=\"card canvas-frame\">"
+        // One toolbar above the drawing surface, four groups in order: tools | size, opacity, colour (and the Text
+        // tool's own row) | layers | undo, redo, clipboard (Brandon 2026-11-11, Brief 4 item 7). It wraps at narrow widths.
+        "<div class=\"ctoolbar\" role=\"toolbar\" aria-label=\"Drawing tools\">"
         // Three clusters, not one undifferentiated run of eleven icons:
         // freehand media, then shapes, then whole-canvas/utility tools --
         // each its own visual group with a hairline divider between,
         // read the same way a real paint app's toolbar groups by kind.
-        "<div class=\"row ctools\" style=\"flex-wrap:wrap;gap:.3rem;align-items:center;margin-bottom:.4rem\">"
+        "<div class=\"ctgroup ctools\" role=\"group\" aria-label=\"Tools\">"
         "<button type=\"button\" class=\"ghost toolbtn\" data-tool=\"pen\" title=\"Pen\" "
         "style=\"padding:.5rem .55rem\">"+kIconPen+"</button>"
         "<button type=\"button\" class=\"ghost toolbtn\" data-tool=\"marker\" title=\"Marker\" "
@@ -4570,7 +4555,7 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         // than stacking (that's what actually broke the first version of
         // this layout, live), so they need to be one single grid item
         // that stacks its own children by normal block flow internally.
-        "<div class=\"cprops\">"
+        "<div class=\"ctgroup cprops\" role=\"group\" aria-label=\"Size, opacity and colour\">"
         "<div class=\"row\" style=\"flex-wrap:wrap;gap:.4rem 1rem;align-items:center;margin-bottom:.4rem\">"
         "<input type=\"color\" id=\"ccolor\" value=\"#1a1814\" aria-label=\"Color\" "
         "style=\"width:36px;min-height:36px;padding:2px;flex:0 0 auto\">"
@@ -4647,34 +4632,8 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "</div>"
         "</div>"
         "</div>"
-        // Canvas, with its layer tabs on the right, as the fourth and
-        // final area of .canvas-frame -- filling the rest of the frame
-        // beside/under the tool column and properties strip above. No
-        // numbers on the layer tabs themselves: switching to one and
-        // seeing which is active (the highlighted background) is all a
-        // tab needs to communicate, and all three do the same job -- a
-        // number would just be one more thing to read, not new
-        // information. Each still gets its own opacity slider, a real
-        // per-layer property applied both live (CSS opacity on that
-        // layer's own <canvas>) and in flatten() so a saved/posted image
-        // matches what's on screen.
-        "<div class=\"ccanvasrow\" style=\"display:flex;gap:.5rem;align-items:flex-start\">"
-        "<div id=\"ccanvaswrap\" style=\"position:relative;flex:1;min-width:0;max-width:"+cws+"px;"
-        "aspect-ratio:"+aspect+";background:#fff;border:1px solid var(--rule);"
-        "border-radius:var(--rsm);overflow:hidden;touch-action:none\">"
-        "<canvas id=\"clayer0\" width=\""+cws+"\" height=\""+chs+"\" "
-        "style=\"position:absolute;inset:0;width:100%;height:100%\"></canvas>"
-        "<canvas id=\"clayer1\" width=\""+cws+"\" height=\""+chs+"\" "
-        "style=\"position:absolute;inset:0;width:100%;height:100%\"></canvas>"
-        "<canvas id=\"clayer2\" width=\""+cws+"\" height=\""+chs+"\" "
-        "style=\"position:absolute;inset:0;width:100%;height:100%\"></canvas>"
-        "<canvas id=\"coverlay\" width=\""+cws+"\" height=\""+chs+"\" "
-        "style=\"position:absolute;inset:0;width:100%;height:100%;cursor:crosshair\"></canvas>"
-        "<div id=\"cresizehandle\" title=\"Drag to resize the canvas\" "
-        "style=\"position:absolute;right:0;bottom:0;width:16px;height:16px;padding:2px;"
-        "cursor:nwse-resize;z-index:11;touch-action:none;color:var(--stone)\">"+kIconResizeGrip+"</div>"
-        "</div>"
-        "<div style=\"display:flex;flex-direction:column;gap:.6rem;width:2.6rem\">"
+        // the layer tabs, each over its own opacity slider (Brief 4 item 7: in the toolbar, not beside the canvas)
+        "<div class=\"ctgroup clayers\" role=\"group\" aria-label=\"Layers\">"
         "<div style=\"display:flex;flex-direction:column;gap:.15rem;align-items:center\">"
         "<button type=\"button\" class=\"ghost layerbtn\" data-layer=\"0\" title=\"Switch to layer 1\" "
         "style=\"width:2.4rem;padding:.5rem 0\">"+kIconLayer+"</button>"
@@ -4694,14 +4653,13 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "title=\"Layer 3 opacity\" style=\"width:2.4rem\">"
         "</div>"
         "</div>"
-        "</div>"
         // Undo/redo/clear and the selection actions (copy/cut/paste/crop)
         // complete the frame with a third edge along the canvas's bottom,
         // one row thick like the other two -- both groups act on the
         // canvas as a whole rather than being "what the next stroke looks
         // like", which is why they're grouped apart from the tool/
         // properties edges above rather than mixed into them.
-        "<div class=\"row\" style=\"flex-wrap:wrap;gap:.4rem;align-items:center\">"
+        "<div class=\"ctgroup cedit\" role=\"group\" aria-label=\"Undo and selection\">"
         "<button type=\"button\" class=\"ghost\" id=\"cundo\" title=\"Undo\">&#8617;</button>"
         "<button type=\"button\" class=\"ghost\" id=\"credo\" title=\"Redo\">&#8618;</button>"
         "<button type=\"button\" class=\"ghost\" id=\"cclear\">Clear layer</button>"
@@ -4721,6 +4679,35 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "style=\"padding:.5rem .55rem\">"+kIconPaste+"</button>"
         "<button type=\"button\" class=\"ghost\" id=\"ccrop\" title=\"Apply crop to selection\" "
         "style=\"padding:.5rem .55rem\">"+kIconCrop+"</button>"
+        "</div>"
+        "</div>" // end of the toolbar
+        // Canvas, with its layer tabs on the right, as the fourth and
+        // final area of .canvas-frame -- filling the rest of the frame
+        // beside/under the tool column and properties strip above. No
+        // numbers on the layer tabs themselves: switching to one and
+        // seeing which is active (the highlighted background) is all a
+        // tab needs to communicate, and all three do the same job -- a
+        // number would just be one more thing to read, not new
+        // information. Each still gets its own opacity slider, a real
+        // per-layer property applied both live (CSS opacity on that
+        // layer's own <canvas>) and in flatten() so a saved/posted image
+        // matches what's on screen.
+        "<div class=\"ccanvasrow\" style=\"display:flex;gap:.5rem;align-items:flex-start\">"
+        "<div id=\"ccanvaswrap\" style=\"position:relative;flex:1;min-width:0;"
+        "aspect-ratio:"+aspect+";background:#fff;border:1px solid var(--rule);"
+        "border-radius:var(--rsm);overflow:hidden;touch-action:none\">"
+        "<canvas id=\"clayer0\" width=\""+cws+"\" height=\""+chs+"\" "
+        "style=\"position:absolute;inset:0;width:100%;height:100%\"></canvas>"
+        "<canvas id=\"clayer1\" width=\""+cws+"\" height=\""+chs+"\" "
+        "style=\"position:absolute;inset:0;width:100%;height:100%\"></canvas>"
+        "<canvas id=\"clayer2\" width=\""+cws+"\" height=\""+chs+"\" "
+        "style=\"position:absolute;inset:0;width:100%;height:100%\"></canvas>"
+        "<canvas id=\"coverlay\" width=\""+cws+"\" height=\""+chs+"\" "
+        "style=\"position:absolute;inset:0;width:100%;height:100%;cursor:crosshair\"></canvas>"
+        "<div id=\"cresizehandle\" title=\"Drag to resize the canvas\" "
+        "style=\"position:absolute;right:0;bottom:0;width:16px;height:16px;padding:2px;"
+        "cursor:nwse-resize;z-index:11;touch-action:none;color:var(--stone)\">"+kIconResizeGrip+"</div>"
+        "</div>"
         "</div>"
         "</div>";
     if (!portrait) {

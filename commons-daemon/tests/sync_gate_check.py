@@ -43,7 +43,7 @@ try:
     repo = os.path.join(tmp, "repo")
     os.makedirs(os.path.join(repo, "deploy"))
     os.makedirs(os.path.join(repo, "liquidgov-platform"))
-    for f in ("sync-to-droplet.sh", "ci-gate.sh"):
+    for f in ("sync-to-droplet.sh", "ci-gate.sh", "git-in-repo.sh"):
         src = os.path.join(ROOT, "deploy", f)
         if os.path.exists(src):
             shutil.copy2(src, os.path.join(repo, "deploy", f))

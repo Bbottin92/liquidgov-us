@@ -41,16 +41,8 @@ DRY=()
 # cannot read, so git.exe (Windows git through WSL interop) is tried next;
 # if neither can say whether the tree is clean, the sync refuses.
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-git_in_repo() {
-    local out
-    if out="$(git -C "$REPO" "$@" 2>/dev/null)"; then printf '%s' "$out"; return 0; fi
-    if command -v git.exe >/dev/null 2>&1 && command -v wslpath >/dev/null 2>&1; then
-        local wp; wp="$(wslpath -w "$REPO" 2>/dev/null)" || return 1
-        out="$(git.exe -C "$wp" "$@" 2>/dev/null)" || return 1
-        printf '%s' "${out//$'\r'/}"; return 0
-    fi
-    return 1
-}
+# shellcheck source=deploy/git-in-repo.sh
+. "$(dirname "${BASH_SOURCE[0]}")/git-in-repo.sh"
 if ! COMMIT="$(git_in_repo rev-parse --short HEAD)"; then
     COMMIT=""
 fi

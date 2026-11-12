@@ -37,6 +37,7 @@ CHECKS = {
     "make_go_dry_label_check.py": DEPLOY,
     "ci_gate_check.py": DEPLOY,
     "sync_gate_check.py": DEPLOY,
+    "ci_gate_interop_check.py": DEPLOY,
     "rollback_guard_check.py": DEPLOY + ["liquidgov-platform/libs/liquidgov_file_store/*"],
     "narration_files_check.py": [SRC, ASSETS],
     "make_go_record_length_check.py": DEPLOY,

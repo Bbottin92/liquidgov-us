@@ -148,7 +148,7 @@ try:
     srepo = os.path.join(tmp, "sync")
     for d in ("deploy", os.path.dirname(STORE)):
         os.makedirs(os.path.join(srepo, d), exist_ok=True)
-    for f in ("sync-to-droplet.sh", "ci-gate.sh", "rollback_guard.py"):
+    for f in ("sync-to-droplet.sh", "ci-gate.sh", "rollback_guard.py", "git-in-repo.sh"):
         if os.path.exists(os.path.join(ROOT, "deploy", f)):  # a missing one shows up as the FAILs below, not a crash
             shutil.copy2(os.path.join(ROOT, "deploy", f), os.path.join(srepo, "deploy", f))
     git(srepo, "init", "-q")

@@ -25,6 +25,7 @@ fail=0
 # tidy_worktrees_check.py and next_port_check.py (2026-11-08) run their scripts in throwaway trees.
 # ci_gate_check.py (2026-11-08): deploy/ci-gate.sh against a fake gh, and the gate call in every make-go script.
 # sync_gate_check.py (2026-11-09): sync-to-droplet.sh runs that gate on every real sync (covers the older go scripts).
+# ci_gate_interop_check.py (2026-11-12): the gate with a fake git.exe that drops calls (WSL interop): retried, never a silent skip.
 # rollback_guard_check.py (2026-11-09): the no-rollback guard, its rules on real history, and the sync's DEPLOYED_COMMIT.
 # narration_files_check.py (2026-11-09): a narration file for every Laws chapter (the route builds the name).
 # preflight_retry_check.py (2026-11-10): generated go scripts retry the preflight once on a WSL accept4 drop.

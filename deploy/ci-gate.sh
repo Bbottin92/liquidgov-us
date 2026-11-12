@@ -29,19 +29,9 @@ decide() { # $1 = OK|REFUSED, $2 = why
     exit 1
 }
 
-# Same fallback as sync-to-droplet.sh: this worktree's .git can point at a Windows path WSL git cannot read.
-# </dev/null on both: this runs inside the `while read` loop below, and git.exe through WSL interop reads stdin, which
-# swallowed the rest of the run list (live probe 2026-11-08: a red run past the first line came out as "no run").
-git_in_repo() {
-    local out
-    if out="$(git -C "$REPO" "$@" 2>/dev/null </dev/null)"; then printf '%s' "$out"; return 0; fi
-    if command -v git.exe >/dev/null 2>&1 && command -v wslpath >/dev/null 2>&1; then
-        local wp; wp="$(wslpath -w "$REPO" 2>/dev/null)" || return 1
-        out="$(git.exe -C "$wp" "$@" 2>/dev/null </dev/null)" || return 1
-        printf '%s' "${out//$'\r'/}"; return 0
-    fi
-    return 1
-}
+# git_in_repo: WSL git, then git.exe through interop with retries (deploy/git-in-repo.sh, shared with sync-to-droplet.sh)
+# shellcheck source=deploy/git-in-repo.sh
+. "$(dirname "${BASH_SOURCE[0]}")/git-in-repo.sh"
 
 if [ -n "${LIQUIDGOV_CI_OVERRIDE:-}" ]; then
     echo "CI_GATE_OVERRIDE: $LIQUIDGOV_CI_OVERRIDE"
@@ -67,7 +57,14 @@ RUNS="${RUNS//$'\r'/}"
 
 while read -r id sha status concl; do
     [ -n "${id:-}" ] || continue
-    t="$(git_in_repo rev-parse "$sha:liquidgov-platform" 2>/dev/null)" || continue # err-ok: a run for a commit this clone lacks cannot match
+    # One quick try first: most runs belong to other commits, and a commit this clone lacks always fails.
+    if ! t="$(LIQUIDGOV_GIT_TRIES=1 git_in_repo rev-parse "$sha:liquidgov-platform" 2>/dev/null)"; then
+        # A failure may be a dropped interop call, not a missing commit: if git no longer answers at all, refuse
+        # (2026-11-12: a dropped read made a green run look like "no platform CI run").
+        git_in_repo rev-parse --verify -q HEAD >/dev/null \
+            || decide REFUSED "(git stopped answering while reading the tree of run $id on ${sha:0:7})"
+        t="$(git_in_repo rev-parse "$sha:liquidgov-platform" 2>/dev/null)" || continue # err-ok: git answers HEAD, so this commit is missing from the clone and cannot match
+    fi
     [ "$t" = "$TREE" ] || continue
     if [ "$status" = completed ] && [ "${concl:-}" = success ]; then
         decide OK "platform run $id passed for commit ${sha:0:7} (liquidgov-platform tree ${TREE:0:12})"

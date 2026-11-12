@@ -8311,6 +8311,59 @@ std::string fmt_ballot_num(double v) {
 
 std::string proposal_talk(const Proposal& p, const std::string& viewer, const std::string& next_in);
 
+// The Choice answer: one button per option with its count, posting the option INDEX (payload_ok takes only an
+// index). Shared by proposal_block and /officials, so a race and a Choice proposal vote and count the same way
+// (Brief 7 item 1: /officials posted the name and every vote was dropped). noun: "choice" or "candidate".
+std::string choice_ballot_body(const Proposal& p, const std::string& viewer, const std::string& next_in,
+                               const std::string& noun) {
+    auto t = g_store.value_tally_of(p.id);
+    auto mine = viewer.empty() ? std::optional<std::string>{} : g_store.ballot_value_of(p.id, viewer);
+    int total = t.n;
+    std::string bar = "<div style=\"display:flex;height:8px;border-radius:4px;overflow:hidden;background:var(--rule);margin:.5rem 0\">";
+    if (total > 0) {
+        for (std::size_t i = 0; i < t.option_counts.size(); ++i) {
+            if (t.option_counts[i])
+                bar += "<div style=\"flex:"+std::to_string(t.option_counts[i])+";background:var(--accent)\"></div>";
+        }
+    }
+    bar += "</div>";
+    std::string list = "<div class=\"row\" style=\"flex-wrap:wrap;gap:.4rem\">";
+    for (std::size_t i = 0; i < p.ballot.options.size(); ++i) {
+        int n = (i < t.option_counts.size()) ? t.option_counts[i] : 0;
+        const bool active = mine && *mine == std::to_string(i);
+        if (!viewer.empty()) {
+            list += "<form class=\"inline\" method=\"POST\" action=\"/proposals/vote\">"
+                    "<input type=\"hidden\" name=\"id\" value=\""+std::to_string(p.id)+"\">"
+                    + next_in +
+                    "<input type=\"hidden\" name=\"value\" value=\""+std::to_string(i)+"\">"
+                    "<button class=\""+std::string(active ? "" : "ghost")+"\" type=\"submit\">"+
+                    html_escape(p.ballot.options[i])+" · "+std::to_string(n)+
+                    (active ? " &#10003;" : "")+"</button></form>";
+        } else {
+            list += "<span class=\"muted\">"+html_escape(p.ballot.options[i])+" · "+std::to_string(n)+"</span>";
+        }
+    }
+    list += "</div>";
+    if (!viewer.empty() && p.ballot.open_choice) {
+        bool already = false;
+        for (const auto& a : p.ballot.option_authors) if (a == viewer) { already = true; break; }
+        const bool can_add = (viewer == p.author) || !already;
+        if (can_add) {
+            list += "<form method=\"POST\" action=\"/proposals/option\" style=\"margin-top:.7rem\">"
+                    "<input type=\"hidden\" name=\"id\" value=\""+std::to_string(p.id)+"\">"
+                    + next_in +
+                    "<label>Add a "+noun
+                    + std::string(viewer == p.author ? "" : " <span class=\"muted\">(one per person)</span>")
+                    + "</label>"
+                    "<div class=\"row\"><input name=\"label\" maxlength=\"80\" required placeholder=\""+std::string(noun == "candidate" ? "A name" : "Your option")+"\">"
+                    "<button type=\"submit\">Add</button></div></form>";
+        } else {
+            list += "<p class=\"muted\">You already added a "+noun+" on this one.</p>";
+        }
+    }
+    return bar + "<p class=\"muted\">"+std::to_string(total)+" responses</p>" + list;
+}
+
 std::string proposal_block(const Proposal& p, const std::string& viewer, const std::string& next = "") {
     const std::string back = safe_next_path(next);
     const std::string next_in = back.empty() ? std::string()
@@ -8352,52 +8405,7 @@ std::string proposal_block(const Proposal& p, const std::string& viewer, const s
         }
         body = bar + voteForm;
     } else if (p.ballot.kind == BallotKind::Choice) {
-        auto t = g_store.value_tally_of(p.id);
-        auto mine = viewer.empty() ? std::optional<std::string>{} : g_store.ballot_value_of(p.id, viewer);
-        int total = t.n;
-        std::string bar = "<div style=\"display:flex;height:8px;border-radius:4px;overflow:hidden;background:var(--rule);margin:.5rem 0\">";
-        if (total > 0) {
-            for (std::size_t i = 0; i < t.option_counts.size(); ++i) {
-                if (t.option_counts[i])
-                    bar += "<div style=\"flex:"+std::to_string(t.option_counts[i])+";background:var(--accent)\"></div>";
-            }
-        }
-        bar += "</div>";
-        std::string list = "<div class=\"row\" style=\"flex-wrap:wrap;gap:.4rem\">";
-        for (std::size_t i = 0; i < p.ballot.options.size(); ++i) {
-            int n = (i < t.option_counts.size()) ? t.option_counts[i] : 0;
-            const bool active = mine && *mine == std::to_string(i);
-            if (!viewer.empty()) {
-                list += "<form class=\"inline\" method=\"POST\" action=\"/proposals/vote\">"
-                        "<input type=\"hidden\" name=\"id\" value=\""+std::to_string(p.id)+"\">"
-                        + next_in +
-                        "<input type=\"hidden\" name=\"value\" value=\""+std::to_string(i)+"\">"
-                        "<button class=\""+std::string(active ? "" : "ghost")+"\" type=\"submit\">"+
-                        html_escape(p.ballot.options[i])+" · "+std::to_string(n)+
-                        (active ? " &#10003;" : "")+"</button></form>";
-            } else {
-                list += "<span class=\"muted\">"+html_escape(p.ballot.options[i])+" · "+std::to_string(n)+"</span>";
-            }
-        }
-        list += "</div>";
-        if (!viewer.empty() && p.ballot.open_choice) {
-            bool already = false;
-            for (const auto& a : p.ballot.option_authors) if (a == viewer) { already = true; break; }
-            const bool can_add = (viewer == p.author) || !already;
-            if (can_add) {
-                list += "<form method=\"POST\" action=\"/proposals/option\" style=\"margin-top:.7rem\">"
-                        "<input type=\"hidden\" name=\"id\" value=\""+std::to_string(p.id)+"\">"
-                        + next_in +
-                        "<label>Add a choice"
-                        + std::string(viewer == p.author ? "" : " <span class=\"muted\">(one per person)</span>")
-                        + "</label>"
-                        "<div class=\"row\"><input name=\"label\" maxlength=\"80\" required placeholder=\"Your option\">"
-                        "<button type=\"submit\">Add</button></div></form>";
-            } else {
-                list += "<p class=\"muted\">You already added a choice on this one.</p>";
-            }
-        }
-        body = bar + "<p class=\"muted\">"+std::to_string(total)+" responses</p>" + list;
+        body = choice_ballot_body(p, viewer, next_in, "choice");
     } else {
         auto t = g_store.value_tally_of(p.id);
         auto mine = viewer.empty() ? std::optional<std::string>{} : g_store.ballot_value_of(p.id, viewer);
@@ -9849,6 +9857,8 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
             auto one = pid ? g_store.proposal_by_id(pid) : std::nullopt;
             if (!one) return http_code("404 Not Found", wrap("Not found", user, unread,
                 "<div class=\"card\"><p>No such proposal.</p><p><a href=\"/proposals\">Proposals</a></p></div>"));
+            // A race is shown and voted on /officials only (Brief 7 item 1: one object, one page).
+            if (one->is_office) return http_redir("/officials#proposal-" + std::to_string(one->id));
             const std::string self = "/proposals?id=" + std::to_string(one->id);
             return pg(one->title, "<p class=\"muted\"><a href=\"/proposals\">All proposals</a></p>"
                       "<div class=\"card\">" + proposal_block(*one, user, self) + "</div>");
@@ -9884,6 +9894,7 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
             "<p class=\"muted\">Unofficial straw polls &mdash; a way to see how people feel about something not yet "
             "decided. Not binding, and not an identity-verified vote: that only comes later, in "
             "<a href=\"/laws/13\">Phase 2</a>. Discussion only. Nothing is sent to the city.</p>";
+        html += "<p class=\"muted\"><a href=\"/officials\">Races for office</a> are on their own page.</p>";
         if (!filter_key.empty()) {
             std::string name = filter_key;
             for (const auto& cu : g_store.cities_in_use()) if (cu.key == filter_key) { name = cu.name; break; }
@@ -9896,6 +9907,8 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         if (title_prefill.size() > 140) title_prefill.resize(140);
         auto all = filter_key.empty() ? g_store.all_proposals() : g_store.proposals_in_city(filter_key);
         std::reverse(all.begin(), all.end());
+        // Races for office are listed on /officials only, not twice (Brief 7 item 1); a link below says where they are.
+        all.erase(std::remove_if(all.begin(), all.end(), [](const Proposal& x) { return x.is_office; }), all.end());
         // The proposals first, the form behind a "New proposal" button (sweep 2026-11-09: on a phone the page opened
         // on an empty form and the proposals began a full screen down). Open on its own when it is what you came for:
         // a ?title= prefill, an error to fix, nothing to read yet, or a link to #new (the script below).
@@ -12060,27 +12073,10 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
             if (!pr.is_office) continue;
             cards += "<div class=\"card\" id=\"proposal-"+std::to_string(pr.id)+"\"><h2>"+html_escape(pr.title)+"</h2>"
                      "<p class=\"muted\">"+html_escape(pr.jurisdiction.empty()?pr.body:pr.jurisdiction)+"</p>";
-            auto tally = g_store.value_tally_of(pr.id);
-            std::string mine;
-            if (!user.empty()) {
-                if (auto mv = g_store.ballot_value_of(pr.id, user)) mine = *mv;
-            }
-            for (const auto& opt : pr.ballot.options) {
-                const bool on = (mine == opt);
-                cards += "<form class=\"inline\" method=\"POST\" action=\"/proposals/vote\">"
-                         "<input type=\"hidden\" name=\"id\" value=\""+std::to_string(pr.id)+"\">"
-                         "<input type=\"hidden\" name=\"value\" value=\""+html_escape(opt)+"\">"
-                         "<button class=\""+std::string(on?"":"ghost")+"\" type=\"submit\">"
-                         +html_escape(opt)+(on?" &#10003;":"")+"</button></form> ";
-            }
-            if (!user.empty() && pr.ballot.open_choice) {
-                cards += "<form method=\"POST\" action=\"/proposals/option\" style=\"margin-top:.6rem\">"
-                         "<input type=\"hidden\" name=\"id\" value=\""+std::to_string(pr.id)+"\">"
-                         "<div class=\"row\"><input name=\"label\" maxlength=\"80\" placeholder=\"Add a candidate\">"
-                         "<button type=\"submit\">Add</button></div></form>";
-            }
             const std::string next_in = user.empty() ? std::string()
                 : "<input type=\"hidden\" name=\"next\" value=\"/officials\">";
+            // The same Choice body as a proposal: index payload, "name · count", your check mark (Brief 7 item 1).
+            cards += choice_ballot_body(pr, user, next_in, "candidate");
             cards += proposal_talk(pr, user, next_in);
             cards += "</div>";
         }

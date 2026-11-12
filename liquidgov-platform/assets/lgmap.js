@@ -21,9 +21,7 @@
   var statusEl = document.getElementById('lgm-status');
   var closeBtn = document.getElementById('lgm-close');
   function narrow() { return window.matchMedia ? matchMedia('(max-width: 760px)').matches : innerWidth <= 760; }
-  // ROWH 56 (was 46): a box can grow to 1.25x (45 px tall), so 46 px rows made the boxes closest to you overlap their
-  // neighbours (polish 2026-11-09); 56 leaves ~10 px between even the biggest
-  var W = 200, H = 36, COLW = 270, ROWH = 56, YOU_R = 58;
+  var W = 200, H = 36, YOU_R = 58;
   var nodes = {};   // id -> {id,label,kind,page,rel,x,y,el,expanded}
   var edges = {};   // "a|b" -> {a,b,kind,el}
   var selected = null;
@@ -110,48 +108,7 @@
     view.classList.toggle('lgm-glide', !!glide);
     view.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + scale + ')';
   }
-  // Bring a box and the column of connections to its right into view.
-  function focusOn(n) {
-    var box = svg.getBoundingClientRect();
-    if (!box.width) return;
-    if (narrow()) {
-      // Phone: the box at the left edge and its column of connections beside it, scaled to fit the width,
-      // never under 0.75 (13 px labels stay readable; advisor 2026-11-07).
-      scale = Math.max(0.75, Math.min(1, (box.width - 16) / (COLW + W * 1.25)));
-      // Sweep 2026-11-09: at the 0.75 floor the column of connections ran off the right edge ("Tower District
-      // Garde..."), and centering on the box left a screenful of empty map above it. So: the connections (the boxes
-      // you tap next) stay fully in view - right-aligned when box + column are wider than the phone - and the top
-      // of that column starts near the top of the frame instead of being centered in it.
-      var right = leftX(n) + COLW + W * 1.25, top = n.y;
-      for (var k in edges) {
-        var o = edges[k].a === n.id ? nodes[edges[k].b] : (edges[k].b === n.id ? nodes[edges[k].a] : null);
-        if (o && o.x > n.x) top = Math.min(top, o.y);
-      }
-      tx = Math.round(Math.min(8 - leftX(n) * scale, box.width - 8 - right * scale));
-      ty = Math.round(Math.min(box.height / 2 - (n.y + H / 2) * scale, 12 - top * scale));
-      apply(true);
-      return;
-    }
-    tx = Math.round(Math.min(box.width * 0.3, box.width - (COLW + W + 30) * scale) - n.x * scale);
-    ty = Math.round(box.height / 2 - (n.y + H / 2) * scale);
-    apply(true);
-  }
   function short(s, n) { s = String(s); return s.length > n ? s.slice(0, n - 1) + '…' : s; }
-
-  function free(x, y) {
-    for (var id in nodes) {
-      var n = nodes[id];
-      if (Math.abs(n.x - x) < COLW / 2 && Math.abs(n.y - y) < ROWH - 2) return false;
-    }
-    return true;
-  }
-  function slot(x, y) {
-    for (var k = 0; k < 600; k++) {
-      var d = (k % 2 ? 1 : -1) * Math.ceil(k / 2) * ROWH;
-      if (free(x, y + d)) return y + d;
-    }
-    return y;
-  }
 
   function edgePath(e) {
     var A = nodes[e.a], B = nodes[e.b];
@@ -181,8 +138,8 @@
 
   function addNode(d, x, y) {
     if (nodes[d.id]) return nodes[d.id];
-    var n = { id: d.id, label: d.label, kind: d.kind, page: d.page, rel: d.rel, sub: d.sub || '', x: x,
-      y: d.kind === 'mine' ? y : slot(x, y), expanded: false };  // ring places are exact (see ringPlace)
+    var n = { id: d.id, label: d.label, kind: d.kind, page: d.page, rel: d.rel, sub: d.sub || '', x: x, y: y,
+      expanded: false };  // ring places are exact (see ringPlace)
     var s = sizeOf(n);
     var g = el('g', { 'class': 'lgn lgn-' + n.kind + ' lgn-new', tabindex: '0', role: 'button', 'data-id': n.id,
       transform: 'translate(' + (n.x + W / 2 * (1 - s)) + ',' + (n.y + H / 2 * (1 - s)) + ') scale(' + s + ')' });
@@ -284,7 +241,7 @@
 
   // Box i of k on an ellipse around box c, starting at the top and going clockwise. A phone gets a narrower, taller
   // ring so the whole ring fits the width at a readable scale.
-  function ringPlace(c, i, k) {
+  function ringPlace(c, i, k, r) {
     // Phone (map SPEC phase 1 added Feeds, Interests, Events: 5 or more kinds ran off the edges and overlapped, CI
     // phone_check 2, 2026-11-11): the look Brandon saw with 4 kinds - two columns, a row above you and a row below - kept
     // and grown downward and upward, two cards a row, in reading order; an odd last card sits centered under you.
@@ -300,7 +257,8 @@
     // a phone, 2026-11-11 screenshot with 4 kinds).
     var step = 2 * Math.PI / Math.max(1, k), turn = k % 2 === 0 ? step / 2 : 0;
     // kind boxes draw at 1.25x (sizeOf), so left/right neighbours need centers >= 250 px apart: rx 200 on a phone
-    var r = ringRadii(), a = -Math.PI / 2 + turn + step * i;
+    var a = -Math.PI / 2 + turn + step * i;
+    r = r || ringRadii();
     return { x: Math.round(c.x + r.rx * Math.cos(a)), y: Math.round(c.y + r.ry * Math.sin(a)) };
   }
   // phone rows: the first row clears your circle (58) + half a card; the first row below also clears "Open your page";
@@ -312,6 +270,26 @@
     if (!narrow()) return { rx: 300, ry: 165 };
     var rows = Math.ceil((k || 4) / 2), above = Math.max(1, Math.floor(rows / 2)), below = rows - above;
     return { rx: 200, ry: Math.max(150, PHONE_BASE + 40 + Math.max(above, below) * PHONE_GAP - PHONE_GAP + 30) };
+  }
+  // A ring roomy enough that no two of its boxes (nor a box and the center) overlap: any box can be a center now
+  // (Brandon 2026-11-11 live look #2), so a ring can hold a dozen boxes, not just your 5-8 kinds. Desktop only: the phone
+  // keeps its two columns. list: the boxes' data, in ring order.
+  function ringFit(c, list) {
+    var r = ringRadii(list.length);
+    if (narrow() || list.length < 2) return r;
+    var half = function (d) { var s = sizeOf(d); return { w: W / 2 * s + 8, h: (d.kind === 'mine' ? H + 10 : H) / 2 * s + 8 }; };
+    for (var tries = 0; tries < 40; tries++) {
+      var pts = list.map(function (d, i) { var p = ringPlace(c, i, list.length, r), h = half(d); return { x: p.x, y: p.y, w: h.w, h: h.h }; });
+      var hc = c.kind === 'you' ? { w: YOU_R * sizeOf(c) + 8, h: YOU_R * sizeOf(c) + 8 } : half(c);
+      pts.push({ x: c.x, y: c.y, w: hc.w, h: hc.h });
+      var clash = false;
+      for (var i = 0; i < pts.length && !clash; i++)
+        for (var j = i + 1; j < pts.length; j++)
+          if (Math.abs(pts[i].x - pts[j].x) < pts[i].w + pts[j].w && Math.abs(pts[i].y - pts[j].y) < pts[i].h + pts[j].h) { clash = true; break; }
+      if (!clash) break;
+      r = { rx: Math.round(r.rx * 1.08), ry: Math.round(r.ry * 1.08) };
+    }
+    return r;
   }
 
   // Collapse (Brandon 2026-11-11: "if i select a higher level box, shouldnt the previous branches collapse?"): when a box
@@ -527,22 +505,21 @@
     if (n.expanded) return Promise.resolve(n);
     status('Loading…');
     return load(n.id).then(function (data) {
-      // around a kind, "you" is the way back (the trail), not one of its items
-      var links = n.kind === 'mine' || n.kind === 'root' ? data.links.filter(function (l) { return l.node.id !== 'you'; }) : data.links;
+      // the center moved on while this loaded (a quick second tap, Back): drawing it now would mix two levels
+      if (nodes[n.id] !== n || n.id !== centerId()) return n;
+      // the boxes on the trail (You > Groups > ...) are the way back, not items around this center (live look #2: around
+      // The Gov, Groups came back as one of its boxes)
+      var onTrail = {};
+      centerPath.forEach(function (c) { if (c.id !== n.id) onTrail[c.id] = 1; });
+      var links = data.links.filter(function (l) { return !onTrail[l.node.id]; });
       var fresh = links.filter(function (l) { return !nodes[l.node.id]; });
-      if (isCenterKind(n) && n.id === centerId()) { // M1.1 look (Grok Bot's mockup 1): the center's connections on a ring
-        // the faint dotted ring behind them (mockup), drawn once under the lines
-        if (!document.getElementById('lgm-ring')) {
-          var rr = ringRadii(fresh.length);
-          var ring = el('ellipse', { id: 'lgm-ring', 'class': 'lgm-ring', cx: n.x + W / 2, cy: n.y + H / 2, rx: rr.rx, ry: rr.ry });
-          edgeLayer.insertBefore(ring, edgeLayer.firstChild);
-        }
-        fresh.forEach(function (l, i) { var p = ringPlace(n, i, fresh.length); addNode(l.node, p.x, p.y).from = n.id; });
-      } else {
-        var x = n.x + COLW;
-        var start = n.y - (fresh.length - 1) * ROWH / 2;
-        fresh.forEach(function (l, i) { addNode(l.node, x, start + i * ROWH).from = n.id; });
+      // M1.1 look (Grok Bot's mockup 1): the center's connections on a ring, the faint dotted ring behind them
+      var rr = ringFit(n, fresh.map(function (l) { return l.node; }));
+      if (!document.getElementById('lgm-ring')) {
+        var ring = el('ellipse', { id: 'lgm-ring', 'class': 'lgm-ring', cx: n.x + W / 2, cy: n.y + H / 2, rx: rr.rx, ry: rr.ry });
+        edgeLayer.insertBefore(ring, edgeLayer.firstChild);
       }
+      fresh.forEach(function (l, i) { var p = ringPlace(n, i, fresh.length, rr); addNode(l.node, p.x, p.y).from = n.id; });
       links.forEach(function (l) { addEdge(n.id, l.node.id, l.edge); });
       if (n.id === centerId()) renderFilter();
       n.expanded = true;
@@ -642,8 +619,9 @@
     if (now) open = false;
     // Hidden mode: a tap on a box around the center hides or shows it; nothing moves and no page opens
     if (hideMode && !now && n.el && n.from === centerId() && n.id !== centerId()) { toggleBox(n); return; }
-    // you or one of your kinds becomes the center, with its connections on a ring (Brandon 2026-11-11)
-    if (isCenterKind(n) && n.id !== centerId()) {
+    // the tapped box becomes the center, with its connections on a ring (Brandon 2026-11-11; live look #2: a child box
+    // only extended the trail and its connections grew beside the old view)
+    if (n.id !== centerId()) {
       // phone, a tap that did not open: wait the double-tap window first, so a second tap still lands on the box and
       // opens its page instead of hitting the spot it moved away from (CI phone_check 4c, 2026-11-11)
       if (narrow() && !open && !now && n.el) {
@@ -679,7 +657,7 @@
       light(n.id);
       // on the ring (you or one of your kinds) keep the whole open map in view instead of sliding the tapped box to the
       // edge (2026-11-11 CI screenshot: tapping Friends cut the cards off at the left)
-      setTimeout(function () { if (selected === n) { if (isCenterKind(n)) fitAll(true); else focusOn(n); } }, wait);
+      setTimeout(function () { if (selected === n) fitAll(true); }, wait);
     });
   }
 
@@ -704,7 +682,7 @@
     panel.classList.remove('full');
     root.classList.remove('lgm-has-panel');
     document.documentElement.classList.remove('lgm-sheet-open');
-    if (selected) focusOn(selected);   // back exactly where you were
+    if (selected) fitAll(true);   // the map gets its width back: fit the ring to it again
   }
   // A link inside the framed page that goes to the map would open a map inside the map (advisor catch,
   // 2026-11-07): take it at the top level instead, focusing the box when it is on the map already.
@@ -816,7 +794,7 @@
     if (!focus) { fitAll(true); return; } // the whole ring in view near the top, phone included (nothing cut off or covered)
     if (nodes[focus]) { select(nodes[focus], !narrow()); return; }
     return load(focus).then(function (data) {
-      var n = addNode(data.node, COLW * 2, 0);
+      var n = addNode(data.node, 0, 0);
       data.links.forEach(function (l) { if (nodes[l.node.id]) addEdge(n.id, l.node.id, l.edge); });
       select(n, !narrow());
     });

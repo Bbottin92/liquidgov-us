@@ -959,6 +959,8 @@ std::string css() {
         // a post's actions (Repost, seconded, Delete) and a proposal's reactions are small and quiet
         ".post form.inline button,.reactions form.inline button{min-height:36px;padding:.3rem .75rem;font-size:.85rem}"
         ".reactions{margin-top:.9rem;padding-top:.6rem;border-top:1px dashed var(--rule)}.reactions>p{margin:0 0 .4rem}"
+        // a proposal's Save my answer before there is an answer to save (an unmoved scale, Brief 7 item 4)
+        "button[data-save]:disabled{opacity:.45;cursor:not-allowed}"
         "button.danger,.btn.danger{background:var(--danger);color:#f7f1e4}"
         ".row{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}"
         ".toolgroup-sep{width:1px;align-self:stretch;background:var(--rule);margin:0 .15rem}"
@@ -8319,6 +8321,25 @@ std::string how_proposals_work_html() {
 
 std::string proposal_talk(const Proposal& p, const std::string& viewer, const std::string& next_in);
 
+// "1 response" / "2 responses", then " · N skipped" when anyone skipped (Brief 7 item 4).
+std::string responses_text(int n, int skipped) {
+    std::string s = std::to_string(n) + (n == 1 ? " response" : " responses");
+    if (skipped > 0) s += " · " + std::to_string(skipped) + " skipped";
+    return s;
+}
+
+// A one-button answer form (Skip / no preference, None of these) posting a reserved value (kBallotSkip, kBallotNone).
+std::string reserved_answer_form(const Proposal& p, const std::string& next_in, const char* value, const std::string& label,
+                                 const std::optional<std::string>& mine) {
+    const bool active = mine && *mine == value;
+    return "<form class=\"inline\" method=\"POST\" action=\"/proposals/vote\">"
+           "<input type=\"hidden\" name=\"id\" value=\""+std::to_string(p.id)+"\">"
+           + next_in +
+           "<input type=\"hidden\" name=\"value\" value=\""+std::string(value)+"\">"
+           "<button class=\""+std::string(active ? "" : "ghost")+"\" type=\"submit\">"+label+
+           (active ? " &#10003;" : "")+"</button></form>";
+}
+
 // The Choice answer: one button per option with its count, posting the option INDEX (payload_ok takes only an
 // index). Shared by proposal_block and /officials, so a race and a Choice proposal vote and count the same way
 // (Brief 7 item 1: /officials posted the name and every vote was dropped). noun: "choice" or "candidate".
@@ -8333,6 +8354,8 @@ std::string choice_ballot_body(const Proposal& p, const std::string& viewer, con
             if (t.option_counts[i])
                 bar += "<div style=\"flex:"+std::to_string(t.option_counts[i])+";background:var(--accent)\"></div>";
         }
+        if (t.none_of_these)
+            bar += "<div style=\"flex:"+std::to_string(t.none_of_these)+";background:var(--stone)\"></div>";
     }
     bar += "</div>";
     std::string list = "<div class=\"row\" style=\"flex-wrap:wrap;gap:.4rem\">";
@@ -8350,6 +8373,13 @@ std::string choice_ballot_body(const Proposal& p, const std::string& viewer, con
         } else {
             list += "<span class=\"muted\">"+html_escape(p.ballot.options[i])+" · "+std::to_string(n)+"</span>";
         }
+    }
+    // Always offered (Brief 7 item 4): None of these (its own count) and Skip / no preference (counted as skipped).
+    if (!viewer.empty()) {
+        list += reserved_answer_form(p, next_in, kBallotNone, "None of these · "+std::to_string(t.none_of_these), mine)
+              + reserved_answer_form(p, next_in, kBallotSkip, "Skip / no preference", mine);
+    } else {
+        list += "<span class=\"muted\">None of these · "+std::to_string(t.none_of_these)+"</span>";
     }
     list += "</div>";
     if (!viewer.empty() && p.ballot.open_choice) {
@@ -8369,7 +8399,7 @@ std::string choice_ballot_body(const Proposal& p, const std::string& viewer, con
             list += "<p class=\"muted\">You already added a "+noun+" on this one.</p>";
         }
     }
-    return bar + "<p class=\"muted\">"+std::to_string(total)+" responses</p>" + list;
+    return bar + "<p class=\"muted\">"+responses_text(total, t.skipped)+"</p>" + list;
 }
 
 std::string proposal_block(const Proposal& p, const std::string& viewer, const std::string& next = "") {
@@ -8396,7 +8426,7 @@ std::string proposal_block(const Proposal& p, const std::string& viewer, const s
             if (t.abstain) bar += "<div style=\"flex:"+std::to_string(t.abstain)+";background:var(--stone)\"></div>";
         }
         bar += "</div><p class=\"muted\">"+std::to_string(t.yes)+" yes · "+std::to_string(t.no)+" no · "+
-               std::to_string(t.abstain)+" abstain · "+std::to_string(total)+" total</p>";
+               std::to_string(t.abstain)+" skipped · "+std::to_string(total)+" total</p>";
         std::string voteForm;
         if (!viewer.empty()) {
             auto btn = [&](ProposalVote v, const char* label) {
@@ -8409,7 +8439,7 @@ std::string proposal_block(const Proposal& p, const std::string& viewer, const s
                        (active ? " &#10003;" : "")+"</button></form>";
             };
             voteForm = "<div class=\"row\">"+btn(ProposalVote::Yes,"Yes")+btn(ProposalVote::No,"No")+
-                       btn(ProposalVote::Abstain,"Abstain")+"</div>";
+                       btn(ProposalVote::Abstain,"Skip")+"</div>"; // Skip is the stored Abstain (Brief 7 item 4)
         }
         body = bar + voteForm;
     } else if (p.ballot.kind == BallotKind::Choice) {
@@ -8417,25 +8447,27 @@ std::string proposal_block(const Proposal& p, const std::string& viewer, const s
     } else {
         auto t = g_store.value_tally_of(p.id);
         auto mine = viewer.empty() ? std::optional<std::string>{} : g_store.ballot_value_of(p.id, viewer);
+        const bool skipped_mine = mine && *mine == kBallotSkip;
+        const std::string skipped_note = t.skipped ? " "+std::to_string(t.skipped)+" skipped." : std::string();
         std::string summary;
         if (p.ballot.kind == BallotKind::Date) {
-            if (t.n == 0) summary = "<p class=\"muted\">No dates yet.</p>";
+            if (t.n == 0) summary = "<p class=\"muted\">No dates yet."+skipped_note+"</p>";
             else summary = "<p>Median date: <strong>"+html_escape(t.median_date)+"</strong></p>"
-                           "<p class=\"muted\">"+std::to_string(t.n)+" responses · earliest "+html_escape(t.lo_date)+
+                           "<p class=\"muted\">"+responses_text(t.n, t.skipped)+" · earliest "+html_escape(t.lo_date)+
                            " · latest "+html_escape(t.hi_date)+"</p>";
         } else {
             std::string unit = p.ballot.unit.empty() ? "" : " "+html_escape(p.ballot.unit);
             if (p.ballot.kind == BallotKind::Scale) {
                 std::string left = (p.ballot.options.empty() || p.ballot.options[0].empty()) ? "0" : html_escape(p.ballot.options[0]);
                 std::string right = (p.ballot.options.size() < 2 || p.ballot.options[1].empty()) ? "100" : html_escape(p.ballot.options[1]);
-                if (t.n == 0) summary = "<p class=\"muted\">"+left+" — "+right+". No responses yet.</p>";
+                if (t.n == 0) summary = "<p class=\"muted\">"+left+" — "+right+". No responses yet."+skipped_note+"</p>";
                 else summary = "<p>"+left+" — <strong>"+fmt_ballot_num(t.median)+"</strong> — "+right+"</p>"
-                               "<p class=\"muted\">median of "+std::to_string(t.n)+" · range "+fmt_ballot_num(t.lo)+
+                               "<p class=\"muted\">median of "+responses_text(t.n, t.skipped)+" · range "+fmt_ballot_num(t.lo)+
                                "–"+fmt_ballot_num(t.hi)+"</p>";
             } else {
-                if (t.n == 0) summary = "<p class=\"muted\">No numbers yet.</p>";
+                if (t.n == 0) summary = "<p class=\"muted\">No numbers yet."+skipped_note+"</p>";
                 else summary = "<p>Median: <strong>"+fmt_ballot_num(t.median)+unit+"</strong></p>"
-                               "<p class=\"muted\">"+std::to_string(t.n)+" responses · range "+fmt_ballot_num(t.lo)+
+                               "<p class=\"muted\">"+responses_text(t.n, t.skipped)+" · range "+fmt_ballot_num(t.lo)+
                                "–"+fmt_ballot_num(t.hi)+unit+"</p>";
             }
         }
@@ -8446,13 +8478,18 @@ std::string proposal_block(const Proposal& p, const std::string& viewer, const s
                        + next_in;
             if (p.ballot.kind == BallotKind::Date) {
                 voteForm += "<label>Your date</label><input type=\"date\" name=\"value\" required";
-                if (mine) voteForm += " value=\""+html_escape(*mine)+"\"";
+                if (mine && !skipped_mine) voteForm += " value=\""+html_escape(*mine)+"\"";
                 voteForm += ">";
             } else if (p.ballot.kind == BallotKind::Scale) {
-                std::string cur = mine ? html_escape(*mine) : "50";
-                voteForm += "<label>Your mark <span class=\"muted\" id=\"scv"+std::to_string(p.id)+"\">"+cur+"</span></label>"
-                            "<input type=\"range\" name=\"value\" min=\"0\" max=\"100\" value=\""+cur+
-                            "\" oninput=\"document.getElementById('scv"+std::to_string(p.id)+"').textContent=this.value\">";
+                // No pre-filled 50 (Brief 7 item 4): until the slider moves it has no name= (an old tab or a stray Save
+                // sends nothing, so nothing is stored) and Save is disabled. Your saved mark, if any, is shown and sent.
+                const bool has_mark = mine && !skipped_mine;
+                const std::string sid = std::to_string(p.id);
+                voteForm += "<label>Your mark <span class=\"muted\" id=\"scv"+sid+"\">"
+                            + (has_mark ? html_escape(*mine) : std::string("not set yet: move the slider")) + "</span></label>"
+                            "<input type=\"range\"" + (has_mark ? " name=\"value\" value=\""+html_escape(*mine)+"\"" : std::string())
+                            + " min=\"0\" max=\"100\" oninput=\"this.name='value';this.form.querySelector('[data-save]').disabled=false;"
+                              "document.getElementById('scv"+sid+"').textContent=this.value\">";
             } else {
                 voteForm += "<label>Your number";
                 if (!p.ballot.unit.empty()) voteForm += " ("+html_escape(p.ballot.unit)+")";
@@ -8460,10 +8497,12 @@ std::string proposal_block(const Proposal& p, const std::string& viewer, const s
                 if (p.ballot.min_v != 0 || p.ballot.max_v != 0) {
                     voteForm += " min=\""+fmt_ballot_num(p.ballot.min_v)+"\" max=\""+fmt_ballot_num(p.ballot.max_v)+"\"";
                 }
-                if (mine) voteForm += " value=\""+html_escape(*mine)+"\"";
+                if (mine && !skipped_mine) voteForm += " value=\""+html_escape(*mine)+"\"";
                 voteForm += ">";
             }
-            voteForm += "<button>Save my answer</button></form>";
+            const bool scale_unset = p.ballot.kind == BallotKind::Scale && !(mine && !skipped_mine);
+            voteForm += std::string("<button data-save") + (scale_unset ? " disabled" : "") + ">Save my answer</button></form>"
+                      + reserved_answer_form(p, next_in, kBallotSkip, "Skip / no preference", mine);
         }
         body = summary + voteForm;
     }

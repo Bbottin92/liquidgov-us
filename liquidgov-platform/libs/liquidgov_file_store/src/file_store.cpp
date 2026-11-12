@@ -179,6 +179,8 @@ bool spec_ok(const BallotSpec& s) {
 
 bool payload_ok(const BallotSpec& s, const std::string& raw) {
     if (raw.empty()) return false;
+    if (raw == kBallotSkip) return s.kind != BallotKind::YesNo;
+    if (raw == kBallotNone) return s.kind == BallotKind::Choice;
     if (s.kind == BallotKind::Number) {
         std::size_t idx = 0;
         double v = 0;
@@ -1813,22 +1815,30 @@ BallotTally FileStore::value_tally_of(std::uint64_t proposal_id) const {
             t.option_counts.assign(p->ballot.options.size(), 0);
         return t;
     }
-    t.n = static_cast<int>(pit->second.size());
+    t.n = 0;
+    for (const auto& [voter, payload] : pit->second) if (payload == kBallotSkip) ++t.skipped;
     if (p->ballot.kind == BallotKind::Choice) {
         t.option_counts.assign(p->ballot.options.size(), 0);
         for (const auto& [voter, payload] : pit->second) {
+            if (payload == kBallotSkip) continue;
+            if (payload == kBallotNone) { ++t.none_of_these; ++t.n; continue; }
             std::size_t idx = 0;
             unsigned long i = 0;
             try { i = std::stoul(payload, &idx); } catch (...) { continue; }
-            if (idx == payload.size() && i < t.option_counts.size())
+            if (idx == payload.size() && i < t.option_counts.size()) {
                 ++t.option_counts[i];
+                ++t.n;
+            }
         }
         return t;
     }
     if (p->ballot.kind == BallotKind::Date) {
         std::vector<std::string> dates;
         dates.reserve(pit->second.size());
-        for (const auto& [voter, payload] : pit->second) dates.push_back(payload);
+        for (const auto& [voter, payload] : pit->second)
+            if (payload != kBallotSkip) dates.push_back(payload);
+        if (dates.empty()) return t;
+        t.n = static_cast<int>(dates.size());
         std::sort(dates.begin(), dates.end());
         t.lo_date = dates.front();
         t.hi_date = dates.back();
@@ -1838,6 +1848,7 @@ BallotTally FileStore::value_tally_of(std::uint64_t proposal_id) const {
     std::vector<double> vals;
     vals.reserve(pit->second.size());
     for (const auto& [voter, payload] : pit->second) {
+        if (payload == kBallotSkip) continue;
         try { vals.push_back(std::stod(payload)); } catch (...) {}
     }
     if (vals.empty()) return t;

@@ -57,6 +57,8 @@
 //          ballot kind other than YesNo; absence means YesNo. Never reuse pvote.
 //   pbo    <proposal_id> <index> <label>        // Choice/Scale labels
 //   pbv    <proposal_id> <voter> <payload>      // number/date/choice/scale value
+//          or a reserved word (Brief 7 item 4): "skip" on any non-YesNo kind, "none" (None of these) on a Choice.
+//          Rollback: an older binary reads "skip" as a date/number; drop those rows first (REPORT7).
 //   popen  <proposal_id>                        // Choice write-ins on. Absence = closed.
 //          Separate tag: pbk is exact 7 fields (loader throws otherwise).
 //   pba    <proposal_id> <index> <username>     // who added that pbo row. No row = creator-seeded.
@@ -503,6 +505,10 @@ enum class BallotKind : int {
     Scale = 4,   // 0–100 slider
 };
 
+// Reserved answers (Brief 7 item 4). Whole-value, exact-case matches only.
+inline constexpr const char* kBallotSkip = "skip"; // Skip / no preference, any kind but YesNo (YesNo uses Abstain)
+inline constexpr const char* kBallotNone = "none"; // None of these, Choice only
+
 struct BallotSpec {
     BallotKind kind = BallotKind::YesNo;
     std::string unit;   // Number: "days", "$" — empty is fine
@@ -564,6 +570,8 @@ struct BallotTally {
     std::string lo_date;
     std::string hi_date;
     std::vector<int> option_counts;
+    int skipped = 0;      // "skip" answers: not in n, the median, the range or option_counts
+    int none_of_these = 0; // Choice "none" answers: counted in n, not in option_counts
 };
 
 // Who besides the owner may add tracks to an account's jukebox. The owner can

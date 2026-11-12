@@ -66,6 +66,13 @@ jobs:
           echo "last line: $last"
           [ "$last" = "EXIT=0" ]
 
+      # Every assets/*.js parses (node --check: parse only, nothing runs). GATING, not report-only: it is deterministic
+      # (no browser, no network), and a script that does not parse breaks its page for everyone. Brandon OK'd
+      # 2026-11-12 after jukebox.js reached a branch with a syntax error while every other check was green.
+      - name: page scripts parse (assets_js_parse_check)
+        timeout-minutes: 5
+        run: python3 liquidgov-platform/tests/assets_js_parse_check.py "$PWD/liquidgov-platform"
+
       # Phone screenshots in CI (Brandon 2026-11-11 'ci'): the laptop often has under the 2.5 GB the browser check needs,
       # so the same check runs here on every push and the PNGs are kept as an artifact (download from the run page or
       # `gh run download <id> -n phone-screenshots`). Headless Chrome, phone viewport, Bbottin signed in.

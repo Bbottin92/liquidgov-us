@@ -6887,19 +6887,47 @@ std::string jukebox_widget(const std::string& owner, bool owner_view, const std:
 
     auto hist = g_store.jukebox_history_of(playback_owner);
     if (!hist.empty()) {
-        std::reverse(hist.begin(), hist.end());
-        html += "<div style=\"margin-top:1rem\"><label>Recently played</label>";
-        std::size_t shown = 0;
-        for (const auto& h : hist) {
-            if (shown++ >= 10) break;
-            html += "<p class=\"muted\" style=\"display:flex;align-items:center;gap:.4rem;margin:.3rem 0\">"
-                    "<img src=\"https://img.youtube.com/vi/"+html_escape(h.video_id)+"/default.jpg\" "
-                    "width=\"40\" height=\"30\" alt=\"\" style=\"border-radius:4px\">"
-                    "<a href=\"https://www.youtube.com/watch?v="+html_escape(h.video_id)+"\" target=\"_blank\" rel=\"noopener\">watch again</a>"
-                    " · "+(h.queued_by==playback_owner?std::string("owner's pick"):html_escape(h.queued_by))+
-                    " · "+html_escape(fmt_time(h.played_at))+"</p>";
+        // One row per track, most recently played first, with its play count and last played date; 5 show and the
+        // rest sit under "Show more" (Brandon 2026-11-11 4:37 PM, Brief 4 item 6: nine of ten rows were one track,
+        // each a bare "watch again"). The title comes from /jukebox/oembed in the page (signed-in viewers; nothing
+        // stores titles); until then, and for visitors who are signed out, the link says "YouTube video".
+        struct HistRow { std::string id; std::size_t plays = 0; std::int64_t last = 0; };
+        std::vector<HistRow> rows; // history is oldest first
+        for (auto it = hist.rbegin(); it != hist.rend(); ++it) {
+            auto r = std::find_if(rows.begin(), rows.end(), [&](const HistRow& x) { return x.id == it->video_id; });
+            if (r == rows.end()) rows.push_back(HistRow{it->video_id, 1, it->played_at});
+            else ++r->plays;
+        }
+        auto row = [](const HistRow& r) {
+            const std::string id = html_escape(r.id);
+            return "<li class=\"jbhist-row muted\" data-yt=\""+id+"\" style=\"display:flex;align-items:center;gap:.4rem;margin:.3rem 0\">"
+                   "<img src=\"https://img.youtube.com/vi/"+id+"/default.jpg\" "
+                   "width=\"40\" height=\"30\" alt=\"\" style=\"border-radius:4px;flex:none\">"
+                   "<span style=\"min-width:0;overflow-wrap:anywhere\"><a class=\"jbtitle\" data-yt=\""+id+"\" "
+                   "href=\"https://www.youtube.com/watch?v="+id+"\" target=\"_blank\" rel=\"noopener\">YouTube video</a>"
+                   " &middot; "+std::to_string(r.plays)+(r.plays==1 ? " play" : " plays")+
+                   " &middot; last "+html_escape(fmt_time(r.last))+"</span></li>";
+        };
+        const std::string ul = "<ul style=\"list-style:none;padding:0;margin:0\">";
+        html += "<div class=\"jbhist\" style=\"margin-top:1rem\"><label>Recently played</label>"+ul;
+        for (std::size_t i = 0; i < rows.size() && i < 5; ++i) html += row(rows[i]);
+        html += "</ul>";
+        if (rows.size() > 5) {
+            html += "<details class=\"jbhist-more\"><summary>Show more</summary>"+ul;
+            for (std::size_t i = 5; i < rows.size(); ++i) html += row(rows[i]);
+            html += "</ul></details>";
         }
         html += "</div>";
+        if (!viewer.empty())
+            html += "<script>(function(){"
+                    "document.querySelectorAll('a.jbtitle[data-yt]').forEach(function(a){"
+                    "fetch('/jukebox/oembed?id='+encodeURIComponent(a.getAttribute('data-yt')))"
+                    ".then(function(r){return r.ok?r.json():{};})"
+                    ".then(function(d){if(d&&d.title)a.textContent=d.title;})"
+                    // err-ok: no title is fine, the link keeps saying YouTube video
+                    ".catch(function(){});"
+                    "});"
+                    "})();</script>";
     }
 
     html += "</div>";

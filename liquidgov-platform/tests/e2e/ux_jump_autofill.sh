@@ -66,7 +66,7 @@ l=$(loc $ADMIN /post/$PID/second -X POST)
 check "A1 no Referer: /feed at #post-$PID" '[ "$l" = "$URL/feed#post-$PID" ]' "$l"
 
 get $ADMIN /map m.html >/dev/null
-check "A2 #navc is not parked at left:-999px" '! grep -q "#navc{position:absolute;left:-999px}" $W/m.html && grep -q "id=\"navc\"" $W/m.html' "$(grep -o '#navc{[^}]*}' $W/m.html | head -2)"
+check "A2 #navc is not parked at left:-999px" 'curl -s "$URL/assets/site.css" > $W/site.css && grep -q "#navc{" $W/site.css && ! grep -q "#navc{position:absolute;left:-999px}" $W/site.css && grep -q "id=\"navc\"" $W/m.html' "$(grep -o '#navc{[^}]*}' $W/site.css 2>/dev/null | head -2)"
 check "A3 the map's Open page link has no href=\"#\"" '[ -n "$(tag m.html "a[^>]*id=\"lgm-open\"")" ] && ! tag m.html "a[^>]*id=\"lgm-open\"" | grep -q "href=\"#\""' "$(tag m.html "a[^>]*id=\"lgm-open\"")"
 
 get $ADMIN /settings s.html >/dev/null

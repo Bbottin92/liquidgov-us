@@ -67,8 +67,8 @@ check "proposals: #new link opens it (script present)" 'grep -q "location.hash==
 
 # initials, settings index, login copy, anchors under the header, footer
 r=$(get $PAL /u/pal u.html); check "empty avatar shows the initial, not an empty circle" 'grep -q "ph\" aria-hidden=\"true\">P</span>" $W/u.html' "$r"
-check "anchor targets stop below the sticky header" 'grep -q "\[id\]{scroll-margin-top:5.5rem}" $W/u.html' "no css"
-check "footer Disclaimer matches the footer links" 'grep -q "footer.site summary{font-size:inherit" $W/u.html' "no css"
+check "anchor targets stop below the sticky header" 'curl -s "$URL/assets/site.css" > $W/site.css && grep -q "assets/site.css" $W/u.html && grep -q "\[id\]{scroll-margin-top:5.5rem}" $W/site.css' "no css"
+check "footer Disclaimer matches the footer links" 'grep -q "footer.site summary{font-size:inherit" $W/site.css' "no css"
 r=$(get $PAL /settings s.html)
 check "settings: an index of all nine sections" '[ "$(grep -o "<a href=\"#[a-z]*\">" $W/s.html | wc -l)" -ge 9 ] && grep -q "class=\"setidx\"" $W/s.html' "$r"
 for a in security sessions map privacy blocks jukebox identity data notifications; do

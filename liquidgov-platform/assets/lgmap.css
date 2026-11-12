@@ -31,6 +31,10 @@
 .lgm-chip::after{content:"";position:absolute;inset:-6px -2px}
 .lgm-chip[aria-pressed="false"]{background:none;border-style:dashed;color:#9a927f;text-decoration:line-through}
 .lgm-filter-note{margin:0;padding:0 .7rem .4rem;font-size:.78rem;color:#c9bfa8}
+/* its line is kept while it is hidden (live look #7, Brandon 2026-11-11): showing it grew the bars and pushed the whole
+   map down the moment a chip went off. No chips yet (an empty filter row): no line either. */
+.lgm-filter-note[hidden]{display:block;visibility:hidden}
+.lgm-filter:empty+.lgm-filter-note[hidden]{display:none}
 /* Hidden mode (Brandon 2026-11-11): the toggle leads the chip row; while it is on, hidden boxes come back faded and
    dashed, and a tap shows or hides a box instead of moving the map */
 .lgm-hidetoggle{position:relative;flex:none;background:none;border:1px dashed #c9a35a;color:#f3d48f;border-radius:999px;

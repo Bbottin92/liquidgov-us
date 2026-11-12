@@ -2561,7 +2561,7 @@ std::optional<GNode> map_gnode(const std::string& id, const std::string& viewer)
         if (rest == "places") return GNode{id, "Places", "mine", ""};
         if (rest == "politics") return GNode{id, "Politics", "mine", "/proposals"};
         if (rest == "problems") return GNode{id, "Problems", "mine", "/problems"};
-        // map SPEC phase 1 (Brandon 2026-11-11): Events stays empty until M1.4 (so it is left off the ring), Feeds
+        // map SPEC phase 1 (Brandon 2026-11-11): Events stays empty until M1.4 (shown anyway, "None yet"), Feeds
         // (never Drawings), Interests from your profile
         if (rest == "events") return GNode{id, "Events", "mine", ""};
         if (rest == "feeds") return GNode{id, "Feeds", "mine", "/feed"};
@@ -2674,9 +2674,10 @@ std::vector<GLink> map_links(const std::string& id, const std::string& viewer) {
     if (id == "you") {
         if (viewer.empty()) return out;
         // A kind with nothing in it is left off; Places always has the whole site. Clockwise from the top in the order
-        // of the map SPEC's mockup A (Brandon's seven kinds, then your own Problems).
+        // of the map SPEC's mockup A (Brandon's seven kinds, then your own Problems). Events always shows, even empty
+        // (Brandon 2026-11-11 4:30 PM decision 1), so people see the map has a place for events before M1.4.
         for (const char* k : {"politics", "friends", "events", "feeds", "places", "groups", "interests", "problems"}) {
-            bool any = false;
+            bool any = std::string(k) == "events";
             map_mine_links(k, viewer, [&](const std::string& to, const std::string&) {
                 if (!any && to != "you" && map_gnode(to, viewer)) any = true;
             });
@@ -2868,7 +2869,7 @@ void map_mine_links(const std::string& kind, const std::string& viewer,
     } else if (kind == "interests") {
         for (const auto& i : map_interests_of(viewer)) link("int:" + i.key, "yours");
     }
-    // "events": nothing exists until M1.4, so the box stays empty and the ring leaves it off
+    // "events": nothing exists until M1.4, so the box stays empty (the ring still shows it, "None yet")
 }
 
 void map_feed_posts(const std::string& feed, const std::string& viewer, std::size_t limit,
@@ -2980,6 +2981,8 @@ void map_add_sub(GNode& n, const std::string& viewer) {
             if (any) s += (s.empty() ? "" : " \xC2\xB7 ") + std::string(name);
         }
         n.sub = s;
+    } else if (kind == "events") {
+        n.sub = "None yet"; // always on the ring, even empty (Brandon 2026-11-11 4:30 PM decision 1)
     }
 }
 // -1 = not scored (the MAINstream itself).

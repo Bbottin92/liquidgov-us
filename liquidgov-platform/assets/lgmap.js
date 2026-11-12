@@ -602,7 +602,10 @@
       if (n.id === centerId()) renderFilter();
       n.expanded = true;
       n.el.classList.add('lgn-open');
-      status(data.links.length ? '' : 'Nothing else connects here yet.');
+      // Events is always on the You ring, even before any exist (Brandon 2026-11-11 decision 1): a friendly empty state
+      if (n.id === 'mine:events' && !links.some(function (l) { return l.node.id !== 'you'; }))
+        status('No events yet. When there are events for you, they will show here.');
+      else status(data.links.length ? '' : 'Nothing else connects here yet.');
       return n;
     }).catch(function (err) { status(err.message); return n; });
   }

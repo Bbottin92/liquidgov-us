@@ -1769,9 +1769,15 @@ std::string back_to_post(const std::string& referer, std::uint64_t pid) {
 }
 // Back to the page a proposal action came from (its next=, else /officials for a race, else /proposals), at that
 // proposal (CODE-SCAN-UX A1, Brief 6 item 3: votes and reactions sit mid-page on a long list).
-std::string back_to_proposal(const std::string& next, const Proposal& p) {
+// err: a flash_error code added to the query (Brief 7 item 5: a refused answer says so where you are).
+std::string back_to_proposal(const std::string& next, const Proposal& p, const std::string& err = "") {
     std::string back = safe_next_path(next);
     if (back.empty()) back = p.is_office ? "/officials" : "/proposals";
+    if (!err.empty()) {
+        auto hash = back.find('#');
+        if (hash != std::string::npos) back.erase(hash);
+        back += (back.find('?') == std::string::npos ? "?err=" : "&err=") + err;
+    }
     return with_anchor(back, "proposal-" + std::to_string(p.id));
 }
 
@@ -8319,6 +8325,18 @@ std::string how_proposals_work_html() {
            "nothing is sent to the city.</p>";
 }
 
+// A card's own error (a refused answer or option) comes back as ?err=...#proposal-N, so the browser lands on the card,
+// thousands of pixels below the flash at the top (Brief 7 item 5, measured: -3113 px on a phone). This moves that flash
+// into the card, under its first line. Used by /proposals, /proposals?id= and /officials.
+std::string card_flash_script(const std::map<std::string, std::string>& qs) {
+    auto it = qs.find("err");
+    if (it == qs.end() || (it->second != "vote" && it->second != "option" && it->second != "optfull")) return "";
+    return "<script>(function(){var m=/^#proposal-[0-9]+$/.exec(location.hash);if(!m)return;"
+           "var t=document.getElementById(location.hash.slice(1)),w=document.querySelector('p.warn');if(!t||!w)return;"
+           "var a=t.classList.contains('card')?t.firstElementChild:t;if(!a)return;a.after(w);t.scrollIntoView();})();"
+           "</script>";
+}
+
 std::string proposal_talk(const Proposal& p, const std::string& viewer, const std::string& next_in);
 
 // "1 response" / "2 responses", then " · N skipped" when anyone skipped (Brief 7 item 4).
@@ -8692,6 +8710,11 @@ std::string flash_error(const std::map<std::string,std::string>& qs) {
     if (e=="nogroup") return "<p class=\"warn\">Pick at least one group, or turn Groups off.</p>";
     if (e=="options") return "<p class=\"warn\">Need 2–12 options, or 1–12 if people can add their own.</p>";
     if (e=="option") return "<p class=\"warn\">Could not add that choice. Duplicate, empty, or you already added one.</p>";
+    // Brief 7 item 5 (PROPOSALS-AUDIT: err=range was redirected to but had no sentence; refusals were silent)
+    if (e=="range") return "<p class=\"warn\">Minimum must be a number below the maximum. Leave both blank for any number.</p>";
+    if (e=="vote") return "<p class=\"warn\">Your answer didn&rsquo;t save. It was not one of the choices, or it was outside the allowed range or not a real date. Try again.</p>";
+    if (e=="dupe") return "<p class=\"warn\">Two options are the same (capital letters don&rsquo;t count). Remove one.</p>";
+    if (e=="optfull") return "<p class=\"warn\">This list is full: 48 options is the most one proposal can hold.</p>";
     if (e=="url") return "<p class=\"warn\">That link wasn't recognized as a YouTube video.</p>";
     if (e=="full") return "<p class=\"warn\">Queue already holds "+std::to_string(kJukeboxQueueCap)+" tracks. Remove one first.</p>";
     if (e=="denied") return "<p class=\"warn\">You can't queue a track here.</p>";
@@ -9909,8 +9932,8 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
             // A race is shown and voted on /officials only (Brief 7 item 1: one object, one page).
             if (one->is_office) return http_redir("/officials#proposal-" + std::to_string(one->id));
             const std::string self = "/proposals?id=" + std::to_string(one->id);
-            return pg(one->title, "<p class=\"muted\"><a href=\"/proposals\">All proposals</a></p>"
-                      "<div class=\"card\">" + proposal_block(*one, user, self) + "</div>");
+            return pg(one->title, "<p class=\"muted\"><a href=\"/proposals\">All proposals</a></p>" + flash_error(qs) +
+                      "<div class=\"card\">" + proposal_block(*one, user, self) + "</div>" + card_flash_script(qs));
         }
         std::string filter_key;
         if (qs.count("city")) {
@@ -9960,7 +9983,11 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         // The proposals first, the form behind a "New proposal" button (sweep 2026-11-09: on a phone the page opened
         // on an empty form and the proposals began a full screen down). Open on its own when it is what you came for:
         // a ?title= prefill, an error to fix, nothing to read yet, or a link to #new (the script below).
-        const bool open_form = !title_prefill.empty() || qs.count("err") || all.empty();
+        // Only a create error opens it; a refused answer or option (err=vote/option/optfull) is about a card below.
+        const std::string err_code = qs.count("err") ? qs.at("err") : std::string();
+        const bool create_err = err_code == "empty" || err_code == "range" || err_code == "options" ||
+                                err_code == "dupe" || err_code == "pcity";
+        const bool open_form = !title_prefill.empty() || create_err || all.empty();
         html += std::string("<details class=\"card newprop\" id=\"new\"") + (open_form ? " open" : "") +
                 "><summary>New proposal</summary><form method=\"POST\" action=\"/proposals\">"
                 "<label>Title</label><input name=\"title\" maxlength=\"140\" required value=\""+html_escape(title_prefill)+"\">"
@@ -10012,6 +10039,7 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         for (const auto& p : all) {
             html += "<div class=\"card\">"+proposal_block(p, user, list_next)+"</div>";
         }
+        html += card_flash_script(qs);
         return pg("Proposals", html);
     }
 
@@ -12082,6 +12110,7 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
             }
             const std::size_t mn = spec.open_choice ? 1 : 2;
             if (spec.options.size() < mn || spec.options.size() > 12) return http_redir("/proposals?err=options");
+            if (!ballot_options_unique(spec.options)) return http_redir("/proposals?err=dupe");
         } else if (spec.kind == BallotKind::Scale) {
             auto left = trim_ws(f["left"]);
             auto right = trim_ws(f["right"]);
@@ -12109,10 +12138,13 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         auto f = parse_form(body);
         std::uint64_t id = 0;
         try { id = std::stoull(f["id"]); } catch (...) { return http_redir("/proposals"); }
-        if (!g_store.add_proposal_option(id, user, trim_ws(f["label"])))
-            return http_redir("/proposals?err=option");
         auto p = g_store.proposal_by_id(id);
         if (!p) return http_redir("/proposals");
+        if (!g_store.add_proposal_option(id, user, trim_ws(f["label"]))) {
+            // back at the proposal, with the real reason when the list is full (Brief 7 item 5)
+            const bool full = p->ballot.kind == BallotKind::Choice && p->ballot.options.size() >= 48;
+            return http_redir(back_to_proposal(trim_ws(f["next"]), *p, full ? "optfull" : "option"));
+        }
         return http_redir(back_to_proposal(trim_ws(f["next"]), *p));
     }
     if(method=="GET"&&path=="/officials") {
@@ -12147,8 +12179,8 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         return http_ok(wrap("Officials", user, unread,
             std::string("<h1>Officials</h1>"
             "<p class=\"muted\">Account vote only. Not a certified election and not proof of residency.</p>")
-            + how_proposals_work_html()
-            + cards + form));
+            + how_proposals_work_html() + flash_error(qs)
+            + cards + form + card_flash_script(qs)));
     }
     if(method=="POST"&&path=="/officials") {
         if(!acc) return need_login();
@@ -12168,7 +12200,8 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         }
         const std::size_t mn = spec.open_choice ? 1 : 2;
         if (spec.options.size() < mn || spec.options.size() > 12)
-            return http_redir("/officials");
+            return http_redir("/officials?err=options");
+        if (!ballot_options_unique(spec.options)) return http_redir("/officials?err=dupe");
         auto nid = g_store.add_proposal(user, title, place, spec);
         if (!nid || !g_store.mark_proposal_office(nid, place))
             return http_redir("/officials");
@@ -12208,13 +12241,14 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         try { id = std::stoull(f["id"]); } catch (...) { return http_redir("/proposals"); }
         auto p = g_store.proposal_by_id(id);
         if (!p) return http_redir("/proposals");
+        // A refused answer says so at the proposal (Brief 7 item 5); a Yes/No choice that is not 0-2 is refused, not
+        // turned into Skip.
         if (p->ballot.kind == BallotKind::YesNo) {
-            int cv = 2;
-            try { cv = std::stoi(f["choice"]); } catch (...) { cv = 2; }
-            if (cv < 0 || cv > 2) cv = 2;
-            g_store.cast_proposal_vote(id, user, static_cast<ProposalVote>(cv));
-        } else {
-            g_store.cast_ballot_value(id, user, trim_ws(f["value"]));
+            const std::string c = trim_ws(f["choice"]);
+            if (c != "0" && c != "1" && c != "2") return http_redir(back_to_proposal(trim_ws(f["next"]), *p, "vote"));
+            g_store.cast_proposal_vote(id, user, static_cast<ProposalVote>(c[0] - '0'));
+        } else if (!g_store.cast_ballot_value(id, user, trim_ws(f["value"]))) {
+            return http_redir(back_to_proposal(trim_ws(f["next"]), *p, "vote"));
         }
         return http_redir(back_to_proposal(trim_ws(f["next"]), *p));
     }

@@ -147,8 +147,25 @@ bool valid_iso_date(const std::string& s) {
     const int y = std::stoi(s.substr(0, 4));
     const int m = std::stoi(s.substr(5, 2));
     const int d = std::stoi(s.substr(8, 2));
-    return y >= 2000 && y <= 2100 && m >= 1 && m <= 12 && d >= 1 && d <= 31;
+    if (y < 2000 || y > 2100 || m < 1 || m > 12 || d < 1) return false;
+    // a real calendar day (Brief 7 item 5: 2027-02-31 was accepted)
+    static const int days[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    const bool leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
+    return d <= days[m - 1] + ((m == 2 && leap) ? 1 : 0);
 }
+
+} // namespace
+
+bool ballot_options_unique(const std::vector<std::string>& options) {
+    std::set<std::string> seen;
+    for (auto o : options) {
+        for (auto& ch : o) if (ch >= 'A' && ch <= 'Z') ch = static_cast<char>(ch - 'A' + 'a');
+        if (!seen.insert(o).second) return false;
+    }
+    return true;
+}
+
+namespace {
 
 bool spec_ok(const BallotSpec& s) {
     const int k = static_cast<int>(s.kind);
@@ -161,6 +178,7 @@ bool spec_ok(const BallotSpec& s) {
         for (const auto& o : s.options) {
             if (o.empty() || o.size() > 80) return false;
         }
+        if (!ballot_options_unique(s.options)) return false;
     }
     if (s.kind == BallotKind::Scale) {
         if (s.options.size() > 2) return false;
@@ -1788,13 +1806,14 @@ ProposalTally FileStore::tally_of(std::uint64_t proposal_id) const {
     return t;
 }
 
-void FileStore::cast_ballot_value(std::uint64_t proposal_id, const std::string& voter, const std::string& payload) {
-    if (voter.empty()) return;
+bool FileStore::cast_ballot_value(std::uint64_t proposal_id, const std::string& voter, const std::string& payload) {
+    if (voter.empty()) return false;
     auto p = proposal_by_id(proposal_id);
-    if (!p || p->ballot.kind == BallotKind::YesNo) return;
-    if (!payload_ok(p->ballot, payload)) return;
+    if (!p || p->ballot.kind == BallotKind::YesNo) return false;
+    if (!payload_ok(p->ballot, payload)) return false;
     ballot_values_[proposal_id][voter] = payload;
     flush();
+    return true;
 }
 
 std::optional<std::string> FileStore::ballot_value_of(std::uint64_t proposal_id, const std::string& voter) const {

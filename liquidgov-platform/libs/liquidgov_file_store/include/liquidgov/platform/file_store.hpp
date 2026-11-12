@@ -509,6 +509,9 @@ enum class BallotKind : int {
 inline constexpr const char* kBallotSkip = "skip"; // Skip / no preference, any kind but YesNo (YesNo uses Abstain)
 inline constexpr const char* kBallotNone = "none"; // None of these, Choice only
 
+// True when no two labels are the same ignoring ASCII letter case (Brief 7 item 5: "Park" and "park" at create).
+bool ballot_options_unique(const std::vector<std::string>& options);
+
 struct BallotSpec {
     BallotKind kind = BallotKind::YesNo;
     std::string unit;   // Number: "days", "$" — empty is fine
@@ -930,7 +933,9 @@ public:
     ProposalTally tally_of(std::uint64_t proposal_id) const;
     // Number/Date/Choice/Scale. Payload meaning depends on kind (decimal,
     // YYYY-MM-DD, option index, 0-100). Invalid payload is a no-op.
-    void cast_ballot_value(std::uint64_t proposal_id, const std::string& voter, const std::string& payload);
+    // False (nothing stored) when the proposal is missing, Yes/No, or the payload is refused (Brief 7 item 5: the page
+    // says "Your answer didn't save").
+    bool cast_ballot_value(std::uint64_t proposal_id, const std::string& voter, const std::string& payload);
     std::optional<std::string> ballot_value_of(std::uint64_t proposal_id, const std::string& voter) const;
     BallotTally value_tally_of(std::uint64_t proposal_id) const;
     // Append a Choice option. Author: unlimited (up to 48). Anyone else: at most one

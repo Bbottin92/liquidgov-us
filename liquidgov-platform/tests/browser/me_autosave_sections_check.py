@@ -184,7 +184,7 @@ class Run(m.Run):
 
 def main(argv):
     platform = os.path.abspath(argv[0]) if argv else os.path.dirname(os.path.dirname(HERE))
-    src = open(os.path.join(platform, "src", "http_server.cpp"), encoding="utf-8").read()
+    src = __import__("server_source").read(platform)  # whole server source (http_server.cpp + its src/site pieces)
     markup = m.me_handler_markup(src)
     STATE["release"].set()
     srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0),

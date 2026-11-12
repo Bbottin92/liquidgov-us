@@ -22,7 +22,7 @@ check("The Commons" not in apps and "/commons/" not in apps, "the /apps page doe
 
 # ================================================================= one app (Brandon 2026-11-06:
 # "lets get rid of the multiple app icons thing. that was a bad idea")
-src = rd("liquidgov-platform/src/http_server.cpp")
+src = __import__("runpy").run_path(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "liquidgov-platform", "tests", "browser", "server_source.py"))["read"](os.path.join(ROOT, "liquidgov-platform"))  # http_server.cpp + its src/site pieces
 check('"<link rel=\\"manifest\\" href=\\"/manifest.webmanifest\\">"' in src, "page_wrap links the one LiquidGov manifest on every page")
 check('apple-touch-icon\\" href=\\"/apple-touch-icon.png\\"' in src, "page_wrap links the one LiquidGov icon on every page")
 check('apple-mobile-web-app-title\\" content=\\"LiquidGov\\"' in src, "the home-screen name is LiquidGov on every page")

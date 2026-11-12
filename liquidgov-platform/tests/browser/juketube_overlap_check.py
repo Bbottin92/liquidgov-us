@@ -44,7 +44,7 @@ LONG = ("Roseville, CA &middot; from Roseville, CA &middot; Artist, Inventor, We
 
 def site_css(platform):
     """css()'s string literals, in order: the stylesheet every page inlines."""
-    src = open(os.path.join(platform, "src", "http_server.cpp"), encoding="utf-8").read()
+    src = __import__("server_source").read(platform)  # whole server source (http_server.cpp + its src/site pieces)
     a = src.index("std::string css() {")
     b = src.index("\n}\n", a)
     body = "\n".join(l for l in src[a:b].splitlines() if not l.strip().startswith("//"))

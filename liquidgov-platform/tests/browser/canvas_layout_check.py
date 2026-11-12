@@ -37,7 +37,7 @@ VARS = {"cws": "640", "chs": "480", "aspect": "640/480", "title": "Compose a pos
 
 def tool_markup(platform):
     """canvas_tool_page()'s markup up to the end of the canvas card, as /feed/canvas renders it."""
-    src = open(os.path.join(platform, "src", "http_server.cpp"), encoding="utf-8").read()
+    src = __import__("server_source").read(platform)  # whole server source (http_server.cpp + its src/site pieces)
     a = src.index("std::string canvas_tool_page(")
     a = src.index("std::string html =", a)
     b = src.index("if (!portrait) {", a)

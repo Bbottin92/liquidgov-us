@@ -101,7 +101,7 @@ LINKS = {
 
 def page_markup(platform):
     """map_page_body's string literals, in order (the parts built at run time, like the asset URLs, are left out)."""
-    src = open(os.path.join(platform, "src", "http_server.cpp"), encoding="utf-8").read()
+    src = __import__("server_source").read(platform)  # whole server source (http_server.cpp + its src/site pieces)
     a = src.index("std::string map_page_body(")
     b = src.index("\n}\n", a)
     parts = re.findall(r'"((?:[^"\\]|\\.)*)"', src[a:b])

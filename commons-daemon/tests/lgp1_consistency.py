@@ -62,7 +62,7 @@ pre = re.search(r"for t in ([a-z ]+); do", sh)
 check(pre is not None and set(pre.group(1).split()) <= city_tags and len(set(pre.group(1).split())) >= len(city_tags) - 2,
       "city_undo.sh's precondition loop covers the stripped types (%s)" % (pre and sorted(city_tags - set(pre.group(1).split()))))
 
-srv = rd("liquidgov-platform/src/http_server.cpp")
+srv = __import__("runpy").run_path(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "liquidgov-platform", "tests", "browser", "server_source.py"))["read"](os.path.join(ROOT, "liquidgov-platform"))  # http_server.cpp + its src/site pieces
 assets = sorted(set(re.findall(r'ifstream in\("assets/([\w.-]+)"', srv)) | set(re.findall(r'js \? "assets/([\w.-]+)" : "assets/([\w.-]+)"', srv) and
                 [x for pair in re.findall(r'js \? "assets/([\w.-]+)" : "assets/([\w.-]+)"', srv) for x in pair] or []))
 check(len(assets) >= 5, "found the asset files http_server.cpp opens (%d)" % len(assets))

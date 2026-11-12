@@ -25,7 +25,7 @@ def check(ok, what):
         print("  FAIL " + what)
 
 
-srv = open(os.path.join(ROOT, "liquidgov-platform", "src", "http_server.cpp"), encoding="utf-8", errors="replace").read()
+srv = __import__("runpy").run_path(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "liquidgov-platform", "tests", "browser", "server_source.py"))["read"](os.path.join(ROOT, "liquidgov-platform"))  # http_server.cpp + its src/site pieces
 body = srv[srv.find("const std::vector<LawChapter>& law_chapters()"):]
 body = body[:body.find("\n}\n")] if "\n}\n" in body else body
 n = len(re.findall(r'^\s*\{"[^"]+",\s*\d+,', body, re.M))
@@ -41,7 +41,7 @@ if SELF_TEST and not failed:
     tmp = tempfile.mkdtemp(prefix="narration-check-")
     try:
         os.makedirs(os.path.join(tmp, "liquidgov-platform", "src"))
-        shutil.copy2(os.path.join(ROOT, "liquidgov-platform", "src", "http_server.cpp"), os.path.join(tmp, "liquidgov-platform", "src"))
+        shutil.copytree(os.path.join(ROOT, "liquidgov-platform", "src"), os.path.join(tmp, "liquidgov-platform", "src"), dirs_exist_ok=True)
         shutil.copytree(assets, os.path.join(tmp, "liquidgov-platform", "assets"),
                         ignore=lambda d, names: [x for x in names if x == "chapter7.mp3"])
         r = subprocess.run([sys.executable, os.path.abspath(__file__), tmp, "--self-test-off"], capture_output=True, text=True)

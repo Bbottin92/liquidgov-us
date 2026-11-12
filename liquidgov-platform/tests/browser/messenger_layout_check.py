@@ -91,7 +91,7 @@ def inbox_html():
 
 
 def page(platform):
-    src = open(os.path.join(platform, "src", "http_server.cpp"), encoding="utf-8").read()
+    src = __import__("server_source").read(platform)  # whole server source (http_server.cpp + its src/site pieces)
     h = mail_handler(src)
     body = top_html(h) + wrapper_open(h) + thread_html() + inbox_html() + "</div>"
     if body.count("<div") > body.count("</div"):  # a page wrapper the handler opened before the widget

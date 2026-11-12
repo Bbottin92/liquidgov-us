@@ -272,7 +272,7 @@ def scan(root, cfg, branches):
     server = ""
     server_path = os.path.join(root, "liquidgov-platform", "src", "http_server.cpp")
     if os.path.isfile(server_path):
-        server = open(server_path, encoding="utf-8", errors="replace").read()
+        server = __import__("runpy").run_path(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "liquidgov-platform", "tests", "browser", "server_source.py"))["read"](os.path.join(root, "liquidgov-platform"))  # + src/site pieces
     t.check(frozen.get("button", "") in server, "the MAINstream button text is unchanged")
     for url in frozen.get("assets", []):
         t.check(url in server, "shipped asset URL %s is still served" % url)

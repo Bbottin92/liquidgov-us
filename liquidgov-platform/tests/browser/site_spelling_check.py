@@ -42,7 +42,7 @@ def self_test():
 
 def main(argv):
     platform = os.path.abspath(argv[0]) if argv else os.path.dirname(os.path.dirname(HERE))
-    files = [os.path.join(platform, "src", "http_server.cpp")] + sorted(glob.glob(os.path.join(platform, "assets", "*.js")))
+    files = [os.path.join(platform, "src", p) for p in ["http_server.cpp"] + __import__("server_source").pieces(platform)] + sorted(glob.glob(os.path.join(platform, "assets", "*.js")))
     fails = []
 
     def check(name, ok, detail=""):

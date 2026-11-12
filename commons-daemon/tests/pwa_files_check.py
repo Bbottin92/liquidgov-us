@@ -89,7 +89,7 @@ check(len(ex) >= 1, "and it lists its excludes (%s)" % ex)
 for n in ("manifest.webmanifest", "apple-touch-icon.png", "icon-192.png", "icon-512.png"):
     check(not any(fnmatch.fnmatch(n, e.strip("/")) for e in ex), "the client sync does not exclude %s" % n)
 
-src = rd("liquidgov-platform/src/http_server.cpp")
+src = __import__("runpy").run_path(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "liquidgov-platform", "tests", "browser", "server_source.py"))["read"](os.path.join(ROOT, "liquidgov-platform"))  # http_server.cpp + its src/site pieces
 def manifest_of(name):
     i = src.find('path=="/manifest-%s.webmanifest"' % name)
     if i < 0:

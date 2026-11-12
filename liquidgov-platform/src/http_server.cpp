@@ -11170,6 +11170,19 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         return http_ok(notices_list_html(user));
     }
 
+    if(method=="GET"&&path=="/settings/password") {
+        if(!acc) return need_login();
+        // Only this page has password fields (CODE-SCAN-UX B1). The read-only account field gives the password manager
+        // the username half of the pair, so it saves and fills here and stops looking elsewhere.
+        std::string html = "<h1>Change password</h1>"
+            "<p class=\"muted\"><a href=\"/settings\">&lsaquo; Settings</a></p>" + flash_error(qs) +
+            "<div class=\"card\"><form method=\"POST\" action=\"/settings/password\">"
+            "<label>Account</label><input type=\"text\" name=\"username\" autocomplete=\"username\" value=\""+html_escape(user)+"\" readonly>"
+            "<label>Current password</label><input type=\"password\" name=\"current\" required autocomplete=\"current-password\">"
+            "<label>New password</label><input type=\"password\" name=\"next\" required autocomplete=\"new-password\">"
+            "<button>Change password</button></form></div>";
+        return pg("Change password", html);
+    }
     if(method=="GET"&&path=="/settings") {
         if(!acc) return need_login();
         auto p = g_store.prefs_of(user);
@@ -11181,11 +11194,11 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         if (qs["ok"]=="password") html += "<p class=\"ok\">Password changed.</p>";
         html += flash_error(qs);
 
+        // Change password is its own page (CODE-SCAN-UX B1, Brief 4 item 9): a password field anywhere on this long
+        // page made iOS/Chrome treat all of it as a login form and fill saved credentials into the block, delete and
+        // other boxes further down.
         html += "<div class=\"card\"><h2 id=\"security\">Security</h2>"
-            "<form method=\"POST\" action=\"/settings/password\">"
-            "<label>Current password</label><input type=\"password\" name=\"current\" required autocomplete=\"current-password\">"
-            "<label>New password</label><input type=\"password\" name=\"next\" required autocomplete=\"new-password\">"
-            "<button>Change password</button></form><h2 id=\"sessions\">Sessions</h2>";
+            "<p><a class=\"btn ghost\" href=\"/settings/password\">Change password</a></p><h2 id=\"sessions\">Sessions</h2>";
         auto all = g_store.sessions_for(acc->id);
         int shown = 0;
         for (const auto& s : all) {
@@ -12472,11 +12485,11 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         // prove its current password like always.
         const bool has_real_password = acc->password_hash != dummy_hash();
         if ((has_real_password && !verify_password(f["current"], acc->password_hash)) || f["next"].empty())
-            return http_redir("/settings?err=password");
+            return http_redir("/settings/password?err=password");
         if (f["next"].size() < 8)
-            return http_redir("/settings?err=short");
+            return http_redir("/settings/password?err=short");
         if (g_breach.is_breached(f["next"]))
-            return http_redir("/settings?err=password");
+            return http_redir("/settings/password?err=password");
         g_store.set_password_hash(acc->id, hash_password(f["next"]));
         return http_redir("/settings?ok=password");
     }

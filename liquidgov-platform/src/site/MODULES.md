@@ -33,7 +33,23 @@ module `.cpp` files, in build order, lives in one place: `sources.cmake` (CMakeL
   inside C++ strings. A script that needs per-page values gets them from a one-line inline settings object set just
   before it loads (`jukebox.js` reads `window.LG_JUKEBOX`). Still inline: `canvas_tool_page`.
 
-## Not split yet
+## The store (`libs/liquidgov_file_store`)
 
-- `libs/liquidgov_file_store/src/file_store.cpp` (3,551 lines): its own library already; split after this deploy,
-  together with `deploy/rollback_guard.py`, which reads it by path (Brandon 2026-11-12).
+Split the same way on 2026-11-12 (was one 3,809-line `file_store.cpp`; code moved, not rewritten; the store's bytes
+on disk are unchanged, proven by `tests/store_roundtrip_test.cpp`). Its file list is `libs/liquidgov_file_store/sources.cmake`
+(CMake, `deploy/rollback_guard.py`, `lgp1_consistency.py`, `program_messaging_test.cpp` and `store_split_check.py`
+all read it).
+
+| File | What lives there |
+|---|---|
+| `src/file_store.cpp` | The frame: `load()` (offers each line to every module's `read_*`, then runs the `finish_*` in order) and `flush()` (calls the `write_*` sections in the order the store has always been written). Both orders live here only. |
+| `src/core/codec` | The field encoding every module uses (percent-encoding, tab split, number parsing). |
+| `src/core/load_pending.hpp` | Rows `load()` parks until every line is read. |
+| `src/records/<module>.cpp` | One family of record types: its store methods, `read_<module>`, `finish_*`, `write_*`. Modules: `accounts`, `admin`, `avatars`, `city`, `communities`, `conversations`, `counters`, `jukebox`, `mail`, `notices`, `pains`, `posts`, `prefs`, `profile`, `proposal_comments`, `proposals`, `social`. |
+
+A new LGP1 record type: document it in `file_store.hpp`'s header comment; read it in its module's `read_*` (the
+field-count check first, as every type does: the rollback guard reads the first one) and write it in its `write_*`;
+a new module goes in `sources.cmake` and its calls in `file_store.cpp`; add a row to
+`tests/fixtures/lgp1_roundtrip/store_all_tags.lgp1` (store_split_check.py requires one) and re-write the expected
+answers; if it is new since 6ab8234, add it to `deploy/city-undo.py` (CITY_TAGS and its docstring) and
+`tests/e2e/city_undo.sh`. `lgp1_consistency.py` checks all of that.

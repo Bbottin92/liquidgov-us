@@ -250,6 +250,7 @@
 #include "liquidgov/platform/avatar.hpp"
 #include "liquidgov/platform/messenger.hpp"
 
+#include <iosfwd>
 #include <map>
 #include <optional>
 #include <set>
@@ -1158,11 +1159,62 @@ public:
 private:
     void load();
     void flush();
+    // The LGP1 load and save, split by record module (src/records/<module>.cpp; 2026-11-12). load() offers each line
+    // to every read_* until one claims its type, then runs the finish_* in a fixed order; flush() calls the write_*
+    // sections in the order the store has always been written. Both orders live in src/file_store.cpp only.
+    struct LoadPending; // rows parked until every line is read (src/core/load_pending.hpp)
+    bool read_accounts(const std::vector<std::string>& f, LoadPending& pending);
+    bool read_admin(const std::vector<std::string>& f, LoadPending& pending);
+    bool read_avatars(const std::vector<std::string>& f, LoadPending& pending);
+    bool read_city(const std::vector<std::string>& f, LoadPending& pending);
+    bool read_communities(const std::vector<std::string>& f, LoadPending& pending);
+    bool read_conversations(const std::vector<std::string>& f, LoadPending& pending);
+    bool read_counters(const std::vector<std::string>& f, LoadPending& pending);
+    bool read_jukebox(const std::vector<std::string>& f, LoadPending& pending);
+    bool read_mail(const std::vector<std::string>& f, LoadPending& pending);
+    bool read_notices(const std::vector<std::string>& f, LoadPending& pending);
+    bool read_pains(const std::vector<std::string>& f, LoadPending& pending);
+    bool read_posts(const std::vector<std::string>& f, LoadPending& pending);
+    bool read_prefs(const std::vector<std::string>& f, LoadPending& pending);
+    bool read_profile(const std::vector<std::string>& f, LoadPending& pending);
+    bool read_proposal_comments(const std::vector<std::string>& f, LoadPending& pending);
+    bool read_proposals(const std::vector<std::string>& f, LoadPending& pending);
+    bool read_social(const std::vector<std::string>& f, LoadPending& pending);
+    void finish_city_lists(LoadPending& pending);
+    void finish_city_tags(LoadPending& pending);
+    void finish_communities(LoadPending& pending);
+    void finish_posts(LoadPending& pending);
+    void finish_proposal_comments(LoadPending& pending);
+    void finish_proposals(LoadPending& pending);
+    void write_accounts(std::ostream& body);
+    void write_admin(std::ostream& body);
+    void write_attachment_names(std::ostream& body);
+    void write_avatars(std::ostream& body);
+    void write_blocks(std::ostream& body);
+    void write_canvas(std::ostream& body);
+    void write_city_lists(std::ostream& body);
+    void write_city_tags(std::ostream& body);
+    void write_communities(std::ostream& body);
+    void write_conversations(std::ostream& body);
+    void write_counters(std::ostream& body);
+    void write_friend_links(std::ostream& body);
+    void write_jukebox(std::ostream& body);
+    void write_mail(std::ostream& body);
+    void write_mail_read(std::ostream& body);
+    void write_map_prefs(std::ostream& body);
+    void write_members(std::ostream& body);
+    void write_notices(std::ostream& body);
+    void write_pains(std::ostream& body);
+    void write_posts(std::ostream& body);
+    void write_prefs(std::ostream& body);
+    void write_profiles(std::ostream& body);
+    void write_proposal_comments(std::ostream& body);
+    void write_proposals(std::ostream& body);
     void drop_requests_between(const std::string& a, const std::string& b);
     void strip_inner_both(const std::string& a, const std::string& b);
     // Shared by feed_for/feed_view: whether a confirmed, non-blocked friend
     // gets to see this Friends/Anybody post at all. See its own comment in
-    // file_store.cpp.
+    // src/records/posts.cpp.
     bool friend_sees_post(const Post& p, const std::string& viewer) const;
 
     std::string path_;

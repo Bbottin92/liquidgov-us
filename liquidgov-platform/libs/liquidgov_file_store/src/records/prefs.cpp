@@ -1,0 +1,209 @@
+// prefs: Account settings, map privacy, findability and name search.
+// LGP1 record types: pref mapp (format: the header comment of file_store.hpp).
+// Split out of file_store.cpp 2026-11-12 (code moved, not rewritten). Listed in ../../sources.cmake.
+#include "liquidgov/platform/file_store.hpp"
+
+#include "core/codec.hpp"
+#include "core/load_pending.hpp"
+
+#include <algorithm>
+#include <cstddef>
+#include <map>
+#include <ostream>
+#include <stdexcept>
+#include <vector>
+
+namespace liquidgov::platform {
+
+using namespace store_detail;
+
+namespace {
+
+bool starts_with_ci(const std::string& s, const std::string& prefix) {
+    if (prefix.size() > s.size()) return false;
+    for (std::size_t i = 0; i < prefix.size(); ++i) {
+        char a = s[i], b = prefix[i];
+        if (a >= 'A' && a <= 'Z') a = static_cast<char>(a - 'A' + 'a');
+        if (b >= 'A' && b <= 'Z') b = static_cast<char>(b - 'A' + 'a');
+        if (a != b) return false;
+    }
+    return true;
+}
+
+} // namespace
+
+AccountPrefs FileStore::prefs_of(const std::string& username) const {
+    auto it = prefs_.find(username);
+    if (it == prefs_.end()) return AccountPrefs{};
+    return it->second;
+}
+
+void FileStore::set_prefs(const std::string& username, const AccountPrefs& p) {
+    prefs_[username] = p;
+    flush();
+}
+
+MapPrefs FileStore::map_prefs_of(const std::string& username) const {
+    auto it = map_prefs_.find(username);
+    return it == map_prefs_.end() ? MapPrefs{} : it->second;
+}
+
+bool FileStore::has_map_prefs(const std::string& username) const {
+    return map_prefs_.count(username) > 0;
+}
+
+std::vector<std::string> FileStore::all_usernames() const {
+    std::vector<std::string> out;
+    out.reserve(by_username_.size());
+    for (const auto& [name, id] : by_username_) {
+        (void)id;
+        out.push_back(name);
+    }
+    return out; // by_username_ is a std::map, so already sorted
+}
+
+void FileStore::set_map_prefs(const std::string& username, const MapPrefs& p) {
+    if (username.empty()) return;
+    // Settings forms only know today's fields: keep a newer version's extras.
+    auto old = map_prefs_.find(username);
+    MapPrefs merged = p;
+    if (old != map_prefs_.end() && merged.extra_fields.empty()) merged.extra_fields = old->second.extra_fields;
+    map_prefs_[username] = merged;
+    if (!p.pains) // off deletes everything it collected
+        pains_.erase(std::remove_if(pains_.begin(), pains_.end(),
+                                    [&](const PainPoint& x) { return x.owner == username; }), pains_.end());
+    flush();
+}
+
+bool FileStore::is_findable_exact(const std::string& requester, const std::string& target) const {
+    if (requester.empty() || target.empty()) return false;
+    if (!username_exists(target)) return false;
+    if (requester == target) return true;
+    if (is_blocked(requester, target)) return false;
+    if (are_friends(requester, target)) return true;
+    auto p = prefs_of(target);
+    return p.findability != Findability::FriendsOnly;
+}
+
+std::vector<std::string> FileStore::typeahead(const std::string& requester, const std::string& prefix) const {
+    std::vector<std::string> out;
+    if (prefix.size() < 3) return out;
+    for (const auto& [name, id] : by_username_) {
+        if (!starts_with_ci(name, prefix)) continue;
+        if (is_blocked(requester, name)) continue;
+        if (requester == name) {
+            out.push_back(name);
+            continue;
+        }
+        if (are_friends(requester, name)) {
+            out.push_back(name);
+            continue;
+        }
+        auto p = prefs_of(name);
+        if (p.findability == Findability::Typeahead) out.push_back(name);
+    }
+    std::sort(out.begin(), out.end(), [&](const std::string& a, const std::string& b) {
+        const bool ea = lower_copy(a) == lower_copy(prefix);
+        const bool eb = lower_copy(b) == lower_copy(prefix);
+        if (ea != eb) return ea;
+        const bool fa = are_friends(requester, a);
+        const bool fb = are_friends(requester, b);
+        if (fa != fb) return fa;
+        return a < b;
+    });
+    if (out.size() > 20) out.resize(20);
+    return out;
+}
+
+// The record types this module reads (one branch each, as they were in load()'s chain).
+bool FileStore::read_prefs(const std::vector<std::string>& f, LoadPending& pending) {
+    (void)pending;
+    const std::string& tag = f[0];
+    if (tag == "pref") {
+        if (f.size() != 9 && f.size() != 12 && f.size() != 13 && f.size() != 14) throw std::runtime_error("LGP1: bad pref record");
+        AccountPrefs p;
+        const auto fv = parse_u64(f[2], "findability");
+        if (fv > 2) throw std::runtime_error("LGP1: bad findability");
+        p.findability = static_cast<Findability>(fv);
+        p.friends_only_dm = parse_bit(f[3], "friends_only_dm");
+        p.group_invite_confirm = parse_bit(f[4], "group_invite_confirm");
+        p.presence_hide = parse_bit(f[5], "presence_hide");
+        p.notify_friend = parse_bit(f[6], "n_friend");
+        p.notify_message = parse_bit(f[7], "n_message");
+        p.notify_group = parse_bit(f[8], "n_group");
+        if (f.size() == 12 || f.size() == 13) {
+            const auto jp = parse_u64(f[9], "jukebox_policy");
+            if (jp > 2) throw std::runtime_error("LGP1: bad jukebox_policy");
+            p.jukebox_policy = static_cast<JukeboxPolicy>(jp);
+            const auto pv = parse_u64(f[10], "profile_visibility");
+            const auto ov = parse_u64(f[11], "posts_visibility");
+            if (pv > 3 || ov > 3) throw std::runtime_error("LGP1: bad visibility");
+            p.profile_visibility = static_cast<Visibility>(pv);
+            p.posts_visibility = static_cast<Visibility>(ov);
+            if (f.size() == 13) p.intro_every_visit = parse_bit(f[12], "intro_every_visit");
+        } else if (f.size() == 14) {
+            // Superseded shape from this release's own earlier dev build:
+            // jukebox_policy plus four independent hide_from_friends/others
+            // bools. Translated to the closest point on the Visibility
+            // ladder -- lossy only for the one combination that ladder
+            // can't express (hidden from friends but not from strangers),
+            // which nothing but this codebase's own throwaway test
+            // accounts ever produced.
+            const auto jp = parse_u64(f[9], "jukebox_policy");
+            if (jp > 2) throw std::runtime_error("LGP1: bad jukebox_policy");
+            p.jukebox_policy = static_cast<JukeboxPolicy>(jp);
+            const bool hide_profile_friends = parse_bit(f[10], "hide_profile_from_friends");
+            const bool hide_profile_others = parse_bit(f[11], "hide_profile_from_others");
+            const bool hide_posts_friends = parse_bit(f[12], "hide_posts_from_friends");
+            const bool hide_posts_others = parse_bit(f[13], "hide_posts_from_others");
+            p.profile_visibility = hide_profile_friends ? Visibility::OnlyMe
+                : hide_profile_others ? Visibility::Friends : Visibility::Public;
+            p.posts_visibility = hide_posts_friends ? Visibility::OnlyMe
+                : hide_posts_others ? Visibility::Friends : Visibility::Public;
+        }
+        prefs_[pct_decode(f[1])] = p;
+        return true;
+    }
+    if (tag == "mapp") {
+        // 7 or 8 fields, or more from a newer version (kept verbatim in extra_fields).
+        if (f.size() < 7) throw std::runtime_error("LGP1: bad mapp record");
+        const std::string who = pct_decode(f[1]);
+        auto bit = [&](const std::string& v) {
+            if (v != "0" && v != "1") throw std::runtime_error("LGP1: bad mapp flag");
+            return v == "1";
+        };
+        MapPrefs mp;
+        mp.show = bit(f[2]); mp.groups = bit(f[3]); mp.posts = bit(f[4]);
+        mp.comments = bit(f[5]); mp.friends = bit(f[6]);
+        if (f.size() >= 8) mp.pains = bit(f[7]); // 7 fields: written before pains existed, default on
+        for (std::size_t i = 8; i < f.size(); ++i) mp.extra_fields.push_back(f[i]); // still percent-encoded
+        if (!who.empty()) map_prefs_[who] = mp;
+        return true;
+    }
+    return false;
+}
+
+// Save: this module's records, at their place in the store (flush() calls the sections in order).
+void FileStore::write_map_prefs(std::ostream& body) {
+    for (const auto& [who, mp] : map_prefs_) {
+        body << "mapp\t" << pct_encode(who) << "\t" << (mp.show ? 1 : 0) << "\t" << (mp.groups ? 1 : 0) << "\t"
+             << (mp.posts ? 1 : 0) << "\t" << (mp.comments ? 1 : 0) << "\t" << (mp.friends ? 1 : 0) << "\t"
+             << (mp.pains ? 1 : 0);
+        for (const auto& x : mp.extra_fields) body << "\t" << x; // a newer version's fields, untouched
+        body << "\n";
+    }
+}
+
+// Save: this module's records, at their place in the store (flush() calls the sections in order).
+void FileStore::write_prefs(std::ostream& body) {
+    for (const auto& [name, p] : prefs_) {
+        body << "pref\t" << pct_encode(name) << "\t" << static_cast<int>(p.findability) << "\t"
+             << (p.friends_only_dm ? 1 : 0) << "\t" << (p.group_invite_confirm ? 1 : 0) << "\t"
+             << (p.presence_hide ? 1 : 0) << "\t" << (p.notify_friend ? 1 : 0) << "\t"
+             << (p.notify_message ? 1 : 0) << "\t" << (p.notify_group ? 1 : 0) << "\t"
+             << static_cast<int>(p.jukebox_policy) << "\t" << static_cast<int>(p.profile_visibility) << "\t"
+             << static_cast<int>(p.posts_visibility) << "\t" << (p.intro_every_visit ? 1 : 0) << "\n";
+    }
+}
+
+} // namespace liquidgov::platform

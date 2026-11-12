@@ -881,6 +881,21 @@ std::string css() {
         ".msg.theirs .bubble{background:var(--panel);border:1px solid var(--rule);border-bottom-left-radius:.2rem}"
         ".bubtime{display:block;margin-top:.2rem;font-size:.65rem;opacity:.7}"
         ".mailcomposer{padding:.6rem 1.1rem;border-top:1px solid var(--rule)}"
+        // The full Messages page (/mail, .mailpage; Brief 4 item 8): the page is the one scroll region (the transcript
+        // has no scrollbar of its own), the composer stays pinned at the bottom of the window under the thread, and
+        // from 900 px the conversation list sits beside the open thread. The header's message panel is unchanged.
+        ".mailage{margin:.2rem 0 .6rem}.mailmore{display:inline}"
+        ".mailmore summary{display:inline;cursor:pointer;color:var(--accent);text-decoration:underline;list-style:none}"
+        ".mailmore summary::-webkit-details-marker{display:none}"
+        ".mailpage .msglist{max-height:none;overflow:visible}"
+        ".mailpage .msg .bubble{min-width:0;overflow-wrap:anywhere}"
+        ".mailpage .mailcomposer{position:sticky;bottom:0;z-index:2;background:var(--card)}"
+        "@media(min-width:900px){"
+        ".mailpage .mailwidget.hasthread{display:grid;grid-template-columns:minmax(15rem,19rem) minmax(0,1fr);align-items:start;padding:0}"
+        ".mailpage .hasthread .mailsection{grid-column:1;grid-row:1;position:sticky;top:5.5rem;max-height:calc(100vh - 7rem);"
+        "overflow-y:auto;padding:1rem;border-right:1px solid var(--rule)}"
+        ".mailpage .hasthread .mailthread{grid-column:2;grid-row:1;min-width:0}"
+        "}"
         ".mailattach{max-width:6.5rem;font-size:.7rem;padding:.3rem}"
         ".mailprog{margin-top:.35rem;padding:.45rem .6rem;border:1px solid var(--rule);border-radius:var(--rsm);"
         "overflow-wrap:anywhere}.mailprog p{margin:.3rem 0 0;font-size:.8rem}"
@@ -4126,6 +4141,8 @@ std::string mail_thread_html(const std::string& user, const std::string& other,
         + mail_program_note_html(user) + "</form></div>"
         "<script>(function(){"
         "var list=document.getElementById('msglist');if(list)list.scrollTop=list.scrollHeight;"
+        // the full Messages page scrolls as a whole (Brief 4 item 8): open at the newest message, composer in view
+        "if(list&&list.closest('.mailpage')){var mc=document.getElementById('mailcomposer');if(mc)mc.scrollIntoView({block:'end'});}"
         "var form=document.getElementById('mailcomposer'),ta=document.getElementById('mailtext');"
         "if(!form||!ta)return;"
         "ta.addEventListener('keydown',function(e){"
@@ -10453,12 +10470,17 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
             thread = "<div class=\"card\"><p class=\"warn\">Mail is friends-only until they accept. "
                      "<a href=\"/search?q="+html_escape(qs["with"])+"\">Find "+html_escape(qs["with"])+"</a></p></div>";
         }
-        std::string html = "<h1>Mail</h1>"
-            "<p class=\"muted\">Direct messages are friends-only in this release. "
-            "Open messaging waits on age assurance so a stranger cannot reach a minor. We will not treat a checkbox as age.</p>";
+        // Brief 4 item 8 (Brandon 2026-11-11 4:37 PM): the heading matches the nav ("Messages", not "Mail"), and the
+        // age-assurance note is one line plus "more" so the conversation starts higher up. .mailpage scopes the layout
+        // (list beside the thread on wide screens, one scroll region, composer pinned; see css()).
+        std::string html = "<div class=\"mailpage\"><h1>Messages</h1>"
+            "<div class=\"muted mailage\">Direct messages are friends-only for now. "
+            "<details class=\"mailmore\"><summary>more</summary>"
+            "Open messaging waits on age assurance so a stranger cannot reach a minor. We will not treat a checkbox as age."
+            "</details></div>";
         if (qs["skipped"].size()) html += "<p class=\"warn\">Couldn’t include: "+html_escape(qs["skipped"])+
             ". Unknown, blocked, and contact-settings conflicts are skipped — start a new thread with just them if you still want to talk.</p>";
-        html += "<div class=\"card mailwidget\">"+thread+mail_inbox_html(user, acc->id)+"</div>";
+        html += "<div class=\"card mailwidget"+std::string(thread.empty() ? "" : " hasthread")+"\">"+thread+mail_inbox_html(user, acc->id)+"</div></div>";
         // No separate "Messages" app any more (one app), so no "add Messages
         // to your Home Screen" nudge here; mail_install_hint() is unused.
         return pg("Messages", html);

@@ -47,8 +47,14 @@ m = re.search(r"^CITY_TAGS\s*=\s*\(([^)]*)\)", undo, re.M)
 check(m is not None, "city-undo.py's CITY_TAGS was found")
 city_tags = set(re.findall(r'"([a-z]+)"', m.group(1))) if m else set()
 new_since = read - BASELINE
+# 2026-11-12 (edited with Brandon's OK, style library): a new type may instead be stripped by deploy/styles-undo.py,
+# so rolling back one feature never wipes another's records
+sm = re.search(r"^STYLE_TAGS\s*=\s*\(([^)]*)\)", rd("deploy/styles-undo.py"), re.M)
+check(sm is not None, "styles-undo.py's STYLE_TAGS was found")
+style_tags = set(re.findall(r'"([a-z]+)"', sm.group(1))) if sm else set()
 for t in sorted(new_since):
-    check(t in city_tags, "new record type '%s' (not in the pre-city binary) is stripped by city-undo.py" % t)
+    check(t in city_tags or t in style_tags,
+          "new record type '%s' (not in the pre-city binary) is stripped by city-undo.py or styles-undo.py" % t)
 for t in sorted(city_tags):
     check(t not in BASELINE, "city-undo.py does not strip '%s', which the pre-city binary owns" % t)
 doc = re.search(r"record types:\s*\n\s*\n\s*([a-z ]+)\n", undo)

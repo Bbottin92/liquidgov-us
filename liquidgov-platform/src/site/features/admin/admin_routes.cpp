@@ -117,6 +117,36 @@ std::optional<std::string> admin_routes(Route& r) {
         g_store.add_audit_log(user, "edit_proposal", std::to_string(pid));
         return http_redir("/admin/proposals?done=edited");
     }
+    if(method=="GET"&&path=="/admin/styles") {
+        if(!acc) return need_login();
+        if(!is_operator(user)) return admin_404();
+        const std::string done = qs.count("done") ? qs.at("done") : "";
+        const std::string msg = done == "deleted" ? "Taken down; a copy is in the moderation archive."
+                              : done == "dismissed" ? "Reports dismissed."
+                              : done == "archive-failed" ? "Not taken down: the moderation archive could not be written (see the server log)."
+                              : done.empty() ? "" : "Nothing changed.";
+        return pg("Operator tools", admin_styles_page(msg));
+    }
+    if(method=="POST"&&(path=="/admin/styles/takedown"||path=="/admin/styles/dismiss")) {
+        if(!acc) return need_login();
+        if(!is_operator(user)) return admin_404();
+        std::uint64_t sid = 0;
+        const std::string raw = parse_form(body)["id"];
+        if (raw.empty() || raw.size() > 19 || !std::all_of(raw.begin(), raw.end(), [](char c) { return c >= '0' && c <= '9'; }))
+            return http_redir("/admin/styles?done=none");
+        sid = std::stoull(raw);
+        auto s = g_store.style(sid);
+        if (!s) return http_redir("/admin/styles?done=none");
+        if (path == "/admin/styles/dismiss") {
+            g_store.dismiss_style_reports(sid);
+            g_store.add_audit_log(user, "dismiss_style_reports", std::to_string(sid) + " by " + s->author + ": " + s->name.substr(0, 60));
+            return http_redir("/admin/styles?done=dismissed");
+        }
+        if (!archive_deleted_style(*s, user)) return http_redir("/admin/styles?done=archive-failed");
+        g_store.remove_style(sid);
+        g_store.add_audit_log(user, "delete_style", std::to_string(sid) + " by " + s->author + ": " + s->name.substr(0, 60));
+        return http_redir("/admin/styles?done=deleted");
+    }
     if(method=="GET"&&path=="/admin/log") {
         if(!acc) return need_login();
         if(!is_operator(user)) return admin_404();

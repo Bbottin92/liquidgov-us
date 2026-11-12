@@ -194,6 +194,8 @@ std::optional<std::string> settings_routes(Route& r) {
         o << "created_at: " << fmt_time(acc->created_at) << "\n";
         o << "blurb: " << g_store.blurb(acc->id) << "\n";
         o << "profile css:\n" << g_store.author_css(acc->id) << "\n\n";
+        for (const auto& s : g_store.styles())
+            if (s.author == user) o << "published style #" << s.id << " \"" << s.name << "\":\n" << s.css << "\n\n";
         o << "friends:\n";
         for (auto& n : g_store.friends_of(user)) o << "  " << n << "\n";
         o << "\ncommunities:\n";

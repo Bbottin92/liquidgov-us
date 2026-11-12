@@ -4367,8 +4367,14 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
             existing_timelapse = g_store.canvas_timelapse(owner->id);
         }
     }
-    int cw = portrait ? 400 : (post_mode ? 640 : 640);
-    int ch = portrait ? 400 : (post_mode ? 480 : 440);
+    // A post drawing is shown at the post's full width, so its bitmap is 1280 x 960 (Brief 6 item 5: sharp on a
+    // phone's 3x screen; the post path takes images up to SizeCaps::image_bytes, 10 MB, with no edge limit). PX is
+    // bitmap pixels per pixel of the old 640 x 480 canvas: the script scales every size the person picks (brush,
+    // shape, smudge, text, marquee) by it, so a size-8 brush looks as thick as before. /me/canvas stays 640 x 440:
+    // its frames go through save_avatar, which refuses an edge over kAvatarMaxEdgePx (1024) or 2 MB.
+    const int px = post_mode ? 2 : 1;
+    int cw = portrait ? 400 : 640 * px;
+    int ch = portrait ? 400 : (post_mode ? 480 * px : 440);
     std::string cws = std::to_string(cw), chs = std::to_string(ch);
     std::string aspect = cws + "/" + chs;
     // `err` is already-rendered HTML from flash_error(qs) at the call site
@@ -4780,7 +4786,7 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "</div>"
         "<p class=\"muted\" id=\"cstatus\"></p></div>"
         "<script>(function(){"
-        "var LAYN=3,layers=[];"
+        "var LAYN=3,layers=[],PX="+std::to_string(px)+";"
         "for(var li=0;li<LAYN;li++){"
         "var lc=document.getElementById('clayer'+li);"
         "layers.push({cv:lc,ctx:lc.getContext('2d'),undo:[],redo:[],opacity:1});"
@@ -4871,7 +4877,7 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "});"
         "function drawSeg(ax,ay,bx,by){"
         "var b=toolVal(),color=document.getElementById('ccolor').value;"
-        "var size=Number(document.getElementById('csize').value);"
+        "var size=Number(document.getElementById('csize').value)*PX;"
         "var opacity=Number(document.getElementById('copacity').value)/100;"
         "var glow=document.getElementById('cglow').dataset.on==='1';"
         "var cx=actx();"
@@ -4886,7 +4892,7 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "var n=Math.max(6,Math.floor(size));"
         "for(var i=0;i<n;i++){"
         "var ang=Math.random()*Math.PI*2,rad=Math.random()*size;"
-        "cx.beginPath();cx.arc(bx+Math.cos(ang)*rad,by+Math.sin(ang)*rad,1,0,Math.PI*2);cx.fill();"
+        "cx.beginPath();cx.arc(bx+Math.cos(ang)*rad,by+Math.sin(ang)*rad,PX,0,Math.PI*2);cx.fill();"
         "}"
         "}else{"
         "cx.lineCap='round';cx.lineJoin='round';cx.strokeStyle=color;"
@@ -4906,7 +4912,7 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         // either way, only the target context differs.
         "function drawShape(x0,y0,x1,y1,targetCtx){"
         "var t=toolVal(),color=document.getElementById('ccolor').value;"
-        "var size=Number(document.getElementById('csize').value);"
+        "var size=Number(document.getElementById('csize').value)*PX;"
         "var opacity=Number(document.getElementById('copacity').value)/100;"
         "var fill=document.getElementById('cfill').dataset.on==='1';"
         "var glow=document.getElementById('cglow').dataset.on==='1';"
@@ -4968,7 +4974,7 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "var smudgeBuf=document.createElement('canvas');"
         "function smudgeAt(x,y){"
         "var cx=actx(),c=acv();"
-        "var r=Math.max(4,Number(document.getElementById('csize').value));"
+        "var r=Math.max(4,Number(document.getElementById('csize').value))*PX;"
         "var sx=Math.max(0,Math.floor(lastX-r)),sy=Math.max(0,Math.floor(lastY-r));"
         "var sw=Math.min(c.width-sx,r*2),sh=Math.min(c.height-sy,r*2);"
         "if(sw<=0||sh<=0)return;"
@@ -4987,7 +4993,7 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         // paste "at" the way a text editor does.
         "var selRect=null,clip=null,pastePending=false;"
         "function rectFrom(a,b){return{x:Math.min(a.x,b.x),y:Math.min(a.y,b.y),w:Math.abs(b.x-a.x),h:Math.abs(b.y-a.y)};}"
-        "function drawMarquee(r){octx.save();octx.strokeStyle='#000';octx.lineWidth=1;octx.setLineDash([5,4]);"
+        "function drawMarquee(r){octx.save();octx.strokeStyle='#000';octx.lineWidth=PX;octx.setLineDash([5*PX,4*PX]);"
         "octx.strokeRect(Math.round(r.x)+.5,Math.round(r.y)+.5,Math.round(r.w),Math.round(r.h));octx.restore();}"
         "function copySel(){"
         "if(!selRect||selRect.w<1||selRect.h<1)return;"
@@ -5024,7 +5030,7 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "});"
         "overlay.width=nw;overlay.height=nh;"
         "var wrap=document.getElementById('ccanvaswrap');"
-        "wrap.style.maxWidth=nw+'px';wrap.style.aspectRatio=nw+'/'+nh;"
+        "wrap.style.maxWidth=(nw/PX)+'px';wrap.style.aspectRatio=nw+'/'+nh;"
         "selRect=null;clearOverlay();captureFrame(false);"
         "}"
         "document.getElementById('ccrop').addEventListener('click',function(){"
@@ -5116,7 +5122,7 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "'font-size:'+(fontPx*scale)+'px;'+(bold?'font-weight:bold;':'')+(italic?'font-style:italic;':'')+"
         "(underline?'text-decoration:underline;':'');"
         "ta.style.left=(x*scale)+'px';ta.style.top=(y*scale)+'px';"
-        "ta.style.width=(boxW*scale)+'px';ta.style.height=Math.max(fontPx*1.6,40)*scale+'px';"
+        "ta.style.width=(boxW*scale)+'px';ta.style.height=Math.max(fontPx*1.6,40*PX)*scale+'px';"
         "document.getElementById('ccanvaswrap').appendChild(ta);"
         "ta.focus();"
         "var done=false;"
@@ -5202,9 +5208,9 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "var p=pos(e);var r=rectFrom(shapeStart,p);var start=shapeStart;clearOverlay();shapeStart=null;"
         // A near-zero drag (effectively just a click) falls back to a
         // sensible default box instead of creating an unusable sliver.
-        "var fontPx=r.h>=6?Math.round(r.h):24;"
-        "var boxW=r.w>=20?Math.round(r.w):200;"
-        "var tx=r.w>=6?r.x:start.x,ty=r.h>=6?r.y:start.y;"
+        "var fontPx=r.h>=6*PX?Math.round(r.h):24*PX;"
+        "var boxW=r.w>=20*PX?Math.round(r.w):200*PX;"
+        "var tx=r.w>=6*PX?r.x:start.x,ty=r.h>=6*PX?r.y:start.y;"
         "addTextBox(tx,ty,boxW,fontPx);"
         "return;"
         "}"

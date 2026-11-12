@@ -7604,6 +7604,7 @@ std::string privacy_body() {
            "<p>A session cookie (<code>lg_session</code>) keeps you signed in.</p></div>"
            "<div class=\"card\"><h2>What you put here</h2>"
            "<p>Posts, mail, and drawings stay until you delete them, or until an operator removes spam. "
+           "Messages on this copy are stored so the operator can read them. " // Brandon 2026-11-11 decision 5
            "Friends are mutual accept. A block hides you from that person on civic pages.</p>"
            "<p>Sign in to <a href=\"/login?next=/export\">export</a> or delete from <a href=\"/login?next=/settings\">Settings</a>.</p></div>"
            "<p class=\"muted\">The operator of this copy is named on <a href=\"/control\">who holds control</a>.</p>";

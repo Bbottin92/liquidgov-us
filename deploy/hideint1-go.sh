@@ -86,6 +86,7 @@ python3 - "$DRYLOG" << 'PY'
 import sys
 allow = {
     "src/site/features/map/map_graph.cpp",
+    "tests/e2e/map_feed_gates.sh",
     "tests/e2e/map_interest_people_hidden.sh",
     "tests/e2e/map_interest_words.sh",
     "tests/e2e/map_interests_feeds.sh",

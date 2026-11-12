@@ -105,18 +105,18 @@ check "pal's posts visible again: back in the Friends feed" 'has e-ff.json post:
 
 # --- people under an interest: profile visibility
 node $ADMIN int:jam j1.json >/dev/null; node $PAL int:jam pj1.json >/dev/null
-check "control: Bbottin's jam -> pal and stranger" 'has j1.json user:pal && has j1.json user:stranger' "$(ids j1.json)"
-check "control: pal's jam -> stranger" 'has pj1.json user:stranger' "$(ids pj1.json)"
+check "Bbottin's jam shows neither pal nor stranger (interest people hidden until the signup privacy step)" '! has j1.json user:pal && ! has j1.json user:stranger' "$(ids j1.json)"
+check "pal's jam does not show stranger (interest people hidden)" '! has pj1.json user:stranger' "$(ids pj1.json)"
 privacy $STRANGER 2 0
 node $ADMIN int:jam j2.json >/dev/null; node $PAL int:jam pj2.json >/dev/null
-check "stranger's profile visible to Friends: gone from Bbottin's jam (not friends)" '! has j2.json user:stranger && has j2.json user:pal' "$(ids j2.json)"
-check "...still under stranger's friend pal's jam" 'has pj2.json user:stranger' "$(ids pj2.json)"
+check "stranger's profile visible to Friends: gone from Bbottin's jam (not friends)" '! has j2.json user:stranger && ! has j2.json user:pal' "$(ids j2.json)"
+check "...not under stranger's friend pal's jam either (interest people hidden)" '! has pj2.json user:stranger' "$(ids pj2.json)"
 privacy $STRANGER 3 0
 node $PAL int:jam pj3.json >/dev/null
 check "stranger's profile 'only me': gone from pal's jam too" '! has pj3.json user:stranger' "$(ids pj3.json)"
 privacy $STRANGER 1 0
 node $ADMIN int:jam j4.json >/dev/null
-check "stranger's profile visible to Members: back under Bbottin's jam" 'has j4.json user:stranger' "$(ids j4.json)"
+check "stranger's profile visible to Members: still not under Bbottin's jam (interest people hidden)" '! has j4.json user:stranger' "$(ids j4.json)"
 privacy $STRANGER 0 0
 
 # --- blocks, both ways, on feeds

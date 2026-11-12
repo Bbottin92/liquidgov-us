@@ -134,7 +134,7 @@ void FileStore::load() {
             read_jukebox(f, pending) ||
             read_admin(f, pending))
             continue;
-            throw std::runtime_error("LGP1: unknown record type '" + tag + "'");
+        throw std::runtime_error("LGP1: unknown record type '" + tag + "'");
     }
     prune_attachment_names(); // names whose mail was purged since the last run
     finish_communities(pending);

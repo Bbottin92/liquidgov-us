@@ -39,5 +39,23 @@ set(LG_SITE_SOURCES
   src/site/features/feed/composer.cpp
   src/site/features/jukebox/jukebox_personal.cpp
   src/site/features/push/push_subs.cpp
+  src/site/features/system/system_routes.cpp
+  src/site/features/assets/assets_routes.cpp
+  src/site/features/jukebox/jukebox_routes.cpp
+  src/site/features/mail/mail_routes.cpp
+  src/site/features/push/push_routes.cpp
+  src/site/features/pages/pages_routes.cpp
+  src/site/features/auth/auth_routes.cpp
+  src/site/features/live/live_routes.cpp
+  src/site/features/canvas/canvas_routes.cpp
+  src/site/features/feed/feed_routes.cpp
+  src/site/features/proposals/proposals_routes.cpp
+  src/site/features/profile/profile_routes.cpp
+  src/site/features/people/people_routes.cpp
+  src/site/features/communities/communities_routes.cpp
+  src/site/features/map/map_routes.cpp
+  src/site/features/notices/notices_routes.cpp
+  src/site/features/settings/settings_routes.cpp
+  src/site/features/admin/admin_routes.cpp
   src/site/router.cpp
 )

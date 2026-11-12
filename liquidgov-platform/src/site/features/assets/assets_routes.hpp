@@ -1,0 +1,10 @@
+#pragma once
+// assets_routes.hpp: the assets feature's HTTP routes (split out of handle(); see site/router.cpp).
+#include "site/core/route.hpp"
+
+namespace liquidgov::site {
+
+// The response for a assets route, or nullopt when the request is not one of this feature's routes.
+std::optional<std::string> assets_routes(Route& r);
+
+}  // namespace liquidgov::site

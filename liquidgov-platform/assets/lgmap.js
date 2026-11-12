@@ -465,17 +465,43 @@
     applyFilter();
   }
   // Back: history entries made by recenter(); popstate returns to that center without pushing again.
-  var restoring = false, depth = 0, backBtn = document.getElementById('lgm-back');
-  function updateBack() { if (backBtn) backBtn.disabled = depth <= 0; }
-  if (backBtn) backBtn.addEventListener('click', function () { if (depth > 0) history.back(); });
+  // Live look #5 (Brandon 2026-11-11): the first click was sometimes ignored, the second skipped a level, and Back was
+  // enabled at You. Now:
+  // - each entry holds its place (i: 0 is the start view) and the whole trail (path), so going back draws exactly that
+  //   level with exactly that trail, and Back is disabled at i 0;
+  // - the side panel's page loads with location.replace (openPanel), so it adds no history entry. A link followed
+  //   INSIDE the panel still does, and history.back() then only steps that page back (the "ignored" click), so the
+  //   button keeps stepping back (up to 10 times) until the map's own entry arrives;
+  // - a second click while one is under way goes one more step, never zero.
+  var restoring = false, histAt = 0, backWant = -1, backTimer = 0, backTries = 0, backBtn = document.getElementById('lgm-back');
+  function updateBack() { if (backBtn) backBtn.disabled = histAt <= 0; }
+  function backStep() {
+    clearTimeout(backTimer);
+    if (backWant < 0 || histAt <= backWant || ++backTries > 10) { backWant = -1; return; }
+    history.back();
+    backTimer = setTimeout(backStep, 350);
+  }
+  if (backBtn) backBtn.addEventListener('click', function () {
+    if (histAt <= 0) return;
+    backWant = backWant >= 0 ? Math.max(0, backWant - 1) : histAt - 1;
+    backTries = 0;
+    backStep();
+  });
   window.addEventListener('popstate', function (ev) {
     // each entry carries the center's own box data, so it can be drawn again even after the trail moved past it
-    var id = ev.state && ev.state.lgc, d = ev.state && ev.state.d;
-    if (!id || !d) return; // not one of the map's entries
-    depth = Math.max(0, depth - 1);
+    var st = ev.state, d = st && st.d;
+    if (!st || !st.lgc || !d) return; // not one of the map's entries
+    histAt = typeof st.i === 'number' ? st.i : Math.max(0, histAt - 1);
     restoring = true;
-    try { select(nodes[id] || d, 'now'); } finally { restoring = false; }
+    try {
+      var keep = nodes[d.id];
+      if (st.path && st.path.length) centerPath = st.path.slice(0, -1); // recenter() adds d back as the last step
+      else centerPath = centerPath.filter(function (c) { return c.id !== d.id; });
+      selected = null; // a phone tap still waiting (GLIDE_WAIT) must not move the map after this
+      select(recenter(keep || d), 'now');
+    } finally { restoring = false; }
     updateBack();
+    if (backWant >= 0) { if (histAt > backWant) { backTries = 0; backStep(); } else { clearTimeout(backTimer); backWant = -1; } }
   });
   // Zoom out: up one level along the trail (an item -> its center -> the center before); from You, the MAINstream.
   function zoomOut() {
@@ -510,7 +536,7 @@
     // Back (map SPEC phase 1): each new center is a history entry, so the phone's back gesture steps back out of it.
     // A center reached BY going back (popstate) is not pushed again.
     if (!restoring) {
-      try { history.pushState({ lgc: d.id, d: d }, ''); depth++; } catch (e) {} // err-ok: no history API (old browser): Back stays disabled, the trail still works
+      try { history.pushState({ lgc: d.id, d: d, path: centerPath.slice(), i: histAt + 1 }, ''); histAt++; } catch (e) {} // err-ok: no history API (old browser): Back stays disabled, the trail still works
     }
     updateBack();
     if (!keep) return addNode(d, 0, 0);
@@ -712,7 +738,11 @@
     ptitle.textContent = n.label;
     openLink.href = n.page;
     // Same page, framed: the server drops its header for framed loads.
-    if (frame.getAttribute('src') !== n.page) frame.setAttribute('src', n.page);
+    // location.replace: a new page in the panel is not a history entry, so Back steps through the map (live look #5)
+    if (frame.getAttribute('data-page') !== n.page) {
+      frame.setAttribute('data-page', n.page);
+      try { frame.contentWindow.location.replace(n.page); } catch (e) { frame.setAttribute('src', n.page); } // err-ok: a frame showing another site can't be replaced; src still loads it
+    }
     // Phone: the page is a full-screen sheet over the map (CSS); the page behind must not scroll, and the close
     // button says where it goes back to (Brandon 2026-11-07: "full-screen sheet over the map").
     if (narrow()) {
@@ -830,7 +860,7 @@
     var r = addNode(data.node, 0, 0);
     centerPath = [dataOf(r)];
     // the first view is the history entry Back returns to (map SPEC phase 1)
-    try { history.replaceState({ lgc: r.id, d: dataOf(r) }, ''); } catch (e) {} // err-ok: no history API: Back stays disabled
+    try { history.replaceState({ lgc: r.id, d: dataOf(r), path: centerPath.slice(), i: 0 }, ''); } catch (e) {} // err-ok: no history API: Back stays disabled
     selected = null;
     trail(r); // "You" until you step out
     return expand(r);

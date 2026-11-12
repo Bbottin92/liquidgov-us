@@ -8717,76 +8717,47 @@ std::string feed_composer_card(const std::string& user) {
         "})();</script>";
 }
 
-// Wires up /me's "Editing /me" bar (#medraftbar/#medraftcount/#mediscard/
-// #mepublish, see the GET /me handler) against every form[data-draft] on
-// the page -- currently Profile CSS and the Jukebox permissions form.
-// Nothing here writes anything; it defers each form's own submit (already
-// wired to its real, unchanged endpoint) until Publish revision is
-// clicked, sending whichever forms actually changed from what the page
-// loaded with, in order, then reloading -- so the reload shows the true
-// saved state rather than trusting the client's own idea of it. Discard
-// is just a reload too: nothing was written, so there's nothing to
-// actually roll back, only unsaved input to throw away.
+// /me saves itself (Brandon 2026-11-11 4:50 PM, Brief 4 item 11; replaced the "Editing /me" bar with Publish
+// revision and Discard): each form[data-draft] -- currently Profile CSS -- is sent to its own, unchanged endpoint with
+// fetch about 800 ms after the last change, so there is no page load (no jump to the top). A small status under the
+// form says Saving..., Saved, or Couldn't save with a Retry button: a refused value (the endpoint redirects with err=)
+// or a failed request. The form's own submit button stays in the markup for no-script use and is hidden here; Enter
+// or a submit saves at once. The name is kept (draft_publish_script) so its callers and checks still find it.
 std::string draft_publish_script() {
     return
         "<script>(function(){"
-        "var bar=document.getElementById('medraftbar');if(!bar)return;"
-        "var countEl=document.getElementById('medraftcount');"
-        "var discardBtn=document.getElementById('mediscard'),publishBtn=document.getElementById('mepublish');"
         "var forms=Array.prototype.slice.call(document.querySelectorAll('form[data-draft]'));"
-        "function serialize(f){"
-        "var fd=new FormData(f),parts=[];"
-        "fd.forEach(function(v,k){parts.push(k+'='+(typeof v==='string'?v:'[file]'));});"
-        "return parts.sort().join('&');"
-        "}"
-        "var initial=forms.map(serialize);"
-        // The form's own submit button (still there, still real, for the
-        // one other context this same markup renders in unscripted) would
-        // otherwise fire a real navigation right past the draft bar --
-        // hidden here, not removed, so nothing else about the form changes.
         "forms.forEach(function(f){"
         "var btn=f.querySelector('button[type=submit],button:not([type])');"
         "if(btn)btn.hidden=true;"
-        "});"
-        "function dirtyIndexes(){"
-        "var out=[];"
-        "forms.forEach(function(f,i){if(serialize(f)!==initial[i])out.push(i);});"
-        "return out;"
-        "}"
-        "function refresh(){"
-        "var n=dirtyIndexes().length;"
-        "countEl.textContent=n?(n+' unsaved change'+(n===1?'':'s')):'No unsaved changes';"
-        "discardBtn.disabled=publishBtn.disabled=(n===0);"
-        "}"
-        "publishBtn.hidden=true;"
-        "var saveTimer=null;"
-        "function markClean(){"
-        "forms.forEach(function(f,i){initial[i]=serialize(f);});"
-        "countEl.textContent='Saved';"
-        "discardBtn.disabled=true;"
-        "}"
-        "function saveNow(){"
-        "var idx=dirtyIndexes();"
-        "if(!idx.length)return;"
-        "countEl.textContent='Saving\u2026';"
-        "discardBtn.disabled=true;"
-        "function next(i){"
-        "if(i>=idx.length){markClean();return;}"
-        "var f=forms[idx[i]];"
-        "fetch(f.getAttribute('action'),{method:'POST',"
+        "var box=document.createElement('p');box.className='muted';box.style.margin='.35rem 0 0';"
+        "var st=document.createElement('span');st.setAttribute('data-draft-status','');"
+        "st.setAttribute('role','status');st.setAttribute('aria-live','polite');"
+        "var rb=document.createElement('button');rb.type='button';rb.className='ghost';rb.textContent='Retry';"
+        "rb.hidden=true;rb.setAttribute('data-draft-retry','');rb.style.marginLeft='.5rem';"
+        "box.appendChild(st);box.appendChild(rb);f.parentNode.insertBefore(box,f.nextSibling);"
+        "function ser(){var p=[];new FormData(f).forEach(function(v,k){p.push(k+'='+(typeof v==='string'?v:'[file]'));});"
+        "return p.sort().join('&');}"
+        "var saved=ser(),timer=null,busy=false,again=false;"
+        "function show(t,retry){st.textContent=t;rb.hidden=!retry;}"
+        "function save(){"
+        "clearTimeout(timer);"
+        "if(busy){again=true;return;}"
+        "var now=ser();if(now===saved&&rb.hidden)return;"
+        "busy=true;show('Saving…',false);"
+        "fetch(f.getAttribute('action'),{method:'POST',credentials:'same-origin',"
         "headers:{'Content-Type':'application/x-www-form-urlencoded'},"
         "body:new URLSearchParams(new FormData(f)).toString()})"
-        ".then(function(){next(i+1);}).catch(function(){next(i+1);});"
+        ".then(function(r){if(!r.ok||/[?&]err=/.test(r.url||''))throw new Error('refused');saved=now;show('Saved',false);})"
+        ".catch(function(){show('Couldn\\u2019t save',true);})"
+        ".then(function(){busy=false;if(again){again=false;save();}});"
         "}"
-        "next(0);"
-        "}"
-        "forms.forEach(function(f){"
-        "f.addEventListener('input',function(){refresh();clearTimeout(saveTimer);saveTimer=setTimeout(saveNow,700);});"
-        "f.addEventListener('change',function(){refresh();clearTimeout(saveTimer);saveTimer=setTimeout(saveNow,200);});"
-        "f.addEventListener('submit',function(e){e.preventDefault();clearTimeout(saveTimer);saveNow();});"
+        "function later(){clearTimeout(timer);timer=setTimeout(save,800);}"
+        "f.addEventListener('input',later);"
+        "f.addEventListener('change',later);"
+        "f.addEventListener('submit',function(e){e.preventDefault();save();});"
+        "rb.addEventListener('click',save);"
         "});"
-        "discardBtn.addEventListener('click',function(){location.reload();});"
-        "refresh();"
         "})();</script>";
 }
 
@@ -10008,21 +9979,8 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         if(!acc) return need_login();
         std::string err = flash_error(qs);
         std::string html;
-        // Draft/publish: the two forms directly on this page (Profile CSS,
-        // Jukebox permissions) no longer save themselves on their own
-        // submit -- draftScript below intercepts them, tracks which are
-        // actually changed from what the page loaded with, and only this
-        // bar's Publish button sends them (sequentially, to their existing
-        // endpoints -- no new storage, this is purely a review-before-
-        // committing step in front of what was already there). Discard is
-        // just a reload: nothing is written until Publish, so there is
-        // nothing to actually roll back.
-        html += "<div id=\"medraftbar\" class=\"card\" style=\"position:sticky;top:0;z-index:8;"
-                "display:flex;align-items:center;justify-content:space-between;gap:.6rem;flex-wrap:wrap\">"
-                "<div><p class=\"eyebrow\" style=\"margin:0\">Editing /me</p>"
-                "<p id=\"medraftcount\" class=\"muted\" style=\"margin:.1rem 0 0\">No unsaved changes</p></div>"
-                "<div class=\"row\"><button type=\"button\" id=\"mediscard\" class=\"ghost\" disabled>Discard</button>"
-                "<button type=\"button\" id=\"mepublish\" disabled>Publish revision</button></div></div>";
+        // No Publish/Discard bar any more (Brandon 2026-11-11 4:50 PM, Brief 4 item 11): every form[data-draft] here
+        // saves itself, see draft_publish_script.
         html += "<div class=\"card\"><div class=\"who\">"+portrait_tag(user,"")+"<div><h1>"+html_escape(user)+"</h1>"
             "<p class=\"muted\">Platform profile · <a href=\"/u/"+html_escape(user)+"\">public page</a> · member since "+
             html_escape(fmt_time(acc->created_at))+"</p></div></div>"+err+

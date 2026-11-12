@@ -208,7 +208,8 @@ jobs:
       # Bounded (2026-11-11): run 43094476050 sat in this upload for hours while GitHub's artifact API returned 502s,
       # so the run never finished and ship.py could not call the commit CI-proven. A stuck upload is cancelled after
       # 5 minutes and does not turn the run red; ship.py still refuses a site change with no screenshots (fails closed
-      # there). commons-daemon/tests/ci_upload_bounds_check.py
+      # there). Its check (ci_upload_bounds_check.py) is not on this branch yet: it is in patch 02, waiting on the
+      # scripts/affected_checks.py mapping it needs. Name its path here again when it lands (workflow_paths_check).
       - name: keep the phone screenshots
         if: always()
         timeout-minutes: 5

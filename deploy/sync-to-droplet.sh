@@ -79,8 +79,8 @@ if [ ${#DRY[@]} -eq 0 ]; then
 fi
 
 # No-rollback guard on every REAL sync (Brandon 2026-11-09): the program a rollback restores (built from the LIVE
-# commit) must still open the store this commit writes; deploy/rollback_guard.py compares the two file_store.cpp
-# versions. The live commit comes from <dest>/DEPLOYED_COMMIT on the server (written below by every real sync), or
+# commit) must still open the store this commit writes; deploy/rollback_guard.py compares the two versions of the
+# store code (libs/liquidgov_file_store, the files its sources.cmake lists). The live commit comes from <dest>/DEPLOYED_COMMIT on the server (written below by every real sync), or
 # LIQUIDGOV_LIVE_COMMIT=<commit> (the first deploy after this change, before the file exists). Unknown -> refused
 # (fails closed). LIQUIDGOV_NO_ROLLBACK_OK="<reason + undo plan>" gets past a refusal, logged, only with Brandon's OK.
 # The file holds the LAST TWO synced commits (newest first) and the guard checks this commit against BOTH: the file is

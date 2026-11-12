@@ -39,6 +39,8 @@ CHECKS = {
     "sync_gate_check.py": DEPLOY,
     "ci_gate_interop_check.py": DEPLOY,
     "rollback_guard_check.py": DEPLOY + ["liquidgov-platform/libs/liquidgov_file_store/*"],
+    "store_split_check.py": ["deploy/rollback_guard.py", "liquidgov-platform/libs/liquidgov_file_store/*",
+                             "liquidgov-platform/tests/fixtures/lgp1_roundtrip/*"],
     "narration_files_check.py": [SRC, ASSETS],
     "make_go_record_length_check.py": DEPLOY,
     "preflight_retry_check.py": DEPLOY,

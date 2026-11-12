@@ -30,7 +30,7 @@ BASELINE = set("a ac afn alog av blk cm comm cvf cvm em f gc gcm gcn gid gmh gms
                "m ma ml mlr n nn note pa pau pba pbk pbo pbv pf pg ph pn poff popen post pq pr pref prgr prof prop propn pv "
                "pvote px r repln reply rp s sec".split())
 
-cpp = rd("liquidgov-platform/libs/liquidgov_file_store/src/file_store.cpp")
+cpp = __import__("runpy").run_path(os.path.join(ROOT, "deploy", "rollback_guard.py"))["store_text"](lambda rel: rd("liquidgov-platform/libs/liquidgov_file_store/" + rel) if os.path.exists(os.path.join(ROOT, "liquidgov-platform/libs/liquidgov_file_store", rel)) else None)  # the store files sources.cmake lists, joined
 hpp = rd("liquidgov-platform/libs/liquidgov_file_store/include/liquidgov/platform/file_store.hpp")
 read = set(re.findall(r'tag == "([a-z]+)"', cpp))
 written = set(re.findall(r'<< "([a-z]+)\\t', cpp))

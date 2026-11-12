@@ -1,0 +1,122 @@
+LGP1
+n	4
+pn	3
+nn	2
+gcn	2
+gmsn	3
+repln	2
+propn	3
+prpln	2
+painn	2
+a	1	alice	h%25ash1	1	1700000000	hello%09world
+a	2	bob	hash2	0	1700000001	
+a	3	carol	hash3	1	1700000002	bio
+s	sessA	1	1700000000	1700000100	4102444800	0	laptop
+s	sessB	2	1700000000	1700000100	4102444800	1	revoked
+s	sessC	3	1700000000	1700000100	1000	0	expired
+s	sessD	9	1700000000	1700000100	4102444800	0	noaccount
+ph	1	fp-alice
+pq	fp-bad	4102444800
+pq	fp-old	1000
+ml	alice	alice@example.test
+ml	ghost	ghost@example.test
+pr	tokhash	alice	4102444800
+pr	tokold	bob	1000
+gid	alice	google-sub-1
+em	x	y
+f	alice	bob
+f	bob	alice
+r	carol	alice
+m	alice	bob	old%20four
+m	alice	bob	hi%0Athere	1700000500
+ma	bob	alice	file	1700000600	blob-1	text/plain
+afn	d|bob|alice|1700000600|blob-1	notes.txt
+afn	d|bob|alice|1|gone	stale.txt
+afn	legacy	four	fields
+mlr	alice	bob	1700000700
+mlr	ghost	bob	1700000700
+post	1	alice	1700001000	first	local
+post	2	bob	1700001100	second	
+rp	2	alice	1
+pa	1	blob-p	image/png
+pau	1	0
+pv	2	0
+px	1	carol
+pf	1	bob
+pg	1	garden
+reply	1	1	bob	1700001200	nice
+sec	1	bob
+prop	1	alice	1700002000	Fix%20road	body1
+prop	2	bob	1700002100	Mayor	body2
+pcity	1	Springfield
+pwho	1	City%20Council
+ptag	1	roads
+ptag	1	notatag
+pvote	1	bob	1
+pvote	1	carol	2
+pbk	2	2	people	0	0	1
+pbo	2	1	Bea
+pbo	2	0	Ada
+popen	2
+poff	2	Springfield
+pba	2	1	carol
+pbv	2	bob	0
+pbv	2		ignored
+prply	1	1	bob	1700002200	agree
+prply	2	99	bob	1700002200	orphan
+prx	1	bob	like
+prx	99	bob	like
+prx	1	carol	notakind
+comm	local	Local	alice	about	1700003000
+comm	garden	Garden	bob	about%20g	1700003100	4	veg
+ccity	garden	Springfield
+ccity	nogroup	Nowhere
+cm	garden	bob
+cm	garden	carol
+cm	local	alice
+clist	springfield	bob
+clist	springfield	alice
+ctag	springfield	roads
+ctag	springfield	Parks
+mapp	alice	1	0	1	1	0
+mapp	bob	1	1	1	1	1	0	future%09x	extra2
+pain	1	alice	wish	1	1700004000	post:1	I%20wish%20it%20worked
+pain	2	bob	pain	1	1700004100	post:2	tired	1	newfield
+blk	alice	carol
+blk	bob	carol	1700005000	spam
+inner	alice	bob
+pref	alice	1	0	1	0	1	1	1
+pref	bob	2	1	0	1	0	0	1	1	2	1
+pref	carol	0	0	0	0	1	1	1	2	3	3	1
+pref	dave	0	0	0	0	1	1	1	0	1	0	0	1
+prof	alice	fp1	Alice	Town	Living	Reading	Dev	School
+note	1	alice	friend	bob	1700006000	0	x
+av	1	blob-av	1700007000
+av	9	blob-orphan	1700007000
+ac	1	body%7Bcolor:red%7D
+ac	2	
+cvf	1	0	frame0
+cvf	1	2	frame2
+cvm	1	1
+jt	alice	dQw4w9WgXcQ	1700008000
+jt	alice	aaaaaaaaaaa	1700008001	bob
+jt	jbs:station	bbbbbbbbbbb	1700008002
+jh	alice	dQw4w9WgXcQ	bob	1700008100
+jsub	bob	alice
+jsub	ghost	alice
+jauto	alice	1
+jauto	bob	0
+jrelay	bob	alice
+jrelay	carol	
+jpos	alice	dQw4w9WgXcQ	42	1700008200
+lk	bob
+alog	1700009000	alice	lock	bob
+prgr	bob	3	1000	alice	1700009100
+prgr	carol	0	1	alice	1
+gc	1	1	1700010000	Team
+gcm	1	1	0
+gcm	1	2	1
+gmsg	1	1	1	1700010100	0	0	0	0	hello
+gmsg	2	1	2	1700010200	1700010300	0	0	0	edited	blob-g	text/plain
+gmh	2	old%20text
+afn	g|2	prog.zip

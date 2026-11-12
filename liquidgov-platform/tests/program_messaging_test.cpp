@@ -312,9 +312,22 @@ int main() {
     // community": the reload threw, and on the live file it would have
     // stopped the site from starting (lessons 2026-10-27).
     {
-        std::ifstream src(std::string(LG_SOURCE_DIR) + "/libs/liquidgov_file_store/src/file_store.cpp");
-        assert(src.good());
-        const std::string text((std::istreambuf_iterator<char>(src)), std::istreambuf_iterator<char>());
+        // The store's .cpp files, as libs/liquidgov_file_store/sources.cmake lists them, joined.
+        const std::string store_dir = std::string(LG_SOURCE_DIR) + "/libs/liquidgov_file_store/";
+        std::ifstream listing(store_dir + "sources.cmake");
+        assert(listing.good());
+        std::string text, entry;
+        std::size_t files = 0;
+        while (std::getline(listing, entry)) {
+            const auto b = entry.find_first_not_of(" \t\r");
+            const auto e = entry.find_last_not_of(" \t\r");
+            if (b == std::string::npos || entry.compare(b, 4, "src/") != 0) continue;
+            std::ifstream src(store_dir + entry.substr(b, e - b + 1));
+            assert(src.good());
+            text.append((std::istreambuf_iterator<char>(src)), std::istreambuf_iterator<char>());
+            ++files;
+        }
+        assert(files >= 1);
         std::set<std::string> tags;
         std::size_t count = 0;
         const std::string marker = "tag == \"";

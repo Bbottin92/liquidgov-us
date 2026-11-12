@@ -87,13 +87,18 @@
     // so nothing here. (This banner's text used to be hidden every second by setup.js, leaving a strip with only "x".)
     return;
   }
+  // "Blocked in iPhone Settings" is only true on an iPhone or iPad (Brandon 2026-11-11, Brief 4 item 10: it showed in
+  // desktop Chrome). iPadOS reports itself as a Mac, so a Mac with a touch screen counts too. Elsewhere the browser's
+  // own site settings hold the switch, and its own prompt just said so: no strip.
+  var ios = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  function blocked() { if (ios) banner('Alerts blocked in iPhone Settings', null); else { var o = document.getElementById('lgpushask'); if (o) o.remove(); } }
   navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(function () {});
   if (Notification.permission === 'granted') { subscribe(); return; }
-  if (Notification.permission === 'denied') { banner('Alerts blocked in iPhone Settings', null); return; }
+  if (Notification.permission === 'denied') { blocked(); return; }
   banner('Turn on alerts', function () {
     Notification.requestPermission().then(function (p) {
       if (p === 'granted') subscribe();
-      else banner('Alerts blocked in iPhone Settings', null);
+      else blocked();
     });
     return true;
   });

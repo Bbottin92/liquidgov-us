@@ -765,7 +765,11 @@ std::string css() {
         ".brand .word{white-space:nowrap}"
         ".brand .tagline{color:var(--stone);font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;"
         "margin-top:.1rem}"
-        "#navc{position:absolute;left:-999px}"
+        // Not parked at left:-999px (CODE-SCAN-UX A2, Brief 4 item 9): iOS Safari scrolls a toggled form control into
+        // view, so an off-screen checkbox yanked the page when the avatar/Menu label was tapped mid-page. It stays where
+        // it sits in the header (on screen), 1px, invisible and untappable; the label still toggles it.
+        "#navc{position:absolute;width:1px;height:1px;margin:0;padding:0;border:0;opacity:0;pointer-events:none;"
+        "overflow:hidden;clip-path:inset(50%)}"
         ".navbtn{display:none;min-height:44px;min-width:44px;align-items:center;justify-content:center;"
         "border:1px solid var(--rule);background:var(--paper);border-radius:var(--rsm);color:var(--ink);"
         "font:600 .85rem var(--body);cursor:pointer}"

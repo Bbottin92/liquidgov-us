@@ -510,10 +510,17 @@
     // the MAINstream is the top, above You: zooming out there stays put (it went back down to You, Grok Bot's check)
     if (cid === 'root') { status('This is the top: the MAINstream.'); return; }
     if (centerPath.length > 1) { select(centerPath[centerPath.length - 2], 'now'); return; }
-    if (nodes.root) { select(nodes.root, 'now'); return; }
+    toMainstream();
+  }
+  // The MAINstream view, from Zoom out at You and from the MAINstream button at the top, at any level (live look #6:
+  // the button only panned the map, and did nothing at deep levels). The MAINstream becomes the center: the ring clears,
+  // its cities and Sitewide go round it; the trail says You > MAINstream, whatever level you came from.
+  function toMainstream() {
+    if (centerId() === 'root') { fitAll(true); return; }
+    var go = function (d) { centerPath = centerPath.slice(0, 1); select(nodes.root || d, 'now'); };
+    if (nodes.root) { go(nodes.root); return; }
     status('Loading…');
-    // the MAINstream becomes the center: your ring clears, its cities and Sitewide go round it; the trail says You > MAINstream
-    load('root').then(function (data) { select(data.node, 'now'); }).catch(function (err) { status(err.message); });
+    load('root').then(function (data) { go(data.node); }).catch(function (err) { status(err.message); });
   }
   var zoomBtn = document.getElementById('lgm-zoomout');
   if (zoomBtn) zoomBtn.addEventListener('click', zoomOut);
@@ -792,15 +799,10 @@
     status('Visits forgotten on this device.');
   });
   document.getElementById('lgm-main').addEventListener('click', function () {
-    // MAINstream: shrink the field back to the side and bring the MAINstream into view.
+    // MAINstream: shrink the field back to the side and open the MAINstream view
     panel.classList.remove('full');
     document.getElementById('lgm-expand').textContent = 'Expand';
-    var r = nodes.root || nodes.you; // the map starts at you; the MAINstream is loaded once Places is opened
-    var box = svg.getBoundingClientRect();
-    scale = 1;
-    tx = 40;
-    ty = r ? box.height / 2 - (r.y + H / 2) : 0;
-    apply(true);
+    toMainstream();
   });
 
   // Pan by dragging the empty map; zoom with the wheel (around the pointer).

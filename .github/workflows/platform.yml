@@ -121,6 +121,18 @@ jobs:
           export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
           python3 liquidgov-platform/tests/browser/ci_map_sticky_check.py "$RUNNER_TEMP/lg" "$PWD/liquidgov-platform" ci "$RUNNER_TEMP/phone"
 
+      # Profile CSS styles the real /u/ page now (Brandon 2026-11-12): a hostile full-screen fixed box must stay inside
+      # the profile area, never over the site header or the plain-view link. Report-only like the steps above (its
+      # VERDICT line is read by ship.py, which requires ALL-PASS when site files change).
+      - name: profile CSS containment check (browser, report-only)
+        if: always()
+        timeout-minutes: 10
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
+          python3 liquidgov-platform/tests/browser/ci_profile_css_contain_check.py "$RUNNER_TEMP/lg" "$PWD/liquidgov-platform" ci "$RUNNER_TEMP/phone"
+
       # Post drawings at 1280 x 960 (Brief 6 item 5): the real server takes the bigger PNG, sizes still look the same.
       - name: canvas resolution check (browser, report-only)
         if: always()

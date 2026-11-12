@@ -57,10 +57,19 @@ std::optional<std::string> profile_routes(Route& r) {
             // The page-top banner (see `err` above) already covers ?err=css
             // -- this is just the success case, which has no other home.
             if (qs["ok"]=="css") css_msg = "<p class=\"ok\">Saved. See it at <a href=\"/u/"+html_escape(user)+"\">your public profile</a>.</p>";
+            // CSS saved under the older sandbox-era filter can fail today's rules; the profile then shows the plain
+            // look, and this says why (Brandon 2026-11-12).
+            if (!current_css.empty()) {
+                auto now = sanitize_author_css(current_css);
+                if (!now.ok)
+                    css_msg += "<p class=\"err\">Your saved CSS isn't shown on your profile: " +
+                               html_escape(css_reject_message(now.code)) + " Change it and save again.</p>";
+            }
             html += "<div class=\"card\"><h2>Profile CSS</h2>"
-                "<p class=\"muted\">Restyles your public profile page (/u/"+html_escape(user)+
-                "), shown inside a sandboxed frame that can never run scripts. "
-                "@import, url(), and anything script-adjacent are rejected outright, not silently stripped. "
+                "<p class=\"muted\">Styles your whole profile page (/u/"+html_escape(user)+
+                ") below the site header. Use .lg-theme to style the whole area. Visitors can always switch to a "
+                "plain view. Escapes (\\), the &amp; selector, url(), image functions, @import and @-rules other "
+                "than @media, @supports and @container are rejected outright, not silently stripped. "
                 "Limit " + std::to_string(kAuthorCssMaxBytes/1000) + "KB. Leave empty to use the default look.</p>"
                 + css_msg +
                 "<form method=\"POST\" action=\"/me/css\" data-draft=\"1\">"
@@ -167,6 +176,27 @@ std::optional<std::string> profile_routes(Route& r) {
         std::string html = !is_owner ? "" :
             "<p class=\"row\" style=\"justify-content:center;margin:0 0 1rem\">"
             "<a class=\"btn\" href=\"/me\">Edit profile</a></p>";
+        // Profile CSS styles this whole page below the site header (Brandon 2026-11-12). Stored CSS is checked again
+        // with today's rules: CSS saved under the older, sandbox-era filter that fails them is not shown (its owner
+        // is told on /me). The "plain view" link sits OUTSIDE the styled area, so no style can hide or fake it, and
+        // ?plain=1 drops the CSS entirely (unreadable colors, accessibility, a hostile style).
+        const std::string stored_css = g_store.author_css(found->id);
+        const bool css_ok = !stored_css.empty() && sanitize_author_css(stored_css).ok;
+        const bool plain = qs["plain"] == "1";
+        const std::string self_url = "/u/" + html_escape(found->username);
+        if (css_ok) {
+            html += plain
+                ? "<p class=\"muted lg-plain-view\" style=\"text-align:right;margin:0 0 .5rem\">Plain view. <a href=\""
+                      + self_url + "\">Show " + html_escape(found->username) + "'s style</a></p>"
+                : "<p class=\"muted lg-plain-view\" style=\"text-align:right;margin:0 0 .5rem\"><a href=\""
+                      + self_url + "?plain=1\">Plain view</a></p>";
+            if (!plain) html += author_css_block(stored_css);
+        }
+        // contain:paint makes this outer div the box every fixed/absolute child is positioned and clipped in, so no
+        // style can cover the header or nav; author selectors can't reach it (they are all nested under the scope).
+        // .lg-theme stays inside the scope so CSS written for the old frame (.lg-theme h1{...}) still matches.
+        html += "<div class=\"lg-profile-outer\" style=\"contain:paint;isolation:isolate;position:relative\">"
+                "<div class=\"lg-profile-scope\"><div class=\"lg-theme\">";
         // A profile-background drawing is the identity card's own
         // background now, not a separate sandboxed iframe (that iframe
         // used to show a near-empty white box -- just a duplicate
@@ -200,29 +230,8 @@ std::optional<std::string> profile_routes(Route& r) {
             "<tr><td>Standing</td><td>Associate &middot; good</td></tr>"
             "<tr><td>Enrolled</td><td>"+html_escape(fmt_time(found->created_at))+"</td></tr>"
             "</table></div></div>"+committees_html;
-        if (!g_store.author_css(found->id).empty()) {
-            // Custom theme only -- a profile-background drawing renders
-            // directly on this page now (see profile_canvas_css above),
-            // not through this iframe at all.
-            // sandbox="allow-same-origin", not sandbox="" (opaque origin):
-            // confirmed live that opaque-origin sandboxed iframes get
-            // silently dropped by real-world browser privacy/tracking
-            // protections (reproduced in two independent browsers, not a
-            // one-off) -- the iframe element rendered but its document
-            // never loaded. allow-same-origin fixes that. This does NOT
-            // reopen the security hole it looks like: allow-scripts is
-            // still withheld, so nothing can ever execute inside this
-            // frame regardless of origin -- and with zero script
-            // execution possible, having the same origin as the rest of
-            // the site is not exploitable (there's no JS to act on it).
-            // The two real defenses -- sanitize_author_css rejecting
-            // script-adjacent CSS, and no script execution ever being
-            // possible in this frame -- are both still fully intact.
-            html += "<iframe src=\"/u/"+html_escape(found->username)+"/theme\" sandbox=\"allow-same-origin\" "
-                    "title=\"Profile theme\" "
-                    "style=\"width:100%;min-height:320px;border:1px solid var(--rule);"
-                    "border-radius:var(--rsm);background:#fff\"></iframe>";
-        }
+        // (The old sandboxed /u/<name>/theme frame is gone from this page: the CSS styles the page itself now. The
+        // /theme route still answers; it is on the bloat list.)
         if (is_owner) {
             // Edit profile is now the centered button at the top of the
             // page (see above) -- nothing further needed here.
@@ -290,6 +299,7 @@ std::optional<std::string> profile_routes(Route& r) {
                 for (const auto& p : shown) html += "<div class=\"card\">"+post_block(p, user)+"</div>";
             }
         }
+        html += "</div></div></div>";  // .lg-theme, .lg-profile-scope, .lg-profile-outer
         return pg(found->username, html);
     }
     if(method=="POST"&&path=="/me/profile") {

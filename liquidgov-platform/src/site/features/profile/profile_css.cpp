@@ -23,15 +23,60 @@ std::string css_reject_message(const std::string& code) {
         {"javascript", "Not allowed in profile CSS: javascript:."},
         {"style-tag", "Not allowed in profile CSS: a style tag."},
         {"script-tag", "Not allowed in profile CSS: a script tag."},
+        {"escape", "Not allowed in profile CSS: backslash escapes (\\)."},
+        {"nesting", "Not allowed in profile CSS: the & selector. To style the whole area, use .lg-theme."},
+        {"braces", "Every { needs its matching }, and every /* comment needs its */."},
+        {"image", "Not allowed in profile CSS: image-set(), image(), cross-fade() and other image functions."},
+        {"at-rule", "Not allowed in profile CSS: @-rules other than @media, @supports and @container."},
     };
     auto it = kMessages.find(code);
     return it == kMessages.end() ? "That wasn't accepted." : it->second;
 }
 
+// Profile CSS runs on the REAL /u/<name> page now (Brandon 2026-11-12), nested inside .lg-profile-scope{...} (see
+// author_css_block), not in the old scriptless sandbox frame -- so this filter is the defense, not a backstop:
+//  - no backslash at all: CSS escapes (u\72l(, @\69mport) would walk past every word check below;
+//  - braces balance outside strings and comments, and no comment is left open: a stray } would close the scope wrapper
+//    and let the rest style the whole page (header, nav);
+//  - no & (the nesting selector): html:has(&) header{...} reaches outside the scope;
+//  - no way to load anything: url(), image-set() and the other image functions, @import, @font-face;
+//  - only @media, @supports and @container; any other @-rule is refused by name.
+// Words are matched on the CSS with comments and strings taken out (so content:"&" or /* url( */ is fine), except
+// the tag checks, which read the whole text: "</style" inside a CSS string still ends the <style> element.
 CssCheckResult sanitize_author_css(const std::string& css_in) {
     if (css_in.size() > kAuthorCssMaxBytes) return {false, "size"};
+    if (css_in.find('\\') != std::string::npos) return {false, "escape"};
     std::string lower = css_in;
     for (auto& c : lower) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    static const std::pair<const char*, const char*> kTags[] = {
+        {"</style", "style-tag"}, {"<style", "style-tag"}, {"<script", "script-tag"},
+    };
+    for (const auto& [needle, code] : kTags) {
+        if (lower.find(needle) != std::string::npos) return {false, code};
+    }
+    // bare: the lowercased CSS without comments and with every string emptied; braces counted on the way
+    std::string bare;
+    int depth = 0;
+    bool in_comment = false;
+    char quote = 0;
+    for (std::size_t i = 0; i < lower.size(); ++i) {
+        const char c = lower[i];
+        if (in_comment) {
+            if (c == '*' && i + 1 < lower.size() && lower[i + 1] == '/') { in_comment = false; ++i; }
+            continue;
+        }
+        if (quote) {
+            if (c == quote || c == '\n') quote = 0;  // a CSS string also ends at a newline (bad-string)
+            continue;
+        }
+        if (c == '/' && i + 1 < lower.size() && lower[i + 1] == '*') { in_comment = true; ++i; bare += ' '; continue; }
+        if (c == '"' || c == '\'') { quote = c; bare += "\"\""; continue; }
+        if (c == '{') ++depth;
+        if (c == '}' && --depth < 0) return {false, "braces"};
+        bare += c;
+    }
+    if (in_comment || depth != 0) return {false, "braces"};
+    if (bare.find('&') != std::string::npos) return {false, "nesting"};
     static const std::pair<const char*, const char*> kDenied[] = {
         {"@import", "import"},
         {"@font-face", "font-face"},
@@ -39,18 +84,31 @@ CssCheckResult sanitize_author_css(const std::string& css_in) {
         {"@layer", "layer"},
         {"@scope", "scope"},
         {"url(", "url"},
+        {"image-set(", "image"},
+        {"image(", "image"},
+        {"cross-fade(", "image"},
+        {"element(", "image"},
+        {"src(", "image"},
+        {"paint(", "image"},
         {"expression(", "expression"},
         {"-moz-binding", "moz-binding"},
         {"behavior:", "behavior"},
         {"javascript:", "javascript"},
-        {"</style", "style-tag"},
-        {"<style", "style-tag"},
-        {"<script", "script-tag"},
     };
     for (const auto& [needle, code] : kDenied) {
-        if (lower.find(needle) != std::string::npos) return {false, code};
+        if (bare.find(needle) != std::string::npos) return {false, code};
+    }
+    for (std::size_t at = bare.find('@'); at != std::string::npos; at = bare.find('@', at + 1)) {
+        std::size_t end = at + 1;
+        while (end < bare.size() && (std::isalnum(static_cast<unsigned char>(bare[end])) || bare[end] == '-')) ++end;
+        const std::string name = bare.substr(at + 1, end - at - 1);
+        if (name != "media" && name != "supports" && name != "container") return {false, "at-rule"};
     }
     return {true, ""};
+}
+
+std::string author_css_block(const std::string& css) {
+    return css.empty() ? "" : "<style>.lg-profile-scope{" + css + "}</style>";
 }
 
 // A profile-background drawing's CSS, for the real /u/<username> page's

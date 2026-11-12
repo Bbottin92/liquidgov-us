@@ -10,6 +10,9 @@ struct CssCheckResult {
 };
 std::string css_reject_message(const std::string& code);
 CssCheckResult sanitize_author_css(const std::string& css_in);
+// <style> holding the author's CSS nested under .lg-profile-scope; "" for no CSS. Only pass CSS that passed
+// sanitize_author_css (the profile page re-checks stored CSS at render time).
+std::string author_css_block(const std::string& css);
 std::string profile_canvas_css(const std::string& username, std::size_t frame_count, bool timelapse);
 
 }  // namespace liquidgov::site

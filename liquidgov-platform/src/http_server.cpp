@@ -7178,6 +7178,9 @@ std::string map_page_body(const std::string& user, const std::string& focus) {
             "<div id=\"lgmap\" class=\"lgmap\" data-focus=\""+html_escape(focus)+"\" data-me=\""+html_escape(user)+"\">"
             "<div class=\"lgmap-bar\">"
             "<button type=\"button\" id=\"lgm-main\" class=\"lgm-main\" title=\"Back to the MAINstream; shrinks the field\">MAINstream</button>"
+            // the "Turn on alerts" pill sits here, beside MAINstream, not in its own row above the map: that row pushed a
+            // phone's first view down ~60 px, under the Juketube tip and past the fold (CI phone 4/4b, bar B5, hidden H6)
+            "<span data-lg-alerts-slot></span>"
             // Phones: a tap grows connections, a hold opens the page (Brandon 2026-11-09); the hint says so, since a
             // long press is invisible unless something tells you about it (side-agent note).
             "<span class=\"lgm-hint muted\"><span class=\"lgm-hint-wide\">Click a box to grow its connections and open its page.</span>"

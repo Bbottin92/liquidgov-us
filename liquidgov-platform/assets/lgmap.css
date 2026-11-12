@@ -3,6 +3,8 @@
 .lgmap-bar{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem 1rem;margin:.2rem 0 .6rem}
 .lgm-main{font-weight:700;letter-spacing:.03em;background:var(--accent);color:var(--paper);border:0;border-radius:999px;padding:.45rem 1.1rem;cursor:pointer}
 .lgm-main:hover{filter:brightness(1.08)}
+/* push.js puts the alerts pill in this slot; contents only, so an empty slot adds no gap to the row */
+.lgmap-bar [data-lg-alerts-slot]{display:contents}
 .lgm-hint{font-size:.9rem}
 /* the trail (M1.1 look): You > Groups > ... over the top-left of the map */
 .lgmap-canvas{position:relative}

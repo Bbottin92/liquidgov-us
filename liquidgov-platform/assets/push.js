@@ -46,6 +46,9 @@
     }
     // One prompt at a time: when alerts can be turned on here, the "Get the app" bar (setup.js) steps aside.
     if (clickable) { var app = document.getElementById('lggetapp'); if (app) app.remove(); }
+    // A page can name where the strip goes (the map: beside MAINstream, so it adds no row above the map); else the top of <main>.
+    var slot = document.querySelector('[data-lg-alerts-slot]');
+    if (slot) { wrap.style.margin = '0'; slot.appendChild(wrap); return; }
     var main = document.querySelector('main');
     if (main) main.insertBefore(wrap, main.firstChild); else document.body.insertBefore(wrap, document.body.firstChild);
   }

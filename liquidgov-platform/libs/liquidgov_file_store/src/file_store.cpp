@@ -1333,7 +1333,6 @@ std::vector<Post> FileStore::feed_view(const std::string& user, std::size_t limi
         }
         bool include;
         if (filter == FeedFilter::Committees) include = committee_post;
-        else if (filter == FeedFilter::Drawings) include = (personal || committee_post) && !it->attachment_blob_id.empty();
         else include = personal || committee_post; // All
         if (!include) continue;
         out.push_back(*it);

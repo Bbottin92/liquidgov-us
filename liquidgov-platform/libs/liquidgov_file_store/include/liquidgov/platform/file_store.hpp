@@ -581,7 +581,7 @@ enum class FeedFilter : int {
     All = 0,
     Friends = 1,
     Committees = 2,
-    Drawings = 3,
+    // 3 was Drawings (removed: Brandon 2026-11-10, no Drawings feed category)
 };
 
 struct AccountPrefs {
@@ -883,10 +883,9 @@ public:
     // not every community on the site. feed_for itself now also includes a
     // "Friends + Groups" combo post (audience==Friends with a community
     // set), same as any other Friends post; a GroupsOnly post never
-    // appears in either feed_for or feed_view's "personal" half. Drawings
-    // is whichever of those carries a media attachment; there's no separate
-    // "hand-drawn" flag anywhere in Post, so this is the closest honest
-    // reading of "drawings" the data model supports.
+    // appears in either feed_for or feed_view's "personal" half. (There was
+    // a Drawings view, the posts with a media attachment; Brandon dropped it
+    // 2026-11-10.)
     std::vector<Post> feed_view(const std::string& user, std::size_t limit, FeedFilter filter) const;
     std::vector<Post> posts_in(const std::string& community, std::size_t limit) const;
     std::vector<Post> posts_by(const std::string& author) const;

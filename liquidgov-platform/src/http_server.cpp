@@ -932,7 +932,7 @@ std::string css() {
         // a row of gold-bold outlines competed with the one gold primary button)
         "button.ghost,.btn.ghost{background:transparent;color:var(--ink);font-weight:500;border:1px solid var(--rule)}"
         "@media(hover:hover){button.ghost:hover,.btn.ghost:hover{filter:none;border-color:var(--accent);color:var(--accent)}}"
-        // the feed's filter (All / Friends / Communities / Drawings): one segmented control that never wraps on a phone
+        // the feed's filter (All / Friends / Communities): one segmented control that never wraps on a phone
         ".segtabs{display:inline-flex;flex-wrap:nowrap;gap:0;padding:3px;border:1px solid var(--rule);border-radius:12px;"
         "background:var(--panel);max-width:100%;overflow-x:auto;margin:.5rem 0 1rem}"
         ".segtabs>.btn{min-height:38px;padding:.35rem .9rem;border:0;border-radius:9px;font-size:.9rem;white-space:nowrap}"
@@ -9766,8 +9766,7 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         FeedFilter filter = FeedFilter::All;
         if (filter_key == "friends") filter = FeedFilter::Friends;
         else if (filter_key == "committees") filter = FeedFilter::Committees;
-        else if (filter_key == "drawings") filter = FeedFilter::Drawings;
-        else filter_key = "all";
+        else filter_key = "all"; // anything else, an old ?filter=drawings link included, is All (no Drawings, Brandon 2026-11-10)
         auto tab = [&](const char* key, const char* label) {
             const bool active = filter_key == key;
             return "<a class=\"btn"+std::string(active?"\" aria-current=\"page":" ghost")+"\" href=\"/feed?filter="+key+"\">"+label+"</a>";
@@ -9775,7 +9774,7 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         std::string html = "<h1>Feed</h1><p class=\"muted eyebrow\">"+html_escape(fmt_time(now()))+
             " &middot; "+std::to_string(g_store.account_count())+" members</p>"
             "<div class=\"segtabs\">"+
-            tab("all","All")+tab("friends","Friends")+tab("committees","Communities")+tab("drawings","Drawings")+
+            tab("all","All")+tab("friends","Friends")+tab("committees","Communities")+
             "</div>"+
             flash_error(qs)+
             feed_composer_card(user);

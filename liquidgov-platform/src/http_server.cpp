@@ -5780,7 +5780,7 @@ std::string jukebox_panel_body(bool standalone) {
         "<div id=\"jbstationlist\" style=\"display:flex;flex-direction:column;gap:.2rem\"></div>"
         "<select id=\"jbstationadd\" style=\"margin-top:.35rem\"><option value=\"\">Add a station&hellip;</option></select>"
         "<div class=\"row\" style=\"margin-top:.3rem;align-items:flex-start\">"
-        "<input id=\"jbfollow\" placeholder=\"Follow someone's Juketube (username)\" autocomplete=\"off\" style=\"flex:1\">"
+        "<input id=\"jbfollow\" placeholder=\"Follow someone's Juketube\" autocomplete=\"off\" style=\"flex:1\">"
         "<button type=\"button\" class=\"ghost\" id=\"jbfollowbtn\">Follow</button>"
         "</div>"
         "<p class=\"muted\" id=\"jbfollowerr\" style=\"margin:.2rem 0 0\" hidden></p>"
@@ -10035,7 +10035,7 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
             auto bio = g_store.blurb(acc->id);
             html += "<div class=\"card\"><h2>About you</h2>"
                 "<form method=\"POST\" action=\"/me/profile\">"
-                "<label>Display name</label><input name=\"display_name\" required maxlength=\"80\" value=\""+html_escape(prof.display_name)+"\">"
+                "<label>Display name</label><input name=\"display_name\" required maxlength=\"80\" autocomplete=\"nickname\" value=\""+html_escape(prof.display_name)+"\">"
                 "<label>Hometown</label><input name=\"hometown\" maxlength=\"80\" value=\""+html_escape(prof.hometown)+"\">"
                 "<label>Where you live now</label><input name=\"living\" maxlength=\"80\" value=\""+html_escape(prof.living)+"\">"
                 "<label>Bio</label><textarea name=\"bio\" maxlength=\"500\">"+html_escape(bio)+"</textarea>"
@@ -10089,7 +10089,7 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
                 (g_store.jukebox_autoplay(user) ? " checked" : "")+
                 "> Play my Juketube when someone opens my profile</label>"
                 "<label style=\"display:block;margin-top:.5rem\">Play this Juketube instead</label>"
-                "<input name=\"relay\" placeholder=\"username &mdash; leave empty for your own queue\" "
+                "<input name=\"relay\" placeholder=\"another person&rsquo;s Juketube, or empty for your own\" autocomplete=\"off\" "
                 "value=\""+html_escape(g_store.jukebox_relay_target(user))+"\">"
                 "<button type=\"submit\">Save</button></form></div>";
         }
@@ -10359,7 +10359,7 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
             "Mail is friends-only until they accept.</p></div>"
             + people_search_script() +
             "<div class=\"card\"><h2>Add by exact name</h2>"
-            "<form method=\"POST\" action=\"/friends\"><input name=\"who\" placeholder=\"username\" required>"
+            "<form method=\"POST\" action=\"/friends\"><input name=\"who\" placeholder=\"account name\" autocomplete=\"off\" required>"
             "<button>Send request</button></form></div>";
         html += "<div class=\"card\"><h2>Friends</h2>";
         auto pals = g_store.friends_of(user);
@@ -10568,7 +10568,7 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         html += "</ul>";
         if (active) {
             html += "<form method=\"POST\" action=\""+base+"/invite\"><label>Invite</label>"
-                    "<div class=\"row\"><input name=\"who\" required><button>Invite</button></div></form>"
+                    "<div class=\"row\"><input name=\"who\" required autocomplete=\"off\"><button>Invite</button></div></form>"
                     "<form method=\"POST\" action=\""+base+"/title\" class=\"mailnewgroup\">"
                     "<label>Group name</label><input name=\"title\" maxlength=\"80\" value=\""+html_escape(conv->title)+"\">"
                     "<button class=\"ghost\">Save name</button></form>"
@@ -10762,7 +10762,7 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         html += "</ul>";
         if (member) {
             html += "<form method=\"POST\" action=\"/c/"+html_escape(slug)+"/invite\" style=\"margin-top:.6rem\">"
-                    "<label>Invite by username</label><div class=\"row\"><input name=\"who\" required placeholder=\"username\"><button>Invite</button></div></form>";
+                    "<label>Invite by account name</label><div class=\"row\"><input name=\"who\" required placeholder=\"account name\" autocomplete=\"off\"><button>Invite</button></div></form>";
         }
         html += "</details></div>";
         return pg(c->name, html);
@@ -11298,7 +11298,7 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
                     "<button class=\"ghost\">Unblock</button></form></div>";
         }
         html += "<form method=\"POST\" action=\"/settings/block\" style=\"margin-top:.75rem\">"
-                "<div class=\"row\"><input name=\"who\" placeholder=\"username\" required style=\"flex:1\">"
+                "<div class=\"row\"><input name=\"who\" placeholder=\"account name\" autocomplete=\"off\" required style=\"flex:1\">"
                 "<button class=\"danger\" type=\"submit\">Add block</button></div>"
                 "<input name=\"reason\" placeholder=\"Reason (optional, only you see it)\" maxlength=\"200\"></form>";
         {
@@ -11328,8 +11328,9 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
             "<p class=\"muted\">Export includes username, blurb, profile CSS, your friend list, communities you started or joined, "
             "posts you wrote, settings, and messages you sent. It does not include other people’s text or your password hash.</p>"
             "<form method=\"POST\" action=\"/settings/delete\">"
-            "<label>Delete account — type your username</label>"
-            "<input name=\"confirm\" placeholder=\""+html_escape(user)+"\" autocomplete=\"off\">"
+            // the name only in the label, never as a placeholder (CODE-SCAN-UX B1: a keychain-style fill target)
+            "<label>Delete account — type your account name, <strong>"+html_escape(user)+"</strong></label>"
+            "<input name=\"confirm\" autocomplete=\"off\">"
             "<button class=\"danger\">Delete account</button></form>"
             "<p class=\"muted\">Sessions end immediately. Mail you sent is shown as [deleted account]. "
             "A fingerprint of the phone number is held ninety days so a deleted account cannot immediately reopen under the same number.</p></div>";

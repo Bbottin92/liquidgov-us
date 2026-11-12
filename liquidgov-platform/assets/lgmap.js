@@ -117,14 +117,25 @@
   }
   // Size from relevance: your own things are bigger (0.85x far .. 1.25x yours); the MAINstream stays 1x.
   function sizeOf(n) {
+    if (n.kind === 'more') return 1.1; // the "+N more" box: as big as the boxes around it, so it never sets the zoom floor
     return (typeof n.rel === 'number' && n.rel >= 0) ? 0.85 + 0.4 * Math.min(1, n.rel) : 1;
   }
-  function leftX(n) { return n.x + W / 2 - (n.w || W) / 2 * sizeOf(n); }
-  function rightX(n) { return n.x + W / 2 + (n.w || W) / 2 * sizeOf(n); }
+  // Readable names (Brandon's Brief 5 item 2; Grok Bot's audit: the 0.4x floor drew 14 px names at about 5.6 px): the map
+  // never zooms below the scale that draws every box's name at MIN_PX on screen. Names are 14 px (lgmap.css) times the
+  // box's size; the small grey second lines are not names.
+  var NAME_PX = 14, MIN_PX = 11;
+  function floorFor(list) {
+    var f = 0;
+    list.forEach(function (d) { f = Math.max(f, MIN_PX / (NAME_PX * sizeOf(d))); });
+    return Math.min(1, f + 0.002); // + rounding slack
+  }
+  function floorScale() { return floorFor(Object.keys(nodes).map(function (id) { return nodes[id]; })); }
   // Box widths from their labels (live look #4: "Genesis Executive Officer..." ellipsized in a 200 px box with room to
   // spare). On a desktop a box grows to fit its label, up to MAX_W; a phone keeps W (its two columns are sized for it).
   // Labels are measured, not counted, so one never spills out of its box. A box stays centered where W would sit.
   var MAX_W = 420, meas, measFamily;
+  // a phone's box width and column offset, set per level by capRing so two columns fit at a readable zoom
+  var phoneW = W, phoneDX = 141;
   var F_LABEL = '600 14px', F_TITLE = '700 14px', F_SUB = '400 10.5px';
   function textW(s, font) {
     if (meas === undefined) {
@@ -146,7 +157,8 @@
   // room for the pointed ends of proposals, Sitewide and problems
   function padOf(kind) { return kind === 'prop' || kind === 'sitewide' || kind === 'pain' ? 44 : 28; }
   function widthOf(d) {
-    if (d.kind === 'you' || narrow()) return W;
+    if (d.kind === 'you') return W;
+    if (narrow()) return phoneW;
     var need = d.kind === 'mine' ? Math.max(textW(d.label, F_TITLE), textW(d.sub, F_SUB)) + 28 : textW(d.label, F_LABEL) + padOf(d.kind);
     return Math.ceil(Math.min(MAX_W, Math.max(W, need)));
   }
@@ -209,7 +221,7 @@
   function addNode(d, x, y) {
     if (nodes[d.id]) return nodes[d.id];
     var n = { id: d.id, label: d.label, kind: d.kind, page: d.page, rel: d.rel, sub: d.sub || '', x: x, y: y,
-      expanded: false };  // ring places are exact (see ringPlace)
+      expanded: false, more: d.more };  // ring places are exact (see ringPlace)
     n.w = widthOf(n);
     var s = sizeOf(n), ox = (W - n.w) / 2;
     var g = el('g', { 'class': 'lgn lgn-' + n.kind + ' lgn-new', tabindex: '0', role: 'button', 'data-id': n.id,
@@ -324,7 +336,7 @@
       var rows = Math.ceil(k / 2), above = Math.max(1, Math.floor(rows / 2)), row = Math.floor(i / 2), col = i % 2;
       var y = row < above ? -(PHONE_BASE + (above - 1 - row) * PHONE_GAP) : PHONE_BASE + 40 + (row - above) * PHONE_GAP;
       var alone = i === k - 1 && k % 2 === 1;
-      return { x: Math.round(c.x + (alone ? 0 : (col ? 1 : -1) * PHONE_DX)), y: Math.round(c.y + y) };
+      return { x: Math.round(c.x + (alone ? 0 : (col ? 1 : -1) * phoneDX)), y: Math.round(c.y + y) };
     }
     // An even count is turned half a step, so no box sits level with you (left/right boxes overlapped the you box on
     // a phone, 2026-11-11 screenshot with 4 kinds).
@@ -335,14 +347,14 @@
     return { x: Math.round(c.x + r.rx * Math.cos(a)), y: Math.round(c.y + r.ry * Math.sin(a)) };
   }
   // phone rows: the first row clears your circle (58) + half a card; the first row below also clears "Open your page";
-  // columns 141 px either side (the 4-kind look: cards 250 wide at 1.25x never touch)
+  // columns phoneDX either side (capRing sets it per level: half the widest card plus a 6 px gap, 131 for your kinds)
   // PHONE_GAP 80: a card is ~45 px tall at 1.25x plus its second line; 64 left them touching (2026-11-11 CI shot)
-  var PHONE_BASE = 120, PHONE_GAP = 80, PHONE_DX = 141;
+  var PHONE_BASE = 120, PHONE_GAP = 80;
   // k: how many boxes go round the center. On a phone the dotted ring is as tall as the rows it encloses.
   function ringRadii(k) {
     if (!narrow()) return { rx: 300, ry: 165 };
     var rows = Math.ceil((k || 4) / 2), above = Math.max(1, Math.floor(rows / 2)), below = rows - above;
-    return { rx: 200, ry: Math.max(150, PHONE_BASE + 40 + Math.max(above, below) * PHONE_GAP - PHONE_GAP + 30) };
+    return { rx: Math.round(phoneDX * 200 / 141), ry: Math.max(150, PHONE_BASE + 40 + Math.max(above, below) * PHONE_GAP - PHONE_GAP + 30) };
   }
   // A ring roomy enough that no two of its boxes (nor a box and the center) overlap: any box can be a center now
   // (Brandon 2026-11-11 live look #2), so a ring can hold a dozen boxes, not just your 5-8 kinds. Desktop only: the phone
@@ -362,7 +374,59 @@
       if (!clash) break;
       r = { rx: Math.round(r.rx * 1.08), ry: Math.round(r.ry * 1.08) };
     }
-    return r;
+    return clash ? null : r; // null: no ring without overlaps in 40 tries
+  }
+
+  // Big levels (Brief 5 item 2; Grok Bot's audit: a group can have 40+ members, and the ring grew until boxes ran off the
+  // frame): a ring holds as many boxes as fit the frame at a readable zoom (floorFor); the rest go behind a "+N more" box,
+  // which becomes the center with the rest around it when tapped (capped the same way). Boxes keep the server's order.
+  var CAP_MAX = 24, FIT_M = 40, FIT_M_PHONE = 16;
+  function fitMargin() { return narrow() ? FIT_M_PHONE : FIT_M; }
+  // The frame a level is laid out for. On a desktop that is the frame with the side panel open (the smaller one), even
+  // while it is closed, so a level shows the same boxes with the panel open or shut (Back closes it) and fits both.
+  function layoutFrame() {
+    var b = svg.getBoundingClientRect(), w = b.width;
+    if (!narrow() && panel.hidden) { // measured, not computed from the CSS: shown and hidden again before any paint
+      panel.hidden = false; root.classList.add('lgm-has-panel');
+      w = svg.getBoundingClientRect().width;
+      panel.hidden = true; root.classList.remove('lgm-has-panel');
+    }
+    return { width: w, height: b.height };
+  }
+  // the extent (map units) of center c with items placed by ringPlace on ring r: the same measure as extent() below
+  function layoutExtent(c, items, r) {
+    var boxes = items.map(function (d, i) { var p = ringPlace(c, i, items.length, r); return { x: p.x, y: p.y, kind: d.kind, w: widthOf(d), s: sizeOf(d) }; });
+    boxes.push({ x: c.x, y: c.y, kind: c.kind, w: c.w || widthOf(c), s: sizeOf(c) });
+    return extentOf(boxes, { cx: c.x + W / 2, cy: c.y + H / 2, rx: r.rx, ry: r.ry });
+  }
+  function phoneLayout(c, items) {
+    var f = floorFor(items.concat([c])), fr = layoutFrame(), smax = 0;
+    items.forEach(function (d) { smax = Math.max(smax, sizeOf(d)); });
+    // two columns of width pw * smax, 12 px apart, inside the frame at zoom f (Brief 5: names >= 11 px)
+    var room = (fr.width - FIT_M_PHONE) / f - 12;
+    phoneW = Math.max(110, Math.min(W, Math.floor(room / (2 * Math.max(1, smax)))));
+    phoneDX = Math.round(phoneW * Math.max(1, smax) / 2 + 6);
+  }
+  function capRing(c, list) {
+    var fr = layoutFrame(), m = fitMargin(), total = list.length;
+    // id: more:<the level's own box>:<how many are left>, the same for every "+N more" page of that level
+    var base = c.kind === 'more' ? c.id.slice(5, c.id.lastIndexOf(':')) : c.id;
+    function more(rest) {
+      return { id: 'more:' + base + ':' + rest.length, label: '+' + rest.length + ' more', kind: 'more', page: '',
+        rel: -1, sub: '', more: rest };
+    }
+    for (var k = Math.min(total, CAP_MAX); k >= 2; k--) {
+      var items = k >= total ? list.slice() : list.slice(0, k - 1).concat([more(list.slice(k - 1))]);
+      if (narrow()) phoneLayout(c, items);
+      var r = ringFit(c, items);
+      if (!r) continue;
+      var e = layoutExtent(c, items, r), f = floorFor(items.concat([c]));
+      if (Math.min((fr.width - m) / (e.x1 - e.x0), (fr.height - m) / (e.y1 - e.y0)) >= f) return { items: items, r: r };
+    }
+    // nothing fits (a tiny frame): one box and "+N more", on the plain ring; this is the only case that can run off
+    var last = total > 1 ? [list[0], more(list.slice(1))] : list.slice();
+    if (narrow()) phoneLayout(c, last);
+    return { items: last, r: ringFit(c, last) || ringRadii(last.length) };
   }
 
   // Collapse (Brandon 2026-11-11: "if i select a higher level box, shouldnt the previous branches collapse?"): when a box
@@ -468,7 +532,7 @@
     var seen = {}, cid = centerId(), h = hiddenBy[cid] || [];
     ringKids().forEach(function (n) {
       var key = chipKey(n);
-      if (seen[key]) return;
+      if (seen[key] || n.kind === 'more') return; // "+N more" is a way on, not a kind to hide
       seen[key] = 1;
       var b = document.createElement('button');
       b.type = 'button';
@@ -549,7 +613,8 @@
   }
   var zoomBtn = document.getElementById('lgm-zoomout');
   if (zoomBtn) zoomBtn.addEventListener('click', zoomOut);
-  function dataOf(n) { return { id: n.id, label: n.label, kind: n.kind, page: n.page, rel: n.rel, sub: n.sub }; }
+  // a "+N more" box keeps its rest, so Back and the trail can draw it again
+  function dataOf(n) { return { id: n.id, label: n.label, kind: n.kind, page: n.page, rel: n.rel, sub: n.sub, more: n.more }; }
   // m: the tapped box (its own element is kept and moved to the middle: a replaced element broke anything holding it,
   // CI phone_check 3, 2026-11-11), or a trail entry's data when that box is no longer drawn.
   function recenter(m) {
@@ -607,7 +672,10 @@
   function expand(n) {
     if (n.expanded) return Promise.resolve(n);
     status('Loading…');
-    return load(n.id).then(function (data) {
+    // a "+N more" box carries the rest of its level itself (capRing); everything else asks the server
+    var got = n.kind === 'more' ? Promise.resolve({ links: (n.more || []).map(function (d) { return { node: d, edge: 'more' }; }) })
+                                : load(n.id);
+    return got.then(function (data) {
       // the center moved on while this loaded (a quick second tap, Back): drawing it now would mix two levels
       if (nodes[n.id] !== n || n.id !== centerId()) return n;
       // the boxes on the trail (You > Groups > ...) are the way back, not items around this center (live look #2: around
@@ -617,13 +685,14 @@
       var links = data.links.filter(function (l) { return !onTrail[l.node.id]; });
       var fresh = links.filter(function (l) { return !nodes[l.node.id]; });
       // M1.1 look (Grok Bot's mockup 1): the center's connections on a ring, the faint dotted ring behind them
-      var rr = ringFit(n, fresh.map(function (l) { return l.node; }));
+      var lay = capRing(n, fresh.map(function (l) { return l.node; })), rr = lay.r;
       if (!document.getElementById('lgm-ring')) {
         var ring = el('ellipse', { id: 'lgm-ring', 'class': 'lgm-ring', cx: n.x + W / 2, cy: n.y + H / 2, rx: rr.rx, ry: rr.ry });
         edgeLayer.insertBefore(ring, edgeLayer.firstChild);
       }
-      fresh.forEach(function (l, i) { var p = ringPlace(n, i, fresh.length, rr); addNode(l.node, p.x, p.y).from = n.id; });
-      links.forEach(function (l) { addEdge(n.id, l.node.id, l.edge); });
+      lay.items.forEach(function (d, i) { var p = ringPlace(n, i, lay.items.length, rr); addNode(d, p.x, p.y).from = n.id; });
+      links.forEach(function (l) { addEdge(n.id, l.node.id, l.edge); }); // the rest (behind "+N more") are not drawn: skipped
+      lay.items.forEach(function (d) { if (d.kind === 'more') addEdge(n.id, d.id, 'more'); });
       if (n.id === centerId()) renderFilter();
       n.expanded = true;
       n.el.classList.add('lgn-open');
@@ -717,6 +786,7 @@
       else b.addEventListener('click', function () { select(nodes[c.id] || c, false); });
       trailEl.appendChild(b);
     });
+    trailEl.scrollLeft = trailEl.scrollWidth; // a phone's one-line trail shows where you are (lgmap.css)
   }
   function select(n, open) {
     // 'now': move without the phone's double-tap wait and without opening a page (the wait's own second call, Back,
@@ -724,7 +794,7 @@
     var now = open === 'now';
     if (now) open = false;
     // Hidden mode: a tap on a box around the center hides or shows it; nothing moves and no page opens
-    if (hideMode && !now && n.el && n.from === centerId() && n.id !== centerId()) { toggleBox(n); return; }
+    if (hideMode && !now && n.el && n.from === centerId() && n.id !== centerId() && n.kind !== 'more') { toggleBox(n); return; }
     // the tapped box becomes the center, with its connections on a ring (Brandon 2026-11-11; live look #2: a child box
     // only extended the trail and its connections grew beside the old view)
     if (n.id !== centerId()) {
@@ -863,7 +933,7 @@
     ev.preventDefault();
     var box = svg.getBoundingClientRect();
     var px = ev.clientX - box.left, py = ev.clientY - box.top;
-    var next = Math.min(2.5, Math.max(0.3, scale * (ev.deltaY < 0 ? 1.1 : 1 / 1.1)));
+    var next = Math.min(2.5, Math.max(floorScale(), scale * (ev.deltaY < 0 ? 1.1 : 1 / 1.1))); // never under 11 px names
     tx = px - (px - tx) * next / scale;
     ty = py - (py - ty) * next / scale;
     scale = next;
@@ -884,25 +954,31 @@
   ty = box.height / 2 - H / 2;
   apply();
   // Fit every box on the map into the frame, centered (live look #3 and #8: boxes ran off the left edge with the side
-  // panel open, and the ring sat in the top half with the bottom empty). Not over 1x; not under 0.4x on a desktop
-  // (0.6x on a phone), so a ring too big for the frame is the only thing that can still be cut off.
+  // panel open, and the ring sat in the top half with the bottom empty). Not over 1x; not under the readable floor
+  // (floorScale: every name >= 11 px; it was 0.4x on a desktop, 0.6x on a phone). capRing sizes each ring to fit at it.
   // top: place the boxes near the top of the frame instead (phones: the Juketube tip that first-time visitors see
   // covered the you box when centered, phone_check 4/4b + #jbhint probe 2026-11-11).
   // the map's own extent: every box at its real size and the dotted ring, in map units
   function extent() {
     var ids = Object.keys(nodes);
     if (!ids.length) return null;
-    var x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-    ids.forEach(function (id) {
-      // each box's real height at its size: the you circle reaches well above and below its row, and "Open your page" under it
-      var n = nodes[id], s = sizeOf(n), c = n.y + H / 2;
-      var up = n.kind === 'you' ? YOU_R * s : (n.kind === 'mine' ? H + 10 : H) / 2 * s, down = n.kind === 'you' ? YOU_R + 34 : up;
-      x0 = Math.min(x0, leftX(n)); x1 = Math.max(x1, rightX(n)); y0 = Math.min(y0, c - up); y1 = Math.max(y1, c + down);
-    });
     var ring = document.getElementById('lgm-ring'); // the whole dotted ring stays in view too (a 1-item ring zoomed in
-    if (ring) {                                      // and cut it off, CI screenshot 2026-11-11)
-      var cx = +ring.getAttribute('cx'), cy = +ring.getAttribute('cy'), rx = +ring.getAttribute('rx'), ry = +ring.getAttribute('ry');
-      x0 = Math.min(x0, cx - rx); x1 = Math.max(x1, cx + rx); y0 = Math.min(y0, cy - ry); y1 = Math.max(y1, cy + ry);
+    return extentOf(ids.map(function (id) {          // and cut it off, CI screenshot 2026-11-11)
+      var n = nodes[id]; return { x: n.x, y: n.y, kind: n.kind, w: n.w || W, s: sizeOf(n) };
+    }), ring && { cx: +ring.getAttribute('cx'), cy: +ring.getAttribute('cy'), rx: +ring.getAttribute('rx'), ry: +ring.getAttribute('ry') });
+  }
+  // boxes: {x, y, kind, w, s} (a box's place, its width and size); ring: the dotted ellipse or null. capRing measures a
+  // level with this before drawing it.
+  function extentOf(boxes, ring) {
+    var x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    boxes.forEach(function (n) {
+      // each box's real height at its size: the you circle reaches well above and below its row, and "Open your page" under it
+      var s = n.s, c = n.y + H / 2, half = n.w / 2 * s;
+      var up = n.kind === 'you' ? YOU_R * s : (n.kind === 'mine' ? H + 10 : H) / 2 * s, down = n.kind === 'you' ? YOU_R + 34 : up;
+      x0 = Math.min(x0, n.x + W / 2 - half); x1 = Math.max(x1, n.x + W / 2 + half); y0 = Math.min(y0, c - up); y1 = Math.max(y1, c + down);
+    });
+    if (ring) {
+      x0 = Math.min(x0, ring.cx - ring.rx); x1 = Math.max(x1, ring.cx + ring.rx); y0 = Math.min(y0, ring.cy - ring.ry); y1 = Math.max(y1, ring.cy + ring.ry);
     }
     return { x0: x0, y0: y0, x1: x1, y1: y1 };
   }
@@ -910,9 +986,10 @@
     var b = svg.getBoundingClientRect(), e = extent();
     if (!b.width || !e) return;
     var x0 = e.x0, y0 = e.y0, x1 = e.x1, y1 = e.y1;
-    scale = Math.max(narrow() ? 0.6 : 0.4, Math.min(1, (b.width - 40) / (x1 - x0), (b.height - 40) / (y1 - y0)));
+    var m = fitMargin();
+    scale = Math.max(floorScale(), Math.min(1, (b.width - m) / (x1 - x0), (b.height - m) / (y1 - y0)));
     tx = Math.round((b.width - (x1 - x0) * scale) / 2 - x0 * scale);
-    ty = top ? Math.round(16 - y0 * scale) : Math.round((b.height - (y1 - y0) * scale) / 2 - y0 * scale);
+    ty = top ? Math.round(m / 2 - y0 * scale) : Math.round((b.height - (y1 - y0) * scale) / 2 - y0 * scale);
     apply(false); // placed, not glided in
   }
   // the map's width changed (window resized, side panel): fit again. Height alone is a phone's address bar coming and

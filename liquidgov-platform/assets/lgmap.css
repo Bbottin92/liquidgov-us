@@ -168,6 +168,10 @@
   .lgmap-panel:not([hidden]){position:fixed;inset:0;z-index:70;width:auto;height:auto;border:0;border-radius:0;
     padding-top:env(safe-area-inset-top,0px);box-shadow:none}
   #lgm-expand{display:none}
+  /* the trail is one line that scrolls sideways (lgmap.js scrolls it to its end): wrapped, a long trail ("+N more"
+     pages, Brief 5 item 2) took 4 lines and the map lost 120 px of its height */
+  .lgm-trail{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+  .lgm-trail>*{flex:none;white-space:nowrap}
   .lgm-ptop{min-height:48px}
   #lgm-close{order:-1;font-weight:700;min-height:40px;padding:.3rem .8rem}
 }

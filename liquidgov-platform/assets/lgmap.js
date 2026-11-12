@@ -380,7 +380,10 @@
   // Big levels (Brief 5 item 2; Grok Bot's audit: a group can have 40+ members, and the ring grew until boxes ran off the
   // frame): a ring holds as many boxes as fit the frame at a readable zoom (floorFor); the rest go behind a "+N more" box,
   // which becomes the center with the rest around it when tapped (capped the same way). Boxes keep the server's order.
-  var CAP_MAX = 24, FIT_M = 40, FIT_M_PHONE = 16;
+  // CAP_MIN (Brandon 2026-11-12, tablet at 640 px: the You ring showed Politics and "+6 more"): the most boxes the You
+  // ring can have (src/http_server.cpp map links for "you": the seven kinds and Problems). A level of CAP_MIN boxes or
+  // fewer is never capped, and a cap never shows fewer than CAP_MIN boxes (the last of them "+N more").
+  var CAP_MAX = 24, CAP_MIN = 8, FIT_M = 40, FIT_M_PHONE = 16;
   function fitMargin() { return narrow() ? FIT_M_PHONE : FIT_M; }
   // The frame a level is laid out for. On a desktop that is the frame with the side panel open (the smaller one), even
   // while it is closed, so a level shows the same boxes with the panel open or shut (Back closes it) and fits both.
@@ -407,15 +410,22 @@
     phoneW = Math.max(110, Math.min(W, Math.floor(room / (2 * Math.max(1, smax)))));
     phoneDX = Math.round(phoneW * Math.max(1, smax) / 2 + 6);
   }
+  // every box of a level on its ring: two columns on a phone (phoneLayout), and fitAll scales the whole ring to the frame
+  function ringAll(c, items) {
+    if (narrow()) phoneLayout(c, items);
+    return { items: items, r: ringFit(c, items) || ringRadii(items.length) };
+  }
   function capRing(c, list) {
     var fr = layoutFrame(), m = fitMargin(), total = list.length;
+    // your own kinds are never capped (rule: all of them always show), nor is a small level
+    if (c.kind === 'you' || total <= CAP_MIN) return ringAll(c, list.slice());
     // id: more:<the level's own box>:<how many are left>, the same for every "+N more" page of that level
     var base = c.kind === 'more' ? c.id.slice(5, c.id.lastIndexOf(':')) : c.id;
     function more(rest) {
       return { id: 'more:' + base + ':' + rest.length, label: '+' + rest.length + ' more', kind: 'more', page: '',
         rel: -1, sub: '', more: rest };
     }
-    for (var k = Math.min(total, CAP_MAX); k >= 2; k--) {
+    for (var k = Math.min(total, CAP_MAX); k >= CAP_MIN; k--) {
       var items = k >= total ? list.slice() : list.slice(0, k - 1).concat([more(list.slice(k - 1))]);
       if (narrow()) phoneLayout(c, items);
       var r = ringFit(c, items);
@@ -423,10 +433,8 @@
       var e = layoutExtent(c, items, r), f = floorFor(items.concat([c]));
       if (Math.min((fr.width - m) / (e.x1 - e.x0), (fr.height - m) / (e.y1 - e.y0)) >= f) return { items: items, r: r };
     }
-    // nothing fits (a tiny frame): one box and "+N more", on the plain ring; this is the only case that can run off
-    var last = total > 1 ? [list[0], more(list.slice(1))] : list.slice();
-    if (narrow()) phoneLayout(c, last);
-    return { items: last, r: ringFit(c, last) || ringRadii(last.length) };
+    // nothing fits (a tiny frame): CAP_MIN boxes, the last "+N more"; this is the only case that can run off
+    return ringAll(c, list.slice(0, CAP_MIN - 1).concat([more(list.slice(CAP_MIN - 1))]));
   }
 
   // Collapse (Brandon 2026-11-11: "if i select a higher level box, shouldnt the previous branches collapse?"): when a box

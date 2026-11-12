@@ -188,7 +188,7 @@ def main(argv):
     markup = m.me_handler_markup(src)
     STATE["release"].set()
     srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0),
-                                          make_handler(section_forms(markup), m.literals(src, "std::string draft_publish_script()")))
+                                          make_handler(section_forms(markup), "<script>" + open(os.path.join(platform, "assets", "draft_publish.js"), encoding="utf-8").read() + "</script>"))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     r = Run("http://127.0.0.1:%d" % srv.server_address[1])
     proc = None

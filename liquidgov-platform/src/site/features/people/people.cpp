@@ -1,4 +1,5 @@
 #include "site/features/people/people.hpp"
+#include "site/ui/assets.hpp"
 #include "site/core/adapters_store.hpp"
 #include "site/core/html.hpp"
 #include "site/core/http.hpp"
@@ -78,21 +79,9 @@ std::string people_results_html(const std::string& viewer, const std::string& te
 }
 
 std::string people_search_script() {
-    return "<script>(function(){"
-           "var q=document.getElementById('peopleq'),box=document.getElementById('peoplehits');"
-           "if(!q||!box)return;"
-           "var t=null,last='';"
-           "function go(){"
-           "var v=q.value.trim();if(v===last)return;last=v;"
-           "if(!v){box.innerHTML='';return;}"
-           "fetch('/search?q='+encodeURIComponent(v)+'&partial=1',{credentials:'same-origin'})"
-           ".then(function(r){return r.text();})"
-           ".then(function(h){if(q.value.trim()===v)box.innerHTML=h;})"
-           ".catch(function(){});"
-           "}"
-           "q.addEventListener('input',function(){clearTimeout(t);t=setTimeout(go,180);});"
-           "if(q.value.trim())go();"
-           "})();</script>";
+    // The script is assets/people_search.js (was inlined here; moved 2026-11-12, same code). No defer: it runs at this
+    // point of the page, as the inline one did.
+    return "<script src=\"" + asset_url("people_search.js") + "\"></script>";
 }
 
 // ---- People you may know (Brandon 2026-11-10) ----------------------------

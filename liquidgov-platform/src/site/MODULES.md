@@ -28,6 +28,9 @@ module `.cpp` files, in build order, lives in one place: `sources.cmake` (CMakeL
 - A new route goes in its feature's `<name>_routes.cpp`. Route order matters only where two routes can match the same
   request; keep such routes in the same feature file, in the order they must be tried.
 - A new module: add its `.cpp` to `sources.cmake` (nothing else lists files).
+- Page CSS and JavaScript live in `liquidgov-platform/assets/` as real files (`site.css`, `mail_widget.js`,
+  `draft_publish.js`, `people_search.js`, ...), linked with `asset_url()`. Don't add new CSS/JS inside C++ strings.
+  Still inline (each mixes in per-page values): `jukebox_script`, `canvas_tool_page`.
 
 ## Not split yet
 

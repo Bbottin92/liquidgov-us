@@ -1,0 +1,3 @@
+/* assets/people_search.js: was people_search_script() in src/site/features/people/people.cpp, inlined into the page (moved 2026-11-12, same code).
+*/
+(function(){var q=document.getElementById('peopleq'),box=document.getElementById('peoplehits');if(!q||!box)return;var t=null,last='';function go(){var v=q.value.trim();if(v===last)return;last=v;if(!v){box.innerHTML='';return;}fetch('/search?q='+encodeURIComponent(v)+'&partial=1',{credentials:'same-origin'}).then(function(r){return r.text();}).then(function(h){if(q.value.trim()===v)box.innerHTML=h;}).catch(function(){});}q.addEventListener('input',function(){clearTimeout(t);t=setTimeout(go,180);});if(q.value.trim())go();})();

@@ -171,7 +171,7 @@ class Run:
 def main(argv):
     platform = os.path.abspath(argv[0]) if argv else os.path.dirname(os.path.dirname(HERE))
     src = __import__("server_source").read(platform)  # whole server source (http_server.cpp + its src/site pieces)
-    script = literals(src, "std::string draft_publish_script()")
+    script = "<script>" + open(os.path.join(platform, "assets", "draft_publish.js"), encoding="utf-8").read() + "</script>"
     srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), make_handler(script))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     r = Run("http://127.0.0.1:%d" % srv.server_address[1])

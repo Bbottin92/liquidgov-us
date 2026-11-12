@@ -1,4 +1,5 @@
 #include "site/features/feed/composer.hpp"
+#include "site/ui/assets.hpp"
 #include "site/core/adapters_store.hpp"
 #include "site/core/html.hpp"
 #include "site/features/profile/profile_css.hpp"
@@ -250,46 +251,9 @@ std::string feed_composer_card(const std::string& user) {
 // item 4); a submit button, if one is ever added, is hidden here. Enter or a submit saves at once. The name is kept
 // (draft_publish_script) so its callers and checks still find it.
 std::string draft_publish_script() {
-    return
-        "<script>(function(){"
-        "var forms=Array.prototype.slice.call(document.querySelectorAll('form[data-draft]'));"
-        "forms.forEach(function(f){"
-        "var btn=f.querySelector('button[type=submit],button:not([type])');"
-        "if(btn)btn.hidden=true;"
-        "var box=document.createElement('p');box.className='muted';box.style.margin='.35rem 0 0';"
-        "var st=document.createElement('span');st.setAttribute('data-draft-status','');"
-        "st.setAttribute('role','status');st.setAttribute('aria-live','polite');"
-        "var rb=document.createElement('button');rb.type='button';rb.className='ghost';rb.textContent='Retry';"
-        "rb.hidden=true;rb.setAttribute('data-draft-retry','');rb.style.marginLeft='.5rem';"
-        "box.appendChild(st);box.appendChild(rb);f.parentNode.insertBefore(box,f.nextSibling);"
-        "function ser(){var p=[];new FormData(f).forEach(function(v,k){p.push(k+'='+(typeof v==='string'?v:'[file]'));});"
-        "return p.sort().join('&');}"
-        "var saved=ser(),timer=null,busy=false,again=false;"
-        "function show(t,retry){st.textContent=t;rb.hidden=!retry;}"
-        // Without a Save button the browser no longer points at a required field left empty (a Google-only account
-        // has no display name, so /me/profile refuses every About you save): name the field in the status instead.
-        "function why(){var e=f.querySelector(':invalid');if(!e)return '';"
-        "var l=e.previousElementSibling,n=l&&l.tagName==='LABEL'?l.textContent.trim():e.name;"
-        "return ': '+n+' \\u2014 '+e.validationMessage;}"
-        "function save(){"
-        "clearTimeout(timer);"
-        "if(busy){again=true;return;}"
-        "var now=ser();if(now===saved&&rb.hidden)return;"
-        "busy=true;show('Saving…',false);"
-        "fetch(f.getAttribute('action'),{method:'POST',credentials:'same-origin',"
-        "headers:{'Content-Type':'application/x-www-form-urlencoded'},"
-        "body:new URLSearchParams(new FormData(f)).toString()})"
-        ".then(function(r){if(!r.ok||/[?&]err=/.test(r.url||''))throw new Error('refused');saved=now;show('Saved',false);})"
-        ".catch(function(){show('Couldn\\u2019t save'+why(),true);})"
-        ".then(function(){busy=false;if(again){again=false;save();}});"
-        "}"
-        "function later(){clearTimeout(timer);timer=setTimeout(save,800);}"
-        "f.addEventListener('input',later);"
-        "f.addEventListener('change',later);"
-        "f.addEventListener('submit',function(e){e.preventDefault();save();});"
-        "rb.addEventListener('click',save);"
-        "});"
-        "})();</script>";
+    // The script is assets/draft_publish.js (was inlined here; moved 2026-11-12, same code). No defer: it runs at this
+    // point of the page, as the inline one did.
+    return "<script src=\"" + asset_url("draft_publish.js") + "\"></script>";
 }
 
 }  // namespace liquidgov::site

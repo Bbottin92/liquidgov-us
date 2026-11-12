@@ -15,6 +15,10 @@
 /* map SPEC phase 1 (Brandon 2026-11-11): Back, the trail and Zoom out on one row, the filter bar for this level under
    it. Sticky, so on a phone they stay at the top while the page scrolls (the canvas clips with overflow:clip, which,
    unlike overflow:hidden, does not make it the sticky box's scroll container). */
+/* On a map page the site header scrolls away instead of staying stuck at the top: stuck, it sat over the sticky bars
+   above (CI sticky S4, 2026-11-12: a finger on Zoom out hit the header). This sheet loads only with the map, so every
+   other page keeps its sticky header. position:relative keeps header.top's own z-index for the account dropdown. */
+body header.top{position:relative}
 .lgm-bars{position:sticky;top:0;z-index:4;background:rgba(13,17,27,.88);border-bottom:1px solid rgba(243,212,143,.12)}
 .lgm-navrow{display:flex;align-items:center;gap:.3rem;padding:.25rem .5rem 0}
 .lgm-navrow .lgm-trail{flex:1;min-width:0;padding:.1rem .2rem 0}

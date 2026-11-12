@@ -805,7 +805,7 @@
     toMainstream();
   });
 
-  // Pan by dragging the empty map; zoom with the wheel (around the pointer).
+  // Pan by dragging the empty map; zoom with ctrl+wheel or a pinch (around the pointer).
   var drag = null;
   svg.addEventListener('pointerdown', function (ev) {
     if (ev.target.closest && ev.target.closest('.lgn')) return;
@@ -822,7 +822,11 @@
   function endDrag() { drag = null; svg.classList.remove('lgm-drag'); }
   svg.addEventListener('pointerup', endDrag);
   svg.addEventListener('pointercancel', endDrag);
+  // Live look #9 (Brandon 2026-11-11): the wheel over the map zoomed it, so the page could not be scrolled past the map,
+  // and a zoom left the bottom row cut off. A plain wheel now scrolls the page; ctrl+wheel (what a trackpad pinch sends,
+  // and ctrl+scroll on a mouse) zooms around the pointer. After a zoom, a map that fits the frame is kept inside it.
   svg.addEventListener('wheel', function (ev) {
+    if (!ev.ctrlKey && !ev.metaKey) return;
     ev.preventDefault();
     var box = svg.getBoundingClientRect();
     var px = ev.clientX - box.left, py = ev.clientY - box.top;
@@ -830,8 +834,17 @@
     tx = px - (px - tx) * next / scale;
     ty = py - (py - ty) * next / scale;
     scale = next;
+    keepInside(box);
     apply();
   }, { passive: false });
+  // each way the map fits the frame at this scale, slide it back inside (8 px margin); a way it doesn't fit is left alone
+  function keepInside(box) {
+    var e = extent();
+    if (!e) return;
+    var l = tx + e.x0 * scale, r = tx + e.x1 * scale, t = ty + e.y0 * scale, b = ty + e.y1 * scale;
+    if (r - l <= box.width - 16) tx += Math.max(0, 8 - l) - Math.max(0, r - (box.width - 8));
+    if (b - t <= box.height - 16) ty += Math.max(0, 8 - t) - Math.max(0, b - (box.height - 8));
+  }
 
   // Start: the MAINstream and its Currents. ?focus=<id> also opens that box.
   var box = svg.getBoundingClientRect();
@@ -842,9 +855,10 @@
   // (0.6x on a phone), so a ring too big for the frame is the only thing that can still be cut off.
   // top: place the boxes near the top of the frame instead (phones: the Juketube tip that first-time visitors see
   // covered the you box when centered, phone_check 4/4b + #jbhint probe 2026-11-11).
-  function fitAll(top) {
-    var b = svg.getBoundingClientRect(), ids = Object.keys(nodes);
-    if (!b.width || !ids.length) return;
+  // the map's own extent: every box at its real size and the dotted ring, in map units
+  function extent() {
+    var ids = Object.keys(nodes);
+    if (!ids.length) return null;
     var x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     ids.forEach(function (id) {
       // each box's real height at its size: the you circle reaches well above and below its row, and "Open your page" under it
@@ -857,6 +871,12 @@
       var cx = +ring.getAttribute('cx'), cy = +ring.getAttribute('cy'), rx = +ring.getAttribute('rx'), ry = +ring.getAttribute('ry');
       x0 = Math.min(x0, cx - rx); x1 = Math.max(x1, cx + rx); y0 = Math.min(y0, cy - ry); y1 = Math.max(y1, cy + ry);
     }
+    return { x0: x0, y0: y0, x1: x1, y1: y1 };
+  }
+  function fitAll(top) {
+    var b = svg.getBoundingClientRect(), e = extent();
+    if (!b.width || !e) return;
+    var x0 = e.x0, y0 = e.y0, x1 = e.x1, y1 = e.y1;
     scale = Math.max(narrow() ? 0.6 : 0.4, Math.min(1, (b.width - 40) / (x1 - x0), (b.height - 40) / (y1 - y0)));
     tx = Math.round((b.width - (x1 - x0) * scale) / 2 - x0 * scale);
     ty = top ? Math.round(16 - y0 * scale) : Math.round((b.height - (y1 - y0) * scale) / 2 - y0 * scale);

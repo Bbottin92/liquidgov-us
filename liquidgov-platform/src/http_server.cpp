@@ -956,8 +956,9 @@ std::string css() {
         "background:var(--panel);max-width:100%;overflow-x:auto;margin:.5rem 0 1rem}"
         ".segtabs>.btn{min-height:38px;padding:.35rem .9rem;border:0;border-radius:9px;font-size:.9rem;white-space:nowrap}"
         ".segtabs>.btn.ghost{background:transparent;color:var(--stone)}"
-        // a post's actions (Repost, seconded, Delete) are small and quiet
-        ".post form.inline button{min-height:36px;padding:.3rem .75rem;font-size:.85rem}"
+        // a post's actions (Repost, seconded, Delete) and a proposal's reactions are small and quiet
+        ".post form.inline button,.reactions form.inline button{min-height:36px;padding:.3rem .75rem;font-size:.85rem}"
+        ".reactions{margin-top:.9rem;padding-top:.6rem;border-top:1px dashed var(--rule)}.reactions>p{margin:0 0 .4rem}"
         "button.danger,.btn.danger{background:var(--danger);color:#f7f1e4}"
         ".row{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}"
         ".toolgroup-sep{width:1px;align-self:stretch;background:var(--rule);margin:0 .15rem}"
@@ -8513,7 +8514,7 @@ std::string proposal_talk(const Proposal& p, const std::string& viewer, const st
     };
     const auto counts = g_store.proposal_reaction_counts(p.id);
     auto mine = viewer.empty() ? std::optional<std::string>{} : g_store.proposal_reaction_of(p.id, viewer);
-    std::string row = "<div class=\"row\" style=\"flex-wrap:wrap;gap:.4rem;margin-top:.6rem\">";
+    std::string row = "<div class=\"row\" style=\"flex-wrap:wrap;gap:.4rem\">";
     for (const auto& item : counts) {
         const std::string& kind = item.first;
         const int n = item.second;
@@ -8531,7 +8532,9 @@ std::string proposal_talk(const Proposal& p, const std::string& viewer, const st
             row += "<span class=\"muted\">"+html_escape(label)+" · "+std::to_string(n)+"</span>";
         }
     }
-    row += "</div><p class=\"muted\">A reaction is not a vote.</p>";
+    // Brief 7 item 3: the reactions go last, below the comments, in their own box with a rule line and smaller buttons
+    // (.reactions in css()), the note first, so Support / Oppose do not read as a second way to answer.
+    row = "<div class=\"reactions\"><p class=\"muted\">A reaction is not a vote.</p>" + row + "</div></div>";
     auto replies = g_store.proposal_replies_of(p.id);
     std::string list;
     for (const auto& r : replies) {
@@ -8555,7 +8558,7 @@ std::string proposal_talk(const Proposal& p, const std::string& viewer, const st
             "<div style=\"padding-left:.8rem;border-left:2px solid var(--rule);margin-top:.3rem\">"+
             list+replyForm+"</div></details>";
     }
-    return row + repliesBlock;
+    return repliesBlock + row;
 }
 
 // Shared by every post composer (/me/post, /feed, /c/<slug>): pulls the

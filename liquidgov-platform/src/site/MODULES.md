@@ -29,8 +29,9 @@ module `.cpp` files, in build order, lives in one place: `sources.cmake` (CMakeL
   request; keep such routes in the same feature file, in the order they must be tried.
 - A new module: add its `.cpp` to `sources.cmake` (nothing else lists files).
 - Page CSS and JavaScript live in `liquidgov-platform/assets/` as real files (`site.css`, `mail_widget.js`,
-  `draft_publish.js`, `people_search.js`, ...), linked with `asset_url()`. Don't add new CSS/JS inside C++ strings.
-  Still inline (each mixes in per-page values): `jukebox_script`, `canvas_tool_page`.
+  `draft_publish.js`, `people_search.js`, `jukebox.js`, ...), linked with `asset_url()`. Don't add new CSS/JS
+  inside C++ strings. A script that needs per-page values gets them from a one-line inline settings object set just
+  before it loads (`jukebox.js` reads `window.LG_JUKEBOX`). Still inline: `canvas_tool_page`.
 
 ## Not split yet
 

@@ -2464,6 +2464,15 @@ std::string also_flowed_html(const std::vector<PainPoint>& people) {
     return h;
 }
 
+// Is `viewer` a member of a group this post was shared to (its page's group or one of its extra groups)? Membership
+// is read from g_store.is_member, its one source.
+bool map_post_in_viewers_group(const Post& p, const std::string& viewer) {
+    if (viewer.empty()) return false;
+    if (!p.community.empty() && g_store.is_member(p.community, viewer)) return true;
+    for (const auto& g : p.extra_groups) if (g_store.is_member(g, viewer)) return true;
+    return false;
+}
+
 // May `viewer` see this post as a box? The same audience rules as the
 // author's profile page, plus the author's "Show my posts" map setting.
 bool map_post_ok(const Post& p, const std::string& viewer) {
@@ -2472,12 +2481,13 @@ bool map_post_ok(const Post& p, const std::string& viewer) {
     switch (p.audience) {
         case PostAudience::Anybody:
             return std::find(p.exceptions.begin(), p.exceptions.end(), viewer) == p.exceptions.end();
-        case PostAudience::GroupsOnly: {
-            if (!p.community.empty() && g_store.is_member(p.community, viewer)) return true;
-            for (const auto& g : p.extra_groups) if (g_store.is_member(g, viewer)) return true;
-            return false;
-        }
+        case PostAudience::GroupsOnly:
+            return map_post_in_viewers_group(p, viewer);
         default: { // Friends
+            // Shared to a group too (posted on its page, or Friends + Groups from /feed): that group's members see it,
+            // friends or not (Brandon 2026-11-12 "show group posts to group members"). Blocks and the author's
+            // "Show my posts" were checked above, so they still hide it.
+            if (map_post_in_viewers_group(p, viewer)) return true;
             if (!g_store.are_friends(viewer, p.author)) return false;
             if (g_store.prefs_of(p.author).posts_visibility == Visibility::OnlyMe) return false;
             return p.friend_allowlist.empty() ||

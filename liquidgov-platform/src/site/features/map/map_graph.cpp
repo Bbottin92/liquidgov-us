@@ -87,6 +87,9 @@ void map_feed_posts(const std::string& feed, const std::string& viewer, std::siz
     }
 }
 
+// People under an interest: hidden until the signup privacy step is live (see map_interest_links).
+constexpr bool kInterestPeopleShown = false;
+
 void map_interest_links(const std::string& key, const std::string& viewer,
                         const std::function<void(const std::string&, const std::string&)>& link) {
     std::string label;
@@ -106,6 +109,9 @@ void map_interest_links(const std::string& key, const std::string& viewer,
         }
     // People (SPEC 3.7): only those who list the same interest, are on the map (map_person_ok, via link -> map_gnode),
     // findable by name, and listed in one of your cities. At most 8, newest-listed order not implied; never a count.
+    // OFF until the signup privacy step exists (Brandon 2026-11-12: the step ships with the interest boxes or before
+    // them, never after). Turning it back on also restores map_interests_feeds.sh / map_interest_words.sh people checks.
+    if (!kInterestPeopleShown) return;
     std::set<std::string> seen;
     n = 0;
     for (const auto& k : map_ctx(viewer).cities) {

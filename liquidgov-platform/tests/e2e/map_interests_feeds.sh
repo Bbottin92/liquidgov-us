@@ -95,14 +95,14 @@ check "parks does NOT match inside a word (Sparkshop, 'sparks')" '! has parks.js
 check "parks -> the proposal 'More parks downtown'" 'has parks.json prop:$parksprop' "$(ids parks.json)"
 check "parks matches the singular 'park' (New park benches): a plural is the same word" '[ -n "$benchprop" ] && has parks.json prop:$benchprop' "bench=$benchprop $(ids parks.json)"
 check "parks does NOT match 'Parking meters'" '! has parks.json prop:$parkingprop' "$(ids parks.json)"
-check "parks -> pal (lists parks, on the map, in your city Fresno)" 'has parks.json user:pal' "$(ids parks.json)"
+check "parks does NOT show pal: interest people are hidden until the signup privacy step (Brandon 2026-11-12)" '! has parks.json user:pal' "$(ids parks.json)"
 check "parks leaves out stranger (lists parks but is in none of your cities)" '! has parks.json user:stranger' "$(ids parks.json)"
 check "parks leads back to Interests" 'has parks.json mine:interests' "$(ids parks.json)"
 check "no box under an interest carries a count line (the back-link to Interests carries YOUR list)" '[ -z "$(python3 -c "import json;d=json.load(open(\"$W/parks.json\"));print(\" \".join(l[\"node\"][\"id\"] for l in d[\"links\"] if l[\"node\"].get(\"sub\") and not l[\"node\"][\"id\"].startswith(\"mine:\")))")" ]' "$(head -c 300 $W/parks.json)"
 # both ways: stranger lists Fresno (today the store lists only people in a group there, so join first), then hides
 post $STRANGER /c/fres1/join -d "" >/dev/null; post $STRANGER /city/fresno-ca/list -d "on=1" >/dev/null
 node $ADMIN int:parks parks2.json >/dev/null
-check "after stranger lists Fresno, parks -> stranger" 'has parks2.json user:stranger' "$(ids parks2.json)"
+check "after stranger lists Fresno, parks still does NOT show stranger (interest people hidden)" '! has parks2.json user:stranger' "$(ids parks2.json)"
 post $STRANGER /settings/map -d "x=1" >/dev/null  # every map box left unchecked: show-me off
 node $ADMIN int:parks parks3.json >/dev/null
 check "after stranger turns 'show me on the map' off, parks leaves them out" '! has parks3.json user:stranger' "$(ids parks3.json) mapp=$(grep -P '^mapp\tstranger' $W/store.lgp)"

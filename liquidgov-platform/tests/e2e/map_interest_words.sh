@@ -68,7 +68,7 @@ check "precondition: Café has a box" '[ -n "$cafe" ]' "$(ids int.json)"
 node $ADMIN int:jam jam.json >/dev/null
 check "jam -> Friday Jam" 'has jam.json group:jamgroup' "$(ids jam.json)"
 check "jam does NOT match James Gang" '! has jam.json group:jamesgang' "$(ids jam.json)"
-check "jam -> pal and stranger (both list jam, in Fresno, findable)" 'has jam.json user:pal && has jam.json user:stranger' "$(ids jam.json)"
+check "jam does NOT show pal or stranger (interest people hidden until the signup privacy step)" '! has jam.json user:pal && ! has jam.json user:stranger' "$(ids jam.json)"
 node $ADMIN int:news news.json >/dev/null
 check "news -> Fresno News" 'has news.json group:fresnonews' "$(ids news.json)"
 check "news does NOT match 'New park benches'" '! has news.json prop:$benches' "$(ids news.json)"
@@ -81,14 +81,14 @@ check "Café -> CAFÉ CREW (accented capitals)" '[ -n "$cafe" ] && has cafe.json
 post $STRANGER /settings/privacy -d "findability=0" >/dev/null
 node $ADMIN int:jam jam2.json >/dev/null
 check "stranger findable only by friends -> not under jam" '! has jam2.json user:stranger' "$(ids jam2.json)"
-check "...pal still is (positive control)" 'has jam2.json user:pal' "$(ids jam2.json)"
+check "...pal is not either (interest people hidden)" '! has jam2.json user:pal' "$(ids jam2.json)"
 post $STRANGER /settings/privacy -d "findability=2" >/dev/null
 node $ADMIN int:jam jam3.json >/dev/null
-check "stranger findable again -> back under jam" 'has jam3.json user:stranger' "$(ids jam3.json)"
+check "stranger findable again -> still not under jam (interest people hidden)" '! has jam3.json user:stranger' "$(ids jam3.json)"
 # blocks, both ways
 post $ADMIN /friends/block -d "who=stranger" >/dev/null
 node $ADMIN int:jam jam4.json >/dev/null
-check "after Bbottin blocks stranger, stranger is not under jam" '! has jam4.json user:stranger && has jam4.json user:pal' "$(ids jam4.json)"
+check "after Bbottin blocks stranger, stranger is not under jam" '! has jam4.json user:stranger && ! has jam4.json user:pal' "$(ids jam4.json)"
 post $PAL /friends/block -d "who=Bbottin" >/dev/null
 node $ADMIN int:jam jam5.json >/dev/null
 check "after pal blocks Bbottin, pal is not under Bbottin's jam" '! has jam5.json user:pal' "$(ids jam5.json)"

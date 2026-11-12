@@ -1747,12 +1747,23 @@ std::string device_label_from(const std::string& headers, const std::string& ip)
 // needing a client-side reformat script for something this minor.
 // Back to the page a post action came from, at that post (CODE-SCAN-UX A1, Brief 4 item 9: a 303 without a fragment
 // lands at the top on iPhone Safari). Any #fragment the page had is replaced; no usable Referer is /feed.
+// with_anchor: the same rule for every action that should come back at its item (posts, proposals).
+std::string with_anchor(std::string url, const std::string& anchor) {
+    auto hash = url.find('#');
+    if (hash != std::string::npos) url.erase(hash);
+    return url + "#" + anchor;
+}
 std::string back_to_post(const std::string& referer, std::uint64_t pid) {
     std::string back = referer;
     if (back.empty() || back.rfind("http", 0) != 0) back = "/feed";
-    auto hash = back.find('#');
-    if (hash != std::string::npos) back.erase(hash);
-    return back + "#post-" + std::to_string(pid);
+    return with_anchor(back, "post-" + std::to_string(pid));
+}
+// Back to the page a proposal action came from (its next=, else /officials for a race, else /proposals), at that
+// proposal (CODE-SCAN-UX A1, Brief 6 item 3: votes and reactions sit mid-page on a long list).
+std::string back_to_proposal(const std::string& next, const Proposal& p) {
+    std::string back = safe_next_path(next);
+    if (back.empty()) back = p.is_office ? "/officials" : "/proposals";
+    return with_anchor(back, "proposal-" + std::to_string(p.id));
 }
 
 std::string fmt_time(std::int64_t t) {
@@ -8455,7 +8466,7 @@ std::string proposal_block(const Proposal& p, const std::string& viewer, const s
         if (!p.city.empty())
             place += "<p class=\"muted\">Discussion only. Nothing is sent to the city.</p>";
     }
-    return "<p class=\"muted eyebrow\">Proposal "+std::to_string(p.id)+" · "+kindEyebrow+"</p>"
+    return "<p class=\"muted eyebrow\" id=\"proposal-"+std::to_string(p.id)+"\">Proposal "+std::to_string(p.id)+" · "+kindEyebrow+"</p>"
            "<h3 style=\"margin:.1rem 0\">"+html_escape(p.title)+"</h3>"
            "<p class=\"muted\">by <a href=\"/u/"+html_escape(p.author)+"\">"+html_escape(p.author)+"</a>"+
            (when.empty()?"":" · "+html_escape(when))+"</p>"
@@ -12021,15 +12032,15 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         try { id = std::stoull(f["id"]); } catch (...) { return http_redir("/proposals"); }
         if (!g_store.add_proposal_option(id, user, trim_ws(f["label"])))
             return http_redir("/proposals?err=option");
-        auto dest = safe_next_path(trim_ws(f["next"]));
-        if (dest.empty()) dest = "/proposals";
-        return http_redir(dest);
+        auto p = g_store.proposal_by_id(id);
+        if (!p) return http_redir("/proposals");
+        return http_redir(back_to_proposal(trim_ws(f["next"]), *p));
     }
     if(method=="GET"&&path=="/officials") {
         std::string cards;
         for (const auto& pr : g_store.all_proposals()) {
             if (!pr.is_office) continue;
-            cards += "<div class=\"card\"><h2>"+html_escape(pr.title)+"</h2>"
+            cards += "<div class=\"card\" id=\"proposal-"+std::to_string(pr.id)+"\"><h2>"+html_escape(pr.title)+"</h2>"
                      "<p class=\"muted\">"+html_escape(pr.jurisdiction.empty()?pr.body:pr.jurisdiction)+"</p>";
             auto tally = g_store.value_tally_of(pr.id);
             std::string mine;
@@ -12105,29 +12116,27 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         auto f = parse_form(body);
         std::uint64_t id = 0;
         try { id = std::stoull(f["id"]); } catch (...) { return http_redir("/proposals"); }
-        if (!g_store.proposal_by_id(id)) return http_redir("/proposals");
+        auto p = g_store.proposal_by_id(id);
+        if (!p) return http_redir("/proposals");
         auto text = trim_ws(f["text"]);
         if (!text.empty()) {
             const auto rid = g_store.add_proposal_reply(id, user, text);
             if (rid) notice_pains(user, text, "prply:" + std::to_string(rid));
         }
-        auto dest = safe_next_path(trim_ws(f["next"]));
-        if (!dest.empty()) return http_redir(dest);
-        return http_redir("/proposals");
+        return http_redir(back_to_proposal(trim_ws(f["next"]), *p));
     }
     if(method=="POST"&&path=="/proposals/react") {
         if(!acc) return need_login();
         auto f = parse_form(body);
         std::uint64_t id = 0;
         try { id = std::stoull(f["id"]); } catch (...) { return http_redir("/proposals"); }
-        if (!g_store.proposal_by_id(id)) return http_redir("/proposals");
+        auto p = g_store.proposal_by_id(id);
+        if (!p) return http_redir("/proposals");
         const std::string kind = trim_ws(f["kind"]);
         auto cur = g_store.proposal_reaction_of(id, user);
         if (kind.empty() || (cur && *cur == kind)) g_store.set_proposal_reaction(id, user, "");
         else g_store.set_proposal_reaction(id, user, kind);
-        auto dest = safe_next_path(trim_ws(f["next"]));
-        if (!dest.empty()) return http_redir(dest);
-        return http_redir("/proposals");
+        return http_redir(back_to_proposal(trim_ws(f["next"]), *p));
     }
     if(method=="POST"&&path=="/proposals/vote") {
         if(!acc) return need_login();
@@ -12144,10 +12153,7 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         } else {
             g_store.cast_ballot_value(id, user, trim_ws(f["value"]));
         }
-        auto dest = safe_next_path(trim_ws(f["next"]));
-        if (!dest.empty()) return http_redir(dest);
-        if (p->is_office) return http_redir("/officials");
-        return http_redir("/proposals");
+        return http_redir(back_to_proposal(trim_ws(f["next"]), *p));
     }
     if(method=="POST"&&path=="/friends") {
         if(!acc) return need_login();

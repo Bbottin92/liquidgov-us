@@ -2,7 +2,6 @@
 #include "site/core/adapters_store.hpp"
 #include "site/core/html.hpp"
 #include "site/ui/assets.hpp"
-#include "site/ui/site_css.hpp"
 #include "site/ui/favicon_cookies.hpp"
 #include "site/core/http.hpp"
 #include "site/features/profile/portrait.hpp"
@@ -228,7 +227,7 @@ std::string page_wrap(const std::string& title, const std::string& navhtml, cons
            "<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">"
            "<link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>"
            "<link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&display=swap\">"
-           "<style>"+css()+"</style><link rel=\"stylesheet\" href=\""+asset_url("setup.css")+"\"><script src=\""+asset_url("setup.js")+"\" defer></script></head><body>"
+           "<link rel=\"stylesheet\" href=\""+asset_url("site.css")+"\"><link rel=\"stylesheet\" href=\""+asset_url("setup.css")+"\"><script src=\""+asset_url("setup.js")+"\" defer></script></head><body>"
            +(show_intro ? intro_overlay_html(intro_always_play) : std::string())+
            "<header class=\"top\"><div class=\"topinner\">"
            "<a class=\"brand\" href=\"/\">"

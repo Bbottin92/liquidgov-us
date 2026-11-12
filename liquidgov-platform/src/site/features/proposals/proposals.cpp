@@ -287,7 +287,7 @@ std::string proposal_talk(const Proposal& p, const std::string& viewer, const st
         }
     }
     // Brief 7 item 3: the reactions go last, below the comments, in their own box with a rule line and smaller buttons
-    // (.reactions in css()), the note first, so Support / Oppose do not read as a second way to answer.
+    // (.reactions in assets/site.css), the note first, so Support / Oppose do not read as a second way to answer.
     row = "<div class=\"reactions\"><p class=\"muted\">A reaction is not a vote.</p>" + row + "</div></div>";
     auto replies = g_store.proposal_replies_of(p.id);
     std::string list;

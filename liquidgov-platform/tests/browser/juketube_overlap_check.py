@@ -43,13 +43,9 @@ LONG = ("Roseville, CA &middot; from Roseville, CA &middot; Artist, Inventor, We
 
 
 def site_css(platform):
-    """css()'s string literals, in order: the stylesheet every page inlines."""
-    src = __import__("server_source").read(platform)  # whole server source (http_server.cpp + its src/site pieces)
-    a = src.index("std::string css() {")
-    b = src.index("\n}\n", a)
-    body = "\n".join(l for l in src[a:b].splitlines() if not l.strip().startswith("//"))
-    parts = re.findall(r'"((?:[^"\\]|\\.)*)"', body)
-    return "".join(p.encode().decode("unicode_escape") for p in parts)
+    """The site stylesheet every page links: assets/site.css (was css()'s string literals until 2026-11-12)."""
+    with open(os.path.join(platform, "assets", "site.css"), encoding="utf-8") as f:
+        return f.read()
 
 
 def page(platform):

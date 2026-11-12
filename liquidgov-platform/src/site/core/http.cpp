@@ -68,7 +68,7 @@ std::string cookie_of(const std::string& headers) {
 }
 // "dark", "light", or "" -- "" means no explicit choice was ever saved, so
 // the page stamps no data-theme attribute at all and prefers-color-scheme
-// alone decides (see css()'s dark block). Set once per request (handle()
+// alone decides (see assets/site.css's dark block). Set once per request (handle()
 // is the whole site's single-threaded synchronous entry point, so a
 // thread_local read at render time is exactly one request's worth of
 // state, never shared or stale across requests).

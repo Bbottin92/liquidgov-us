@@ -78,7 +78,7 @@ check "R1 every card: the reactions come after every answer form (vote, add opti
 check "R1 every card: the reactions come after the comments" 'all "{print (\$3>=0 && \$4>\$3)?1:0}"' "$(cat $W/p.lay $W/o.lay | tr '\n' ';')"
 check "R2 every card: the reactions sit in their own box (class reactions) after the comments" 'all "{print (\$5>\$3 && \$5<\$4)?1:0}"' "$(cat $W/p.lay $W/o.lay | tr '\n' ';')"
 check "R2 every card: the box says A reaction is not a vote. before its buttons" 'all "{print \$6}"' "$(cat $W/p.lay $W/o.lay | tr '\n' ';')"
-check "R3 the stylesheet sets the box apart (a rule line above it) and makes its buttons smaller" 'grep -q "\.reactions{[^}]*border-top" $W/p.html && grep -q "\.reactions form\.inline button[^{]*{[^}]*font-size" $W/p.html' "no .reactions rules"
+check "R3 the stylesheet sets the box apart (a rule line above it) and makes its buttons smaller" 'curl -s "$URL/assets/site.css" > $W/site.css && grep -q "assets/site.css" $W/p.html && grep -q "\.reactions{[^}]*border-top" $W/site.css && grep -q "\.reactions form\.inline button[^{]*{[^}]*font-size" $W/site.css' "no .reactions rules"
 check "R4 control: counts and a toggle still work (Support · 1 with the check mark)" 'grep -q "Support · 1 &#10003;" $W/p.html' "$(grep -o 'Support · [0-9][^<]*' $W/p.html | head -2)"
 
 echo "passes=$passes fails=$fails"

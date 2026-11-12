@@ -20,7 +20,7 @@ import sys
 PIECE = re.compile(r'^#include "(site/[A-Za-z0-9_./-]+\.inc)"\r?\n?$')
 SOURCE = re.compile(r"^\s*src/(site/[A-Za-z0-9_./-]+\.cpp)\s*$", re.M)
 # a split read must contain these, or it silently missed modules (a check reading half the server passes on nothing)
-MUST_HAVE = ("std::string handle(", "int main(", "std::string css()")
+MUST_HAVE = ("std::string handle(", "int main(", "std::string page_wrap(")
 
 
 def _read(path):

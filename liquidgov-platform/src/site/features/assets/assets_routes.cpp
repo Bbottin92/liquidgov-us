@@ -104,6 +104,13 @@ std::optional<std::string> assets_routes(Route& r) {
         std::ostringstream ss; ss << in.rdbuf();
         return http_raw("200 OK","text/javascript; charset=utf-8", ss.str(), asset_cache_header(rawpath));
     }
+    // The site stylesheet (was css(), inlined into every page; a real file since 2026-11-12 so browsers cache it).
+    if(method=="GET"&&path=="/assets/site.css") {
+        std::ifstream in("assets/site.css", std::ios::binary);
+        if(!in) return http_raw("404 Not Found","text/plain; charset=utf-8","not found");
+        std::ostringstream ss; ss << in.rdbuf();
+        return http_raw("200 OK","text/css; charset=utf-8", ss.str(), asset_cache_header(rawpath));
+    }
     if(method=="GET"&&path=="/assets/setup.css") {
         std::ifstream in("assets/setup.css", std::ios::binary);
         if(!in) return http_raw("404 Not Found","text/plain; charset=utf-8","not found");

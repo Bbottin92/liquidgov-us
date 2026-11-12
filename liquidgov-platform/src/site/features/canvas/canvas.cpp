@@ -211,7 +211,7 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         // belongs to which question.
         // One frame around the whole workspace, not a separate panel
         // floating above the canvas: at desktop widths (see .canvas-frame
-        // in css()) this becomes a real toolbox-and-canvas layout -- tools
+        // in assets/site.css) this becomes a real toolbox-and-canvas layout -- tools
         // in a column down the left, properties in a strip across the
         // top, canvas and its layer tabs filling the rest -- the same
         // wrap-the-canvas shape a real paint app uses, built as five grid

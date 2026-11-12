@@ -45,7 +45,7 @@ std::optional<std::string> mail_routes(Route& r) {
         }
         // Brief 4 item 8 (Brandon 2026-11-11 4:37 PM): the heading matches the nav ("Messages", not "Mail"), and the
         // age-assurance note is one line plus "more" so the conversation starts higher up. .mailpage scopes the layout
-        // (list beside the thread on wide screens, one scroll region, composer pinned; see css()).
+        // (list beside the thread on wide screens, one scroll region, composer pinned; see assets/site.css).
         std::string html = "<div class=\"mailpage\"><h1>Messages</h1>"
             "<div class=\"muted mailage\">Direct messages are friends-only for now. "
             "<details class=\"mailmore\"><summary>more</summary>"

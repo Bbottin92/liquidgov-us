@@ -59,7 +59,7 @@ node $STRANGER you s0.json >/dev/null
 check "precondition: stranger's you box answers" '[ "$(field s0.json kind)" = you ]' "$(head -c 200 $W/s0.json)"
 check "no interests listed: Interests is left off the ring" '! has s0.json mine:interests' "$(ids s0.json)"
 check "no posts anywhere: Feeds is left off the ring" '! has s0.json mine:feeds' "$(ids s0.json)"
-check "Events is left off (nothing exists yet)" '! has s0.json mine:events' "$(ids s0.json)"
+check "Events is always shown, even with nothing yet (decision 1)" 'has s0.json mine:events' "$(ids s0.json)"
 
 # --- the world: Bbottin and pal in Fresno; groups and proposals that do and don't match "parks"
 post $PAL /communities -d "slug=fres1" -d "name=Fresno Neighbors" -d "category=0" -d "subcategory=Neighbors" -d "about=x" --data-urlencode "city=Fresno, CA" >/dev/null
@@ -124,7 +124,7 @@ check "precondition: four posts stored" '[ -n "$fpost" ] && [ -n "$gpost" ] && [
 node $ADMIN you you2.json >/dev/null
 check "Feeds is on your ring once there are posts for you" 'has you2.json mine:feeds' "$(ids you2.json)"
 check "Feeds' second line never offers Drawings" '[ -n "$(sub_of you2.json mine:feeds)" ] && ! sub_of you2.json mine:feeds | grep -qi drawing' "sub=[$(sub_of you2.json mine:feeds)]"
-check "Events is still left off" '! has you2.json mine:events' "$(ids you2.json)"
+check "Events is still shown (decision 1)" 'has you2.json mine:events' "$(ids you2.json)"
 r=$(node $ADMIN mine:feeds feeds.json)
 check "Feeds -> Friends, Groups, Near you and Yours" '[ "$r" = 200 ] && has feeds.json feed:friends && has feeds.json feed:groups && has feeds.json feed:anybody-near && has feeds.json feed:mine' "$r $(ids feeds.json)"
 check "Feeds offers exactly those four (no Drawings)" '[ "$(ids feeds.json | tr " " "\n" | grep "^feed:" | sort | tr "\n" " ")" = "feed:anybody-near feed:friends feed:groups feed:mine " ]' "$(ids feeds.json)"

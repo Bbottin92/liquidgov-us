@@ -48,7 +48,7 @@ post $PAL /feed -F "text=Plain words from pal" >/dev/null
 r=$(get $ADMIN /feed f.html)
 check "/feed answers 200" '[ "$r" = 200 ]' "$r"
 check "control: the feed's tabs are there (All, Friends, Communities)" \
-    'tabs f.html | grep -q "filter=all\">All<" && tabs f.html | grep -q "filter=friends\">Friends<" && tabs f.html | grep -q "filter=committees\">Communities<"' "$(tabs f.html)"
+    'tabs f.html | grep -q "filter=all\">All<" && tabs f.html | grep -q "filter=friends\">Friends<" && tabs f.html | grep -q "filter=committees\">Groups<"' "$(tabs f.html)"
 check "control: pal's plain post is in the feed" 'grep -q "Plain words from pal" "$W/f.html"' "no post"
 check "no Drawings tab" '! tabs f.html | grep -qi "drawing"' "$(tabs f.html)"
 check "no filter=drawings link anywhere on /feed" '! grep -qi "filter=drawings" "$W/f.html"' "found"

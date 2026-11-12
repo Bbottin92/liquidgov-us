@@ -7168,7 +7168,8 @@ std::string map_page_body(const std::string& user, const std::string& focus) {
             // only when the page in the panel has edit forms
             "<button type=\"button\" id=\"lgm-edit\" hidden>Edit</button>"
             "<button type=\"button\" id=\"lgm-expand\" title=\"Fill the window\">Expand</button>"
-            "<a id=\"lgm-open\" href=\"#\" target=\"_top\">Open page</a>"
+            // no href until lgmap.js's openPanel sets the box's page (CODE-SCAN-UX A3: href="#" jumped to the top)
+            "<a id=\"lgm-open\" target=\"_top\">Open page</a>"
             "<button type=\"button\" id=\"lgm-close\" aria-label=\"Close\">&times;</button></div>"
             "<iframe id=\"lgm-frame\" title=\"Selected item\"></iframe></aside></div>"
             "<noscript>"+main_stream_svg()+kCityMapStyle+"</noscript>"

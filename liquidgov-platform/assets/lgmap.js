@@ -94,8 +94,37 @@
   function sizeOf(n) {
     return (typeof n.rel === 'number' && n.rel >= 0) ? 0.85 + 0.4 * Math.min(1, n.rel) : 1;
   }
-  function leftX(n) { return n.x + W / 2 * (1 - sizeOf(n)); }
-  function rightX(n) { return n.x + W / 2 * (1 + sizeOf(n)); }
+  function leftX(n) { return n.x + W / 2 - (n.w || W) / 2 * sizeOf(n); }
+  function rightX(n) { return n.x + W / 2 + (n.w || W) / 2 * sizeOf(n); }
+  // Box widths from their labels (live look #4: "Genesis Executive Officer..." ellipsized in a 200 px box with room to
+  // spare). On a desktop a box grows to fit its label, up to MAX_W; a phone keeps W (its two columns are sized for it).
+  // Labels are measured, not counted, so one never spills out of its box. A box stays centered where W would sit.
+  var MAX_W = 420, meas, measFamily;
+  var F_LABEL = '600 14px', F_TITLE = '700 14px', F_SUB = '400 10.5px';
+  function textW(s, font) {
+    if (meas === undefined) {
+      try { meas = document.createElement('canvas').getContext('2d'); } catch (e) { meas = null; } // err-ok: no canvas: estimate below
+      measFamily = (window.getComputedStyle && getComputedStyle(svg).fontFamily) || 'sans-serif';
+    }
+    s = String(s || '');
+    if (!meas) return s.length * 9;
+    meas.font = font + ' ' + measFamily;
+    return meas.measureText(s).width * 1.03; // + the labels' .01em letter spacing, and a little slack
+  }
+  function fitText(s, font, room) {
+    s = String(s || '');
+    if (textW(s, font) <= room) return s;
+    var lo = 0, hi = s.length;
+    while (lo < hi) { var mid = (lo + hi + 1) >> 1; if (textW(s.slice(0, mid) + '…', font) <= room) lo = mid; else hi = mid - 1; }
+    return s.slice(0, lo).replace(/\s+$/, '') + '…';
+  }
+  // room for the pointed ends of proposals, Sitewide and problems
+  function padOf(kind) { return kind === 'prop' || kind === 'sitewide' || kind === 'pain' ? 44 : 28; }
+  function widthOf(d) {
+    if (d.kind === 'you' || narrow()) return W;
+    var need = d.kind === 'mine' ? Math.max(textW(d.label, F_TITLE), textW(d.sub, F_SUB)) + 28 : textW(d.label, F_LABEL) + padOf(d.kind);
+    return Math.ceil(Math.min(MAX_W, Math.max(W, need)));
+  }
 
   function status(msg) { statusEl.textContent = msg || ''; }
   function el(tag, attrs) {
@@ -110,20 +139,36 @@
   }
   function short(s, n) { s = String(s); return s.length > n ? s.slice(0, n - 1) + '…' : s; }
 
+  function centerOf(n) { return { x: n.x + W / 2, y: n.y + H / 2 }; }
+  // Where the line from n's middle toward (x, y) leaves n's own shape, plus a 4 px gap (live look #4: lines ran
+  // through the labels; a box's fill is see-through, so a line under it still showed).
+  function edgeEnd(n, x, y) {
+    var c = centerOf(n), dx = x - c.x, dy = y - c.y, len = Math.sqrt(dx * dx + dy * dy), s = sizeOf(n), t;
+    if (len < 1) return c;
+    if (n.kind === 'you') t = YOU_R * s / len;
+    else if (n.kind === 'city') { var rx = (n.w || W) / 2 * s, ry = H / 2 * s; t = 1 / Math.sqrt(dx * dx / (rx * rx) + dy * dy / (ry * ry)); }
+    else {
+      var hw = (n.w || W) / 2 * s, hh = (n.kind === 'mine' ? H + 10 : H) / 2 * s;
+      t = Math.min(dx ? hw / Math.abs(dx) : Infinity, dy ? hh / Math.abs(dy) : Infinity);
+    }
+    t = Math.min(1, t + 4 / len);
+    return { x: c.x + dx * t, y: c.y + dy * t };
+  }
+  // Every line is a spoke from the center to a box on its ring, edge to edge. On a phone the ring is two columns, and
+  // a straight spoke to the second row crossed the first row's cards (live look #9): there it runs down the gap
+  // between the columns and turns into the card's inner edge.
   function edgePath(e) {
     var A = nodes[e.a], B = nodes[e.b];
-    if (A.x > B.x) { var t = A; A = B; B = t; }
-    var x1, y1 = A.y + H / 2, x2, y2 = B.y + H / 2;
-    if (isCenterKind(A) || isCenterKind(B)) { // a ring: straight spokes, center to center
-      return 'M' + (A.x + W / 2) + ' ' + y1 + ' L' + (B.x + W / 2) + ' ' + y2;
+    if (B.id === centerId()) { var t0 = A; A = B; B = t0; }
+    var ca = centerOf(A), cb = centerOf(B);
+    if (narrow() && Math.abs(cb.x - ca.x) > 1 && Math.abs(cb.y - ca.y) > 1) {
+      var sx = cb.x > ca.x ? 1 : -1, sy = cb.y > ca.y ? 1 : -1, s = sizeOf(A), lane = ca.x + sx * 6;
+      var vy = A.kind === 'you' ? Math.sqrt(Math.max(0, YOU_R * s * YOU_R * s - 36)) : (A.kind === 'mine' ? H + 10 : H) / 2 * s;
+      var inner = cb.x - sx * (B.w || W) / 2 * sizeOf(B) - sx * 4;
+      return 'M' + lane.toFixed(1) + ' ' + (ca.y + sy * (vy + 4)).toFixed(1) + ' V' + cb.y.toFixed(1) + ' H' + inner.toFixed(1);
     }
-    if (Math.abs(A.x - B.x) < 1) { // same column: bow out to the right
-      x1 = rightX(A); x2 = rightX(B);
-      return 'M' + x1 + ' ' + y1 + ' C' + (x1 + 60) + ' ' + y1 + ' ' + (x2 + 60) + ' ' + y2 + ' ' + x2 + ' ' + y2;
-    }
-    x1 = rightX(A); x2 = leftX(B);   // lines meet each box's real edge, whatever its size
-    var dx = Math.max(30, (x2 - x1) / 2);
-    return 'M' + x1 + ' ' + y1 + ' C' + (x1 + dx) + ' ' + y1 + ' ' + (x2 - dx) + ' ' + y2 + ' ' + x2 + ' ' + y2;
+    var p = edgeEnd(A, cb.x, cb.y), q = edgeEnd(B, ca.x, ca.y);
+    return 'M' + p.x.toFixed(1) + ' ' + p.y.toFixed(1) + ' L' + q.x.toFixed(1) + ' ' + q.y.toFixed(1);
   }
   function addEdge(a, b, kind) {
     var key = edgeKey(a, b);
@@ -140,10 +185,13 @@
     if (nodes[d.id]) return nodes[d.id];
     var n = { id: d.id, label: d.label, kind: d.kind, page: d.page, rel: d.rel, sub: d.sub || '', x: x, y: y,
       expanded: false };  // ring places are exact (see ringPlace)
-    var s = sizeOf(n);
+    n.w = widthOf(n);
+    var s = sizeOf(n), ox = (W - n.w) / 2;
     var g = el('g', { 'class': 'lgn lgn-' + n.kind + ' lgn-new', tabindex: '0', role: 'button', 'data-id': n.id,
       transform: 'translate(' + (n.x + W / 2 * (1 - s)) + ',' + (n.y + H / 2 * (1 - s)) + ') scale(' + s + ')' });
-    g.appendChild(shapeEl(n.kind, W, H));
+    var shape = shapeEl(n.kind, n.w, H);
+    if (ox) shape.setAttribute('transform', 'translate(' + ox + ',0)');
+    g.appendChild(shape);
     if (n.kind === 'you') {
       // M1.1 look (Grok Bot's mockup 1): a gold disc with your initial, your handle, "YOU", all inside the ringed circle
       g.appendChild(el('circle', { cx: W / 2, cy: H / 2 - 16, r: 20, 'class': 'lgn-face' }));
@@ -158,15 +206,15 @@
       g.appendChild(yl);
     } else if (n.kind === 'mine') {
       // a dark card: title, and a short line under it ("3 people", "Fresno, then the rest of the site"), left-aligned
-      var tt = el('text', { x: 14, y: H / 2 - 2, 'class': 'lgn-cardtitle' });
-      tt.textContent = short(n.label, 22);
+      var tt = el('text', { x: ox + 14, y: H / 2 - 2, 'class': 'lgn-cardtitle' });
+      tt.textContent = fitText(n.label, F_TITLE, n.w - 28);
       g.appendChild(tt);
-      var st = el('text', { x: 14, y: H / 2 + 13, 'class': 'lgn-subt lgn-cardsub' });
-      st.textContent = short(n.sub, 32);
+      var st = el('text', { x: ox + 14, y: H / 2 + 13, 'class': 'lgn-subt lgn-cardsub' });
+      st.textContent = fitText(n.sub, F_SUB, n.w - 28);
       g.appendChild(st);
     } else {
       var text = el('text', { x: W / 2, y: H / 2 + 5 });
-      text.textContent = short(n.label, 26);
+      text.textContent = fitText(n.label, F_LABEL, n.w - padOf(n.kind));
       g.appendChild(text);
     }
     var title = el('title', {}); title.textContent = n.label; g.appendChild(title);
@@ -277,7 +325,7 @@
   function ringFit(c, list) {
     var r = ringRadii(list.length);
     if (narrow() || list.length < 2) return r;
-    var half = function (d) { var s = sizeOf(d); return { w: W / 2 * s + 8, h: (d.kind === 'mine' ? H + 10 : H) / 2 * s + 8 }; };
+    var half = function (d) { var s = sizeOf(d); return { w: widthOf(d) / 2 * s + 8, h: (d.kind === 'mine' ? H + 10 : H) / 2 * s + 8 }; };
     for (var tries = 0; tries < 40; tries++) {
       var pts = list.map(function (d, i) { var p = ringPlace(c, i, list.length, r), h = half(d); return { x: p.x, y: p.y, w: h.w, h: h.h }; });
       var hc = c.kind === 'you' ? { w: YOU_R * sizeOf(c) + 8, h: YOU_R * sizeOf(c) + 8 } : half(c);
@@ -444,9 +492,6 @@
   var zoomBtn = document.getElementById('lgm-zoomout');
   if (zoomBtn) zoomBtn.addEventListener('click', zoomOut);
   function dataOf(n) { return { id: n.id, label: n.label, kind: n.kind, page: n.page, rel: n.rel, sub: n.sub }; }
-  // the MAINstream is a center too (2026-11-11 CI shot: zoomed out from You, its column of cities crowded your ring and
-  // ran off the left edge); it opens onto the cities and Sitewide on a ring of their own
-  function isCenterKind(n) { return n.kind === 'you' || n.kind === 'mine' || n.kind === 'root'; }
   // m: the tapped box (its own element is kept and moved to the middle: a replaced element broke anything holding it,
   // CI phone_check 3, 2026-11-11), or a trail entry's data when that box is no longer drawn.
   function recenter(m) {

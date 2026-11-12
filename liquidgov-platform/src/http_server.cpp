@@ -1744,6 +1744,16 @@ std::string device_label_from(const std::string& headers, const std::string& ip)
 // to be locally correct. A bare date reads honestly everywhere it's used
 // (posts, "member since", session activity, jukebox history) without
 // needing a client-side reformat script for something this minor.
+// Back to the page a post action came from, at that post (CODE-SCAN-UX A1, Brief 4 item 9: a 303 without a fragment
+// lands at the top on iPhone Safari). Any #fragment the page had is replaced; no usable Referer is /feed.
+std::string back_to_post(const std::string& referer, std::uint64_t pid) {
+    std::string back = referer;
+    if (back.empty() || back.rfind("http", 0) != 0) back = "/feed";
+    auto hash = back.find('#');
+    if (hash != std::string::npos) back.erase(hash);
+    return back + "#post-" + std::to_string(pid);
+}
+
 std::string fmt_time(std::int64_t t) {
     if (t <= 0) return "";
     std::time_t tt = static_cast<std::time_t>(t);
@@ -8248,7 +8258,7 @@ std::string post_block(const Post& p, const std::string& viewer) {
             ? "<video controls preload=\"metadata\" style=\"width:100%;height:auto;display:block;border-radius:var(--rsm);margin-top:.4rem\" src=\""+src+"\"></video>"
             : "<img style=\"width:100%;height:auto;display:block;border-radius:var(--rsm);margin-top:.4rem\" src=\""+src+"\" alt=\"\">";
     }
-    return "<article class=\"post\"><div class=\"who\">"+portrait_tag(p.author,"sm")+"<div><a href=\"/u/"+html_escape(p.author)+"\"><strong>"+
+    return "<article class=\"post\" id=\"post-"+std::to_string(p.id)+"\"><div class=\"who\">"+portrait_tag(p.author,"sm")+"<div><a href=\"/u/"+html_escape(p.author)+"\"><strong>"+
            html_escape(p.author)+"</strong></a>"+where+
            (when.empty()?"":" <span class=\"muted\">"+html_escape(when)+"</span>")+
            repostLine+
@@ -11572,7 +11582,7 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
             }
         }
         g_store.add_post(user, target->text, "", origAuthor, origId, blob_id, mime);
-        return http_redir("/me");
+        return http_redir(back_to_post(header_value(req, "Referer"), pid)); // the page it was tapped on (was /me)
     }
     // Reply and second both need to land back on whatever page the post was
     // actually being viewed on (feed, a profile, a community) -- post_block
@@ -11589,7 +11599,7 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         if (!g_store.post_by_id(pid)) return http_redir(back);
         auto text = trim_ws(parse_form(body)["text"]);
         if (!text.empty()) g_store.add_reply(pid, user, text);
-        return http_redir(back);
+        return http_redir(back_to_post(back, pid));
     }
     if(method=="POST"&&path.rfind("/post/",0)==0&&path.size()>13&&
        path.compare(path.size()-7,7,"/second")==0) {
@@ -11600,7 +11610,7 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
         try { pid = std::stoull(path.substr(6, path.size()-6-7)); } catch (...) { return http_redir(back); }
         if (!g_store.post_by_id(pid)) return http_redir(back);
         g_store.toggle_second(pid, user);
-        return http_redir(back);
+        return http_redir(back_to_post(back, pid));
     }
     if(method=="POST"&&path.rfind("/post/",0)==0&&path.size()>13&&
        path.compare(path.size()-7,7,"/delete")==0) {

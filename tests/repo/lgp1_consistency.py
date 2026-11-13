@@ -49,7 +49,7 @@ city_tags = set(re.findall(r'"([a-z]+)"', m.group(1))) if m else set()
 new_since = read - BASELINE
 # 2026-11-12 (edited with Brandon's OK: "make the undo checks generic"): a new type may be stripped by ANY
 # deploy/<feature>-undo.py with a <NAME>_TAGS tuple, so rolling back one feature never wipes another's records and a
-# new feature needs no edit here. commons-daemon/tests/undo_lists_check.py keeps each such script and its suite in step.
+# new feature needs no edit here. tests/repo/undo_lists_check.py keeps each such script and its suite in step.
 undo_tags = set(city_tags)
 for fn in sorted(os.listdir(os.path.join(ROOT, "deploy"))):
     if fn.endswith("-undo.py") and fn != "city-undo.py":

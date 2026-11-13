@@ -1,7 +1,7 @@
 """make_go_dry_label_check.py: a generated *-go.sh run with "dry" says DRY RUN, not "RESTARTING liquidgov.us"
 (2026-11-08: citymod-go.sh dry printed RESTARTING while changing nothing). Runs make-go.py in a throwaway copy, then
 runs only the generated banner line in bash for "dry" and "go" (no network).
-Usage: python commons-daemon/tests/make_go_dry_label_check.py <repo root>"""
+Usage: python tests/repo/make_go_dry_label_check.py <repo root>"""
 import os
 import re
 import shutil

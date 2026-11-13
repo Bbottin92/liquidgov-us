@@ -9,7 +9,7 @@ blockers first"; scratch/2026-11-11-grokbot-ship-review/REVIEW.md).
      main checkout are untouched; go refuses until that branch is merged.
   M3 override variables (LIQUIDGOV_CI_OVERRIDE, ..._ALLOW_DIRTY, ..._NO_ROLLBACK_OK, ..._LIVE_COMMIT) in the caller's
      environment are refused, not passed along.
-Usage: python commons-daemon/tests/ship_fixes_check.py [repo root] -> last line passes=N fails=M; exit 1 on any FAIL."""
+Usage: python tests/repo/ship_fixes_check.py [repo root] -> last line passes=N fails=M; exit 1 on any FAIL."""
 import json
 import os
 import shutil

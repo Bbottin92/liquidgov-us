@@ -10,7 +10,7 @@ without core.hooksPath, or a push that skipped the hooks, got past all of them.
   C4  run on a fake repo: one passing + one failing check -> exit 1, the failing one named, SUMMARY fails=1
   C5  run on a fake repo with no checks -> exit 1 (an empty run is not a pass)
 
-Usage: python commons-daemon/tests/ci_runs_checks_check.py [repo root] -> last line passes=N fails=M; exit 1 on FAIL."""
+Usage: python tests/repo/ci_runs_checks_check.py [repo root] -> last line passes=N fails=M; exit 1 on FAIL."""
 import glob
 import os
 import re
@@ -22,7 +22,7 @@ import tempfile
 ROOT = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(__file__), "..", ".."))
 RUNNER = os.path.join(ROOT, "scripts", "run_hook_checks.py")
 SELECTOR = os.path.join(ROOT, "scripts", "affected_checks.py")
-TESTS = os.path.join(ROOT, "commons-daemon", "tests")
+TESTS = os.path.join(ROOT, "tests", "repo")
 ENV = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
 passes = fails = 0
 
@@ -77,12 +77,12 @@ try:
                          ("empty", {})):
         fake = os.path.join(tmp, name)
         os.makedirs(os.path.join(fake, "scripts"))
-        os.makedirs(os.path.join(fake, "commons-daemon", "tests"))
+        os.makedirs(os.path.join(fake, "tests", "repo"))
         shutil.copy(SELECTOR, os.path.join(fake, "scripts"))
         if os.path.exists(RUNNER):
             shutil.copy(RUNNER, os.path.join(fake, "scripts"))
         for f, body in bodies.items():
-            open(os.path.join(fake, "commons-daemon", "tests", f), "w", encoding="utf-8").write(body + "\n")
+            open(os.path.join(fake, "tests", "repo", f), "w", encoding="utf-8").write(body + "\n")
         runner = os.path.join(fake, "scripts", "run_hook_checks.py")
         if not os.path.exists(runner):
             check("C4/C5 %s: runner present" % name, False, "no scripts/run_hook_checks.py")

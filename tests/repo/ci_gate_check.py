@@ -7,7 +7,7 @@ Runs ci-gate.sh in a throwaway git repo with a fake gh (no network, no GitHub), 
   refuses: newest matching run red, still running, or missing; an older green hidden by a newer red; uncommitted
            liquidgov-platform changes; gh failing (fails closed); a green run for a DIFFERENT tree.
 Then make-go.py (in a throwaway copy) must put exactly one gate call in a generated go script, before the backup.
-Usage: python commons-daemon/tests/ci_gate_check.py <repo root>   -> last line passes=N fails=M; exit 1 on any FAIL."""
+Usage: python tests/repo/ci_gate_check.py <repo root>   -> last line passes=N fails=M; exit 1 on any FAIL."""
 import os
 import shutil
 import subprocess

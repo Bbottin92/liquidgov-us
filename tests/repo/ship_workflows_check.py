@@ -4,7 +4,7 @@ Fake gh: `run list --workflow platform.yml` gives the platform run, `run list` w
   not ready: another workflow (commons) failed on the commit, with a green platform run; and with no platform run.
   ready: the other workflow was skipped or succeeded; an other workflow still running is reported but waited out by
   nobody: it counts as not ready (a red result could still come).
-Usage: python commons-daemon/tests/ship_workflows_check.py [repo root] -> last line passes=N fails=M; exit 1 on FAIL."""
+Usage: python tests/repo/ship_workflows_check.py [repo root] -> last line passes=N fails=M; exit 1 on FAIL."""
 import json
 import os
 import shutil

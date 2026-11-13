@@ -12,7 +12,7 @@ Windows worktree seen from WSL) and a fake git.exe + wslpath on PATH stand in fo
                git.exe answers HEAD then stops answering for good -> refused saying git stopped answering, never
                "no platform CI run" (a dead git must not look like a missing run)
                a red run for this tree with git.exe dropping calls -> still refused as conclusion=failure
-Usage: python commons-daemon/tests/ci_gate_interop_check.py <repo root>  -> last line passes=N fails=M; exit 1 on FAIL."""
+Usage: python tests/repo/ci_gate_interop_check.py <repo root>  -> last line passes=N fails=M; exit 1 on FAIL."""
 import os
 import shutil
 import subprocess

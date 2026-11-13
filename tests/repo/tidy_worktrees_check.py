@@ -3,7 +3,7 @@
 In a throwaway repo it builds one worktree per case and checks: dry run removes nothing; "--live true" stays a dry run;
 "--live yes" removes ONLY the merged+clean one (and its branch); an unmerged, a dirty, one with an ignored .lgp store,
 and one with a junction are kept with their reason; the junction's target survives. Never touches the real repo.
-Usage: python commons-daemon/tests/tidy_worktrees_check.py <repo root>   (exit 0 only when every case passed)"""
+Usage: python tests/repo/tidy_worktrees_check.py <repo root>   (exit 0 only when every case passed)"""
 import os
 import shutil
 import subprocess
@@ -57,7 +57,7 @@ try:
     (wt["clean"] / "build").mkdir()
     (wt["clean"] / "build" / "x.o").write_text("obj\n")  # build output alone does not keep a worktree
     # a NESTED __pycache__ is build output too (2026-11-08: the first real dry run kept 9 worktrees for
-    # commons-daemon/tests/__pycache__/ alone)
+    # tests/repo/__pycache__/ alone)
     (wt["clean"] / "sub" / "tests" / "__pycache__").mkdir(parents=True)
     (wt["clean"] / "sub" / "tests" / "__pycache__" / "m.pyc").write_text("pyc\n")
     (main / ".gitignore").write_text("*.lgp\nbuild/\n__pycache__/\n")

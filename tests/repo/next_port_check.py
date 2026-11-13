@@ -1,6 +1,6 @@
 """next_port_check.py: scripts/next_port.py finds the next free e2e port and widens a full range safely (2026-11-08).
 Runs on a throwaway copy (naming.toml, naming_check.py, next_port.py, fake e2e scripts); never edits the real repo.
-Usage: python commons-daemon/tests/next_port_check.py <repo root>   (exit 0 only when every case passed)"""
+Usage: python tests/repo/next_port_check.py <repo root>   (exit 0 only when every case passed)"""
 import shutil
 import subprocess
 import sys
@@ -21,11 +21,11 @@ def check(name, ok, detail=""):
 tmp = Path(tempfile.mkdtemp(prefix="next-port-check-"))
 try:
     (tmp / "scripts").mkdir()
-    (tmp / "commons-daemon" / "tests").mkdir(parents=True)
+    (tmp / "tests" / "repo").mkdir(parents=True)
     e2e = tmp / "liquidgov-platform" / "tests" / "e2e"
     e2e.mkdir(parents=True)
     shutil.copy2(ROOT / "scripts" / "next_port.py", tmp / "scripts")
-    shutil.copy2(ROOT / "commons-daemon" / "tests" / "naming_check.py", tmp / "commons-daemon" / "tests")
+    shutil.copy2(ROOT / "tests" / "repo" / "naming_check.py", tmp / "tests" / "repo")
     text = (ROOT / "naming.toml").read_bytes().decode("utf-8")  # raw: line endings are part of what is checked
     lo = int(text.split("port_min = ")[1].split()[0])
     hi = int(text.split("port_max = ")[1].split()[0])

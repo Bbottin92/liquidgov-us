@@ -6,7 +6,7 @@ a fake rsync that only records that it was called (nothing leaves this machine).
   goes on, rsync called: CI green; a dry run while CI is red (dry runs change nothing and are not gated); the override,
   which must log its reason.
 Wiring: every deploy/*-go.sh in <repo root> syncs through sync-to-droplet.sh (else this gate would not cover it).
-Usage: python commons-daemon/tests/sync_gate_check.py <repo root>   -> last line passes=N fails=M; exit 1 on any FAIL."""
+Usage: python tests/repo/sync_gate_check.py <repo root>   -> last line passes=N fails=M; exit 1 on any FAIL."""
 import glob
 import os
 import shutil

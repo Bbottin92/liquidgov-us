@@ -14,7 +14,7 @@
 #   dry: prints what go would decide (CI_GATE_OK or CI_GATE_WOULD_REFUSE) and always exits 0.
 # Override, emergencies only and only with Brandon's explicit OK for that deploy (e.g. a rollback while GitHub is down):
 #   LIQUIDGOV_CI_OVERRIDE="<reason>" -> prints CI_GATE_OVERRIDE: <reason> into the deploy log and lets it through.
-# Test seams: LIQUIDGOV_GH (the gh command), LIQUIDGOV_GATE_REPO (the repo root); tests: commons-daemon/tests/ci_gate_check.py
+# Test seams: LIQUIDGOV_GH (the gh command), LIQUIDGOV_GATE_REPO (the repo root); tests: tests/repo/ci_gate_check.py
 set -uo pipefail
 MODE="${1:-}"
 if [ "$MODE" != "go" ] && [ "$MODE" != "dry" ]; then echo "usage: bash deploy/ci-gate.sh <go|dry>"; exit 2; fi

@@ -7,7 +7,7 @@ shell is SHIP_SH (bash -c here, wsl.exe bash -lc for real). No network, no serve
           run whose CI gate would refuse; a bad name; an existing pair is reused (no second make-go, no new commit).
   go:     go.sh go -> CHECK_DONE + RECORD lines -> SHIP_LIVE and the RECORD lines printed. Refuses/fails: no pair;
           go exits non-zero; exit 0 without CHECK_DONE; RECORD_FAILED.
-Usage: python commons-daemon/tests/ship_deploy_check.py [repo root]  -> last line passes=N fails=M; exit 1 on any FAIL."""
+Usage: python tests/repo/ship_deploy_check.py [repo root]  -> last line passes=N fails=M; exit 1 on any FAIL."""
 import json
 import os
 import shutil

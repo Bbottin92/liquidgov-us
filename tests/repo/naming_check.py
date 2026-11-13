@@ -306,7 +306,7 @@ def self_test():
     with tempfile.TemporaryDirectory() as td:
         def tree(bad_name, ports, branches, cpp_pattern=r"^[a-z0-9_]+_test\.cpp$", extra_restart=False, hide=False):
             for rel in ("liquidgov-platform/tests/e2e", "liquidgov-platform/tests", "liquidgov-platform/src",
-                        "commons-daemon/tests", "deploy", ".githooks"):
+                        "tests/repo", "deploy", ".githooks"):
                 os.makedirs(os.path.join(td, rel.replace("/", os.sep)), exist_ok=True)
             e2e = os.path.join(td, "liquidgov-platform", "tests", "e2e")
             for old in os.listdir(e2e):
@@ -322,18 +322,18 @@ def self_test():
             open(os.path.join(td, "naming.toml"), "w", encoding="utf-8", newline="\n").write(
                 '[e2e]\nroot = "liquidgov-platform/tests/e2e"\npattern = "^[a-z0-9]+_[a-z0-9_]+\\\\.sh$"\nport_min = 18080\nport_max = 18099\n'
                 '[cpp]\nroot = "liquidgov-platform/tests"\npattern = "%s"\n' % cpp_pattern.replace("\\", "\\\\")
-                + '[ci_sh]\nroot = "commons-daemon/tests"\npattern = "^test_[a-z0-9_]+\\\\.sh$"\n'
-                '[ci_py]\nroot = "commons-daemon/tests"\npattern = "^[a-z0-9_]+_check\\\\.py$"\n'
+                + '[ci_sh]\nroot = "tests/repo"\npattern = "^test_[a-z0-9_]+\\\\.sh$"\n'
+                '[ci_py]\nroot = "tests/repo"\npattern = "^[a-z0-9_]+_check\\\\.py$"\n'
                 '[deploy]\nroot = "deploy"\npattern = "^[a-z0-9]+(?:-[a-z0-9]+)+\\\\.sh$"\n'
                 'restart_pattern = "^([a-z0-9]+)-remote\\\\.sh$"\nrestart_unit = "liquidgov"\n'
                 'restart_allowed = ["deploy/liquidgov-remote.sh"]\n'
                 '[branches]\npattern = "^wip/[0-9]+-[a-z0-9-]+$"\n'
                 '[grandfather]\ne2e = []\ncpp = []\nci_sh = []\nci_py = ["lgp1_consistency.py"]\ndeploy = []\nbranches = ["master"]\n'
-                '[frozen]\nbutton = "MAINstream</button>"\nstore_tags_check = "commons-daemon/tests/lgp1_consistency.py"\n'
+                '[frozen]\nbutton = "MAINstream</button>"\nstore_tags_check = "tests/repo/lgp1_consistency.py"\n'
                 'assets = ["/manifest.webmanifest"]\n')
             open(os.path.join(td, "liquidgov-platform", "src", "http_server.cpp"), "w", encoding="utf-8", newline="\n").write(
                 'MAINstream</button> "/manifest.webmanifest"\n')
-            open(os.path.join(td, "commons-daemon", "tests", "lgp1_consistency.py"), "w", encoding="utf-8", newline="\n").write("# tags\n")
+            open(os.path.join(td, "tests", "repo", "lgp1_consistency.py"), "w", encoding="utf-8", newline="\n").write("# tags\n")
             open(os.path.join(td, ".githooks", "pre-push"), "w", encoding="utf-8", newline="\n").write(
                 "lgp1_consistency.py naming_check.py\n")
             open(os.path.join(td, "liquidgov-platform", "tests", "city_store_test.cpp"), "w", encoding="utf-8", newline="\n").write("int main(){return 0;}\n")

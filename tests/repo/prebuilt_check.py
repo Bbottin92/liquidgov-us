@@ -39,6 +39,12 @@ def rd(rel):
         return f.read()
 
 
+# Inside a git hook git exports GIT_DIR / GIT_INDEX_FILE / ...: without dropping them, the throwaway repo's git calls
+# below land in the REAL repo (2026-11-13: commits "one" and "two" on the branch being committed, core.bare=true).
+for _k in [k for k in os.environ if k.startswith("GIT_")]:
+    del os.environ[_k]
+
+
 def sh(cmd, cwd, env=None):
     return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, env=env, stdin=subprocess.DEVNULL)
 

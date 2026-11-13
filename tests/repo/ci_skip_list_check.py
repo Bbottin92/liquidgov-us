@@ -10,7 +10,7 @@ which the runner counted as a pass. The platform is forced with LG_CHECKS_PLATFO
   S4  a check that exits 0 but prints passes=0 fails the run and is called out as running no cases
   S5  a normal passing check still passes (exit 0) on linux
 
-Usage: python commons-daemon/tests/ci_skip_list_check.py [repo root] -> last line passes=N fails=M; exit 1 on FAIL."""
+Usage: python tests/repo/ci_skip_list_check.py [repo root] -> last line passes=N fails=M; exit 1 on FAIL."""
 import importlib.util
 import os
 import shutil
@@ -21,7 +21,7 @@ import tempfile
 ROOT = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(__file__), "..", ".."))
 RUNNER = os.path.join(ROOT, "scripts", "run_hook_checks.py")
 SELECTOR = os.path.join(ROOT, "scripts", "affected_checks.py")
-TESTS = os.path.join(ROOT, "commons-daemon", "tests")
+TESTS = os.path.join(ROOT, "tests", "repo")
 passes = fails = 0
 
 
@@ -35,11 +35,11 @@ def check(name, ok, detail=""):
 def fake_repo(tmp, name, bodies):
     fake = os.path.join(tmp, name)
     os.makedirs(os.path.join(fake, "scripts"))
-    os.makedirs(os.path.join(fake, "commons-daemon", "tests"))
+    os.makedirs(os.path.join(fake, "tests", "repo"))
     shutil.copy(SELECTOR, os.path.join(fake, "scripts"))
     shutil.copy(RUNNER, os.path.join(fake, "scripts"))
     for f, body in bodies.items():
-        open(os.path.join(fake, "commons-daemon", "tests", f), "w", encoding="utf-8").write(body + "\n")
+        open(os.path.join(fake, "tests", "repo", f), "w", encoding="utf-8").write(body + "\n")
     return fake
 
 

@@ -1,7 +1,7 @@
 """tidy_cwd_check.py: scripts/tidy_worktrees.py never removes the worktree the caller is standing in (2026-11-08: run
 from a shell whose cwd was inside liquidgov-us-archive, git unregistered it, failed to delete the folder (Permission
 denied) and left an empty folder plus an undeleted branch). Throwaway repo; never touches the real one.
-Usage: python commons-daemon/tests/tidy_cwd_check.py <repo root>   (exit 0 only when every case passed)"""
+Usage: python tests/repo/tidy_cwd_check.py <repo root>   (exit 0 only when every case passed)"""
 import os
 import shutil
 import stat

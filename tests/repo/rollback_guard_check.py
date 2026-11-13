@@ -10,7 +10,7 @@ A rollback restores the program built from the LIVE commit; it must still open t
   3. sync-to-droplet.sh end to end with a fake server (fake ssh serving DEPLOYED_COMMIT, fake rsync recording calls,
      fake gh green): reads the live commit, refuses before rsync when incompatible or unknown, records DEPLOYED_COMMIT
      after a real sync, never on a dry run, and stops (exit 6) when the record cannot be written.
-Usage: python commons-daemon/tests/rollback_guard_check.py <repo root>  -> last line passes=N fails=M; exit 1 on FAIL."""
+Usage: python tests/repo/rollback_guard_check.py <repo root>  -> last line passes=N fails=M; exit 1 on FAIL."""
 import os
 import re
 import shutil

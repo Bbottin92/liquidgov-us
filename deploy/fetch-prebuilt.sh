@@ -6,7 +6,7 @@
 # (the same rule as deploy/ci-gate.sh); the artifact's sha256 matches; BUILD-INFO's tree is HEAD's tree; and the
 # program's own --version prints that tree.
 # Usage: bash deploy/fetch-prebuilt.sh   -> last line PREBUILT_OK <tree> (exit 0) or PREBUILT_REFUSED <why> (exit 1)
-# Test seams: LIQUIDGOV_GH (the gh command), LIQUIDGOV_GATE_REPO (repo root). Tests: commons-daemon/tests/prebuilt_check.py
+# Test seams: LIQUIDGOV_GH (the gh command), LIQUIDGOV_GATE_REPO (repo root). Tests: tests/repo/prebuilt_check.py
 set -uo pipefail
 REPO="${LIQUIDGOV_GATE_REPO:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 GH=${LIQUIDGOV_GH:-gh}

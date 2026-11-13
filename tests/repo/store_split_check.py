@@ -11,7 +11,7 @@ libs/liquidgov_file_store/sources.cmake lists, joined in order. This keeps that 
   4. record literals live only in listed .cpp files: no `tag == "` or `<< "x\t` in the store's headers;
   5. the round-trip fixtures (tests/fixtures/lgp1_roundtrip*/store_all_tags.lgp1) have a row of every type the loader
      reads, so the byte-for-byte round trip (store_roundtrip_test.cpp) covers every type, including new ones.
-Usage: python commons-daemon/tests/store_split_check.py <repo root>  -> last line passes=N fails=M; exit 1 on FAIL."""
+Usage: python tests/repo/store_split_check.py <repo root>  -> last line passes=N fails=M; exit 1 on FAIL."""
 import os
 import re
 import runpy

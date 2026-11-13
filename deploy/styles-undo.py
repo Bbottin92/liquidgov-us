@@ -26,7 +26,7 @@ again on an already stripped store removes nothing and changes nothing.
 REINSTALLING LATER: the library comes back empty. To bring the styles back, with the site STOPPED and BEFORE starting
 the reinstalled version, copy the sty/styn/stu/str lines from the backup to the end of the store (a style whose author
 is gone by then is dropped on load). Tests: liquidgov-platform/tests/rollback/styles_undo.sh (by hand: it needs the
-previous build), commons-daemon/tests/styles_undo_lists_check.py.
+previous build), tests/repo/styles_undo_lists_check.py.
 """
 import os
 import sys

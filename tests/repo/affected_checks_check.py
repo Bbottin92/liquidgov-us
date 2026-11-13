@@ -10,7 +10,7 @@ import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else os.path.join(HERE, "..", ".."))
-TESTS = os.path.join(ROOT, "commons-daemon", "tests")
+TESTS = os.path.join(ROOT, "tests", "repo")
 passes = fails = 0
 
 
@@ -58,7 +58,7 @@ got = sel(["scripts/tidy_worktrees.py"])
 check("scripts/ runs the tidy checks", {"tidy_worktrees_check.py", "tidy_cwd_check.py", "tidy_in_use_check.py"} <= set(got), got)
 got = sel(["docs/archive/new.md"], ["docs/archive/new.md"])
 check("a new file anywhere runs naming_check (and only that)", got == ["naming_check.py"], got)
-got = sel(["commons-daemon/tests/ci_gate_check.py"])
+got = sel(["tests/repo/ci_gate_check.py"])
 check("a check's own file runs that check", "ci_gate_check.py" in got, got)
 for f in (".githooks/pre-push", "scripts/affected_checks.py"):
     got = sel([f])

@@ -48,7 +48,7 @@ export LIQUIDGOV_DEPLOY_SSH="$SSH -i $WINKEY -o IdentitiesOnly=yes"
 
 PRELOG="${TMPDIR:-/tmp}/sitecss1-preflight.txt"
 # WSL vsock accept4/110 can drop the read-only preflight ssh too (polish1, 2026-11-10). One retry; any other
-# failure, or a second drop, stops here (commons-daemon/tests/preflight_retry_check.py).
+# failure, or a second drop, stops here (tests/repo/preflight_retry_check.py).
 try=0
 while true; do
   try=$((try + 1))

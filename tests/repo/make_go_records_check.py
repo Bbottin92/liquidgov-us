@@ -3,7 +3,7 @@
 (from the sync log) and the new PID (a fresh preflight read). On 2026-11-08 a log line written from memory claimed
 work that had not happened. The block is only reached after the public checks pass (set -e; city-live-check exits 1).
 Runs make-go.py in a throwaway copy, then runs ONLY the generated record block in bash with a fake sync log and a fake
-`remote` (no network). Usage: python commons-daemon/tests/make_go_records_check.py <repo root>"""
+`remote` (no network). Usage: python tests/repo/make_go_records_check.py <repo root>"""
 import os
 import re
 import shutil

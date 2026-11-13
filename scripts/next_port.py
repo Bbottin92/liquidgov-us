@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "commons-daemon" / "tests"))
+sys.path.insert(0, str(ROOT / "tests" / "repo"))
 import naming_check as nc  # noqa: E402
 
 

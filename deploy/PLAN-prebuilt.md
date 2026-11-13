@@ -101,7 +101,7 @@ dry run and "go" words, the CI gate, the rollback guard, ship.py's checks.
 `scripts/build_release.sh`; `deploy/ci/release-binary.yml` (to move into `.github/workflows/`); `deploy/fetch-prebuilt.sh`;
 the template pair `deploy/prebuilt-go.sh` / `deploy/prebuilt-remote.sh`; `deploy/make-go.py` (`LIQUIDGOV_PREBUILT=1`);
 `naming.toml` (prebuilt-remote may restart); `.gitignore` (`.prebuilt/`, `dist/`, `build-release/`); CMake options
-`LG_STATIC_RUNTIME`, `LG_BUILD_COMMIT`, `LG_BUILD_TREE`; `liquidgov_http --version`. Tests: `commons-daemon/tests/prebuilt_check.py`,
+`LG_STATIC_RUNTIME`, `LG_BUILD_COMMIT`, `LG_BUILD_TREE`; `liquidgov_http --version`. Tests: `tests/repo/prebuilt_check.py`,
 `liquidgov-platform/tests/e2e/version_flag.sh`.
 
 ## 10. Not done here

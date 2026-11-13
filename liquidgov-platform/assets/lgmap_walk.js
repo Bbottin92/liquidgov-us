@@ -1,4 +1,4 @@
-/* Walking on the map (Brandon 2026-11-13, 12:36 AM): the walker stands on a box. The D-pad or WASD/arrows picks the
+/* Walking on the map (Brandon 2026-11-13, 12:36 AM): the walker stands on a box. The touchpad or WASD/arrows picks the
    connector (the line to a neighboring box) that points most that way and walks along it to the next box; A or Enter
    opens the box you stand on (the same as tapping it), B or Esc goes back (closes the open page, else the map's Back).
    Uses lgmap.js's own drawing as it is: the boxes (#lgm-nodes .lgn[data-id]) and connectors (#lgm-edges .lge[data-a]
@@ -33,11 +33,11 @@
     return out;
   }
   var WAY = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
-  // the neighbor whose connector points most along `dir` (ties: the nearer one)
-  function pick(dir) {
+  // the neighbor whose connector points most along the unit vector w (ties: the nearer one)
+  function pick(w) {
     var here = box(at);
     if (!here) return null;
-    var p = middle(here), w = WAY[dir], best = null, bestScore = -Infinity;
+    var p = middle(here), best = null, bestScore = -Infinity;
     neighbors(at).forEach(function (id) {
       var q = middle(box(id)), dx = q.x - p.x, dy = q.y - p.y, len = Math.sqrt(dx * dx + dy * dy) || 1;
       var cos = (dx * w[0] + dy * w[1]) / len;
@@ -65,9 +65,9 @@
     later.forEach(clearTimeout);
     later = [350, 900, 1700].map(function (ms) { return setTimeout(camera, ms); });
   }
-  function step(dir) {
+  function step(w) {
     if (!box(at)) at = startBox();
-    var next = pick(dir);
+    var next = pick(w);
     if (next) at = next;
     show();
     if (next) camera();
@@ -81,9 +81,27 @@
 
   window.addEventListener('resize', function () { if (dropping) cameraSoon(); });   // lgmap.js fits on a resize
 
+  // The touchpad: a push past the dead zone walks one connector its way; held, it walks on, sooner the harder it is
+  // pulled (every CONTROLS.touchpad.mapRepeatMs at full pull).
+  var pullNow = null, again = 0;
+  function padWalk() {
+    clearTimeout(again);
+    if (!pullNow || !dropping) return;
+    var len = Math.sqrt(pullNow.x * pullNow.x + pullNow.y * pullNow.y);
+    step([pullNow.x / len, pullNow.y / len]);
+    again = setTimeout(padWalk, LG_WALKER.CONTROLS.touchpad.mapRepeatMs / len);
+  }
+  function pullTo(x, y) {
+    var was = pullNow;
+    pullNow = x || y ? { x: x, y: y } : null;
+    if (!pullNow) clearTimeout(again);
+    else if (!was) padWalk();
+  }
+
   var arrival = LG_WALKER.takeHandoff();   // came through the portal: Drop is on, standing at that page's box
   var drop = LG_WALKER.mount({
-    dir: function (dir, down) { if (down) step(dir); },
+    dir: function (dir, down) { if (down) step(WAY[dir]); },
+    pull: pullTo,
     // A / Enter: the same as tapping the box you stand on
     select: function () {
       var el = box(at);
@@ -104,6 +122,7 @@
       dropping = on;
       root.classList.toggle('lgm-dropping', on);
       clearInterval(follow);
+      pullTo(0, 0);
       later.forEach(clearTimeout);
       if (on) {
         if (!box(at)) at = startBox();

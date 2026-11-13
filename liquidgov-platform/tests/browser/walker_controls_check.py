@@ -9,12 +9,20 @@ serve map_page_body's markup with the real lgmap.js/lgmap.css + walker.js + lgma
 fake graph. Every key and button name comes from walker.js's one controls map (window.LG_WALKER.CONTROLS); this file
 keeps no copy of the bindings.
 
-  K0  precondition: the controls map is on the page and binds every direction, select and back to keys and buttons
-  Phone 390x844 (walking):
-  P1  the D-pad's center is in the left half and the bottom quarter of the screen
-  P2  A and B are each in the right half and the bottom quarter
-  P3  no two controls overlap (D-pad, A, B, the Drop button, the Juketube button)
+  K0  precondition: the controls map is on the page and binds every direction to keys, select and back to keys and
+      buttons, and names the touchpad (reach, dead zone, size, translucency, place) and the top speed
+  Phone 390x844 (walking; Brandon 1:08/1:09 AM: a see-through touchpad, A and B attached to its right side, at the
+  bottom center in thumb reach):
+  P1  the touchpad + A/B unit is centered, in the bottom quarter, lifted CONTROLS.touchpad.lift px off the bottom, and
+      fits the screen with its margins
+  P2  A and B are attached to the touchpad's right side, stacked, each half its height (together its height)
+  U1  the touchpad, A and B are equally see-through (opacity = CONTROLS.touchpad.alpha, under 1)
+  P3  no two controls overlap (touchpad, A, B, the Drop button, the Juketube button)
   P4  every control is at least 44x44 px
+  J1  the touchpad replaced the D-pad: no direction buttons are left on the pad
+  J2  a pull inside the dead zone does not move your dot (positive control: J3 moves it)
+  J3  a full pull (from where the finger touched, not the middle) moves the dot its way at about CONTROLS.maxSpeed px
+      per 40 ms, faster than a half pull; let go, it stops
   P5  the Drop button (Brandon's name; it turns walking on) is in the top 15% of the screen and does not cover the site header's middle
   P6  the Drop button shows the map's own label for it ("Stop dropping" while on)
   Desktop 1280x800:
@@ -32,7 +40,7 @@ keeps no copy of the bindings.
       follows it to the next box (that box ends up near the frame's middle), and leaving Drop restores the zoom
   M2  1280x800: select (Enter) opens the box you stand on (its page opens in the side panel; positive control: closed
       before); back (Esc) closes it
-  M3  390x844: the D-pad moves the walker to a connected box; A does what a tap does (the box becomes the center:
+  M3  390x844: the touchpad moves the walker to a connected box; A does what a tap does (the box becomes the center:
       the trail ends at it); B goes back (the trail is You again)
 Usage: LG_BROWSER=$(command -v google-chrome) python3 walker_controls_check.py [<liquidgov-platform dir> [<out dir>]]
 Writes <out dir>/phone-walker-controls-*.png. Prints "VERDICT walker-controls: ALL-PASS" or the failed cases.
@@ -145,7 +153,8 @@ def make_handler(assets, markup):
 BOXES = r"""(() => { const C = window.LG_WALKER && LG_WALKER.CONTROLS, q = s => document.querySelector(s), out = {vw: innerWidth, vh: innerHeight};
   if (!C) return JSON.stringify({noMap: true});
   const box = e => { if (!e) return null; const r = e.getBoundingClientRect(); return {l: r.left, t: r.top, r: r.right, b: r.bottom, w: r.width, h: r.height}; };
-  out.dpad = box(q('#lg-here-pad .lg-here-dpad'));
+  const T = C.touchpad || {}; out.touchpad = box(q('#lg-here-pad .' + T.cls)); out.unit = box(q('#lg-here-pad .lg-here-keys'));
+  out.alpha = ['.' + T.cls, '.' + C.buttons.select.cls, '.' + C.buttons.back.cls].map(s => { const e = q('#lg-here-pad ' + s); return e ? parseFloat(getComputedStyle(e).opacity) : null; }); out.dirButtons = document.querySelectorAll('#lg-here-pad [data-dir]').length;
   out.buttons = {}; Object.keys(C.buttons).forEach(k => { const e = q('#lg-here-pad .' + C.buttons[k].cls); out.buttons[k] = box(e); if (out.buttons[k]) out.buttons[k].text = e.textContent; });
   out.jb = box(q('#jbtoggle'));
   const h = q('header.top').getBoundingClientRect(), hit = document.elementFromPoint(h.left + h.width / 2, h.top + h.height / 2);
@@ -229,27 +238,79 @@ class Run(m.Run):
         acts = set((C.get("keys") or {}).values())
         self.check("K0 the controls map binds every direction, select and back to keys and buttons",
                    bool(C) and set(C.get("dirs", [])) == set(WAY) and set(WAY) | {"select", "back"} <= acts
-                   and all(a in C.get("buttons", {}) for a in list(WAY) + ["select", "back", "drop"]), C)
+                   and all(a in C.get("buttons", {}) for a in ["select", "back", "drop"])
+                   and (C.get("maxSpeed") or 0) > 0 and all((C.get("touchpad") or {}).get(k, 0) > 0
+                                                            for k in ("reach", "width", "height", "alpha", "lift", "margin"))
+                   and 0 < (C.get("touchpad") or {}).get("deadZone", 0) < 1, C)
         vw, vh, btn = b.get("vw", 0), b.get("vh", 0), b.get("buttons") or {}
-        dp = b.get("dpad")
-        self.check("P1 phone: the D-pad's center is in the left half and the bottom quarter",
-                   bool(dp) and (dp["l"] + dp["r"]) / 2 < vw / 2 and (dp["t"] + dp["b"]) / 2 > 0.75 * vh, {"dpad": dp, "vw": vw, "vh": vh})
-        for act in ("select", "back"):
-            r = btn.get(act)
-            self.check("P2 phone: %s (%s) is in the right half and the bottom quarter" % (act, (C.get("buttons", {}).get(act) or {}).get("text")),
-                       bool(r) and (r["l"] + r["r"]) / 2 > vw / 2 and (r["t"] + r["b"]) / 2 > 0.75 * vh, r)
-        parts = {"dpad": dp, "select": btn.get("select"), "back": btn.get("back"), "drop": btn.get("drop"), "juketube": b.get("jb")}
+        dp, u, T = b.get("touchpad"), b.get("unit"), C.get("touchpad") or {}
+        self.check("P1 phone: the touchpad + A/B unit is centered, in the bottom quarter, %spx off the bottom, inside %spx margins"
+                   % (T.get("lift"), T.get("margin")),
+                   bool(u) and abs((u["l"] + u["r"]) / 2 - vw / 2) <= 2 and u["t"] > 0.75 * vh
+                   and abs((vh - u["b"]) - T.get("lift", -99)) <= 2 and u["l"] >= T.get("margin", 0) - 1
+                   and u["r"] <= vw - T.get("margin", 0) + 1, {"unit": u, "vw": vw, "vh": vh})
+        a, bb = btn.get("select"), btn.get("back")
+        self.check("P2 phone: A and B are attached to the touchpad's right side, stacked, each half its height",
+                   bool(dp and a and bb) and abs(a["l"] - dp["r"]) <= 1 and abs(bb["l"] - dp["r"]) <= 1
+                   and abs(a["t"] - dp["t"]) <= 1 and abs(bb["b"] - dp["b"]) <= 1 and abs(a["b"] - bb["t"]) <= 1
+                   and abs(a["h"] - dp["h"] / 2) <= 1 and abs(bb["h"] - dp["h"] / 2) <= 1, {"touchpad": dp, "A": a, "B": bb})
+        al = b.get("alpha") or []
+        self.check("U1 phone: the touchpad, A and B are equally see-through (opacity %s)" % T.get("alpha"),
+                   len(al) == 3 and all(x is not None and abs(x - T.get("alpha", 9)) < 0.01 for x in al) and al[0] < 1, al)
+        self.check("J1 phone: the touchpad replaced the D-pad (no direction buttons on the pad)", b.get("dirButtons") == 0, b.get("dirButtons"))
+        parts = {"touchpad": dp, "select": btn.get("select"), "back": btn.get("back"), "drop": btn.get("drop"), "juketube": b.get("jb")}
         names = list(parts)
         clash = [(x, y) for i, x in enumerate(names) for y in names[i + 1:] if overlaps(parts[x], parts[y])]
-        self.check("P3 phone: no two controls overlap (D-pad, A, B, Drop button, Juketube button)",
+        self.check("P3 phone: no two controls overlap (touchpad, A, B, Drop button, Juketube button)",
                    all(parts.values()) and not clash, {"overlaps": clash, "boxes": parts})
-        small = {k: (r["w"], r["h"]) for k, r in btn.items() if r and (r["w"] < 44 or r["h"] < 44)}
-        self.check("P4 phone: every control is at least 44x44 px", len(btn) >= 7 and all(btn.values()) and not small,
-                   {"small": small, "count": len(btn)})
+        ctl = dict(btn, touchpad=dp)
+        small = {k: (r["w"], r["h"]) for k, r in ctl.items() if r and (r["w"] < 44 or r["h"] < 44)}
+        self.check("P4 phone: every control is at least 44x44 px", len(ctl) >= 4 and all(ctl.values()) and not small,
+                   {"small": small, "count": len(ctl)})
         self.drop_at_top("P5 phone:", b)
         self.check("P6 the Drop button reads its name from the map (on: %r)" % (C.get("buttons", {}).get("drop") or {}).get("on"),
                    (btn.get("drop") or {}).get("text") == (C.get("buttons", {}).get("drop") or {}).get("on"), btn.get("drop"))
         self.shot("phone", {"x": 0, "y": 0, "width": vw, "height": vh})
+        self.touchpad_pull(C, dp, vw, vh)
+
+    def pull(self, tp, dx, dy, hold_s, shot=None):
+        """Touch the touchpad left of its middle (the pull counts from there, not the middle), drag by (dx, dy) px, hold, let go; returns how far your dot went (x, y)."""
+        cx, cy = tp["l"] + 0.4 * (tp["r"] - tp["l"]), (tp["t"] + tp["b"]) / 2
+        before = self.j(DOT)
+        self.ws.call("Input.dispatchMouseEvent", type="mousePressed", x=cx, y=cy, button="left", buttons=1, clickCount=1)
+        for i in range(1, 5):
+            self.ws.call("Input.dispatchMouseEvent", type="mouseMoved", x=cx + dx * i / 4, y=cy + dy * i / 4, button="left", buttons=1)
+        time.sleep(hold_s)
+        if shot:
+            shot()
+        mid = self.j(DOT)
+        self.ws.call("Input.dispatchMouseEvent", type="mouseReleased", x=cx + dx, y=cy + dy, button="left", buttons=0, clickCount=1)
+        time.sleep(0.25)
+        after = self.j(DOT)
+        went = (mid[0] - before[0], mid[1] - before[1]) if before and mid else None
+        settled = (after[0] - mid[0], after[1] - mid[1]) if mid and after else None
+        return went, settled
+
+    def touchpad_pull(self, C, tp, vw, vh):
+        S, top = C.get("touchpad") or {}, C.get("maxSpeed") or 0
+        if not tp or not S:
+            self.check("J2 phone: the touchpad is there to pull", False, {"touchpad": tp, "map": S})
+            return
+        reach, dz = S["reach"], S["deadZone"]
+        dead, _ = self.pull(tp, reach * dz * 0.6, 0, 0.5)
+        self.check("J2 phone: a pull inside the dead zone (%.0f px of %s) does not move the dot" % (reach * dz * 0.6, reach),
+                   dead is not None and abs(dead[0]) < 1 and abs(dead[1]) < 1, dead)
+        half_px = reach * (dz + (1 - dz) * 0.5)
+        half, _ = self.pull(tp, -half_px, 0, 0.8)   # left, then right: the dot ends where it began
+        full, stop = self.pull(tp, reach * 1.5, 0, 0.8,
+                               shot=lambda: self.shot("touchpad", {"x": 0, "y": vh - 230, "width": vw, "height": 230}))
+        # speed: px per 40 ms tick over the hold (0.8 s = 20 ticks)
+        sh, sf = (abs(half[0]) / 20 if half else 0), (full[0] / 20 if full else 0)
+        self.check("J3 phone: a full pull walks the dot its way at about maxSpeed (%s px a tick)" % top,
+                   bool(full) and full[0] > 0 and 0.6 * top <= sf <= 1.25 * top and abs(full[1]) < 2, {"full": full, "px/tick": sf})
+        self.check("J3 phone: a half pull walks slower than a full one (speed grows with the pull)",
+                   bool(half) and half[0] < 0 and 0.25 * sf <= sh <= 0.75 * sf, {"half": half, "px/tick": sh, "full px/tick": sf})
+        self.check("J3 phone: let go, the dot stops", stop is not None and abs(stop[0]) < 1 and abs(stop[1]) < 1, stop)
 
     def desktop(self):
         self.size(1280, 800, False)
@@ -438,14 +499,18 @@ class Run(m.Run):
         C = self.j("JSON.stringify((window.LG_WALKER && LG_WALKER.CONTROLS) || null)") or {}
         B = C.get("buttons") or {}
         moved = None
+        tp = (self.j(BOXES) or {}).get("touchpad")
+        reach = (C.get("touchpad") or {}).get("reach", 0)
         for act in ("down", "right", "left", "up"):
-            self.tap("#lg-here-pad ." + (B.get(act) or {}).get("cls", "none"))
-            time.sleep(0.35)
+            if not tp:
+                break
+            self.pull(tp, WAY[act][0] * reach, WAY[act][1] * reach, 0.25)   # one push: under mapRepeatMs, one connector
+            time.sleep(0.2)
             st = self.j(self.WALK) or {}
             if st.get("at") not in (None, "you"):
                 moved = (act, st)
                 break
-        self.check("M3 phone: the D-pad walks from you along a connector to a connected box",
+        self.check("M3 phone: a push on the touchpad walks from you along a connector to a connected box",
                    bool(moved) and self.linked(moved[1], "you", moved[1]["at"]), moved)
         target = moved[1]["at"] if moved else None
         self.shot("map-phone", {"x": 0, "y": 0, "width": 390, "height": 844})

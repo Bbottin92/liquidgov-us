@@ -1,21 +1,21 @@
 /* Dots on profile pages (Brandon 2026-11-12): everyone on this profile page who chose Yes shows as a small round
    portrait with their handle, moving around the page. Settings come from window.LG_HERE = {me, page}, set just before
    this file loads (only for someone who chose Yes). Positions are fractions of the page (0..1) so a phone and a
-   desktop see roughly the same place. Tapping and clicking work as always; "Drop" turns on a D-pad (WASD or the arrow
-   keys on a keyboard): walk your dot up to a button or field and press A (or Enter) to use it, B (or Esc) to go back.
+   desktop see roughly the same place. Tapping and clicking work as always; "Drop" turns on a touchpad that works like a
+   joystick (WASD or the arrow keys on a keyboard): walk your dot up to a button or field and press A (or Enter) to use it, B (or Esc) to go back.
    The Drop button, the pad and the keys are walker.js's (window.LG_WALKER, loaded just before this file); this file walks
    the dot. */
 (function () {
   var cfg = window.LG_HERE;
   if (!cfg || !cfg.me || !cfg.page || !window.WebSocket || !window.LG_WALKER) return;
-  var STEP = 7, NEAR = 30, SEND_MS = 110;
+  var MAX_SPEED = LG_WALKER.CONTROLS.maxSpeed, NEAR = 30, SEND_MS = 110;   // px per 40 ms tick at full speed
 
   var layer = document.createElement('div');
   layer.id = 'lg-here';
   layer.setAttribute('aria-hidden', 'true');
   document.body.appendChild(layer);
 
-  var dots = {}, me = { x: 0.5, y: 0.08, known: false }, dropping = false, held = {}, lastSent = 0, dirty = false;
+  var dots = {}, me = { x: 0.5, y: 0.08, known: false }, dropping = false, held = {}, pull = { x: 0, y: 0 }, lastSent = 0, dirty = false;
   var near = null, ws = null, tries = 0;
 
   function pageW() { return Math.max(document.documentElement.scrollWidth, document.body.scrollWidth); }
@@ -112,10 +112,12 @@
     else near.click();
   }
   function step() {
+    // keys walk at full speed; the touchpad at its pull (0..1 of full speed)
     var dx = (held.right ? 1 : 0) - (held.left ? 1 : 0), dy = (held.down ? 1 : 0) - (held.up ? 1 : 0);
+    if (!dx && !dy) { dx = pull.x; dy = pull.y; }
     if (dx || dy) {
-      me.x = Math.max(0, Math.min(1, me.x + dx * STEP / pageW()));
-      me.y = Math.max(0, Math.min(1, me.y + dy * STEP / pageH()));
+      me.x = Math.max(0, Math.min(1, me.x + dx * MAX_SPEED / pageW()));
+      me.y = Math.max(0, Math.min(1, me.y + dy * MAX_SPEED / pageH()));
       me.known = true;
       dirty = true;
       if (dots[cfg.me]) place(dots[cfg.me], me.x, me.y);
@@ -133,14 +135,16 @@
   }
   setInterval(step, 40);
 
-  // ---- the Drop button, D-pad, A and B (walker.js)
+  // ---- the Drop button, the touchpad, A and B (walker.js)
   LG_WALKER.mount({
     dir: function (dir, down) { held[dir] = down; },
+    pull: function (x, y) { pull = { x: x, y: y }; },
     select: function () { if (!near) return false; press(); return true; },
     back: function () { if (history.length > 1) history.back(); },
     dropping: function (on) {
       dropping = on;
       held = {};
+      pull = { x: 0, y: 0 };
       if (on) findNear();
       else if (near) { near.classList.remove('lg-here-near'); near = null; }
     },

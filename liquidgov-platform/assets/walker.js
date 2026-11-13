@@ -35,8 +35,14 @@
     buttons: {
       // legacy: the class it had before Brandon named it Drop; only the committed dots/herepad checks still look for it
       // bar: its own strip across the top of the screen (Brandon 1:59 AM: it covered the MAINstream button); the page and
-      // its sticky header move down by the strip's height, so the button covers nothing; gap px above and below it
-      drop: { cls: 'lg-here-drop', legacy: 'lg-here-walk', label: 'Drop', on: 'Stop dropping', bar: 'lg-here-dropbar', gap: 6 },
+      // its sticky header move down by the strip's height, so the button covers nothing; gap px above and below it.
+      // It is a Drop/Scroll switch (Brandon 2:05 AM): states.on = walking, states.off = browsing as usual; the switch
+      // shows both and marks the one you are in. tip: the first-time note under it (tip.js, the same mechanism and look
+      // as Juketube's first-time tip; its seen-flag is LG_TIP's 'lg-<name>-hint'), shown once, until closed.
+      drop: { cls: 'lg-here-drop', legacy: 'lg-here-walk', label: 'Drop', states: { on: 'Drop', off: 'Scroll' },
+        stateCls: 'lg-here-state', bar: 'lg-here-dropbar', gap: 6,
+        tip: { name: 'drop', cls: 'lg-here-tip', maxViews: 1,
+          text: 'Stop, Drop & Scroll: Drop to drip around or click and scroll like you normally would' } },
       select: { cls: 'lg-here-a', label: 'Use what you are next to', text: 'A' },
       back: { cls: 'lg-here-b', label: 'Go back', text: 'B' }
     }
@@ -74,7 +80,9 @@
     var pad = document.createElement('div');
     pad.id = 'lg-here-pad';
     pad.innerHTML =
-      '<div class="' + B.drop.bar + '" aria-hidden="true"></div><button type="button" class="' + B.drop.cls + ' ' + B.drop.legacy + '" aria-pressed="false">' + B.drop.label + '</button>' +
+      '<div class="' + B.drop.bar + '" aria-hidden="true"></div><button type="button" class="' + B.drop.cls + ' ' + B.drop.legacy + '" aria-pressed="false" aria-label="' + B.drop.label + '">' +
+      ['on', 'off'].map(function (k) { return '<span class="' + B.drop.stateCls + '" data-state="' + k + '">' + B.drop.states[k] + '</span>'; }).join('') +
+      '</button>' +
       '<div class="lg-here-keys" hidden><div class="' + T.cls + '" role="application" aria-label="' + T.label +
       '"><span class="' + T.knob + '"></span></div><div class="lg-here-ab">' + keyButton('select') + keyButton('back') + '</div></div>';
     [['--lgw-w', T.width + 'px'], ['--lgw-h', T.height + 'px'], ['--lgw-alpha', String(T.alpha)], ['--lgw-lift', T.lift + 'px'],
@@ -89,9 +97,14 @@
     // nothing (not the header's links, not the map's MAINstream button).
     var bar = pad.querySelector('.' + B.drop.bar), header = document.querySelector('header.top');
     var baseTop = parseFloat(getComputedStyle(document.body).paddingTop) || 0;
+    var tip = null;   // the first-time note: in the strip, under the switch (the strip grows by it while it shows)
     function placeDrop() {
-      pad.style.setProperty('--lgw-droph', dropBtn.offsetHeight + 'px');
-      var h = bar.getBoundingClientRect().height;
+      var h = Math.round(dropBtn.getBoundingClientRect().bottom + B.drop.gap);
+      if (tip && tip.shown) {
+        tip.el.style.top = h + 'px';
+        h = Math.round(tip.el.getBoundingClientRect().bottom + B.drop.gap);
+      }
+      bar.style.height = h + 'px';
       document.body.style.paddingTop = (baseTop + h) + 'px';
       if (header && getComputedStyle(header).position === 'sticky') header.style.top = h + 'px';
     }
@@ -137,11 +150,16 @@
       page.pull(0, 0);
     }
     function letGo() { Object.keys(held).forEach(function (d) { hold(d, false); }); release(); }
+    function showState() {
+      Array.prototype.forEach.call(dropBtn.querySelectorAll('.' + B.drop.stateCls), function (s) {
+        s.classList.toggle('on', s.getAttribute('data-state') === (dropping ? 'on' : 'off'));
+      });
+    }
     function setDropping(on) {
       letGo();
       dropping = on;
       dropBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
-      dropBtn.textContent = on ? B.drop.on : B.drop.label;
+      showState();
       keys.hidden = !on;
       clearJuketube();
       fitRoom();
@@ -194,7 +212,25 @@
     }
     window.addEventListener('blur', letGo);   // a key let go in another window never sticks
     window.addEventListener('resize', function () { placeDrop(); clearJuketube(); fitRoom(); });
+    showState();
     placeDrop();
+    // The first-time note, once tip.js is there (it loads with Juketube, after the page's own scripts)
+    function addTip() {
+      var P = B.drop.tip;
+      if (!window.LG_TIP || tip) return;
+      var el = document.createElement('div');
+      el.className = 'lg-tip ' + P.cls;
+      el.setAttribute('role', 'note');
+      el.innerHTML = '<span></span><button type="button" class="lg-tip-close" aria-label="Hide this tip">&times;</button>';
+      el.firstChild.textContent = P.text;
+      document.body.appendChild(el);
+      tip = { el: el, shown: false };
+      var t = LG_TIP.wire(el, el.lastChild, P.name, { maxViews: P.maxViews, onHide: function () { tip.shown = false; placeDrop(); } });
+      tip.shown = t.shown;
+      placeDrop();
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', addTip);
+    else addTip();
     return { dropping: function () { return dropping; }, start: function () { if (!dropping) setDropping(true); },
       stop: function () { if (dropping) setDropping(false); } };
   }

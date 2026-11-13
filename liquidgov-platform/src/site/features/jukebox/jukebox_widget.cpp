@@ -43,7 +43,7 @@ std::string global_jukebox_widget(const std::string& yt_key, const std::string& 
     (void)yt_key; (void)user;
     return "<link rel=\"stylesheet\" href=\""+asset_url("juketube.css")+"\">"
            "<div id=\"juketube-root\"></div>"
-           "<script src=\""+asset_url("juketube.js")+"\" defer></script><script src=\""+asset_url("push.js")+"\" defer></script>";
+           "<script src=\""+asset_url("tip.js")+"\" defer></script><script src=\""+asset_url("juketube.js")+"\" defer></script><script src=\""+asset_url("push.js")+"\" defer></script>";
 }
 
 std::string jukebox_standalone_page(const std::string& yt_key, const std::string& user) {

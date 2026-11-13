@@ -24,7 +24,13 @@ keeps no copy of the bindings.
   J3  a full pull (from where the finger touched, not the middle) moves the dot its way at about CONTROLS.maxSpeed px
       per 40 ms, faster than a half pull; let go, it stops
   P5  the Drop button (Brandon's name; it turns walking on) is in the top 15% of the screen and does not cover the site header's middle
-  P6  the Drop button shows the map's own label for it ("Stop dropping" while on)
+  P6  the Drop button is a Drop/Scroll switch: it shows both of the map's state names (CONTROLS.buttons.drop.states)
+      and marks the one you are in (Scroll before, Drop while walking)
+  First-time note (Brandon 2:05/2:07 AM; tip.js, the mechanism Juketube's first-time tip uses):
+  T1  a first visit shows the note with the map's text (CONTROLS.buttons.drop.tip.text), styled as Juketube's tip
+      (the same .lg-tip look: background, border, corners, shadow, font size as a #jbhint)
+  T2  the note sits in the Drop strip under the switch and covers nothing (no link, button or field; not the switch)
+  T3  its close button hides it and saves the seen-flag (LG_TIP.flag); the next page view shows no note
   C1  the Drop button covers nothing (Brandon 1:59 AM: on the map it covered MAINstream): its box meets neither the
       portal (CONTROLS.portal), nor the map's MAINstream button (#lgm-main), nor any other link, button or field;
       at 390x844 and 1280x800, on the profile-like page and on the map
@@ -98,17 +104,20 @@ def page(title):
             "<p style='margin:3rem 0 3rem 200px'><button type=button id=use onclick='window.LG_USED++'>Send friend request</button></p>"
             "<p><input id=field type=text aria-label=Note></p><div style='height:900px'></div></main>"
             "<footer class=site>Not a government.</footer><button id=jbtoggle aria-label=Juketube></button>"
-            "%s<script src=/assets/walker.js></script><script src=/assets/here.js></script></body></html>" % (title, FAKE_WS))
+            "%s<script src=/assets/walker.js></script><script src=/assets/here.js></script><script src=/assets/tip.js></script>"
+            "</body></html>" % (title, FAKE_WS))
 
 
 def map_page(markup):
     return ("<!doctype html><html lang=en><head><meta charset=utf-8>"
             "<meta name=viewport content='width=device-width,initial-scale=1,viewport-fit=cover'><title>map</title>"
-            "<link rel=stylesheet href=/assets/site.css><link rel=stylesheet href=/assets/lgmap.css></head><body>"
+            "<link rel=stylesheet href=/assets/site.css><link rel=stylesheet href=/assets/lgmap.css>"
+            "<link rel=stylesheet href=/assets/juketube.css></head><body>"
             "<header class=top><div class=topinner><a class=brand href=/start><div><div class=word><strong>LiquidGov</strong>"
             "</div></div></a><label class=navbtn>Menu</label></div></header><main class=wrap>%s</main>"
             "<footer class=site>Not a government.</footer><script src=/assets/lgmap.js defer></script>"
             "<script src=/assets/walker.js defer></script><script src=/assets/lgmap_walk.js defer></script>"
+            "<script src=/assets/tip.js defer></script>"
             "</body></html>" % markup)
 
 
@@ -233,6 +242,50 @@ class Run(m.Run):
         self.j("(() => { document.querySelector('#lg-here-pad .' + LG_WALKER.CONTROLS.buttons.drop.cls).click(); return '1'; })()")
         self.wait("!document.querySelector('#lg-here-pad .lg-here-keys').hidden", 3)
 
+    def switch_state(self, tag, C, want):
+        D = (C.get("buttons") or {}).get("drop") or {}
+        st = self.j("(() => { const D = LG_WALKER.CONTROLS.buttons.drop, b = document.querySelector('#lg-here-pad .' + D.cls);"
+                    " const s = b ? [...b.querySelectorAll('.' + D.stateCls)] : [];"
+                    " return JSON.stringify({names: s.map(e => e.textContent), on: s.filter(e => e.classList.contains('on')).map(e => e.textContent),"
+                    " pressed: b && b.getAttribute('aria-pressed')}); })()") or {}
+        names = D.get("states") or {}
+        self.check("%s the switch shows %r and %r (the map's names) and marks %r" % (tag, names.get("on"), names.get("off"), names.get(want)),
+                   bool(names) and st.get("names") == [names.get("on"), names.get("off")] and st.get("on") == [names.get(want)]
+                   and st.get("pressed") == ("true" if want == "on" else "false"), st)
+
+    TIP = r"""(() => { const P = LG_WALKER.CONTROLS.buttons.drop.tip, t = document.querySelector('.' + P.cls);
+  const box = e => { if (!e) return null; const r = e.getBoundingClientRect(); return r.width && r.height ? {l: r.left, t: r.top, r: r.right, b: r.bottom} : null; };
+  const meets = (a, b) => !!a && !!b && a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b;
+  const look = e => { const c = getComputedStyle(e); return [c.backgroundColor, c.borderTopColor, c.borderTopWidth, c.borderRadius, c.boxShadow, c.fontSize, c.display]; };
+  const ref = document.createElement('div'); ref.id = 'jbhint'; ref.className = 'lg-tip'; ref.style.visibility = 'hidden'; document.body.appendChild(ref);
+  const want = look(ref); ref.remove();
+  const T = t && t.style.display !== 'none' ? box(t) : null, bar = box(document.querySelector('#lg-here-pad .' + LG_WALKER.CONTROLS.buttons.drop.bar));
+  const covered = T ? [...document.querySelectorAll('a[href],button,input:not([type=hidden]),select,textarea,summary,[role=button]')]
+    .filter(e => !t.contains(e) && meets(T, box(e))).map(e => e.id || e.className || e.tagName) : null;
+  return JSON.stringify({shown: !!T, text: t ? t.firstChild.textContent : null, want: P.text, look: t ? look(t) : null, jbLook: want,
+    box: T, bar: bar, covered: covered, flag: window.LG_TIP ? localStorage.getItem(LG_TIP.flag(P.name)) : 'no LG_TIP'}); })()"""
+
+    def first_tip(self):
+        self.wait("!!document.querySelector('.lg-here-tip')", 3)
+        t = self.j(self.TIP) or {}
+        self.check("T1 phone: a first visit shows the note with the map's text", t.get("shown") and t.get("text") == t.get("want"),
+                   {"text": t.get("text"), "want": t.get("want")})
+        self.check("T1 phone: the note looks like Juketube's first-time tip (.lg-tip)", bool(t.get("look")) and t.get("look") == t.get("jbLook"),
+                   {"note": t.get("look"), "juketube tip": t.get("jbLook")})
+        bx, bar = t.get("box"), t.get("bar")
+        self.check("T2 phone: the note sits in the Drop strip and covers nothing",
+                   bool(bx and bar) and bx["b"] <= bar["b"] and t.get("covered") == [], {"note": bx, "strip": bar, "covered": t.get("covered")})
+        if bar:
+            self.shot("drop-tip-phone", {"x": 0, "y": 0, "width": 390, "height": bar["b"] + 70})
+        self.j("(() => { document.querySelector('.' + LG_WALKER.CONTROLS.buttons.drop.tip.cls + ' .lg-tip-close').click(); return '1'; })()")
+        time.sleep(0.2)
+        t2 = self.j(self.TIP) or {}
+        self.check("T3 phone: closing hides the note and saves its seen-flag", not t2.get("shown") and t2.get("flag") == "1", t2)
+        self.goto("/walk")
+        time.sleep(0.5)
+        t3 = self.j(self.TIP) or {}
+        self.check("T3 phone: the next page view shows no note", not t3.get("shown"), t3)
+
     def covers_nothing(self, tag, need_main=False):
         c = self.j(COVER) or {}
         self.check("C1 %s: the Drop button covers nothing (not the portal%s, no other control)" % (tag, ", not MAINstream" if need_main else ""),
@@ -249,6 +302,8 @@ class Run(m.Run):
     def phone(self):
         self.size(390, 844, True)
         self.goto("/walk")
+        self.first_tip()
+        self.switch_state("P6 phone: before walking,", self.j("JSON.stringify(LG_WALKER.CONTROLS)") or {}, "off")
         self.drop()
         time.sleep(0.3)
         b = self.j(BOXES) or {}
@@ -287,8 +342,7 @@ class Run(m.Run):
                    {"small": small, "count": len(ctl)})
         self.drop_at_top("P5 phone:", b)
         self.covers_nothing("phone")
-        self.check("P6 the Drop button reads its name from the map (on: %r)" % (C.get("buttons", {}).get("drop") or {}).get("on"),
-                   (btn.get("drop") or {}).get("text") == (C.get("buttons", {}).get("drop") or {}).get("on"), btn.get("drop"))
+        self.switch_state("P6 phone: walking,", C, "on")
         self.shot("phone", {"x": 0, "y": 0, "width": vw, "height": vh})
         self.touchpad_pull(C, dp, vw, vh)
 

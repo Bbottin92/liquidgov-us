@@ -44,7 +44,7 @@ std::string wrap(const std::string& title, const std::string& user, int unread, 
         std::string widget =
             "<link rel=\"stylesheet\" href=\""+asset_url("juketube.css")+"\">"
             "<div id=\"juketube-root\"></div>"
-            "<script src=\""+asset_url("juketube.js")+"\" defer></script><script src=\""+asset_url("push.js")+"\" defer></script>";
+            "<script src=\""+asset_url("tip.js")+"\" defer></script><script src=\""+asset_url("juketube.js")+"\" defer></script><script src=\""+asset_url("push.js")+"\" defer></script>";
         auto pos = page.find("</main>");
         if (pos != std::string::npos) page.insert(pos + 7, widget);
     }

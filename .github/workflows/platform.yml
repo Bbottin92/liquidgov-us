@@ -1,7 +1,7 @@
 name: platform
 
-# The website (liquidgov-platform: liquidgov_http and its libraries) had no CI; commons.yml builds only the game
-# daemon (Brandon OK'd a platform job 2026-11-08). This job runs the SAME check as a local run, scripts/lgcheck.sh:
+# The website (liquidgov-platform: liquidgov_http and its libraries) had no CI (the only workflow then built the
+# Commons game daemon; Brandon OK'd a platform job 2026-11-08). This job runs the SAME check as a local run, scripts/lgcheck.sh:
 # compile -> every unit test -> every e2e suite, each judged by its own passes=/fails=/EXIT= line. One script for
 # both, so CI and the laptop cannot drift apart. No droplet, no ssh, no secrets: the suites start the server on
 # loopback against a throwaway store made by liquidgov_e2e_seed.

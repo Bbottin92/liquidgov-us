@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# One installable app and the closed Commons (one_app_check.py). A new file: committed tests stay frozen (#6847b).
+# One installable app (one_app_check.py). A new file: committed tests stay frozen (#6847b).
 source "$(dirname "$0")/lib.sh"
 
 PY="$(command -v python3 || true)"

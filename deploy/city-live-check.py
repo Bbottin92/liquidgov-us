@@ -102,20 +102,11 @@ def main():
 
     status, headers, body = fetch("/")
     text = body.decode("utf-8", "replace")
-    check("home", status == 200 and not framed(headers) and "Walk in" not in text and 'href="/commons' not in text,
-          "status=%s" % status)
+    check("home", status == 200 and not framed(headers), "status=%s" % status)
 
     status, headers, _body = fetch("/", dest="iframe")
     check("home-frame", status == 200 and framed(headers),
           "status=%s frame=%s" % (status, header(headers, "X-Frame-Options")))
-
-    status, _headers, body = fetch("/commons/")
-    text = body.decode("utf-8", "replace")
-    check("commons", status == 200 and "The Commons is closed" in text, "status=%s" % status)
-
-    status, _headers, body = fetch("/commons/presence/guest", method="POST")
-    text = body.decode("utf-8", "replace")
-    check("commons-post", status == 200 and "The Commons is closed" in text, "status=%s" % status)
 
     print("FAILS", len(FAILS))
     return 1 if FAILS else 0

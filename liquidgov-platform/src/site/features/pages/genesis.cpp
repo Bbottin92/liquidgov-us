@@ -88,8 +88,6 @@ std::string genesis_body() {
         "</div>"
         "<p class=\"muted\" style=\"text-align:center;max-width:22rem;margin:.7rem auto 0\">"
         "Three rules hold. Whoever you are, wherever you're starting from, the rest is your call.</p>";
-    // The Commons is closed until it is built. No walk-in on this page.
-    std::string inside;
     // Real recorded narration (Helios), served from /assets/chapter1.mp3.
     // The latest file already starts on the first sentence (no spoken
     // title), so no #t= skip is needed anymore. No native <audio controls>
@@ -161,7 +159,7 @@ std::string genesis_body() {
            "</div>"
            "<hr style=\"border:0;border-top:1px solid var(--rule);margin:1rem 0\">" +
            lawstrip +
-           solution + quotes + inside +
+           solution + quotes +
            "<div class=\"card\"><p>This isn't a legal government entity — not a city, state, or federal "
            "authority, and it doesn't replace the one you already live under; that government still governs "
            "you exactly as it did before you found this site. What it is: a space to organize, collaborate, "

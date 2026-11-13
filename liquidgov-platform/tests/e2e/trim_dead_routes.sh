@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Dead code trimmed (Brandon 2026-11-13: "delete anything that doesnt contribute... trim the bloat"): the old sandboxed
 # profile-theme document /u/<name>/theme (unused since profile CSS styles the real page) and the old World demo's
-# /world/ws socket (no page has opened it since /world became a redirect to /commons/) are gone. Kept, as controls:
-# the /world redirect for old bookmarks, the profile page, and the other WebSocket routes.
+# /world/ws socket (no page has opened it since /world became a redirect to /commons/) are gone, and /world itself
+# went with the Commons (2026-11-13). Kept, as controls: the profile page and the other WebSocket routes.
 # Usage: bash trim_dead_routes.sh <path to liquidgov_http> <path to liquidgov_e2e_seed>
 # Throwaway store, port 18128. Never touches the live site.
 set -u
@@ -48,8 +48,8 @@ r=$(code $PAL /u/pal/theme)
 check "/u/pal/theme is gone (404)" '[ "$r" = 404 ]' "$r"
 r=$(code $PAL /u/pal)
 check "control: /u/pal still answers 200" '[ "$r" = 200 ]' "$r"
-r=$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' "$URL/world")
-check "control: /world still redirects old bookmarks to /commons/" '[[ "$r" == 30* && "$r" == *"/commons/"* ]]' "$r"
+r=$(curl -s -o /dev/null -w '%{http_code}' "$URL/world")
+check "/world (the old redirect to the Commons) is gone (404)" '[ "$r" = 404 ]' "$r"
 r=$(upgrade $PAL /world/ws)
 check "/world/ws no longer upgrades (no 101)" '[ "$r" != 101 ]' "$r"
 r=$(upgrade $PAL /community/ws)

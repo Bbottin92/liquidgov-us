@@ -1,0 +1,130 @@
+name: security
+
+# Security gate (Brandon 2026-11-13, decisions.md: in-place hardening, "start with the security gate"). Each job runs
+# one step of scripts/security_gate.sh, the same script a laptop runs, so the two cannot drift apart.
+# REPORT-ONLY for now (continue-on-error on every job): the first runs show what the current code has, Brandon picks
+# what to fix before the gate blocks anything. deploy/ci-gate.sh reads platform.yml only, so this cannot hold a deploy.
+# Making it gating = remove continue-on-error AND wire it into ci-gate.sh, both on his word.
+# Tool versions are pinned here (gitleaks by version + sha256; ZAP by image tag; cppcheck = Ubuntu 24.04's package).
+
+on:
+  push:
+    branches: [master, "wip/**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GITLEAKS_VERSION: "8.30.1"
+  GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+  ZAP_IMAGE: "zaproxy/zap-stable:2.16.1"
+
+jobs:
+  secrets:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0   # the whole history: a key removed in a later commit is still in the repo
+      - name: install gitleaks (pinned, checksum verified)
+        run: |
+          set -euo pipefail
+          f="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -fsSL -o "$RUNNER_TEMP/$f" "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/$f"
+          echo "${GITLEAKS_SHA256}  $RUNNER_TEMP/$f" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/$f" -C "$RUNNER_TEMP" gitleaks
+          sudo install "$RUNNER_TEMP/gitleaks" /usr/local/bin/gitleaks
+          gitleaks version
+      - name: secrets
+        run: bash scripts/security_gate.sh "$PWD" "$RUNNER_TEMP/gate" secrets
+      - uses: actions/upload-artifact@v4
+        if: always()
+        timeout-minutes: 5
+        continue-on-error: true
+        with:
+          name: gate-secrets
+          path: ${{ runner.temp }}/gate/secrets
+          if-no-files-found: warn
+
+  static:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+      - name: install cppcheck
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq cppcheck
+          cppcheck --version
+      - name: the gate script itself (shellcheck, preinstalled on the runner)
+        run: shellcheck -S warning scripts/security_gate.sh
+      - name: static
+        run: bash scripts/security_gate.sh "$PWD" "$RUNNER_TEMP/gate" static
+      - uses: actions/upload-artifact@v4
+        if: always()
+        timeout-minutes: 5
+        continue-on-error: true
+        with:
+          name: gate-static
+          path: ${{ runner.temp }}/gate/static
+          if-no-files-found: warn
+
+  sanitize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+      - name: tools the build and the suites call
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libsodium-dev pkg-config
+          for t in cmake g++ curl python3 nc; do command -v "$t" >/dev/null || { echo "missing $t"; exit 1; }; done
+          g++ --version | head -1
+      - name: sanitize (ASan + UBSan, every unit test and e2e suite)
+        run: bash scripts/security_gate.sh "$PWD" "$RUNNER_TEMP/gate" sanitize
+      - uses: actions/upload-artifact@v4
+        if: always()
+        timeout-minutes: 5
+        continue-on-error: true
+        with:
+          name: gate-sanitize
+          path: |
+            ${{ runner.temp }}/gate/sanitize/reports
+            ${{ runner.temp }}/gate/sanitize/lgcheck.txt
+            ${{ runner.temp }}/gate/sanitize/build/*.out
+          if-no-files-found: warn
+
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+      - name: tools the build calls
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libsodium-dev pkg-config
+          docker pull -q "$ZAP_IMAGE"
+          docker image inspect --format '{{index .RepoDigests 0}}' "$ZAP_IMAGE"
+      - name: probe (OWASP ZAP baseline, signed out)
+        run: bash scripts/security_gate.sh "$PWD" "$RUNNER_TEMP/gate" probe
+      - uses: actions/upload-artifact@v4
+        if: always()
+        timeout-minutes: 5
+        continue-on-error: true
+        with:
+          name: gate-probe
+          path: ${{ runner.temp }}/gate/probe
+          if-no-files-found: warn

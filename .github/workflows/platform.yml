@@ -337,6 +337,15 @@ jobs:
           export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
           python3 liquidgov-platform/tests/browser/site_hidden_check.py "$PWD/liquidgov-platform"
 
+      - name: walker controls, WASD/Enter/Esc and the phone D-pad, A and B (walker_controls_check) (browser, report-only)
+        if: always()
+        timeout-minutes: 5
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
+          python3 liquidgov-platform/tests/browser/walker_controls_check.py "$PWD/liquidgov-platform" "$RUNNER_TEMP/phone"
+
       # Static checks (no browser): American spelling in the site's strings, and this file keeping every browser
       # check in a report-only, bounded step.
       - name: site spelling (site_spelling_check, report-only)

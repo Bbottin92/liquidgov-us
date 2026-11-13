@@ -4,12 +4,11 @@
 
 **GitHub has `notes.md` + this README only** as the pad. `context.md` and `state.md`
 live in an old Grok sandbox and were never pushed. Do not invent them. Do not have
-Claude create fakes. “Have Claude git pull” updates notes/README (and now
-`Persistence/TheCommons/` spec files).
+Claude create fakes. “Have Claude git pull” updates notes/README.
 
-**The Commons spec** (sibling game, not the civic binary): `Persistence/TheCommons/`.
-Paste `docs/archive/CLAUDE_THE_COMMONS.md` for that job. The old civic continue file is
-`docs/archive/CLAUDE_CODE_CONTINUE.md` (both moved from the repo root 2026-11-09).
+The Commons (the sibling game: its spec, client and daemon) was removed from the repo 2026-11-13 and archived
+outside it. The old civic continue file is `docs/archive/CLAUDE_CODE_CONTINUE.md` (moved from the repo root
+2026-11-09).
 
 **Claude — standing rule (every session, non-negotiable):**
 1. `git pull` if your WSL clone might be behind.

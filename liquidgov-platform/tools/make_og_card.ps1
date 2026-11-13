@@ -7,8 +7,7 @@
 #   powershell -ExecutionPolicy Bypass -File liquidgov-platform/tools/make_og_card.ps1
 #
 # Writes assets/og-image-v4.jpg (1200x630) next to this script's repo. Bump $OutName
-# and every reference to it (page_wrap's og_image in http_server.cpp, commons/index.html's
-# four og:image/twitter:image tags, and a new serving route beside the old v3/v2/v1 ones)
+# and every reference to it (page_wrap's og_image in http_server.cpp and a new serving route beside the old v3/v2/v1 ones)
 # if the text changes again -- crawlers cache og:image near-permanently, so reusing a path
 # leaves old shares stuck on stale art forever (the same reason v1 -> v2 -> v3 each moved).
 # Edit the text/colors in this file and re-run it; don't hand-patch the JPG's bytes.

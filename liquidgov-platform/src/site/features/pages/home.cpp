@@ -12,9 +12,6 @@ std::string home_dashboard(const std::string& user) {
     const auto friends = g_store.friends_of(user).size();
     const auto committees = g_store.communities_of(user);
 
-    // The Commons walk-in card stays off until Brandon says the game is built.
-    std::string quadCard;
-
     std::string rooms;
     for (const auto& c : committees) {
         bool on_air = false;
@@ -54,8 +51,7 @@ std::string home_dashboard(const std::string& user) {
         "<div class=\"stattile\"><strong>" + std::to_string(committees.size()) + "</strong><span>" +
         std::string(committees.size()==1?"Group":"Groups") + "</span></div>"
         "</div>"
-        + next + "</div>" +
-        quadCard;
+        + next + "</div>";
 
     auto friend_posts = g_store.feed_view(user, 6, FeedFilter::Friends);
     if (!friend_posts.empty()) {

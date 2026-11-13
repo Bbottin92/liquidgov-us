@@ -1,1 +1,0 @@
-../Persistence/TheCommons/schema.sql

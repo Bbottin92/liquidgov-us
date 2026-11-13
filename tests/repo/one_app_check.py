@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""One installable app (Brandon 2026-11-06: "lets get rid of the multiple app icons thing") and the
-closed Commons (280bf60), checked from the shipped files, no server.
+"""One installable app (Brandon 2026-11-06: "lets get rid of the multiple app icons thing"), checked from the
+shipped files, no server. (Its closed-Commons case went with the Commons, 2026-11-13.)
     python3 one_app_check.py <repo root>
 A new file because committed tests stay frozen (#6847b, #1bcfd); pwa_check.py is the original.
 Prints 'one_app_check: N checks, F failed'; exit 1 if any failed.
@@ -17,9 +17,6 @@ def check(ok, what):
 def rd(p): return open(os.path.join(ROOT, p), encoding="utf-8").read()
 
 apps = rd("liquidgov-platform/assets/apps.html")
-# The Commons is closed until it is built (Brandon, 280bf60): /apps must not offer a walk-in.
-check("The Commons" not in apps and "/commons/" not in apps, "the /apps page does not offer the closed Commons")
-
 # ================================================================= one app (Brandon 2026-11-06:
 # "lets get rid of the multiple app icons thing. that was a bad idea")
 src = __import__("runpy").run_path(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "liquidgov-platform", "tests", "browser", "server_source.py"))["read"](os.path.join(ROOT, "liquidgov-platform"))  # http_server.cpp + its src/site pieces

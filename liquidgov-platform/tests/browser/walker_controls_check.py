@@ -32,6 +32,8 @@ keeps no copy of the bindings.
   T2  the note sits in the Drop strip under the switch and covers nothing (no link, button or field; not the switch)
   T3  its close button hides it and saves the seen-flag (LG_TIP.flag); the next page view shows no note
   T4  one tip at a time (LG_TIP): while one shows, another waits for a later page view without counting it
+  C2  on the map the switch sits in the map's own row (Back, the trail, Zoom out) just before Zoom out, so the map
+      keeps its place on the page (no strip at the top there)
   C1  the Drop button covers nothing (Brandon 1:59 AM: on the map it covered MAINstream): its box meets neither the
       portal (CONTROLS.portal), nor the map's MAINstream button (#lgm-main), nor any other link, button or field;
       at 390x844 and 1280x800, on the profile-like page and on the map
@@ -169,18 +171,18 @@ BOXES = r"""(() => { const C = window.LG_WALKER && LG_WALKER.CONTROLS, q = s => 
   const box = e => { if (!e) return null; const r = e.getBoundingClientRect(); return {l: r.left, t: r.top, r: r.right, b: r.bottom, w: r.width, h: r.height}; };
   const T = C.touchpad || {}; out.touchpad = box(q('#lg-here-pad .' + T.cls)); out.unit = box(q('#lg-here-pad .lg-here-keys'));
   out.alpha = ['.' + T.cls, '.' + C.buttons.select.cls, '.' + C.buttons.back.cls].map(s => { const e = q('#lg-here-pad ' + s); return e ? parseFloat(getComputedStyle(e).opacity) : null; }); out.dirButtons = document.querySelectorAll('#lg-here-pad [data-dir]').length;
-  out.buttons = {}; Object.keys(C.buttons).forEach(k => { const e = q('#lg-here-pad .' + C.buttons[k].cls); out.buttons[k] = box(e); if (out.buttons[k]) out.buttons[k].text = e.textContent; });
+  out.buttons = {}; Object.keys(C.buttons).forEach(k => { const e = q((k === 'drop' ? '.' : '#lg-here-pad .') + C.buttons[k].cls); out.buttons[k] = box(e); if (out.buttons[k]) out.buttons[k].text = e.textContent; });
   out.jb = box(q('#jbtoggle'));
   const h = q('header.top').getBoundingClientRect(), hit = document.elementFromPoint(h.left + h.width / 2, h.top + h.height / 2);
   out.headerHit = !!hit && q('header.top').contains(hit);
   return JSON.stringify(out); })()"""
 # The Drop button against the portal, the map's MAINstream button and every other control it could cover.
-COVER = r"""(() => { const C = LG_WALKER.CONTROLS, d = document.querySelector('#lg-here-pad .' + C.buttons.drop.cls);
+COVER = r"""(() => { const C = LG_WALKER.CONTROLS, d = document.querySelector('.' + C.buttons.drop.cls);
   const box = e => { if (!e) return null; const r = e.getBoundingClientRect(); return r.width && r.height ? {l: r.left, t: r.top, r: r.right, b: r.bottom} : null; };
   const meets = (a, b) => !!a && !!b && a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b;
   const D = box(d), P = box(document.querySelector(C.portal.selector)), M = box(document.getElementById('lgm-main'));
   const covered = [...document.querySelectorAll('a[href],button,input:not([type=hidden]),select,textarea,summary,[role=button]')]
-    .filter(e => !e.closest('#lg-here-pad') && meets(D, box(e))).map(e => e.id || e.className || e.tagName);
+    .filter(e => e !== d && !e.closest('#lg-here-pad') && meets(D, box(e))).map(e => e.id || e.className || e.tagName);
   return JSON.stringify({drop: D, portal: P, main: M, portalHit: meets(D, P), mainHit: meets(D, M), covered: covered}); })()"""
 DOT = ("(() => { const d = document.querySelector('#lg-here .lg-here-dot.me'); if (!d) return JSON.stringify(null);"
        " const r = d.getBoundingClientRect(); return JSON.stringify([r.left + scrollX, r.top + scrollY]); })()")
@@ -241,12 +243,12 @@ class Run(m.Run):
         self.ws.call("Input.dispatchKeyEvent", type="keyUp", key=dom, windowsVirtualKeyCode=vk)
 
     def drop(self):
-        self.j("(() => { document.querySelector('#lg-here-pad .' + LG_WALKER.CONTROLS.buttons.drop.cls).click(); return '1'; })()")
+        self.j("(() => { document.querySelector('.' + LG_WALKER.CONTROLS.buttons.drop.cls).click(); return '1'; })()")
         self.wait("!document.querySelector('#lg-here-pad .lg-here-keys').hidden", 3)
 
     def switch_state(self, tag, C, want):
         D = (C.get("buttons") or {}).get("drop") or {}
-        st = self.j("(() => { const D = LG_WALKER.CONTROLS.buttons.drop, b = document.querySelector('#lg-here-pad .' + D.cls);"
+        st = self.j("(() => { const D = LG_WALKER.CONTROLS.buttons.drop, b = document.querySelector('.' + D.cls);"
                     " const s = b ? [...b.querySelectorAll('.' + D.stateCls)] : [];"
                     " return JSON.stringify({names: s.map(e => e.textContent), on: s.filter(e => e.classList.contains('on')).map(e => e.textContent),"
                     " pressed: b && b.getAttribute('aria-pressed')}); })()") or {}
@@ -369,9 +371,10 @@ class Run(m.Run):
         self.ticks = (time.time() - t0) / 0.04   # the walk ticks every 40 ms; measured, so a slow CDP call doesn't skew speed
         if shot:
             shot()
-        held = self.j(DOT)   # where it was at the let-go
         self.ws.call("Input.dispatchMouseEvent", type="mouseReleased", x=cx + dx, y=cy + dy, button="left", buttons=0, clickCount=1)
-        time.sleep(0.25)
+        time.sleep(0.1)      # a tick already on its way at the let-go may still land
+        held = self.j(DOT)
+        time.sleep(0.3)      # ~7 ticks: a dot that keeps walking would move 7 px a tick here
         after = self.j(DOT)
         went = (mid[0] - before[0], mid[1] - before[1]) if before and mid else None
         settled = (after[0] - held[0], after[1] - held[1]) if held and after else None
@@ -406,7 +409,7 @@ class Run(m.Run):
             mm = re.search(r"scaleX\(([-0-9.]+)\)", t or "")
             return float(mm.group(1)) if mm else -1
         sel = "." + S.get("cls", "missing")
-        expr = "(() => { const e = document.querySelector(%s); return JSON.stringify(e ? {speed:+e.dataset.speed, angle:+e.dataset.angle, tail:e.firstChild.style.transform, transform:e.style.transform, tailSide:(t => { const a=e.getBoundingClientRect(), b=t.getBoundingClientRect(); return Math.round((b.left+b.right)/2-(a.left+a.right)/2); })(e.firstChild), vw: innerWidth, at: (r => [Math.round(r.left), Math.round(r.right)])(e.getBoundingClientRect()), img:!!e.querySelector('img[src^=\"/portrait/\"],.lg-walker-ph')} : null); })()" % json.dumps(sel)
+        expr = "(() => { const e = document.querySelector(%s); return JSON.stringify(e ? {speed:+e.dataset.speed, angle:+e.dataset.angle, tail:e.firstChild.style.transform, transform:e.style.transform, tailSide:(t => { const a=e.getBoundingClientRect(), b=t.getBoundingClientRect(); return Math.round((b.left+b.right)/2-(a.left+a.right)/2); })(e.firstChild), vw: innerWidth, at: (r => [Math.round(r.left), Math.round(r.right)])(e.getBoundingClientRect()), img:!!e.querySelector('img[src^=\"/portrait/\"],.lg-here-ph')} : null); })()" % json.dumps(sel)
         stopped = self.j(expr) or {}
         key = next((k for k,a in C.get("keys", {}).items() if a == "left" and len(k) == 1), "?")   # away from the button: open page behind the tail
         self.ws.call("Input.dispatchKeyEvent", type="keyDown", key=key)
@@ -454,6 +457,15 @@ class Run(m.Run):
             back_k = sorted(kk for kk, a in C["keys"].items() if a == {"up": "down", "down": "up", "left": "right", "right": "left"}[act])[0]
             self.key(back_k, 0.3)   # walk back, so the dot stays next to the button
             time.sleep(0.15)
+            for _ in range(12):     # the walk is timed, so finish the way back in short taps (either way)
+                now = self.j(DOT)
+                if not (before and now):
+                    break
+                off = (now[0] - before[0]) * dx + (now[1] - before[1]) * dy
+                if abs(off) <= 6:
+                    break
+                self.key(back_k if off > 0 else k, 0.05)
+                time.sleep(0.1)
         self.shot("desktop", {"x": 0, "y": 0, "width": 1280, "height": 800})
         sel = [kk for kk, a in C.get("keys", {}).items() if a == "select"]
         near = self.j("JSON.stringify(!!document.querySelector('#use.lg-here-near'))")
@@ -533,7 +545,7 @@ class Run(m.Run):
                    bool(zoom) and 1.25 <= grow <= zoom * 1.05, {"plain w": plain.get("w"), "drop w": st.get("w"), "grow": grow})
         self.check("M0 desktop: the map is drawn and the walker stands on you", ok and st.get("at") == "you", st)
         self.covers_nothing("map desktop", need_main=True)
-        m_expr = "(() => { const e=document.querySelector('#lgm-walker .' + LG_WALKER.CONTROLS.shape.cls); return JSON.stringify(e ? {speed:+e.dataset.speed, img:!!e.querySelector('img[src^=\"/portrait/\"],.lg-walker-ph')} : null); })()"
+        m_expr = "(() => { const e=document.querySelector('#lgm-walker .' + LG_WALKER.CONTROLS.shape.cls); return JSON.stringify(e ? {speed:+e.dataset.speed, img:!!e.querySelector('img[src^=\"/portrait/\"],.lg-here-ph')} : null); })()"
         self.key("d", 0.02)
         time.sleep(0.05)
         mm = self.j(m_expr) or {}
@@ -626,6 +638,12 @@ class Run(m.Run):
         st = self.map_walking()
         self.check("M0 phone: the map is drawn and the walker stands on you", ok and st.get("at") == "you", st)
         c = self.covers_nothing("map phone", need_main=True)
+        row = self.j("(() => { const d = document.querySelector('.' + LG_WALKER.CONTROLS.buttons.drop.cls), z = document.getElementById('lgm-zoomout'),"
+                     " bar = document.querySelector('.' + LG_WALKER.CONTROLS.buttons.drop.bar);"
+                     " return JSON.stringify({inRow: !!d && !!z && d.parentNode === z.parentNode && d.nextElementSibling === z,"
+                     " strip: !!bar && !bar.hidden && bar.getBoundingClientRect().height > 0, padTop: document.body.style.paddingTop}); })()") or {}
+        self.check("C2 map phone: the switch sits in the map's own row before Zoom out; no strip, the page keeps its place",
+                   row.get("inRow") and not row.get("strip") and row.get("padTop") in ("", None), row)
         if c.get("main"):   # the map's top: the Drop strip, the header with the portal, MAINstream
             self.shot("map-top-phone", {"x": 0, "y": 0, "width": 390, "height": min(844, c["main"]["b"] + 24)})
         C = self.j("JSON.stringify((window.LG_WALKER && LG_WALKER.CONTROLS) || null)") or {}
@@ -679,7 +697,7 @@ class Run(m.Run):
         self.wait("location.pathname === '/map' && !!document.getElementById('lgm-walker')"
                   " && document.getElementById('lgm-walker').getAttribute('data-at') === 'user:pal'", 10)
         time.sleep(0.5)
-        st = self.j("(() => { const w = document.getElementById('lgm-walker'), d = document.querySelector('#lg-here-pad .' + LG_WALKER.CONTROLS.buttons.drop.cls);"
+        st = self.j("(() => { const w = document.getElementById('lgm-walker'), d = document.querySelector('.' + LG_WALKER.CONTROLS.buttons.drop.cls);"
                     " return JSON.stringify({path: location.pathname, at: w && !w.hidden ? w.getAttribute('data-at') : null,"
                     " dropping: d ? d.getAttribute('aria-pressed') : null}); })()") or {}
         self.check("Q2 select by the portal: the map, dropped in, at this page's box (user:pal)",

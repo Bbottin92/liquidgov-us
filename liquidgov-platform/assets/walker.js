@@ -11,7 +11,7 @@
     maxSpeed: 7,
     // The drop (Brandon 2:15 AM): your portrait, circular at rest, a tail behind you and a little stretch at speed.
     // speed is a fraction of maxSpeed; one shape function is used on profiles and the map. Reduced motion: circle.
-    shape: { cls: 'lg-walker-drop', tailCls: 'lg-walker-tail', phCls: 'lg-walker-ph', size: 38, tail: 0.9, stretch: 0.16,
+    shape: { cls: 'lg-walker-drop', tailCls: 'lg-walker-tail', phCls: 'lg-here-ph', size: 38, tail: 0.9, stretch: 0.16,
       settleMs: 180, mapMoveMs: 350 },
     // The phone's touchpad (Brandon 2026-11-13 1:08 AM, in place of the D-pad; it works like a joystick): touch anywhere
     // on it and drag; the farther your finger from where it touched (up to reach px), the faster you walk. A pull under
@@ -78,7 +78,9 @@
 
   // mount(page): puts the Drop button and the pad on the page (once) and wires keys, the touchpad and buttons to the
   // page's walker. page: {dir(dir, down) (keys), pull(x, y) (the touchpad's vector; 0, 0 = let go), select() -> true when it used something, back(), dropping(on), box: this page's map box id
-  // (optional; the portal takes you there)}. Returns {dropping(), start(), stop()}.
+  // (optional; the portal takes you there), dropSlot: an element in a row of the page's own controls (optional; the
+  // map's Zoom out): the switch then sits in that row just before it instead of in a strip at the top, and the
+  // page keeps its height (no strip, no first-time note there)}. Returns {dropping(), start(), stop()}.
   function mount(page) {
     var T = CONTROLS.touchpad;
     var pad = document.createElement('div');
@@ -102,7 +104,12 @@
     var bar = pad.querySelector('.' + B.drop.bar), header = document.querySelector('header.top');
     var baseTop = parseFloat(getComputedStyle(document.body).paddingTop) || 0;
     var tip = null;   // the first-time note: in the strip, under the switch (the strip grows by it while it shows)
+    if (page.dropSlot) {
+      page.dropSlot.parentNode.insertBefore(dropBtn, page.dropSlot);
+      bar.hidden = true;
+    }
     function placeDrop() {
+      if (page.dropSlot) return;
       var h = Math.round(dropBtn.getBoundingClientRect().bottom + B.drop.gap);
       if (tip && tip.shown) {
         tip.el.style.top = h + 'px';
@@ -221,7 +228,7 @@
     // The first-time note, once tip.js is there (it loads with Juketube, after the page's own scripts)
     function addTip() {
       var P = B.drop.tip;
-      if (!window.LG_TIP || tip) return;
+      if (!window.LG_TIP || tip || page.dropSlot) return;
       var el = document.createElement('div');
       el.className = 'lg-tip ' + P.cls;
       el.setAttribute('role', 'note');

@@ -107,6 +107,8 @@
 
   var arrival = LG_WALKER.takeHandoff();   // came through the portal: Drop is on, standing at that page's box
   var drop = LG_WALKER.mount({
+    // the switch sits in the map's own row (Back, the trail, Zoom out), so the map keeps its place on the page
+    dropSlot: document.getElementById('lgm-zoomout'),
     dir: function (dir, down) { if (down) step(WAY[dir]); },
     pull: pullTo,
     // A / Enter: the same as tapping the box you stand on

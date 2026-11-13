@@ -110,6 +110,7 @@ jobs:
           path: |
             ${{ runner.temp }}/gate/sanitize/reports
             ${{ runner.temp }}/gate/sanitize/lgcheck.txt
+            ${{ runner.temp }}/gate/sanitize/build.log
             ${{ runner.temp }}/gate/sanitize/build/*.out
           if-no-files-found: warn
 

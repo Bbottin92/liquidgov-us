@@ -95,6 +95,11 @@ step_sanitize() {
     cmake -S "$SRC" -B "$b" -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="$flags" -DCMAKE_C_FLAGS="$flags" \
         -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined" > "$d/configure.log" 2>&1 \
         || { result sanitize FAIL "(configure failed: $d/configure.log)"; tail -5 "$d/configure.log"; return; }
+    # Build first: lgcheck.sh refuses a "previous build" dir that has no binaries yet (first CI run, 43503116478:
+    # EXIT=no-previous-build). -j2 on CI (two cores); -j1 anywhere else (the laptop's -j1 rule).
+    local jobs=1; [ -n "$ON_CI" ] && jobs=2
+    cmake --build "$b" -j"$jobs" > "$d/build.log" 2>&1 \
+        || { result sanitize FAIL "(sanitizer build failed: $d/build.log)"; grep -m5 -E 'error' "$d/build.log"; return; }
     # The servers the suites start inherit these: every report lands in a file named <prefix>.<pid>, so a report
     # from a server whose output the suite threw away is still seen here.
     export ASAN_OPTIONS="log_path=$d/reports/asan:detect_leaks=1:halt_on_error=1:strict_string_checks=1:detect_stack_use_after_return=1"

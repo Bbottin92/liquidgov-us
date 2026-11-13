@@ -1,6 +1,7 @@
 #include "site/features/pages/genesis.hpp"
 #include "site/core/adapters_store.hpp"
 #include "site/core/html.hpp"
+#include "site/ui/assets.hpp"
 
 namespace liquidgov::site {
 std::string genesis_body() {
@@ -180,7 +181,13 @@ std::string genesis_body() {
            "Voting weight, offices, land, and judgments live in a separate governance kernel. "
            "A platform account is not a citizen identity. Combined verification for civic acts is not live.</p></div>"
            "</div>" +
-           stats;
+           stats +
+           // Drop on the home page (Brandon 2026-11-13 4:03 AM): walker.js's switch, touchpad and note (tip.js), and
+           // home_drop.js walking a plain drop down the page. Only logged-out visitors get this page (no Juketube,
+           // so tip.js loads here).
+           "<script src=\"" + asset_url("tip.js") + "\" defer></script>"
+           "<script src=\"" + asset_url("walker.js") + "\" defer></script>"
+           "<script src=\"" + asset_url("home_drop.js") + "\" defer></script>";
 }
 
 }  // namespace liquidgov::site

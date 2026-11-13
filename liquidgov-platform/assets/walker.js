@@ -30,6 +30,19 @@
     // round ring. Dropped in, using it (A / Enter next to it) takes you to the map at the box of the page you were on:
     // the page's box id rides along in sessionStorage[handoff] for up to handoffMs.
     portal: { selector: 'header.top a.brand', cls: 'lg-portal', handoff: 'lg-walker-portal', handoffMs: 120000 },
+    // How close (px from your drop's middle to a button's edge) you must stand to use a button with A / Enter.
+    near: 30,
+    // A with nothing next to you (Brandon 4:03 AM): a quick squish-and-bounce. The drop crouches (scale crouch, x/y),
+    // splats out a little (splat; a mild slime mark spreads under it, splatCls), then grows briefly (grow: the jump)
+    // and settles, all in ms. Individual CSS scale (not transform), so it adds to the teardrop's shape. Reduced motion:
+    // none.
+    hop: { ms: 560, crouch: [1.14, 0.8], splat: [1.32, 0.66], grow: 1.24, splatCls: 'lg-walker-splat' },
+    // The home page's hook (Brandon 4:03 AM): the page starts as usual (Scroll); the switch pulses (invite) and the
+    // first-time note guides you to it. Dropped in, your drop starts under the switch and a guide points you down
+    // the page (guide.text); past the scrolling-words section (belt.after) the floor is a moving sidewalk flowing
+    // belt.dir: walking with it is (1 + boost) x as fast, against it (1 - boost) x; standing, it leaves you be.
+    home: { invite: 'lg-here-invite', startGap: 56, guide: { cls: 'lg-home-guide', text: 'Walk down' },
+      belt: { after: '.solution-row', cls: 'lg-home-belt', dir: { x: 0, y: 1 }, boost: 0.6 } },
     // KeyboardEvent.key, lowercased -> action
     keys: {
       w: 'up', arrowup: 'up', a: 'left', arrowleft: 'left', s: 'down', arrowdown: 'down', d: 'right', arrowright: 'right',
@@ -78,7 +91,7 @@
 
   // mount(page): puts the Drop button and the pad on the page (once) and wires keys, the touchpad and buttons to the
   // page's walker. page: {dir(dir, down) (keys), pull(x, y) (the touchpad's vector; 0, 0 = let go), select() -> true when it used something, back(), dropping(on), box: this page's map box id
-  // (optional; the portal takes you there), dropSlot: an element in a row of the page's own controls (optional; the
+  // (optional; the portal takes you there), invite: true to pulse the switch until its first tap (the home page), dropSlot: an element in a row of the page's own controls (optional; the
   // map's Zoom out): the switch then sits in that row just before it instead of in a strip at the top, and the
   // page keeps its height (no strip, no first-time note there)}. Returns {dropping(), start(), stop()}.
   function mount(page) {
@@ -181,7 +194,8 @@
       else page.back();
     }
     // blur: Enter (select) must never land on the focused Drop button and switch it off
-    dropBtn.addEventListener('click', function () { setDropping(!dropping); dropBtn.blur(); });
+    if (page.invite) dropBtn.classList.add(CONTROLS.home.invite);   // pulses until it is first tapped
+    dropBtn.addEventListener('click', function () { dropBtn.classList.remove(CONTROLS.home.invite); setDropping(!dropping); dropBtn.blur(); });
     touchpad.addEventListener('pointerdown', function (e) {
       e.preventDefault();
       grip = e.pointerId;
@@ -253,6 +267,62 @@
     return v && typeof v.t === 'number' && Date.now() - v.t <= P.handoffMs ? { box: String(v.box || '') } : null;
   }
 
+  // ---- walking a page (profiles and the home page): what you can use, using it, your speed, keeping you in view
+  var USABLE = 'a[href],button,input:not([type=hidden]),select,textarea,summary,[role=button]';
+  // nearest(cx, cy, prev): the usable thing (link, button, field) within CONTROLS.near px of the viewport point (cx, cy),
+  // or null; it is marked lg-here-near (prev, the one marked before, is unmarked when it changes).
+  function nearest(cx, cy, prev) {
+    var all = document.querySelectorAll(USABLE), best = null, bestD = CONTROLS.near;
+    for (var i = 0; i < all.length; i++) {
+      var e = all[i];
+      if (e.closest('#lg-here,#lg-here-pad')) continue;
+      var r = e.getBoundingClientRect();
+      if (!r.width || !r.height) continue;
+      var dx = Math.max(r.left - cx, 0, cx - r.right), dy = Math.max(r.top - cy, 0, cy - r.bottom);
+      var d = Math.sqrt(dx * dx + dy * dy);
+      if (d <= bestD) { bestD = d; best = e; }
+    }
+    if (prev !== best) {
+      if (prev) prev.classList.remove('lg-here-near');
+      if (best) best.classList.add('lg-here-near');
+    }
+    return best;
+  }
+  // use(el): A on a thing: a field gets the cursor, anything else is clicked
+  function use(el) {
+    var t = el.tagName;
+    if (t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT') el.focus();
+    else el.click();
+  }
+  // velocity(held, pull): keys walk at full speed; else the touchpad at its pull (0..1 of full speed)
+  function velocity(held, pull) {
+    var x = (held.right ? 1 : 0) - (held.left ? 1 : 0), y = (held.down ? 1 : 0) - (held.up ? 1 : 0);
+    return x || y ? { x: x, y: y } : { x: pull.x, y: pull.y };
+  }
+  // follow(top): scrolls so the page point top (px from the page's top) stays in view
+  function follow(top) {
+    var margin = 90;
+    if (top < window.scrollY + margin) window.scrollTo(window.scrollX, top - margin);
+    else if (top > window.scrollY + window.innerHeight - margin * 2) window.scrollTo(window.scrollX, top - window.innerHeight + margin * 2);
+  }
+  function reducedMotion() { return !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches); }
+
+  // hop(el): A with nothing next to you: the drop el squishes, splats and bounces (CONTROLS.hop). Counts in data-hops.
+  function hop(el) {
+    if (!el) return;
+    el.setAttribute('data-hops', String(+(el.getAttribute('data-hops') || 0) + 1));
+    if (reducedMotion() || !el.animate) return;
+    var P = CONTROLS.hop, c = P.crouch, s = P.splat, g = P.grow;
+    el.animate([{ scale: '1 1' }, { scale: c[0] + ' ' + c[1], offset: 0.22 }, { scale: s[0] + ' ' + s[1], offset: 0.4 },
+      { scale: g + ' ' + g, offset: 0.7 }, { scale: '1 1' }], { duration: P.ms, easing: 'ease-out' });
+    var mark = document.createElement('span');
+    mark.className = P.splatCls;
+    el.appendChild(mark);
+    var a = mark.animate([{ opacity: 0, scale: '0.4' }, { opacity: 0.7, scale: '1', offset: 0.4 }, { opacity: 0, scale: '1.3' }],
+      { duration: P.ms, easing: 'ease-out' });
+    a.onfinish = function () { mark.remove(); };
+  }
+
   // portrait(name): your drop: a tail (hidden at rest) behind your round portrait (its first letter if there is none)
   function portrait(name) {
     var S = CONTROLS.shape, el = document.createElement('span'), tail = document.createElement('span'), img = document.createElement('img');
@@ -260,6 +330,14 @@
     tail.className = S.tailCls;
     el.style.width = el.style.height = S.size + 'px';
     el.style.setProperty('--lg-drop-settle', S.settleMs + 'ms');
+    el.appendChild(tail);
+    if (!name) {   // no account (the home page): a plain drop
+      var plain = document.createElement('span');
+      plain.className = S.phCls;
+      el.appendChild(plain);
+      shape(el, 0, 0);
+      return el;
+    }
     img.alt = '';
     img.src = '/portrait/' + encodeURIComponent(name || '');
     img.onerror = function () {
@@ -268,7 +346,6 @@
       ph.textContent = String(name || '?').charAt(0).toUpperCase();
       if (img.parentNode) img.parentNode.replaceChild(ph, img);
     };
-    el.appendChild(tail);
     el.appendChild(img);
     shape(el, 0, 0);
     return el;
@@ -280,7 +357,7 @@
   function shape(el, x, y) {
     if (!el) return;
     var S = CONTROLS.shape, speed = Math.min(1, Math.sqrt(x * x + y * y));
-    if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) speed = 0;
+    if (reducedMotion()) speed = 0;
     var angle = speed ? Math.round(Math.atan2(y, x) * 180 / Math.PI) : +(el.getAttribute('data-angle') || 0);
     var key = angle + ':' + speed.toFixed(2);
     if (el.getAttribute('data-shape') === key) return;   // unchanged: no style writes
@@ -291,6 +368,7 @@
     el.firstChild.style.transform = 'rotate(' + (angle + 180) + 'deg) scaleX(' + (S.tail * speed).toFixed(3) + ')';
   }
 
-  window.LG_WALKER = { CONTROLS: CONTROLS, portrait: portrait, shape: shape, keyAction: keyAction, isDir: isDir, editing: editing, pullVector: pullVector, mount: mount,
-    takeHandoff: takeHandoff };
+  window.LG_WALKER = { CONTROLS: CONTROLS, portrait: portrait, shape: shape, hop: hop, keyAction: keyAction, isDir: isDir, editing: editing,
+    pullVector: pullVector, mount: mount, takeHandoff: takeHandoff, nearest: nearest, use: use, velocity: velocity, follow: follow,
+    reducedMotion: reducedMotion };
 })();

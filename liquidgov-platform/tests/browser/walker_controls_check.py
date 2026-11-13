@@ -54,6 +54,21 @@ keeps no copy of the bindings.
       before); back (Esc) closes it
   M3  390x844: the touchpad moves the walker to a connected box; A does what a tap does (the box becomes the center:
       the trail ends at it); B goes back (the trail is You again)
+  Home page (Brandon 4:03 AM: Drop as the home page's hook; genesis_body's own markup, with tip.js + walker.js +
+  home_drop.js), phone 390x844:
+  H0  it starts as usual: the switch marks Scroll, no drop on the page, and the switch pulses (CONTROLS.home.invite,
+      a running animation) to invite a tap; the first-time note ("Stop, Drop & Scroll") shows under the switch
+  H1  tapped, the pulse stops, the switch marks Drop, your drop appears just under the switch (and the sticky header:
+      nothing covers it) and a guide
+      (CONTROLS.home.guide.text) points down, under the drop
+  H2  walking down keeps the guide with you until the scrolling-words section (CONTROLS.home.belt.after); past it the
+      guide is gone and the moving sidewalk (CONTROLS.home.belt.cls) covers the floor from that section's bottom
+  H3  on the sidewalk, walking with it (belt.dir) is about (1 + boost) x your speed off it, against it about (1 - boost) x
+  H4  A (Enter) with nothing next to you: a squish-and-bounce (the drop's CONTROLS.hop animation and a splat mark run;
+      data-hops counts it); nothing is clicked and the page stays
+  H5  A next to a link still uses it (positive control for H4: the link's page opens)
+  H6  reduced motion: no pulse, guide, sidewalk or hop animation, and the drop stays round while walking; A with
+      nothing next to you still counts (no animation)
 Usage: LG_BROWSER=$(command -v google-chrome) python3 walker_controls_check.py [<liquidgov-platform dir> [<out dir>]]
 Writes <out dir>/phone-walker-controls-*.png. Prints "VERDICT walker-controls: ALL-PASS" or the failed cases.
 Exit 1 on a FAIL."""
@@ -125,7 +140,49 @@ def map_page(markup):
             "</body></html>" % markup)
 
 
-def make_handler(assets, markup):
+def home_markup(platform):
+    """genesis_body's markup (src/site/features/pages/genesis.cpp): its return expression with each named piece filled
+    from the literals it is built of (the ticker from its problems list, doubled as the page does); scripts left out
+    (the harness loads the assets itself)."""
+    src = open(os.path.join(platform, "src", "site", "features", "pages", "genesis.cpp"), encoding="utf-8").read()
+    lit = lambda t: re.sub(r"\\(.)", lambda m: {"n": "\n", "t": "\t"}.get(m.group(1), m.group(1)), t)
+    parts = {}
+    for name, expr in re.findall(r'(?:std::string|const char\*) (\w+) =\s*(.*?);\n', src, re.S):
+        parts[name] = expr
+    problems = [lit(p) for p in re.findall(r'"((?:[^"\\]|\\.)*)"', src[src.index("problems = {"):src.index("};", src.index("problems = {"))])]
+    filled = {"ticker": "".join("<div>%s</div>" % p for p in problems * 2)}
+
+    def build(expr):
+        out = []
+        for q, ident in re.findall(r'"((?:[^"\\]|\\.)*)"|\b([A-Za-z_]\w*)\b', expr):
+            if q or not ident:
+                out.append(lit(q))
+            elif ident in filled:
+                out.append(filled[ident])
+            elif ident in parts and ident not in ("stats",):
+                filled[ident] = build(parts[ident])
+                out.append(filled[ident])
+        return "".join(out)
+    a = src.index("return \"<div style")
+    html = build(src[a:src.index(";\n}", a)])
+    return re.sub(r"<script.*?</script>", "", html, flags=re.S)
+
+
+def home_page(markup):
+    # the logged-out home page: genesis_body + the sign-up card the route adds; scripts in genesis_body's order
+    return ("<!doctype html><html lang=en><head><meta charset=utf-8>"
+            "<meta name=viewport content='width=device-width,initial-scale=1,viewport-fit=cover'><title>Home</title>"
+            "<link rel=stylesheet href=/assets/site.css></head><body>"
+            "<header class=top><div class=topinner><a class=brand href=/><div><div class=word><strong>LiquidGov</strong>"
+            "</div></div></a><label class=navbtn>Menu</label></div></header><main class=wrap>%s"
+            "<div class=card><p class=row><a class=btn href=/signup>Create an account</a> <a class='btn ghost' href=/login>Log in</a></p></div>"
+            "</main><footer class=site>Not a government.</footer>"
+            "<script>window.LG_CLICKS = 0; document.addEventListener('click', function () { LG_CLICKS++; }, true);</script>"
+            "<script src=/assets/tip.js defer></script><script src=/assets/walker.js defer></script>"
+            "<script src=/assets/home_drop.js defer></script></body></html>" % markup)
+
+
+def make_handler(assets, markup, home=""):
     class H(http.server.BaseHTTPRequestHandler):
         def log_message(self, *a):
             pass
@@ -139,6 +196,8 @@ def make_handler(assets, markup):
                 return self.reply(200 if d else 404, "application/json", json.dumps(d).encode())
             if path == "/map":
                 return self.reply(200, "text/html", map_page(markup).encode())
+            if path == "/home":
+                return self.reply(200, "text/html", home_page(home).encode())
             if path.startswith("/assets/"):
                 f = os.path.join(assets, os.path.basename(path))
                 if not os.path.isfile(f):
@@ -703,11 +762,168 @@ class Run(m.Run):
         self.check("Q2 select by the portal: the map, dropped in, at this page's box (user:pal)",
                    st.get("path") == "/map" and st.get("at") == "user:pal" and st.get("dropping") == "true", st)
 
+HOME = r"""(() => { const C = LG_WALKER.CONTROLS, H = C.home, D = C.buttons.drop, sw = document.querySelector('.' + D.cls);
+  const box = e => { if (!e || e.hidden) return null; const r = e.getBoundingClientRect(); return r.width && r.height ? {l: r.left, t: r.top, r: r.right, b: r.bottom} : null; };
+  const layer = document.getElementById('lg-here'), dot = layer && layer.querySelector('.lg-here-dot.me'), drop = dot && dot.querySelector('.' + C.shape.cls);
+  const g = document.querySelector('.' + H.guide.cls), belt = document.querySelector('.' + H.belt.cls), after = document.querySelector(H.belt.after);
+  const tip = document.querySelector('.' + D.tip.cls), anim = (e, p) => e ? getComputedStyle(e, p).animationName : null;
+  return JSON.stringify({pressed: sw && sw.getAttribute('aria-pressed'), invite: !!sw && sw.classList.contains(H.invite), pulse: anim(sw, '::after'),
+    layerShown: !!layer && !layer.hidden, dot: dot && !layer.hidden ? box(dot) : null, at: dot ? [parseFloat(dot.style.left), parseFloat(dot.style.top)] : null,
+    sw: box(sw), guide: g && !layer.hidden ? box(g) : null, guideText: g ? g.textContent : null, guideAnim: anim(g), want: H.guide.text,
+    belt: belt && !layer.hidden ? {top: parseFloat(belt.style.top), h: parseFloat(belt.style.height)} : null, beltAnim: anim(belt, '::before'),
+    afterBottom: after ? after.getBoundingClientRect().bottom + scrollY : null, boost: H.belt.boost, dir: H.belt.dir,
+    tip: tip && tip.style.display !== 'none' ? box(tip) : null, tipText: tip ? tip.firstChild.textContent : null,
+    hops: drop ? +(drop.getAttribute('data-hops') || 0) : null, anims: drop ? drop.getAnimations().length : null,
+    splat: drop ? !!drop.querySelector('.' + C.hop.splatCls) : null, speed: drop ? drop.getAttribute('data-speed') : null,
+    // the dots' layer takes no pointer (elementFromPoint skips it): the drop is in view when it is below the sticky header
+    dotSeen: !!dot && !layer.hidden && (() => { const r = dot.querySelector('.' + C.shape.cls).getBoundingClientRect(); return r.top >= document.querySelector('header.top').getBoundingClientRect().bottom && r.bottom <= innerHeight; })(),
+    headerB: document.querySelector('header.top').getBoundingClientRect().bottom, sy: scrollY,
+    near: !!document.querySelector('.lg-here-near'), clicks: window.LG_CLICKS, path: location.pathname}); })()"""
+
+
+def _home(self):
+    """The home page's hook (H0-H6), phone 390x844."""
+    self.size(390, 844, True)
+    self.ws.call("Page.navigate", url=self.base + "/home")
+    self.wait("document.readyState === 'complete' && !!window.LG_TIP && !!document.querySelector('.' + LG_WALKER.CONTROLS.buttons.drop.cls)")
+    self.j("(() => { localStorage.removeItem(LG_TIP.flag('drop')); localStorage.removeItem(LG_TIP.flag('drop') + '-views'); return '1'; })()")
+    self.ws.call("Page.reload")
+    time.sleep(0.3)
+    self.wait("document.readyState === 'complete' && !!document.querySelector('.lg-here-tip')")
+    time.sleep(0.3)
+    C = self.j("JSON.stringify(LG_WALKER.CONTROLS)") or {}
+    h = self.j(HOME) or {}
+    self.check("H0 home: starts as usual (Scroll, no drop on the page) and the switch pulses to invite a tap",
+               h.get("pressed") == "false" and not h.get("layerShown") and h.get("invite") and h.get("pulse") not in (None, "none"),
+               {k: h.get(k) for k in ("pressed", "layerShown", "invite", "pulse")})
+    tipb, swb = h.get("tip"), h.get("sw")
+    self.check("H0 home: the note \"Stop, Drop & Scroll\" shows just under the switch",
+               bool(tipb and swb) and (h.get("tipText") or "").startswith("Stop, Drop & Scroll") and 0 <= tipb["t"] - swb["b"] <= 40,
+               {"tip": tipb, "switch": swb, "text": h.get("tipText")})
+    if tipb:
+        self.shot("home-invite-phone", {"x": 0, "y": 0, "width": 390, "height": tipb["b"] + 120})
+    self.j("(() => { document.querySelector('.' + LG_WALKER.CONTROLS.buttons.drop.tip.cls + ' .lg-tip-close').click(); return '1'; })()")
+    self.drop()
+    time.sleep(0.3)
+    h = self.j(HOME) or {}
+    d, g, swb = h.get("dot"), h.get("guide"), h.get("sw")
+    self.check("H1 home: tapped, the pulse stops, the switch marks Drop, your drop appears just under it with a guide pointing down",
+               h.get("pressed") == "true" and not h.get("invite") and bool(d and g and swb) and 0 < d["t"] - swb["b"] <= 220
+               and h.get("dotSeen")
+               and g["t"] >= d["t"] + 0.5 * (d["b"] - d["t"]) and h.get("guideText") == h.get("want"),
+               {k: h.get(k) for k in ("pressed", "invite", "dot", "dotSeen", "headerB", "sy", "guide", "sw", "guideText", "want")})
+    self.shot("home-dropped-phone", {"x": 0, "y": 0, "width": 390, "height": 420})
+    # walk down until past the scrolling words (the guide comes along until then)
+    plain, guided = None, True
+    for _ in range(80):
+        h = self.j(HOME) or {}
+        at, belt = h.get("at"), h.get("belt")
+        if at and belt and at[1] >= belt["top"] + 260:
+            break
+        if at and belt and at[1] < belt["top"] and not h.get("guide"):
+            guided = False
+        if plain is None and at and belt and belt["top"] - at[1] > 260:
+            t0 = time.time(); self.key("s", 1.0); dt = time.time() - t0
+            h2 = self.j(HOME) or {}
+            plain = (h2["at"][1] - at[1]) / dt
+            continue
+        self.key("s", 0.4)
+    h = self.j(HOME) or {}
+    at, belt = h.get("at"), h.get("belt")
+    self.check("H2 home: the guide stays with you down to the scrolling words; past them it is gone and the sidewalk "
+               "covers the floor from the section's bottom",
+               guided and bool(at and belt) and at[1] > belt["top"] and not h.get("guide") and belt["h"] > 0
+               and abs(belt["top"] - (h.get("afterBottom") or -1e9)) <= 2,
+               {"at": at, "belt": belt, "sectionBottom": h.get("afterBottom"), "guide": h.get("guide"), "guidedOnTheWay": guided})
+    dy = (h.get("dir") or {}).get("y", 0)
+    fwd, back = ("s", "w") if dy >= 0 else ("w", "s")
+    t0 = time.time(); a0 = (self.j(HOME) or {}).get("at"); self.key(fwd, 1.0); dt = time.time() - t0; a1 = (self.j(HOME) or {}).get("at")
+    with_ = abs(a1[1] - a0[1]) / dt if a0 and a1 else 0
+    self.shot("home-belt-phone", {"x": 0, "y": self.j("JSON.stringify(scrollY)") or 0, "width": 390, "height": 844})
+    t0 = time.time(); self.key(back, 1.0); dt = time.time() - t0; a2 = (self.j(HOME) or {}).get("at")
+    against = abs(a2[1] - a1[1]) / dt if a1 and a2 else 0
+    b = h.get("boost") or 0
+    self.check("H3 home: on the sidewalk, with it about (1 + %s) x and against it about (1 - %s) x your speed off it" % (b, b),
+               bool(plain) and 0.8 * (1 + b) <= with_ / plain <= 1.2 * (1 + b) and 0.6 * (1 - b) <= against / plain <= 1.4 * (1 - b),
+               {"px/s off": plain, "with": with_, "against": against, "with/off": with_ / plain if plain else None,
+                "against/off": against / plain if plain else None})
+    # A with nothing next to you (step aside until nothing is near)
+    for _ in range(20):
+        if not (self.j(HOME) or {}).get("near"):
+            break
+        self.key("w", 0.15)
+    h0 = self.j(HOME) or {}
+    self.key("enter")
+    time.sleep(0.12)
+    mid = self.j(HOME) or {}
+    if mid.get("dot"):
+        dd = mid["dot"]
+        self.shot("home-hop-phone", {"x": max(0, dd["l"] - 60), "y": (self.j("JSON.stringify(scrollY)") or 0) + dd["t"] - 60, "width": 160, "height": 160})
+    time.sleep(0.6)
+    h1 = self.j(HOME) or {}
+    self.check("H4 home: A with nothing next to you squishes and bounces (animation + splat), clicks nothing, stays on the page",
+               not h0.get("near") and h1.get("hops") == (h0.get("hops") or 0) + 1 and (mid.get("anims") or 0) >= 1 and mid.get("splat")
+               and h1.get("clicks") == h0.get("clicks") and h1.get("path") == "/home" and not h1.get("splat"),
+               {"before": {k: h0.get(k) for k in ("near", "hops", "clicks")}, "mid": {k: mid.get(k) for k in ("anims", "splat")},
+                "after": {k: h1.get(k) for k in ("hops", "clicks", "path", "splat")}})
+    # A next to a link: walk to "Log in"
+    target = "a[href='/login']"
+    for _ in range(120):
+        st = self.j("(() => { const t = document.querySelector(\"%s\").getBoundingClientRect(), d = document.querySelector('#lg-here .lg-here-dot.me');"
+                    " const x = parseFloat(d.style.left) - scrollX, y = parseFloat(d.style.top) - scrollY;"
+                    " return JSON.stringify({near: !!document.querySelector(\"%s.lg-here-near\"), dx: (t.left + t.right) / 2 - x, dy: (t.top + t.bottom) / 2 - y}); })()"
+                    % (target, target)) or {}
+        if st.get("near"):
+            break
+        if abs(st.get("dy", 0)) > 20:
+            self.key("s" if st["dy"] > 0 else "w", 0.12)
+        else:
+            self.key("d" if st.get("dx", 0) > 0 else "a", 0.12)
+    hops = (self.j(HOME) or {}).get("hops")
+    self.key("enter")
+    self.wait("location.pathname === '/login'", 3)
+    self.check("H5 home: A next to a link still uses it (Log in opens; no hop)",
+               self.j("JSON.stringify(location.pathname)") == "/login" and hops is not None, {"near": st, "path": self.j("JSON.stringify(location.pathname)")})
+    # reduced motion
+    self.ws.call("Emulation.setEmulatedMedia", features=[{"name": "prefers-reduced-motion", "value": "reduce"}])
+    try:
+        self.ws.call("Page.navigate", url=self.base + "/home")
+        self.wait("document.readyState === 'complete' && !!document.querySelector('.' + LG_WALKER.CONTROLS.buttons.drop.cls)")
+        time.sleep(0.2)
+        r0 = self.j(HOME) or {}
+        self.drop()
+        self.key("s", 0.5)
+        rw = self.j(HOME) or {}
+        for _ in range(10):
+            if not rw.get("near"):
+                break
+            self.key("s", 0.2)
+            rw = self.j(HOME) or {}
+        self.ws.call("Input.dispatchKeyEvent", type="keyDown", key="s", windowsVirtualKeyCode=83)
+        time.sleep(0.2)
+        mv = self.j(HOME) or {}
+        self.ws.call("Input.dispatchKeyEvent", type="keyUp", key="s", windowsVirtualKeyCode=83)
+        self.key("enter")
+        time.sleep(0.05)
+        rh = self.j(HOME) or {}
+        self.check("H6 home, reduced motion: no pulse, guide, sidewalk or hop animation; the drop stays round walking; A still counts",
+                   r0.get("pulse") in ("none", None) and rw.get("guideAnim") in ("none", None) and rw.get("beltAnim") in ("none", None)
+                   and mv.get("speed") == "0.00" and rh.get("hops") == (rw.get("hops") or 0) + 1 and rh.get("anims") == 0,
+                   {"pulse": r0.get("pulse"), "guide": rw.get("guideAnim"), "belt": rw.get("beltAnim"), "speed": mv.get("speed"),
+                    "hops": [rw.get("hops"), rh.get("hops")], "anims": rh.get("anims")})
+    finally:
+        self.ws.call("Emulation.setEmulatedMedia", features=[])
+
+
+Run.home = _home
+
+
 def main(argv):
     platform = os.path.abspath(argv[0]) if argv else os.path.dirname(os.path.dirname(HERE))
     out = os.path.abspath(argv[1]) if len(argv) > 1 else os.path.join(platform, "tests", "browser", "out")
     os.makedirs(out, exist_ok=True)
-    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), make_handler(os.path.join(platform, "assets"), mlc.page_markup(platform)))
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), make_handler(os.path.join(platform, "assets"), mlc.page_markup(platform),
+                                                                                  home_markup(platform)))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     r = Run("http://127.0.0.1:%d" % srv.server_address[1], out)
     proc = None
@@ -720,6 +936,7 @@ def main(argv):
         r.map_desktop()
         r.map_phone()
         r.portal()
+        r.home()
     except Exception as e:  # a crash mid-run is a failed run, said with its traceback, never a quiet pass
         traceback.print_exc()
         r.check("run finished without an exception", False, "%s: %s" % (type(e).__name__, e))

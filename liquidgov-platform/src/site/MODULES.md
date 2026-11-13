@@ -35,7 +35,7 @@ module `.cpp` files, in build order, lives in one place: `sources.cmake` (CMakeL
   `window.LG_HERE`). Nothing is inline any more (canvas_tool_page's engine moved to `assets/canvas.js` 2026-11-13).
 - The walker's controls (the Drop button, the touchpad with A/B, WASD/arrows/Enter/Esc) are one module, `assets/walker.js`
   (`window.LG_WALKER`, with the one key/button map `LG_WALKER.CONTROLS`). Pages you walk on load it first and
-  mount their own walker: `here.js` (dots on profile pages) and `lgmap_walk.js` (the map). Tests read the map from
+  mount their own walker: `here.js` (dots on profile pages), `lgmap_walk.js` (the map) and `home_drop.js` (the logged-out home page's hook). The shared walking pieces (what is near, using it, speed, keeping you in view, the teardrop `shape` and the A-with-nothing `hop`) live in walker.js too. Tests read the map from
   the page, never a copy (`tests/browser/walker_controls_check.py`).
 
 ## The store (`libs/liquidgov_file_store`)

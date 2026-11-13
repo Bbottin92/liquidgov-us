@@ -8,7 +8,7 @@
 (function () {
   var cfg = window.LG_HERE;
   if (!cfg || !cfg.me || !cfg.page || !window.WebSocket || !window.LG_WALKER) return;
-  var MAX_SPEED = LG_WALKER.CONTROLS.maxSpeed, NEAR = 30, SEND_MS = 110;   // px per 40 ms tick at full speed
+  var W = LG_WALKER, MAX_SPEED = W.CONTROLS.maxSpeed, SEND_MS = 110;   // px per 40 ms tick at full speed
 
   var layer = document.createElement('div');
   layer.id = 'lg-here';
@@ -80,41 +80,11 @@
   }
 
   // ---- walking
-  function usable() {
-    var all = document.querySelectorAll('a[href],button,input:not([type=hidden]),select,textarea,summary,[role=button]');
-    var out = [];
-    for (var i = 0; i < all.length; i++) {
-      var e = all[i];
-      if (e.closest('#lg-here,#lg-here-pad')) continue;
-      var r = e.getBoundingClientRect();
-      if (r.width && r.height) out.push(e);
-    }
-    return out;
-  }
-  function findNear() {
-    var cx = me.x * pageW() - window.scrollX, cy = me.y * pageH() - window.scrollY, best = null, bestD = NEAR;
-    usable().forEach(function (e) {
-      var r = e.getBoundingClientRect();
-      var dx = Math.max(r.left - cx, 0, cx - r.right), dy = Math.max(r.top - cy, 0, cy - r.bottom);
-      var d = Math.sqrt(dx * dx + dy * dy);
-      if (d <= bestD) { bestD = d; best = e; }
-    });
-    if (near !== best) {
-      if (near) near.classList.remove('lg-here-near');
-      near = best;
-      if (near) near.classList.add('lg-here-near');
-    }
-  }
-  function press() {
-    if (!near) return;
-    var t = near.tagName;
-    if (t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT') near.focus();
-    else near.click();
-  }
+  // what you stand next to, and using it: walker.js's (the home page walks the same way)
+  function findNear() { near = W.nearest(me.x * pageW() - window.scrollX, me.y * pageH() - window.scrollY, near); }
+  function press() { if (near) W.use(near); }
   function step() {
-    // keys walk at full speed; the touchpad at its pull (0..1 of full speed)
-    var dx = (held.right ? 1 : 0) - (held.left ? 1 : 0), dy = (held.down ? 1 : 0) - (held.up ? 1 : 0);
-    if (!dx && !dy) { dx = pull.x; dy = pull.y; }
+    var v = W.velocity(held, pull), dx = v.x, dy = v.y;
     if (dots[cfg.me]) LG_WALKER.shape(dots[cfg.me].querySelector('.' + LG_WALKER.CONTROLS.shape.cls), dx, dy);
     if (dx || dy) {
       me.x = Math.max(0, Math.min(1, me.x + dx * MAX_SPEED / pageW()));
@@ -122,9 +92,7 @@
       me.known = true;
       dirty = true;
       if (dots[cfg.me]) place(dots[cfg.me], me.x, me.y);
-      var top = me.y * pageH(), margin = 90;
-      if (top < window.scrollY + margin) window.scrollTo(window.scrollX, top - margin);
-      else if (top > window.scrollY + window.innerHeight - margin * 2) window.scrollTo(window.scrollX, top - window.innerHeight + margin * 2);
+      W.follow(me.y * pageH());
       findNear();
     }
     var now = Date.now();

@@ -34,6 +34,13 @@ keeps no copy of the bindings.
   T4  one tip at a time (LG_TIP): while one shows, another waits for a later page view without counting it
   C2  on the map the switch sits in the map's own row (Back, the trail, Zoom out) just before Zoom out, so the map
       keeps its place on the page (no strip at the top there)
+  C3  the map's nav row (Brandon 4:26 AM: the switch squeezed the trail's "You" to "ou"): the switch meets none of
+      Back, the trail, Zoom out, the trail shows its whole first step, and the row stays one line (the map keeps its
+      place); at 390x844 and 1280x800
+  A1  the switch's labels meet WCAG AA (4.5:1) against what is behind them, the chosen one and the other, on the
+      profile-like page and inside the map's dark frame; the colors are the site's --lg-switch-* variables
+  T5  a first-time tip's close button (x) does not cover its text: the walker's note, the home page's note and a
+      Juketube tip (#jbhint, long text)
   C1  the Drop button covers nothing (Brandon 1:59 AM: on the map it covered MAINstream): its box meets neither the
       portal (CONTROLS.portal), nor the map's MAINstream button (#lgm-main), nor any other link, button or field;
       at 390x844 and 1280x800, on the profile-like page and on the map
@@ -236,6 +243,27 @@ BOXES = r"""(() => { const C = window.LG_WALKER && LG_WALKER.CONTROLS, q = s => 
   out.headerHit = !!hit && q('header.top').contains(hit);
   return JSON.stringify(out); })()"""
 # The Drop button against the portal, the map's MAINstream button and every other control it could cover.
+# The switch's labels against their backgrounds (WCAG relative luminance); the site's switch colors.
+CONTRAST = r"""(() => { const D = LG_WALKER.CONTROLS.buttons.drop, b = document.querySelector('.' + D.cls);
+  const lum = c => { const [r, g, bb] = c.match(/[\d.]+/g).map(Number).slice(0, 3).map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }); return 0.2126 * r + 0.7152 * g + 0.0722 * bb; };
+  const ratio = (a, c) => { const x = lum(a), y = lum(c); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+  const bg = getComputedStyle(b).backgroundColor, out = {opacity: getComputedStyle(b).opacity, states: {},
+    vars: ['--lg-switch-bg', '--lg-switch-ink', '--lg-switch-on-bg', '--lg-switch-on-ink'].map(v => getComputedStyle(document.documentElement).getPropertyValue(v).trim())};
+  b.querySelectorAll('.' + D.stateCls).forEach(s => { const c = getComputedStyle(s), on = s.classList.contains('on'), back = on ? c.backgroundColor : bg;
+    out.states[s.textContent] = {on: on, color: c.color, back: back, ratio: Math.round(ratio(c.color, back) * 100) / 100}; });
+  return JSON.stringify(out); })()"""
+# A tip's close button against its text (sel: the tip).
+TIPCLEAR = r"""((sel) => { const t = document.querySelector(sel); if (!t || getComputedStyle(t).display === 'none') return JSON.stringify(null);
+  const x = t.querySelector('.lg-tip-close'), txt = t.firstElementChild, box = e => { const r = e.getBoundingClientRect(); return {l: r.left, t: r.top, r: r.right, b: r.bottom}; };
+  const a = box(txt), c = box(x), T = box(t);
+  return JSON.stringify({text: a, close: c, tip: T, overlap: a.l < c.r && c.l < a.r && a.t < c.b && c.t < a.b, inside: c.l >= T.l && c.r <= T.r && c.t >= T.t && c.b <= T.b}); })"""
+# The map's nav row: Back, the trail, the switch, Zoom out.
+NAVROW = r"""(() => { const q = s => document.querySelector(s), box = e => { if (!e) return null; const r = e.getBoundingClientRect(); return {l: r.left, t: r.top, r: r.right, b: r.bottom}; };
+  const meets = (a, b) => !!a && !!b && a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b;
+  const d = box(q('.' + LG_WALKER.CONTROLS.buttons.drop.cls)), tr = q('#lgm-trail'), row = q('.lgm-navrow');
+  const others = {back: box(q('#lgm-back')), trail: box(tr), zoomout: box(q('#lgm-zoomout'))};
+  return JSON.stringify({drop: d, others: others, hits: Object.keys(others).filter(k => meets(d, others[k])), row: box(row), sy: scrollY,
+    trailText: tr ? tr.textContent : null, trailFits: !!tr && tr.scrollWidth <= tr.clientWidth + 1}); })()"""
 COVER = r"""(() => { const C = LG_WALKER.CONTROLS, d = document.querySelector('.' + C.buttons.drop.cls);
   const box = e => { if (!e) return null; const r = e.getBoundingClientRect(); return r.width && r.height ? {l: r.left, t: r.top, r: r.right, b: r.bottom} : null; };
   const meets = (a, b) => !!a && !!b && a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b;
@@ -338,6 +366,13 @@ class Run(m.Run):
         bx, bar = t.get("box"), t.get("bar")
         self.check("T2 phone: the note sits in the Drop strip and covers nothing",
                    bool(bx and bar) and bx["b"] <= bar["b"] and t.get("covered") == [], {"note": bx, "strip": bar, "covered": t.get("covered")})
+        self.tip_clear("phone, the walker's note", "." + ((self.j("JSON.stringify(LG_WALKER.CONTROLS.buttons.drop.tip.cls)")) or "lg-here-tip"))
+        jb = self.j("(() => { const d = document.createElement('div'); d.id = 'jbhint'; d.className = 'lg-tip';"
+                    " d.innerHTML = '<span>Juketube \u2014 search, stations, history. Tap a track and everyone on that station hears it.</span>"
+                    "<button type=\"button\" id=\"jbhintclose\" class=\"lg-tip-close\" aria-label=\"Hide this tip\">\u00d7</button>';"
+                    " document.body.appendChild(d); return '1'; })()")
+        self.tip_clear("phone, Juketube's tip", "#jbhint")
+        self.j("(() => { document.getElementById('jbhint').remove(); return '1'; })()")
         if bar:
             self.shot("drop-tip-phone", {"x": 0, "y": 0, "width": 390, "height": bar["b"] + 70})
         self.j("(() => { document.querySelector('.' + LG_WALKER.CONTROLS.buttons.drop.tip.cls + ' .lg-tip-close').click(); return '1'; })()")
@@ -355,6 +390,33 @@ class Run(m.Run):
                      " ta.hide(false); a.remove(); b.remove(); return JSON.stringify(r); })()") or {}
         self.check("T4 one tip at a time: while one shows, another waits (its view isn't counted)",
                    two.get("first") is True and two.get("second") is False and two.get("secondViews") is None, two)
+
+    def nav_row(self, tag, shot=None):
+        n = self.j(NAVROW) or {}
+        # one line (the map below keeps its place): Back, the switch and Zoom out share a row
+        tops = [b["t"] for b in [n.get("drop"), (n.get("others") or {}).get("back"), (n.get("others") or {}).get("zoomout")] if b]
+        oneline = len(tops) == 3 and max(tops) - min(tops) <= 8
+        self.check("C3 %s: the switch has its own room in the nav row (meets none of Back, the trail, Zoom out) and the trail "
+                   "shows its whole first step, all on one line" % tag,
+                   bool(n.get("drop")) and all(n.get("others", {}).values()) and n.get("hits") == [] and n.get("trailFits") is True
+                   and oneline, dict(n, oneLine=oneline))
+        if shot and n.get("row"):
+            r = n["row"]
+            self.shot(shot, {"x": 0, "y": n.get("sy", 0) + max(0, r["t"] - 8), "width": self.j("JSON.stringify(innerWidth)") or 390,
+                             "height": r["b"] - r["t"] + 16})
+        return n
+
+    def contrast(self, tag):
+        c = self.j(CONTRAST) or {}
+        st = c.get("states") or {}
+        self.check("A1 %s: both switch labels meet WCAG AA 4.5:1 (site colors --lg-switch-*)" % tag,
+                   len(st) == 2 and all(v.get("ratio", 0) >= 4.5 for v in st.values()) and c.get("opacity") == "1" and all(c.get("vars") or [""]),
+                   c)
+
+    def tip_clear(self, tag, sel):
+        t = self.j("(%s)(%s)" % (TIPCLEAR.strip(), json.dumps(sel)))
+        self.check("T5 %s: the tip's close button does not cover its text" % tag, bool(t) and t.get("overlap") is False and t.get("inside") is True, t)
+        return t
 
     def covers_nothing(self, tag, need_main=False):
         c = self.j(COVER) or {}
@@ -412,6 +474,7 @@ class Run(m.Run):
                    {"small": small, "count": len(ctl)})
         self.drop_at_top("P5 phone:", b)
         self.covers_nothing("phone")
+        self.contrast("phone")
         self.switch_state("P6 phone: walking,", C, "on")
         self.shot("phone", {"x": 0, "y": 0, "width": vw, "height": vh})
         self.touchpad_pull(C, dp, vw, vh)
@@ -604,6 +667,7 @@ class Run(m.Run):
                    bool(zoom) and 1.25 <= grow <= zoom * 1.05, {"plain w": plain.get("w"), "drop w": st.get("w"), "grow": grow})
         self.check("M0 desktop: the map is drawn and the walker stands on you", ok and st.get("at") == "you", st)
         self.covers_nothing("map desktop", need_main=True)
+        self.nav_row("map desktop")
         m_expr = "(() => { const e=document.querySelector('#lgm-walker .' + LG_WALKER.CONTROLS.shape.cls); return JSON.stringify(e ? {speed:+e.dataset.speed, img:!!e.querySelector('img[src^=\"/portrait/\"],.lg-here-ph')} : null); })()"
         self.key("d", 0.02)
         time.sleep(0.05)
@@ -697,6 +761,8 @@ class Run(m.Run):
         st = self.map_walking()
         self.check("M0 phone: the map is drawn and the walker stands on you", ok and st.get("at") == "you", st)
         c = self.covers_nothing("map phone", need_main=True)
+        self.nav_row("map phone", shot="map-navrow-phone")
+        self.contrast("map phone")
         row = self.j("(() => { const d = document.querySelector('.' + LG_WALKER.CONTROLS.buttons.drop.cls), z = document.getElementById('lgm-zoomout'),"
                      " bar = document.querySelector('.' + LG_WALKER.CONTROLS.buttons.drop.bar);"
                      " return JSON.stringify({inRow: !!d && !!z && d.parentNode === z.parentNode && d.nextElementSibling === z,"
@@ -800,6 +866,7 @@ def _home(self):
     self.check("H0 home: the note \"Stop, Drop & Scroll\" shows just under the switch",
                bool(tipb and swb) and (h.get("tipText") or "").startswith("Stop, Drop & Scroll") and 0 <= tipb["t"] - swb["b"] <= 40,
                {"tip": tipb, "switch": swb, "text": h.get("tipText")})
+    self.tip_clear("home", "." + C["buttons"]["drop"]["tip"]["cls"])
     if tipb:
         self.shot("home-invite-phone", {"x": 0, "y": 0, "width": 390, "height": tipb["b"] + 120})
     self.j("(() => { document.querySelector('.' + LG_WALKER.CONTROLS.buttons.drop.tip.cls + ' .lg-tip-close').click(); return '1'; })()")

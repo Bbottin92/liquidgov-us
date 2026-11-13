@@ -24,6 +24,11 @@ body header.top{position:relative}
 .lgm-bars{position:sticky;top:0;z-index:4;background:rgba(13,17,27,.88);border-bottom:1px solid rgba(243,212,143,.12)}
 .lgm-navrow{display:flex;align-items:center;gap:.3rem;padding:.25rem .5rem 0}
 .lgm-navrow .lgm-trail{flex:1;min-width:0;padding:.1rem .2rem 0}
+/* the Drop/Scroll switch (walker.js mounts it here, before Zoom out): compact, and the trail keeps room for its
+   first step (Brandon 2026-11-13 4:26 AM: it squeezed "You" to "ou"); a row too narrow for all of them wraps, never overlaps */
+.lgm-navrow{flex-wrap:wrap}
+.lgm-navrow .lgm-trail{min-width:2.75rem}
+.lgm-navrow .lg-here-drop .lg-here-state{padding:0 .5rem;font-size:.85rem}
 .lgm-navbtn{background:none;border:1px solid rgba(243,212,143,.45);color:#f3d48f;border-radius:999px;padding:.15rem .7rem;
   font-size:.82rem;min-height:32px;cursor:pointer;white-space:nowrap}
 .lgm-navbtn:disabled{opacity:.35;cursor:default}

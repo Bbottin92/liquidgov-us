@@ -1010,6 +1010,23 @@
       if (w && Math.abs(w - fitW) > 1) { fitW = w; fitAll(narrow()); }
     }, 150);
   });
+  // The map walker's camera (assets/lgmap_walk.js; Brandon 2026-11-13, "when you Drop in on the map, it should look
+  // bigger"): focus(id, zoom) puts box id in the middle of the frame at zoom times the fitted scale (never past the
+  // wheel's 2.5), gliding; fit() is the normal view again. The zoom is walker.js's (LG_WALKER.CONTROLS.mapZoom).
+  window.LG_MAP = {
+    focus: function (id, zoom) {
+      var n = nodes[id], b = svg.getBoundingClientRect();
+      if (!n || !b.width) return false;
+      fitAll(narrow());
+      var c = centerOf(n);
+      scale = Math.min(2.5, scale * zoom);
+      tx = Math.round(b.width / 2 - c.x * scale);
+      ty = Math.round(b.height / 2 - c.y * scale);
+      apply(true);
+      return true;
+    },
+    fit: function () { fitAll(narrow()); }
+  };
   // M1.1 (Brandon 2026-11-10): the map starts at you, with your kinds of connection (Friends, Groups, Places,
   // Politics, Problems) as the first ring. The whole site (MAINstream) is under Places, and its button still works.
   load('you').then(function (data) {

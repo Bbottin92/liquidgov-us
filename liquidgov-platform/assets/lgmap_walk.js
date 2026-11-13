@@ -3,13 +3,15 @@
    opens the box you stand on (the same as tapping it), B or Esc goes back (closes the open page, else the map's Back).
    Uses lgmap.js's own drawing as it is: the boxes (#lgm-nodes .lgn[data-id]) and connectors (#lgm-edges .lge[data-a]
    [data-b]) on the screen, wherever its ring layout put them; this file lays nothing out. The Drop button, pad and keys are
-   walker.js's (window.LG_WALKER, loaded before this file). */
+   walker.js's (window.LG_WALKER, loaded before this file). Dropped in, the camera (lgmap.js's window.LG_MAP) zooms
+   to LG_WALKER.CONTROLS.mapZoom and follows the walker; the boxes get depth (lgmap.css .lgm-dropping). */
 (function () {
   'use strict';
   var root = document.getElementById('lgmap');
   if (!root || !window.LG_WALKER) return;
   var nodeLayer = document.getElementById('lgm-nodes'), edgeLayer = document.getElementById('lgm-edges');
-  var at = null, walker = null, follow = 0;
+  var at = null, walker = null, follow = 0, dropping = false, later = [];
+  var ZOOM = LG_WALKER.CONTROLS.mapZoom;
   var MIN_COS = 0.2;   // a connector counts for a direction when it points within ~78 degrees of it
 
   function box(id) { return id ? nodeLayer.querySelector('.lgn[data-id="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]') : null; }
@@ -56,11 +58,19 @@
     walker.style.top = Math.round(r.top) + 'px';
     walker.setAttribute('data-at', at);
   }
+  // the camera on the box you stand on; again a little later after the map moves by itself (a box opened, Back: the
+  // map recenters and fits itself once its connections load)
+  function camera() { if (dropping && window.LG_MAP && box(at)) LG_MAP.focus(at, ZOOM); }
+  function cameraSoon() {
+    later.forEach(clearTimeout);
+    later = [350, 900, 1700].map(function (ms) { return setTimeout(camera, ms); });
+  }
   function step(dir) {
     if (!box(at)) at = startBox();
     var next = pick(dir);
     if (next) at = next;
     show();
+    if (next) camera();
   }
 
   walker = document.createElement('div');
@@ -69,6 +79,8 @@
   walker.setAttribute('aria-hidden', 'true');
   document.body.appendChild(walker);
 
+  window.addEventListener('resize', function () { if (dropping) cameraSoon(); });   // lgmap.js fits on a resize
+
   LG_WALKER.mount({
     dir: function (dir, down) { if (down) step(dir); },
     // A / Enter: the same as tapping the box you stand on
@@ -76,6 +88,7 @@
       var el = box(at);
       if (!el) return false;
       el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+      cameraSoon();
       return true;
     },
     // B / Esc: close the open page, else the map's own Back
@@ -84,15 +97,21 @@
       var backBtn = document.getElementById('lgm-back');
       if (panel && !panel.hidden && close) close.click();
       else if (backBtn && !backBtn.disabled) backBtn.click();
+      cameraSoon();
     },
     dropping: function (on) {
+      dropping = on;
+      root.classList.toggle('lgm-dropping', on);
       clearInterval(follow);
+      later.forEach(clearTimeout);
       if (on) {
         if (!box(at)) at = startBox();
         show();
+        camera();
         follow = setInterval(function () { if (!box(at)) at = startBox(); show(); }, 120);   // the map glides and recenters
       } else {
         walker.hidden = true;
+        if (window.LG_MAP) LG_MAP.fit();
         Array.prototype.forEach.call(nodeLayer.querySelectorAll('.lgn.lgn-walk'), function (o) { o.classList.remove('lgn-walk'); });
       }
     }

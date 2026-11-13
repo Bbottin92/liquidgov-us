@@ -188,3 +188,7 @@ html.lgm-sheet-open,html.lgm-sheet-open body{overflow:hidden}
 #lgm-walker{position:fixed;z-index:12;width:22px;height:22px;margin:-26px 0 0 -11px;border-radius:50%;background:var(--accent);border:3px solid var(--paper);box-shadow:0 1px 6px rgba(0,0,0,.4);pointer-events:none;transition:left .25s ease,top .25s ease}
 #lgm-walker[hidden]{display:none}
 @media(prefers-reduced-motion:reduce){#lgm-walker{transition:none}}
+/* Dropped in (Drop on): the camera zooms toward the walker (LG_MAP.focus) and the boxes cast a shadow, so they read
+   as solid objects you walk between. */
+#lgmap.lgm-dropping .lgn .lgs{filter:drop-shadow(0 10px 12px rgba(0,0,0,.55)) drop-shadow(0 3px 3px rgba(0,0,0,.45))}
+#lgmap.lgm-dropping .lgn.lgn-walk .lgs{filter:drop-shadow(0 12px 14px rgba(0,0,0,.6)) drop-shadow(0 0 8px var(--accent))}

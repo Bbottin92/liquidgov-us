@@ -26,6 +26,8 @@ keeps no copy of the bindings.
   Map (Brandon 2026-11-13 12:36 AM: the walker stands on a box and walks along a connector to the next one):
   M1  1280x800: each letter key of the map (D/A/W/S) moves the walker from you along a drawn connector to a connected
       box that lies that way, and the opposite key walks it back to you
+  M4  1280x800: Drop zooms the map toward the walker (a box grows by about LG_WALKER.CONTROLS.mapZoom), the camera
+      follows it to the next box (that box ends up near the frame's middle), and leaving Drop restores the zoom
   M2  1280x800: select (Enter) opens the box you stand on (its page opens in the side panel; positive control: closed
       before); back (Esc) closes it
   M3  390x844: the D-pad moves the walker to a connected box; A does what a tap does (the box becomes the center:
@@ -311,7 +313,9 @@ class Run(m.Run):
             " if (!b) return null; const r = b.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; };"
             " const at = w && !w.hidden ? w.getAttribute('data-at') : null;"
             " return JSON.stringify({at: at, mid: mid(at), you: mid('you'), trail: t ? t.textContent : null, edges: edges,"
-            " panel: !!p && !p.hidden, page: f ? f.getAttribute('data-page') : null}); })()")
+            " panel: !!p && !p.hidden, page: f ? f.getAttribute('data-page') : null,"
+            " w: (b => b ? b.getBoundingClientRect().width : null)(document.querySelector('#lgm-nodes .lgn[data-id=\"you\"]')),"
+            " frame: (r => [r.left + r.width / 2, r.top + r.height / 2, r.width, r.height])(document.getElementById('lgm-svg').getBoundingClientRect())}); })()")
 
     def map_load(self):
         self.ws.call("Page.navigate", url=self.base + "/map")
@@ -334,7 +338,14 @@ class Run(m.Run):
     def map_desktop(self):
         self.size(1280, 800, False)
         ok = self.map_load()
+        plain = self.j(self.WALK) or {}
         st = self.map_walking()
+        time.sleep(0.6)   # the camera glides in
+        st = self.j(self.WALK) or {}
+        zoom = (self.j("JSON.stringify((window.LG_WALKER && LG_WALKER.CONTROLS.mapZoom) || null)") or 0)
+        grow = (st.get("w") or 0) / (plain.get("w") or 1)
+        self.check("M4 desktop: Drop zooms toward the walker (you grows about %sx)" % zoom,
+                   bool(zoom) and 1.25 <= grow <= zoom * 1.05, {"plain w": plain.get("w"), "drop w": st.get("w"), "grow": grow})
         self.check("M0 desktop: the map is drawn and the walker stands on you", ok and st.get("at") == "you", st)
         C = self.j("JSON.stringify((window.LG_WALKER && LG_WALKER.CONTROLS) || null)") or {}
         letters = {a: k for k, a in (C.get("keys") or {}).items() if len(k) == 1 and a in WAY}
@@ -346,13 +357,19 @@ class Run(m.Run):
             time.sleep(0.35)
             after = self.j(self.WALK) or {}
             dx, dy = WAY[act]
-            way = bool(before.get("mid") and after.get("mid")) and \
-                ((after["mid"][0] - before["mid"][0]) * dx + (after["mid"][1] - before["mid"][1]) * dy) > 0
+            # measured from you in the same snapshot: the camera moves the whole map while it follows the walker
+            way = bool(after.get("you") and after.get("mid")) and \
+                ((after["mid"][0] - after["you"][0]) * dx + (after["mid"][1] - after["you"][1]) * dy) > 0
             self.check("M1 desktop: %r walks from you along a connector to a box %s of it" % (k, act),
                        bool(k) and before.get("at") == "you" and after.get("at") not in (None, "you")
                        and self.linked(after, "you", after["at"]) and way, {"before": before.get("at"), "after": after.get("at"),
-                                                                            "mids": (before.get("mid"), after.get("mid"))})
+                                                                            "mids": (after.get("you"), after.get("mid"))})
             if act == "right":
+                time.sleep(0.5)   # the camera glides after the walker
+                fol = self.j(self.WALK) or {}
+                fr, mid = fol.get("frame") or [0, 0, 1, 1], fol.get("mid") or [-9999, -9999]
+                self.check("M4 desktop: the camera follows the walker to the next box (it is near the frame's middle)",
+                           abs(mid[0] - fr[0]) <= 0.12 * fr[2] and abs(mid[1] - fr[1]) <= 0.12 * fr[3], {"mid": mid, "frame": fr})
                 self.shot("map-desktop", {"x": 0, "y": 0, "width": 1280, "height": 800})
             self.key(letters.get(opposite[act]) or "?")
             time.sleep(0.35)
@@ -386,6 +403,17 @@ class Run(m.Run):
         self.wait("document.getElementById('lgm-panel').hidden", 3)
         st = self.j(self.WALK) or {}
         self.check("M2 desktop: back (%s) closes it" % "/".join(bk), bool(bk) and not st.get("panel"), st.get("panel"))
+        self.drop()   # Drop off
+        time.sleep(0.8)
+        self.ws.call("Page.navigate", url=self.base + "/map")   # the same first view, to compare the zoom with
+        self.map_load()
+        self.drop()
+        time.sleep(0.6)
+        self.drop()   # and off again
+        time.sleep(0.6)
+        off = self.j(self.WALK) or {}
+        self.check("M4 desktop: leaving Drop restores the normal zoom", plain.get("w") and off.get("w")
+                   and abs(off["w"] - plain["w"]) <= 0.03 * plain["w"] and not off.get("at"), {"plain w": plain.get("w"), "after w": off.get("w")})
 
     def tap(self, selector):
         b = self.j("(() => { const e = document.querySelector(%s); if (!e) return 'null'; const r = e.getBoundingClientRect();"

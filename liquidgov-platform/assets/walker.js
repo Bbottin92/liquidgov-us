@@ -7,6 +7,9 @@
 (function () {
   var CONTROLS = {
     dirs: ['up', 'left', 'right', 'down'],
+    // Dropped in on the map, the camera shows the boxes this many times bigger than the fitted view and follows the
+    // walker box to box (Brandon 2026-11-13 12:55 AM: "it should look bigger"); off again, the normal view.
+    mapZoom: 1.8,
     // KeyboardEvent.key, lowercased -> action
     keys: {
       w: 'up', arrowup: 'up', a: 'left', arrowleft: 'left', s: 'down', arrowdown: 'down', d: 'right', arrowright: 'right',

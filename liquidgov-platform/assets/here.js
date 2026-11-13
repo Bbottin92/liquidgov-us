@@ -148,11 +148,21 @@
     '<button type="button" class="lg-here-a" aria-label="Use what you are next to">A</button></div>';
   document.body.appendChild(pad);
   var walkBtn = pad.querySelector('.lg-here-walk'), keys = pad.querySelector('.lg-here-keys');
+  // Room at the page's end for the pad (Brandon 2026-11-12 "do the dpad fix"): the page already keeps some room at the
+  // bottom (for the Juketube button); while the pad is taller than that, the page gets the pad's height plus a margin,
+  // so scrolled to the end nothing stays under it. Given back when walking stops.
+  var baseRoom = parseFloat(getComputedStyle(document.body).paddingBottom) || 0;
+  function fitRoom() {
+    var need = pad.getBoundingClientRect().height + 24;
+    document.body.style.paddingBottom = need > baseRoom ? need + 'px' : '';
+    sizeLayer();
+  }
   function setWalking(on) {
     walking = on;
     walkBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
     walkBtn.textContent = on ? 'Stop walking' : 'Walk';
     keys.hidden = !on;
+    fitRoom();
     held = {};
     if (on) findNear();
     else if (near) { near.classList.remove('lg-here-near'); near = null; }
@@ -182,7 +192,7 @@
   document.addEventListener('keyup', function (e) { if (KEYS[e.key]) held[KEYS[e.key]] = false; });
 
   window.addEventListener('resize', function () {
-    sizeLayer();
+    fitRoom();
     Object.keys(dots).forEach(function (u) { if (u === cfg.me) place(dots[u], me.x, me.y); });
   });
   sizeLayer();

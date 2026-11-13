@@ -8,4 +8,14 @@ std::string page_wrap(const std::string& title, const std::string& navhtml, cons
                        bool show_intro = false, bool intro_always_play = false);
 std::string nav(const std::string& user, int unread);
 
+// The landing intro's on/off pref (Brandon 2026-11-13 5:04 AM: plays every visit by default, can be turned off in
+// Settings). ONE name for it everywhere: the account's AccountPrefs field (intro_every_visit; its default is the
+// store's, see prefs.hpp), the
+// Settings form field, the overlay's and the toggle's data-pref, and a logged-out browser's localStorage key
+// 'liquidgov.<name>' (assets/intro.js).
+inline constexpr const char* kIntroPref = "intro_every_visit";
+// The Settings toggle 'Play intro video on each visit': a form saved to the account when signed in (POST
+// /settings/intro), a checkbox kept on this browser when not (intro.js). Shown on /settings and /settings/intro.
+std::string intro_setting_card(const std::string& user, bool on);
+
 }  // namespace liquidgov::site

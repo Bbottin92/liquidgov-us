@@ -8,68 +8,47 @@
 #include "site/features/mail/mail_pages.hpp"
 
 namespace liquidgov::site {
-// A full-bleed, muted, autoplaying clip shown the first time a browser
-// ever lands on the site -- gated entirely client-side (localStorage),
-// since "have I seen this before" is per-browser state with no reason to
-// touch the account store or work for a logged-out visitor differently
-// from a member. Skippable; ends by fading out and removing itself,
-// revealing the page underneath (already rendered, not reloaded). Storage
-// being blocked (private mode, some browsers) fails safe by just never
-// showing it, rather than showing it on every single load.
+// A full-bleed, muted, autoplaying clip on the landing page (/), on EVERY visit by default (Brandon 2026-11-13
+// 5:04 AM; it used to be the first visit only). Skippable; ends by fading out and removing itself, revealing the
+// page underneath (already rendered, not reloaded). Its script is assets/intro.js, loaded synchronously right after
+// it so a browser that turned it off drops it before the first paint. The first visit (per browser) shows the line
+// "Plays every visit. Turn off in Settings" (#lgintronote).
 //
-// always_play (Settings > Notifications, off by default) skips the
-// localStorage gate entirely, so a logged-in account that's opted in sees
-// it on every visit instead of just the first -- computed server-side from
-// that account's own prefs (see wrap()), so it's still just this one bool
-// baked into the page, not a second client-side code path to keep in sync.
-// Only reachable at all when show_intro is true (the Genesis page -- see
-// page_wrap), so this never fires on an internal page regardless.
-std::string intro_overlay_html(bool always_play) {
-    std::string gate = always_play ? "" :
-           "try{if(localStorage.getItem('liquidgov.intro.seen')){el.remove();return;}}"
-           "catch(e){el.remove();return;}";
-    return "<div id=\"lgintro\" style=\"position:fixed;inset:0;z-index:999;background:#14120f;"
+// account_mode: the signed-in landing; the server already checked the account's pref (wrap()/pages_routes) and only
+// renders this when it is on, so there is no local gate. Otherwise (logged out) intro.js reads this browser's pref
+// (localStorage 'liquidgov.' + kIntroPref, on unless set to '0'). Only reachable when show_intro is true (the
+// landing page -- see page_wrap), so this never fires on an internal page.
+std::string intro_overlay_html(bool account_mode) {
+    return std::string("<div id=\"lgintro\" data-mode=\"") + (account_mode ? "account" : "browser") +
+           "\" data-pref=\"" + kIntroPref + "\" style=\"position:fixed;inset:0;z-index:999;background:#14120f;"
            "display:flex;align-items:center;justify-content:center;overflow:hidden;cursor:pointer\">"
            "<video id=\"lgintrovid\" autoplay muted playsinline "
            "style=\"width:100%;height:100%;object-fit:cover\" src=\"/assets/intro.mp4?v=2\"></video>"
+           "<p id=\"lgintronote\" class=\"lg-intro-note\" hidden>Plays every visit. "
+           "<a href=\"/settings/intro\">Turn off in Settings</a></p>"
            "<button type=\"button\" id=\"lgintroskip\" style=\"position:absolute;right:1rem;bottom:1rem;"
            "z-index:1;min-height:44px;padding:.5rem 1rem;border:1px solid rgba(242,234,216,.35);"
            "border-radius:8px;background:rgba(20,18,15,.7);color:#f2ead8;font:600 .9rem system-ui,sans-serif;"
            "cursor:pointer\">Skip</button>"
            "</div>"
-           "<script>(function(){"
-           "var el=document.getElementById('lgintro');"
-           +gate+
-           "var vid=document.getElementById('lgintrovid');"
-           "var done=false;"
-           "function finish(){"
-           "if(done||!el)return;done=true;"
-           "try{localStorage.setItem('liquidgov.intro.seen','1');}catch(e){}"
-           "el.style.transition='opacity .7s ease';el.style.opacity='0';"
-           "setTimeout(function(){if(el&&el.parentNode)el.remove();},720);"
-           "}"
-           "vid.addEventListener('ended',finish);"
-           "vid.addEventListener('error',finish);"
-           "el.addEventListener('click',finish);"
-           "var skip=document.getElementById('lgintroskip');"
-           "if(skip)skip.addEventListener('click',function(e){e.stopPropagation();finish();});"
-           // iOS Low Power Mode (and some other autoplay-declining browsers) silently never
-           // starts an attribute-only `autoplay` video: no error event fires and the play
-           // promise this explicit call() gives us is the only signal. Without it, a blocked
-           // autoplay just sits on a black frame (el's own background-color) until the 12s
-           // fallback below finally removes it -- 12 seconds of a stuck black screen is what
-           // "not working" looks like from the outside, found live on iPhone Safari 2026-09-21.
-           // A rejected promise is the fast path; the 1.5s watchdog below also catches the
-           // rarer case actually observed live: the promise resolves and currentTime even
-           // advances a little (0.445s in that trace), then playback silently freezes with
-           // no error and no further events -- checking `paused` alone (not also requiring
-           // currentTime===0) is what catches that case, and 1.5s is ample time for any
-           // browser that is really going to play this to have left the paused state by then.
-           "var playPromise=vid.play();"
-           "if(playPromise&&playPromise.catch)playPromise.catch(finish);"
-           "setTimeout(function(){if(vid.paused)finish();},1500);"
-           "setTimeout(finish,12000);"
-           "})();</script>";
+           "<script src=\"" + asset_url("intro.js") + "\"></script>";
+}
+
+std::string intro_setting_card(const std::string& user, bool on) {
+    const std::string pref = kIntroPref;
+    std::string html = "<div class=\"card\"><h2 id=\"intro\">Intro video</h2>";
+    if (!user.empty()) {
+        html += "<form method=\"POST\" action=\"/settings/intro\">"
+                "<p><label><input type=\"checkbox\" name=\"" + pref + "\" value=\"1\"" + (on ? " checked" : "") +
+                "> Play intro video on each visit</label></p>"
+                "<p class=\"muted\">Saved to your account: the intro on liquidgov.us plays (or not) on every browser you sign in on.</p>"
+                "<button>Save intro setting</button></form></div>";
+        return html;
+    }
+    return html + "<p><label><input type=\"checkbox\" data-lg-intro-toggle data-pref=\"" + pref + "\" checked"
+                  "> Play intro video on each visit</label></p>"
+                  "<p class=\"muted\" id=\"lgintrosaved\" aria-live=\"polite\">Kept on this browser. Signed in, it is saved to your account.</p>"
+                  "<script src=\"" + asset_url("intro.js") + "\"></script></div>";
 }
 
 // The iOS 'Get the app' bar that used to be built here (ios_install_hint) was removed 2026-11-07: assets/setup.js

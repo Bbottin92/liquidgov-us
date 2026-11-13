@@ -37,6 +37,7 @@ start
 
 # Holds N idle sockets open, fetches the stylesheet, prints "<code> <seconds>", then lets the sockets go.
 # A slow CI runner gets 5 s where the old server took 30 s; the bar is "never waits for the idle socket's timeout".
+# curl gives up at 8 s so the must-fail run on an old build takes under a minute, not 40 s per probe.
 probe() {
     python3 - "$1" "$URL" <<'EOF'
 import socket, subprocess, sys, time
@@ -45,7 +46,7 @@ host, port = url.split("//")[1].split(":")
 socks = [socket.create_connection((host, int(port))) for _ in range(n)]
 time.sleep(0.3)
 t = time.time()
-r = subprocess.run(["curl", "-s", "-o", "/dev/null", "--max-time", "40", "-w", "%{http_code}", url + "/assets/site.css"],
+r = subprocess.run(["curl", "-s", "-o", "/dev/null", "--max-time", "8", "-w", "%{http_code}", url + "/assets/site.css"],
                    capture_output=True, text=True)
 print(r.stdout.strip() or "000", "%.3f" % (time.time() - t))
 for s in socks: s.close()

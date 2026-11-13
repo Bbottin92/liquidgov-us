@@ -132,17 +132,32 @@ try:
     check("precondition: history commits 6ab8234, dacf8c3, a8080ee are in this clone", have)
     undo = open(os.path.join(ROOT, "deploy", "city-undo.py"), encoding="utf-8").read()
     city = set(re.findall(r'"([a-z]+)"', re.search(r"^CITY_TAGS\s*=\s*\(([^)]*)\)", undo, re.M).group(1)))
+    # 2026-11-12 (edited with Brandon's OK: "make the undo checks generic"): HEAD may also write the types of features
+    # added after a8080ee, which every older live commit refuses; each has its own deploy/<feature>-undo.py with a
+    # <NAME>_TAGS tuple. Read from there, so a new feature needs no edit here.
+    other = set()
+    for fn in sorted(os.listdir(os.path.join(ROOT, "deploy"))):
+        if fn.endswith("-undo.py") and fn != "city-undo.py":
+            src = open(os.path.join(ROOT, "deploy", fn), encoding="utf-8").read()
+            um = re.search(r"^[A-Z]+_TAGS\s*=\s*\(([^)]*)\)", src, re.M)
+            other |= set(re.findall(r'"([a-z]+)"', um.group(1))) if um else set()
 
     def refused_types(out):
         return set(re.findall(r"^  ([a-z]+): ", out, re.M))
 
     rc, out = guard("6ab8234", ROOT)
-    check("live 6ab8234 (pre-city) refuses exactly city-undo.py's CITY_TAGS (%d)" % len(city),
-          rc == 1 and refused_types(out) == city and len(city) >= 10, (rc, sorted(refused_types(out) ^ city), out[-300:]))
+    check("live 6ab8234 (pre-city) refuses exactly CITY_TAGS + the later undo scripts' tags (%d)" % len(city | other),
+          rc == 1 and refused_types(out) == city | other and len(city) >= 10,
+          (rc, sorted(refused_types(out) ^ (city | other)), out[-300:]))
     rc, out = guard("dacf8c3", ROOT)
-    check("live dacf8c3 (pre-Flow) refuses exactly pain and mapp", rc == 1 and refused_types(out) == {"pain", "mapp"}, (rc, out))
+    check("live dacf8c3 (pre-Flow) refuses exactly pain and mapp + the later undo scripts' tags",
+          rc == 1 and refused_types(out) == {"pain", "mapp"} | other, (rc, out))
     rc, out = guard("a8080ee", ROOT)
-    check("live a8080ee (Flow, forward-compatible loaders) -> OK", rc == 0 and "ROLLBACK_GUARD_OK" in out, (rc, out))
+    if other:
+        check("live a8080ee (Flow, forward-compatible loaders) refuses exactly the later undo scripts' tags (%s)" % " ".join(sorted(other)),
+              rc == 1 and refused_types(out) == other, (rc, out))
+    else:
+        check("live a8080ee (Flow, forward-compatible loaders) -> OK", rc == 0 and "ROLLBACK_GUARD_OK" in out, (rc, out))
 
     # ---- 3. sync-to-droplet.sh end to end
     srepo = os.path.join(tmp, "sync")

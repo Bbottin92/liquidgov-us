@@ -18,6 +18,7 @@
 #include "site/features/notices/notices_routes.hpp"
 #include "site/features/settings/settings_routes.hpp"
 #include "site/features/admin/admin_routes.hpp"
+#include "site/features/here/here_routes.hpp"
 #include "site/core/state.hpp"
 #include "site/core/adapters_store.hpp"
 #include "site/ui/favicon_cookies.hpp"
@@ -91,6 +92,7 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
     if (auto out = feed_routes(route)) return *out;
     if (auto out = proposals_routes(route)) return *out;
     if (auto out = profile_routes(route)) return *out;
+    if (auto out = here_routes(route)) return *out;
     if (auto out = people_routes(route)) return *out;
     if (auto out = communities_routes(route)) return *out;
     if (auto out = map_routes(route)) return *out;

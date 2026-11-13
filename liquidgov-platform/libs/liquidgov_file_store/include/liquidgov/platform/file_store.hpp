@@ -148,6 +148,11 @@
 //          Absence means never opened. Used only for unread dots, not access control.
 //   ac     <account_id> <css>   // author CSS for /u/<username>/theme, already sanitized
 //          (see sanitize_author_css in http_server.cpp) before it ever reaches here
+//   here   <username> <0|1> [...]   // whether this person shows as a dot on profile pages they
+//          visit (Brandon 2026-11-12). A required choice at signup, nothing pre-selected; absence =
+//          not chosen yet = hidden (asked once on a profile page). Positions are never stored
+//          (memory only). Dropped on load when the person is gone; extra trailing fields accepted.
+//          (Rollback: an older binary refuses it; strip it first with deploy/here-undo.py.)
 //   cvf    <account_id> <frame_index> <blob_id>   // one canvas snapshot, in draw order;
 //          bytes live in the blob dir, same as avatars. A fresh drawing clears all of an
 //          account's cvf lines first (see clear_canvas_frames), so index is always 0..N-1
@@ -760,6 +765,10 @@ public:
     void set_author_css(AccountId id, const std::string& css);
     std::string author_css(AccountId id) const;
 
+    // Dots on profile pages ("here"): nullopt = not chosen yet (hidden). Ignored for an unknown username.
+    std::optional<bool> here_choice(const std::string& username) const;
+    void set_here_choice(const std::string& username, bool on);
+
     // Canvas: an ordered sequence of blob-stored PNG snapshots captured
     // while the account was drawing, used to set the profile theme's
     // background (see theme_background_css in http_server.cpp) — either
@@ -1181,6 +1190,7 @@ private:
     std::map<AccountId, std::string> blurbs_;
     std::map<std::string, Profile> profiles_;
     std::map<AccountId, std::string> author_css_;
+    std::map<std::string, bool> here_choice_;   // here: username -> shows as a dot
     std::map<AccountId, std::vector<std::string>> canvas_frames_;
     std::map<AccountId, bool> canvas_timelapse_;
     std::map<AccountId, std::string> phone_fp_;

@@ -8,6 +8,7 @@
 #include "site/features/jukebox/jukebox_widget.hpp"
 #include "site/features/profile/portrait.hpp"
 #include "site/features/profile/profile_css.hpp"
+#include "site/features/here/here.hpp"
 #include "site/ui/wrap.hpp"
 
 namespace liquidgov::site {
@@ -176,6 +177,9 @@ std::optional<std::string> profile_routes(Route& r) {
         std::string html = !is_owner ? "" :
             "<p class=\"row\" style=\"justify-content:center;margin:0 0 1rem\">"
             "<a class=\"btn\" href=\"/me\">Edit profile</a></p>";
+        // Dots on profile pages: the one-time choice card, or the dots script for someone who chose Yes. Outside the
+        // styled area, so no profile CSS can hide or restyle the card or the dots.
+        html += here_page_bits(acc ? user : "", "/u/" + found->username);
         // Profile CSS styles this whole page below the site header (Brandon 2026-11-12). Stored CSS is checked again
         // with today's rules: CSS saved under the older, sandbox-era filter that fails them is not shown (its owner
         // is told on /me). The "plain view" link sits OUTSIDE the styled area, so no style can hide or fake it, and

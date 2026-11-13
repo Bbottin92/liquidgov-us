@@ -2,6 +2,7 @@
 #include "site/core/adapters_store.hpp"
 #include "site/core/html.hpp"
 #include "site/ui/wrap.hpp"
+#include "site/features/here/here.hpp"
 
 namespace liquidgov::site {
 
@@ -77,6 +78,7 @@ std::string signup_page(const std::string& navuser, int unread, const std::strin
         "placeholder=\"you@example.com\" value=\""+html_escape(d.email)+"\">"
         "<label>Phone</label><input name=\"phone\" type=\"tel\" required autocomplete=\"tel\" inputmode=\"tel\" "
         "placeholder=\"10+ digits\" value=\""+html_escape(d.phone)+"\">"
+        + here_signup_fields() +
         "<p class=\"eyebrow\" style=\"margin-top:1.2rem\">Optional</p>"
         "<label>Hometown</label><input name=\"hometown\" maxlength=\"80\" value=\""+html_escape(d.hometown)+"\">"
         "<label>Where you live now</label><input name=\"living\" maxlength=\"80\" value=\""+html_escape(d.living)+"\">"

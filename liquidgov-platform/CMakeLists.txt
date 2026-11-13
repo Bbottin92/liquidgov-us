@@ -36,6 +36,10 @@ target_link_libraries(liquidgov_platform_file_store_test PRIVATE liquidgov_auth 
 add_executable(liquidgov_platform_city_store_test tests/city_store_test.cpp)
 target_link_libraries(liquidgov_platform_city_store_test PRIVATE liquidgov_auth liquidgov_file_store)
 
+# Dots on profile pages: the stored choice (here, 2026-11-12): a new file, committed tests stay frozen.
+add_executable(liquidgov_platform_here_store_test tests/here_store_test.cpp)
+target_link_libraries(liquidgov_platform_here_store_test PRIVATE liquidgov_auth liquidgov_file_store)
+
 add_executable(liquidgov_platform_blob_test tests/blob_test.cpp)
 target_link_libraries(liquidgov_platform_blob_test PRIVATE liquidgov_blob liquidgov_image)
 

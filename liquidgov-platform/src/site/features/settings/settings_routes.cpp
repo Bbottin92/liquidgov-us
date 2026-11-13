@@ -3,6 +3,7 @@
 #include "site/core/html.hpp"
 #include "site/core/http.hpp"
 #include "site/features/feed/composer.hpp"
+#include "site/features/here/here.hpp"
 #include "site/ui/favicon_cookies.hpp"
 
 namespace liquidgov::site {
@@ -29,7 +30,7 @@ std::optional<std::string> settings_routes(Route& r) {
         std::string html = "<h1>Settings</h1>"
             "<p class=\"muted\">Account, privacy, data, and notifications.</p>"
             // jump links (sweep 2026-11-09): nine sections were one long scroll on a phone
-            "<div class=\"setidx\" role=\"navigation\" aria-label=\"Settings sections\"><a href=\"#security\">Security</a><a href=\"#sessions\">Sessions</a><a href=\"#map\">Map and connections</a><a href=\"#privacy\">Privacy</a><a href=\"#blocks\">Block list</a><a href=\"#jukebox\">Jukebox</a><a href=\"#identity\">Identity</a><a href=\"#data\">Data</a><a href=\"#notifications\">Notifications</a></div>";  // a div: the phone CSS hides every <nav> (nav{display:none} is the mobile menu)
+            "<div class=\"setidx\" role=\"navigation\" aria-label=\"Settings sections\"><a href=\"#security\">Security</a><a href=\"#sessions\">Sessions</a><a href=\"#here\">Dots</a><a href=\"#map\">Map and connections</a><a href=\"#privacy\">Privacy</a><a href=\"#blocks\">Block list</a><a href=\"#jukebox\">Jukebox</a><a href=\"#identity\">Identity</a><a href=\"#data\">Data</a><a href=\"#notifications\">Notifications</a></div>";  // a div: the phone CSS hides every <nav> (nav{display:none} is the mobile menu)
         if (qs["ok"]=="password") html += "<p class=\"ok\">Password changed.</p>";
         html += flash_error(qs);
 
@@ -60,6 +61,7 @@ std::optional<std::string> settings_routes(Route& r) {
         html += "<form method=\"POST\" action=\"/settings/logout-all\" style=\"margin-top:1rem\">"
                 "<button class=\"danger\" type=\"submit\">Log out other devices</button></form></div>";
 
+        html += here_settings_card(user);
         {
             // Map and connections (slice 6): what /map may show about you.
             const auto mp = g_store.map_prefs_of(user);
@@ -194,6 +196,10 @@ std::optional<std::string> settings_routes(Route& r) {
         o << "created_at: " << fmt_time(acc->created_at) << "\n";
         o << "blurb: " << g_store.blurb(acc->id) << "\n";
         o << "profile css:\n" << g_store.author_css(acc->id) << "\n\n";
+        {
+            auto hc = g_store.here_choice(user);
+            o << "dots on profile pages: " << (!hc ? "not chosen (hidden)" : *hc ? "yes" : "no") << "\n\n";
+        }
         o << "friends:\n";
         for (auto& n : g_store.friends_of(user)) o << "  " << n << "\n";
         o << "\ncommunities:\n";

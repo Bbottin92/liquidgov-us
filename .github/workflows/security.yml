@@ -7,10 +7,18 @@ name: security
 # Making it gating = remove continue-on-error AND wire it into ci-gate.sh, both on his word.
 # Tool versions are pinned here (gitleaks by version + sha256; ZAP by image tag; cppcheck = Ubuntu 24.04's package).
 
+# Actions minutes (Brandon #56439: wip pushes for CI only at zero cost): 1,178 job-minutes used 2026-11-01..13 before
+# this file, mostly platform.yml. So this gate does NOT run on every push: weekly, by hand (gh workflow run security.yml
+# --ref <branch>, e.g. before a module swap ships), and on a wip push only when the gate's own files change.
 on:
+  schedule:
+    - cron: "17 11 * * 1"   # Mondays 03:17 PT, master
+  workflow_dispatch:
   push:
-    branches: [master, "wip/**"]
-  pull_request:
+    branches: ["wip/**"]
+    paths:
+      - scripts/security_gate.sh
+      - .github/workflows/security.yml
 
 permissions:
   contents: read

@@ -19,6 +19,7 @@ on:
     paths:
       - scripts/security_gate.sh
       - .github/workflows/security.yml
+      - .gitleaksignore
 
 permissions:
   contents: read

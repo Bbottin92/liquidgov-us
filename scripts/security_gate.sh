@@ -49,7 +49,10 @@ step_secrets() {
     local n
     n=$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))))' "$d/gitleaks.json" 2>/dev/null) \
         || { result secrets FAIL "(gitleaks exit $rc and no readable report)"; return; }
-    if [ "$rc" = 0 ] && [ "$n" = 0 ]; then result secrets PASS "(commits scanned: $commits, findings: 0)"
+    # gitleaks reads <repo>/.gitleaksignore by itself: the triaged false positives, one fingerprint per line
+    local ignored=0
+    [ -f "$ROOT/.gitleaksignore" ] && ignored=$(grep -cvE '^\s*(#|$)' "$ROOT/.gitleaksignore")
+    if [ "$rc" = 0 ] && [ "$n" = 0 ]; then result secrets PASS "(commits scanned: $commits, new findings: 0, triaged and ignored: $ignored)"
     else
         python3 - "$d/gitleaks.json" <<'EOF'
 import json, sys

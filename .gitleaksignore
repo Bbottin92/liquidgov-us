@@ -1,0 +1,21 @@
+# gitleaks false positives, each read and triaged 2026-11-13 (security gate run 43503116478; Brandon "yes" to this list).
+# One line = one finding (commit:file:rule:line). Anything NOT listed here fails scripts/security_gate.sh secrets.
+# Add a line only after reading the flagged line and saying why in the comment above it.
+
+# Sec-WebSocket-Key request header in a test (a fixed RFC 6455 example value, not a secret)
+4b4860ec6e818ed220347991c0ba932b98c7a921:liquidgov-platform/tests/e2e/trim_dead_routes.sh:generic-api-key:46
+# Comments that mention "keys" (city keys, record keys), no value
+641ee0d710623847a1cb1d1dca51b6f7640201be:liquidgov-platform/libs/liquidgov_file_store/src/records/city.cpp:generic-api-key:1
+742ecd26f3160cf374d1bc7816bc36bd13c6e769:liquidgov-platform/libs/liquidgov_file_store/src/records/city.cpp:generic-api-key:1
+dacf8c30fd1d847590df87a8f76d371a98ade6d9:liquidgov-platform/libs/liquidgov_file_store/include/liquidgov/platform/file_store.hpp:generic-api-key:1150
+# NetMint test notes and fixture (made-up id/secret for the unit test)
+96bf423a4b133590ab86a006bc76f21b9e9195fb:Persistence/TheCommons/netmint-built.md:generic-api-key:45
+96bf423a4b133590ab86a006bc76f21b9e9195fb:commons-daemon/tests/netmint_unit.js:generic-api-key:19
+# YouTube's public web-client key, shipped inside youtube.com's own pages (commented as such in both files); not ours
+1fd493a639f56f15f8def8aacbe435f4afdcb445:scripts/yt_search.py:gcp-api-key:11
+1fd493a639f56f15f8def8aacbe435f4afdcb445:deploy/lg-invidious-search.py:gcp-api-key:20
+# Vendored SQLite amalgamation source
+ba296e8e075e1c43523f0f894a425c3aeb6eaacf:commons-daemon/third_party/sqlite3/sqlite3.c:generic-api-key:142889
+ba296e8e075e1c43523f0f894a425c3aeb6eaacf:commons-daemon/third_party/sqlite3/sqlite3.c:generic-api-key:143045
+ba296e8e075e1c43523f0f894a425c3aeb6eaacf:commons-daemon/third_party/sqlite3/sqlite3.c:generic-api-key:143137
+ba296e8e075e1c43523f0f894a425c3aeb6eaacf:commons-daemon/third_party/sqlite3/sqlite3.c:generic-api-key:259630

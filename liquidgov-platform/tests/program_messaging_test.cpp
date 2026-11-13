@@ -168,7 +168,11 @@ int main() {
     // send a program that a zip / RAR reader or Windows still opens.
     {
         // a zip with an (empty) [Content_Types].xml and an .exe passed as a Word file
-        const auto fake_doc = build_zip({{"[Content_Types].xml", ""}, {"payload.exe", std::string(pe_file().begin(), pe_file().end())}});
+        // One pe_file() call, bound: begin() and end() of two separate temporaries were iterators into two different
+        // vectors (undefined behaviour; it only passed because Debug reused the address). Found by the ASan build:
+        // std::length_error from basic_string::_M_create (2026-11-13).
+        const auto pe = pe_file();
+        const auto fake_doc = build_zip({{"[Content_Types].xml", ""}, {"payload.exe", std::string(pe.begin(), pe.end())}});
         assert(ingest_file(blobs, clean, caps, fake_doc).error == FileTransferError::ActiveContentBlocked);
         const auto doc_with_script = build_zip({{"[Content_Types].xml", "<Types/>"}, {"word/document.xml", "<w/>"},
                                                {"word/media/run.js", "WScript.Echo(1)"}});

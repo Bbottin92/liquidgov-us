@@ -20,6 +20,156 @@ using namespace liquidgov::site;
 #define LG_BUILD_TREE "unknown"
 #endif
 
+// One connection, on its own thread (2026-11-13). Before this the accept loop read each request on its single
+// thread with a 30 s receive timeout, so ONE socket that sent nothing (a browser's preconnect, a keep-alive socket it
+// never reused, a slow client) held every other request behind it for up to 30 s: measured, /assets/site.css went
+// from 0.3 ms to 30.7 s with one idle connection open ahead of it (the "stylesheet stalls" in the preview). Now the
+// waiting is this thread's alone. handle() itself still runs one request at a time (g_site_mu below), so nothing in
+// the site's logic learns about threads; the WebSocket routes already handed their sockets to threads of their own.
+static std::mutex g_site_mu;
+static std::atomic<int> g_connections{0};
+// Threads that may be reading or writing sockets at once. Over it, a connection is answered 503 at once rather than
+// queued behind the stuck ones: a stall is what this change removes, and nginx (or the browser) retries.
+constexpr int kMaxConnections = 64;
+static void serve_connection(int c, sockaddr_in peer) {
+    struct Done { ~Done() { --g_connections; } } done;
+    timeval tv{}; tv.tv_sec=30; tv.tv_usec=0;
+    setsockopt(c,SOL_SOCKET,SO_RCVTIMEO,&tv,sizeof(tv));
+    setsockopt(c,SOL_SOCKET,SO_SNDTIMEO,&tv,sizeof(tv)); // a peer that stops reading cannot pin this thread either
+        char ipbuf[INET_ADDRSTRLEN]="0.0.0.0"; inet_ntop(AF_INET,&peer.sin_addr,ipbuf,sizeof(ipbuf));
+        std::string req, body;
+        bool too_large = false;
+        std::size_t declared = 0;
+        read_http_request(c, req, body, request_body_limit, &too_large, &declared);
+        if (too_large) {
+            // Answer instead of handling a cut-off upload, then read and drop what the client is still sending:
+            // closing with unread bytes resets the connection, which nginx reports as a 502, not this page
+            // (review 2026-10-27). Bounded: the declared length, 2 s per read, 15 s in all.
+            std::string resp = http_code("413 Payload Too Large",
+                page_wrap("Too large", nav("",0), "<div class=\"card\"><p>That upload is too large to send. "
+                          "<a href=\"/mail\">Back to mail</a></p></div>"));
+            send(c,resp.data(),resp.size(),0);
+            shutdown(c, SHUT_WR);
+            timeval drain_tv{}; drain_tv.tv_sec = 2;
+            setsockopt(c,SOL_SOCKET,SO_RCVTIMEO,&drain_tv,sizeof(drain_tv));
+            const auto drain_until = std::chrono::steady_clock::now() + std::chrono::seconds(15);
+            char sink[65536];
+            std::size_t drained = 0;
+            while ((declared == 0 || drained < declared) && std::chrono::steady_clock::now() < drain_until) {
+                ssize_t n = recv(c, sink, sizeof(sink), 0);
+                if (n <= 0) break;
+                drained += static_cast<std::size_t>(n);
+            }
+            close(c);
+            return;
+        }
+
+        // The WebSocket routes (/here/ws, /community/ws, a group's jukebox) don't get the ordinary
+        // request/response treatment: a successful upgrade hands the fd to
+        // its own thread and keeps it open, instead of sending one response
+        // and closing. Every other route is untouched — still handled
+        // synchronously on this single accept-loop thread, exactly as
+        // before this feature existed.
+        {
+            auto line_end = req.find("\r\n");
+            std::string method, rawpath;
+            if (line_end != std::string::npos) {
+                std::istringstream is(req.substr(0, line_end));
+                is >> method >> rawpath;
+            }
+            // Dots on profile pages (/here/ws?page=...): the feature's own module checks and runs it.
+            if (here_ws_upgrade(c, req, method, rawpath, ipbuf)) return;
+            if (method == "GET" && rawpath == "/community/ws" &&
+                header_value(req, "Upgrade").find("websocket") != std::string::npos) {
+                std::string username;
+                {
+                    std::lock_guard<std::mutex> lock(g_mu);
+                    auto acc = account_from_req(req);
+                    if (acc) username = acc->username;
+                }
+                auto key = header_value(req, "Sec-WebSocket-Key");
+                if (!username.empty() && !key.empty()) {
+                    auto slot = ws_take_slot(ws_client_ip(req, ipbuf));
+                    if (!slot) { ws_refuse(c, "/community/ws"); return; }
+                    std::string accept_val = websocket_accept_value(key);
+                    std::ostringstream resp101;
+                    resp101 << "HTTP/1.1 101 Switching Protocols\r\n"
+                               "Upgrade: websocket\r\nConnection: Upgrade\r\n"
+                               "Sec-WebSocket-Accept: " << accept_val << "\r\n\r\n";
+                    std::string r = resp101.str();
+                    if (send(c, r.data(), r.size(), 0) > 0) {
+                        std::thread([c, username, st = std::string(""), slot = std::move(slot)] { run_community_session(c, username, st); }).detach();
+                        return;
+                    }
+                }
+                close(c);
+                return;
+            }
+            // A group's own live jukebox -- same real-time station as
+            // /community/ws above, just keyed by this community's slug
+            // instead of the "" site-wide one, and gated to members (the
+            // site-wide station stays open to anyone logged in; a group's
+            // own station is for the group).
+            if (method == "GET" && rawpath.rfind("/c/",0)==0 && rawpath.size()>11 &&
+                rawpath.compare(rawpath.size()-11,11,"/jukebox/ws")==0 &&
+                header_value(req, "Upgrade").find("websocket") != std::string::npos) {
+                const std::string slug = rawpath.substr(3, rawpath.size()-3-11);
+                std::string username;
+                bool member = false;
+                {
+                    std::lock_guard<std::mutex> lock(g_mu);
+                    auto acc = account_from_req(req);
+                    if (acc) {
+                        username = acc->username;
+                        member = valid_username(slug) && g_store.is_member(slug, username);
+                    }
+                }
+                auto key = header_value(req, "Sec-WebSocket-Key");
+                if (!username.empty() && member && !key.empty()) {
+                    auto slot = ws_take_slot(ws_client_ip(req, ipbuf));
+                    if (!slot) { ws_refuse(c, "jukebox/ws"); return; }
+                    std::string accept_val = websocket_accept_value(key);
+                    std::ostringstream resp101;
+                    resp101 << "HTTP/1.1 101 Switching Protocols\r\n"
+                               "Upgrade: websocket\r\nConnection: Upgrade\r\n"
+                               "Sec-WebSocket-Accept: " << accept_val << "\r\n\r\n";
+                    std::string r = resp101.str();
+                    if (send(c, r.data(), r.size(), 0) > 0) {
+                        std::thread([c, username, st = slug, slot = std::move(slot)] { run_community_session(c, username, st); }).detach();
+                        return;
+                    }
+                }
+                close(c);
+                return;
+            }
+        }
+
+        std::string resp;
+        try {
+            // handle() is the whole site's single-threaded synchronous entry point and stays so: one request at a
+            // time, under this lock (its thread_locals, g_mu, the store). Only the socket I/O around it runs on
+            // this connection's own thread.
+            std::lock_guard<std::mutex> site(g_site_mu);
+            resp = handle(req, ipbuf, std::move(body));
+            lglog::access(req, resp);
+        } catch (const std::exception& e) {
+            lglog::emit("error", e.what());
+            std::cerr<<"handle error: "<<e.what()<<"\n";
+            resp = http_code("500 Internal Server Error",
+                page_wrap("Error", nav("",0), "<div class=\"card\"><p>Could not save. Try again.</p></div>"));
+        }
+        {
+            auto le = req.find("\r\n");
+            std::string meth;
+            if (le != std::string::npos) { std::istringstream is(req.substr(0, le)); is >> meth; }
+            if (meth == "HEAD") {
+                auto pos = resp.find("\r\n\r\n");
+                if (pos != std::string::npos) resp.resize(pos + 4);
+            }
+        }
+        send(c,resp.data(),resp.size(),0); close(c);
+}
+
 int main(int argc, char** argv) {
     // --version: which commit and liquidgov-platform tree this program was built from (set by CMake's LG_BUILD_COMMIT /
     // LG_BUILD_TREE; "unknown" for a local build). A prebuilt deploy checks it before installing (deploy/PLAN-prebuilt.md).
@@ -72,135 +222,17 @@ int main(int argc, char** argv) {
     for(;;){
         sockaddr_in peer{}; socklen_t plen=sizeof(peer);
         int c=accept(fd,reinterpret_cast<sockaddr*>(&peer),&plen); if(c<0) continue;
-        timeval tv{}; tv.tv_sec=30; tv.tv_usec=0;
-        setsockopt(c,SOL_SOCKET,SO_RCVTIMEO,&tv,sizeof(tv));
-        char ipbuf[INET_ADDRSTRLEN]="0.0.0.0"; inet_ntop(AF_INET,&peer.sin_addr,ipbuf,sizeof(ipbuf));
-        std::string req, body;
-        bool too_large = false;
-        std::size_t declared = 0;
-        read_http_request(c, req, body, request_body_limit, &too_large, &declared);
-        if (too_large) {
-            // Answer instead of handling a cut-off upload, then read and drop what the client is still sending:
-            // closing with unread bytes resets the connection, which nginx reports as a 502, not this page
-            // (review 2026-10-27). Bounded: the declared length, 2 s per read, 15 s in all.
-            std::string resp = http_code("413 Payload Too Large",
-                page_wrap("Too large", nav("",0), "<div class=\"card\"><p>That upload is too large to send. "
-                          "<a href=\"/mail\">Back to mail</a></p></div>"));
-            send(c,resp.data(),resp.size(),0);
-            shutdown(c, SHUT_WR);
-            timeval drain_tv{}; drain_tv.tv_sec = 2;
-            setsockopt(c,SOL_SOCKET,SO_RCVTIMEO,&drain_tv,sizeof(drain_tv));
-            const auto drain_until = std::chrono::steady_clock::now() + std::chrono::seconds(15);
-            char sink[65536];
-            std::size_t drained = 0;
-            while ((declared == 0 || drained < declared) && std::chrono::steady_clock::now() < drain_until) {
-                ssize_t n = recv(c, sink, sizeof(sink), 0);
-                if (n <= 0) break;
-                drained += static_cast<std::size_t>(n);
-            }
-            close(c);
+        if (g_connections.load() >= kMaxConnections) {
+            static const std::string busy = http_code("503 Service Unavailable",
+                page_wrap("Busy", nav("",0), "<div class=\"card\"><p>The site is busy. Try again in a moment.</p></div>"));
+            send(c,busy.data(),busy.size(),0); close(c);
             continue;
         }
-
-        // The WebSocket routes (/here/ws, /community/ws, a group's jukebox) don't get the ordinary
-        // request/response treatment: a successful upgrade hands the fd to
-        // its own thread and keeps it open, instead of sending one response
-        // and closing. Every other route is untouched — still handled
-        // synchronously on this single accept-loop thread, exactly as
-        // before this feature existed.
-        {
-            auto line_end = req.find("\r\n");
-            std::string method, rawpath;
-            if (line_end != std::string::npos) {
-                std::istringstream is(req.substr(0, line_end));
-                is >> method >> rawpath;
-            }
-            // Dots on profile pages (/here/ws?page=...): the feature's own module checks and runs it.
-            if (here_ws_upgrade(c, req, method, rawpath, ipbuf)) continue;
-            if (method == "GET" && rawpath == "/community/ws" &&
-                header_value(req, "Upgrade").find("websocket") != std::string::npos) {
-                std::string username;
-                {
-                    std::lock_guard<std::mutex> lock(g_mu);
-                    auto acc = account_from_req(req);
-                    if (acc) username = acc->username;
-                }
-                auto key = header_value(req, "Sec-WebSocket-Key");
-                if (!username.empty() && !key.empty()) {
-                    auto slot = ws_take_slot(ws_client_ip(req, ipbuf));
-                    if (!slot) { ws_refuse(c, "/community/ws"); continue; }
-                    std::string accept_val = websocket_accept_value(key);
-                    std::ostringstream resp101;
-                    resp101 << "HTTP/1.1 101 Switching Protocols\r\n"
-                               "Upgrade: websocket\r\nConnection: Upgrade\r\n"
-                               "Sec-WebSocket-Accept: " << accept_val << "\r\n\r\n";
-                    std::string r = resp101.str();
-                    if (send(c, r.data(), r.size(), 0) > 0) {
-                        std::thread([c, username, st = std::string(""), slot = std::move(slot)] { run_community_session(c, username, st); }).detach();
-                        continue;
-                    }
-                }
-                close(c);
-                continue;
-            }
-            // A group's own live jukebox -- same real-time station as
-            // /community/ws above, just keyed by this community's slug
-            // instead of the "" site-wide one, and gated to members (the
-            // site-wide station stays open to anyone logged in; a group's
-            // own station is for the group).
-            if (method == "GET" && rawpath.rfind("/c/",0)==0 && rawpath.size()>11 &&
-                rawpath.compare(rawpath.size()-11,11,"/jukebox/ws")==0 &&
-                header_value(req, "Upgrade").find("websocket") != std::string::npos) {
-                const std::string slug = rawpath.substr(3, rawpath.size()-3-11);
-                std::string username;
-                bool member = false;
-                {
-                    std::lock_guard<std::mutex> lock(g_mu);
-                    auto acc = account_from_req(req);
-                    if (acc) {
-                        username = acc->username;
-                        member = valid_username(slug) && g_store.is_member(slug, username);
-                    }
-                }
-                auto key = header_value(req, "Sec-WebSocket-Key");
-                if (!username.empty() && member && !key.empty()) {
-                    auto slot = ws_take_slot(ws_client_ip(req, ipbuf));
-                    if (!slot) { ws_refuse(c, "jukebox/ws"); continue; }
-                    std::string accept_val = websocket_accept_value(key);
-                    std::ostringstream resp101;
-                    resp101 << "HTTP/1.1 101 Switching Protocols\r\n"
-                               "Upgrade: websocket\r\nConnection: Upgrade\r\n"
-                               "Sec-WebSocket-Accept: " << accept_val << "\r\n\r\n";
-                    std::string r = resp101.str();
-                    if (send(c, r.data(), r.size(), 0) > 0) {
-                        std::thread([c, username, st = slug, slot = std::move(slot)] { run_community_session(c, username, st); }).detach();
-                        continue;
-                    }
-                }
-                close(c);
-                continue;
-            }
-        }
-
-        std::string resp;
+        ++g_connections;
         try {
-            resp = handle(req, ipbuf, std::move(body));
-            lglog::access(req, resp);
-        } catch (const std::exception& e) {
-            lglog::emit("error", e.what());
-            std::cerr<<"handle error: "<<e.what()<<"\n";
-            resp = http_code("500 Internal Server Error",
-                page_wrap("Error", nav("",0), "<div class=\"card\"><p>Could not save. Try again.</p></div>"));
+            std::thread(serve_connection, c, peer).detach();
+        } catch (const std::system_error&) { // no thread to be had: serve it here, as before this change
+            serve_connection(c, peer);
         }
-        {
-            auto le = req.find("\r\n");
-            std::string meth;
-            if (le != std::string::npos) { std::istringstream is(req.substr(0, le)); is >> meth; }
-            if (meth == "HEAD") {
-                auto pos = resp.find("\r\n\r\n");
-                if (pos != std::string::npos) resp.resize(pos + 4);
-            }
-        }
-        send(c,resp.data(),resp.size(),0); close(c);
     }
 }

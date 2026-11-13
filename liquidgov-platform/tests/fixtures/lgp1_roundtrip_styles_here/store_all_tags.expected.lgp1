@@ -64,10 +64,10 @@ cm	local	alice
 blk	alice	carol	0	
 blk	bob	carol	1700005000	spam
 inner	alice	bob
-pref	alice	1	0	1	0	1	1	1	0	0	0	0
-pref	bob	2	1	0	1	0	0	1	1	2	1	0
+pref	alice	1	0	1	0	1	1	1	0	0	0	1
+pref	bob	2	1	0	1	0	0	1	1	2	1	1
 pref	carol	0	0	0	0	1	1	1	2	3	3	1
-pref	dave	0	0	0	0	1	1	1	0	3	2	0
+pref	dave	0	0	0	0	1	1	1	0	3	2	1
 prof	alice	fp1	Alice	Town	Living	Reading	Dev	School
 note	1	alice	friend	bob	1700006000	0	x
 av	1	blob-av	1700007000

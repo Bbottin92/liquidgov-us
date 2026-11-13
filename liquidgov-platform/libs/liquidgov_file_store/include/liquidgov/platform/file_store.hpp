@@ -117,7 +117,7 @@
 //          -- trailing three fields optional; an older 9-token line means all three
 //          are their defaults (0/Public). intro_every_visit is a further-trailing
 //          fourth optional field; a 12-token line (without it) means its own
-//          default (0). A since-superseded 14-token shape (this release's own
+//          default (1, on, since 2026-11-13; prefs.hpp). A since-superseded 14-token shape (this release's own
 //          earlier dev build: jukebox_policy plus four now-removed hide_profile/
 //          posts_from_friends/others bools) is still accepted and translated to
 //          the closest Visibility on load -- see the loader.

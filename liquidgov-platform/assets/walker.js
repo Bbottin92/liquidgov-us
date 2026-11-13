@@ -91,8 +91,8 @@
 
   // mount(page): puts the Drop button and the pad on the page (once) and wires keys, the touchpad and buttons to the
   // page's walker. page: {dir(dir, down) (keys), pull(x, y) (the touchpad's vector; 0, 0 = let go), select() -> true when it used something, back(), dropping(on), box: this page's map box id
-  // (optional; the portal takes you there), invite: true to pulse the switch until its first tap (the home page), dropSlot: an element in a row of the page's own controls (optional; the
-  // map's Zoom out): the switch then sits in that row just before it instead of in a strip at the top, and the
+  // (optional; the portal takes you there), invite: true to pulse the switch until its first tap (the home page), dropIn: a row of the page's own controls (optional; the
+  // map's nav row): the switch then sits at that row's end instead of in a strip at the top, and the
   // page keeps its height (no strip, no first-time note there)}. Returns {dropping(), start(), stop()}.
   function mount(page) {
     var T = CONTROLS.touchpad;
@@ -117,12 +117,12 @@
     var bar = pad.querySelector('.' + B.drop.bar), header = document.querySelector('header.top');
     var baseTop = parseFloat(getComputedStyle(document.body).paddingTop) || 0;
     var tip = null;   // the first-time note: in the strip, under the switch (the strip grows by it while it shows)
-    if (page.dropSlot) {
-      page.dropSlot.parentNode.insertBefore(dropBtn, page.dropSlot);
+    if (page.dropIn) {
+      page.dropIn.appendChild(dropBtn);
       bar.hidden = true;
     }
     function placeDrop() {
-      if (page.dropSlot) return;
+      if (page.dropIn) return;
       var h = Math.round(dropBtn.getBoundingClientRect().bottom + B.drop.gap);
       if (tip && tip.shown) {
         tip.el.style.top = h + 'px';
@@ -242,7 +242,7 @@
     // The first-time note, once tip.js is there (it loads with Juketube, after the page's own scripts)
     function addTip() {
       var P = B.drop.tip;
-      if (!window.LG_TIP || tip || page.dropSlot) return;
+      if (!window.LG_TIP || tip || page.dropIn) return;
       var el = document.createElement('div');
       el.className = 'lg-tip ' + P.cls;
       el.setAttribute('role', 'note');

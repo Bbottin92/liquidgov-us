@@ -32,11 +32,17 @@ keeps no copy of the bindings.
   T2  the note sits in the Drop strip under the switch and covers nothing (no link, button or field; not the switch)
   T3  its close button hides it and saves the seen-flag (LG_TIP.flag); the next page view shows no note
   T4  one tip at a time (LG_TIP): while one shows, another waits for a later page view without counting it
-  C2  on the map the switch sits in the map's own row (Back, the trail, Zoom out) just before Zoom out, so the map
-      keeps its place on the page (no strip at the top there)
-  C3  the map's nav row (Brandon 4:26 AM: the switch squeezed the trail's "You" to "ou"): the switch meets none of
-      Back, the trail, Zoom out, the trail shows its whole first step, and the row stays one line (the map keeps its
-      place); at 390x844 and 1280x800
+  C2  on the map the switch sits at the end of the map's own row (after the trail; no Back or Zoom out buttons, Brandon
+      5:01 AM), so the map keeps its place on the page (no strip at the top there)
+  C3  the map's nav row (Brandon 4:26 AM: the switch squeezed the trail's "You" to "ou"): no Back or Zoom out button,
+      the switch does not meet the trail, the trail shows its whole first step, and the row stays one line (the map
+      keeps its place); at 390x844 and 1280x800
+  Map zoom and back without buttons (Brandon 5:01 AM), in Scroll mode:
+  Z1  1280x800: the mouse wheel over the map zooms in toward the pointer (the box under it stays under it) and out
+      again, the page does not scroll, and the zoom stops at LG_MAP.ZOOM.max / never goes under ZOOM.min
+  Z2  390x844: a two-finger pinch spreads the map (scale grows with the fingers); one finger on the empty map still
+      pans without zooming
+  Z3  the trail marks the box you came from (lgm-trail-prev, "Back to ..."); clicking it goes back there
   A1  the switch's labels meet WCAG AA (4.5:1) against what is behind them, the chosen one and the other, on the
       profile-like page and inside the map's dark frame; the colors are the site's --lg-switch-* variables
   T5  a first-time tip's close button (x) does not cover its text: the walker's note, the home page's note and a
@@ -261,8 +267,9 @@ TIPCLEAR = r"""((sel) => { const t = document.querySelector(sel); if (!t || getC
 NAVROW = r"""(() => { const q = s => document.querySelector(s), box = e => { if (!e) return null; const r = e.getBoundingClientRect(); return {l: r.left, t: r.top, r: r.right, b: r.bottom}; };
   const meets = (a, b) => !!a && !!b && a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b;
   const d = box(q('.' + LG_WALKER.CONTROLS.buttons.drop.cls)), tr = q('#lgm-trail'), row = q('.lgm-navrow');
-  const others = {back: box(q('#lgm-back')), trail: box(tr), zoomout: box(q('#lgm-zoomout'))};
+  const others = {trail: box(tr)};
   return JSON.stringify({drop: d, others: others, hits: Object.keys(others).filter(k => meets(d, others[k])), row: box(row), sy: scrollY,
+    gone: !q('#lgm-back') && !q('#lgm-zoomout'),
     trailText: tr ? tr.textContent : null, trailFits: !!tr && tr.scrollWidth <= tr.clientWidth + 1}); })()"""
 COVER = r"""(() => { const C = LG_WALKER.CONTROLS, d = document.querySelector('.' + C.buttons.drop.cls);
   const box = e => { if (!e) return null; const r = e.getBoundingClientRect(); return r.width && r.height ? {l: r.left, t: r.top, r: r.right, b: r.bottom} : null; };
@@ -393,12 +400,12 @@ class Run(m.Run):
 
     def nav_row(self, tag, shot=None):
         n = self.j(NAVROW) or {}
-        # one line (the map below keeps its place): Back, the switch and Zoom out share a row
-        tops = [b["t"] for b in [n.get("drop"), (n.get("others") or {}).get("back"), (n.get("others") or {}).get("zoomout")] if b]
-        oneline = len(tops) == 3 and max(tops) - min(tops) <= 8
-        self.check("C3 %s: the switch has its own room in the nav row (meets none of Back, the trail, Zoom out) and the trail "
-                   "shows its whole first step, all on one line" % tag,
-                   bool(n.get("drop")) and all(n.get("others", {}).values()) and n.get("hits") == [] and n.get("trailFits") is True
+        # one line (the map below keeps its place): the trail and the switch share a row (their middles level)
+        d, t = n.get("drop"), (n.get("others") or {}).get("trail")
+        oneline = bool(d and t) and abs((d["t"] + d["b"]) / 2 - (t["t"] + t["b"]) / 2) <= 8
+        self.check("C3 %s: no Back / Zoom out buttons; the switch has its own room in the nav row (does not meet the trail) "
+                   "and the trail shows its whole first step, all on one line" % tag,
+                   n.get("gone") is True and bool(n.get("drop")) and all(n.get("others", {}).values()) and n.get("hits") == [] and n.get("trailFits") is True
                    and oneline, dict(n, oneLine=oneline))
         if shot and n.get("row"):
             r = n["row"]
@@ -763,11 +770,11 @@ class Run(m.Run):
         c = self.covers_nothing("map phone", need_main=True)
         self.nav_row("map phone", shot="map-navrow-phone")
         self.contrast("map phone")
-        row = self.j("(() => { const d = document.querySelector('.' + LG_WALKER.CONTROLS.buttons.drop.cls), z = document.getElementById('lgm-zoomout'),"
+        row = self.j("(() => { const d = document.querySelector('.' + LG_WALKER.CONTROLS.buttons.drop.cls), r = document.querySelector('.lgm-navrow'),"
                      " bar = document.querySelector('.' + LG_WALKER.CONTROLS.buttons.drop.bar);"
-                     " return JSON.stringify({inRow: !!d && !!z && d.parentNode === z.parentNode && d.nextElementSibling === z,"
+                     " return JSON.stringify({inRow: !!d && !!r && d.parentNode === r && r.lastElementChild === d,"
                      " strip: !!bar && !bar.hidden && bar.getBoundingClientRect().height > 0, padTop: document.body.style.paddingTop}); })()") or {}
-        self.check("C2 map phone: the switch sits in the map's own row before Zoom out; no strip, the page keeps its place",
+        self.check("C2 map phone: the switch sits at the end of the map's own row; no strip, the page keeps its place",
                    row.get("inRow") and not row.get("strip") and row.get("padTop") in ("", None), row)
         if c.get("main"):   # the map's top: the Drop strip, the header with the portal, MAINstream
             self.shot("map-top-phone", {"x": 0, "y": 0, "width": 390, "height": min(844, c["main"]["b"] + 24)})
@@ -985,6 +992,105 @@ def _home(self):
 Run.home = _home
 
 
+MAPZ = r"""(() => { const svg = document.getElementById('lgm-svg'), b = svg.getBoundingClientRect(), you = document.querySelector('#lgm-nodes .lgn-you, #lgm-nodes [data-id="you"]') || document.querySelector('#lgm-nodes .lgn');
+  const r = you.getBoundingClientRect();
+  return JSON.stringify({scale: LG_MAP.scale(), Z: LG_MAP.ZOOM, sy: scrollY, frame: {l: b.left, t: b.top, r: b.right, b: b.bottom},
+    you: {x: (r.left + r.right) / 2, y: (r.top + r.bottom) / 2}, dropping: document.getElementById('lgmap').classList.contains('lgm-dropping'),
+    trail: [...document.querySelectorAll('#lgm-trail .lgm-trail-step')].map(e => e.textContent),
+    prev: (() => { const p = document.querySelector('#lgm-trail .lgm-trail-prev'); return p ? {text: p.textContent, label: p.getAttribute('aria-label'),
+      border: getComputedStyle(p).borderTopStyle} : null; })()}); })()"""
+
+
+def _map_zoom_back(self):
+    """Z1-Z3: the map's zoom and back without buttons (Scroll mode)."""
+    self.size(1280, 800, False)
+    ok = self.map_load()
+    z0 = self.j(MAPZ) or {}
+    Z = z0.get("Z") or {}
+    self.ws.call("Runtime.evaluate", expression="window.scrollTo(0, 0)")
+    x, y = z0["you"]["x"], z0["you"]["y"]
+    sy0 = self.j("JSON.stringify(scrollY)")
+    for _ in range(3):
+        self.ws.call("Input.dispatchMouseEvent", type="mouseWheel", x=x, y=y, deltaX=0, deltaY=-100)
+        time.sleep(0.08)
+    z1 = self.j(MAPZ) or {}
+    stay = abs(z1["you"]["x"] - x) + abs(z1["you"]["y"] - y) if z1.get("you") else 999
+    for _ in range(3):
+        self.ws.call("Input.dispatchMouseEvent", type="mouseWheel", x=x, y=y, deltaX=0, deltaY=100)
+        time.sleep(0.08)
+    z2 = self.j(MAPZ) or {}
+    self.check("Z1 desktop, Scroll mode: the wheel over the map zooms in toward the pointer and back out; the page does not scroll",
+               ok and not z0.get("dropping") and z1.get("scale", 0) > z0.get("scale", 0) * 1.2 and stay <= 6
+               and abs(z2.get("scale", 0) - z0.get("scale", 0)) <= 0.02 * z0.get("scale", 1) and z1.get("sy") == sy0 and z2.get("sy") == sy0,
+               {"scales": [z0.get("scale"), z1.get("scale"), z2.get("scale")], "box moved px": stay, "scrollY": [sy0, z1.get("sy"), z2.get("sy")]})
+    for _ in range(40):
+        self.ws.call("Input.dispatchMouseEvent", type="mouseWheel", x=x, y=y, deltaX=0, deltaY=-100)
+    time.sleep(0.2)
+    hi = (self.j(MAPZ) or {}).get("scale")
+    for _ in range(80):
+        self.ws.call("Input.dispatchMouseEvent", type="mouseWheel", x=x, y=y, deltaX=0, deltaY=100)
+    time.sleep(0.2)
+    lo = (self.j(MAPZ) or {}).get("scale")
+    self.check("Z1 desktop: the zoom stops at LG_MAP.ZOOM.max and never goes under ZOOM.min",
+               bool(Z) and hi is not None and abs(hi - Z["max"]) < 1e-6 and lo is not None and lo >= Z["min"] - 1e-6 and lo < hi,
+               {"max": Z.get("max"), "min": Z.get("min"), "reached": [hi, lo]})
+    # Z3: go into a ring box, then back by its trail step
+    self.map_load()
+    self.j("(() => { const g = [...document.querySelectorAll('#lgm-nodes .lgn')].find(e => !e.classList.contains('lgn-you') && e.getAttribute('data-id') !== 'you' && !e.classList.contains('lgn-root'));"
+           " g.dispatchEvent(new MouseEvent('click', {bubbles: true})); return '1'; })()")
+    self.wait("document.querySelectorAll('#lgm-trail .lgm-trail-step').length >= 2", 5)
+    time.sleep(0.6)
+    a = self.j(MAPZ) or {}
+    self.tap("#lgm-trail .lgm-trail-prev")
+    self.wait("document.querySelectorAll('#lgm-trail .lgm-trail-step').length === 1", 5)
+    b = self.j(MAPZ) or {}
+    p = a.get("prev") or {}
+    self.check("Z3 the trail marks the box you came from (a \u2039 pill, 'Back to ...'); clicking it goes back there",
+               len(a.get("trail") or []) == 2 and p.get("text") == (a.get("trail") or [None])[0] and (p.get("label") or "").startswith("Back to ")
+               and p.get("border") not in (None, "none") and b.get("trail") == (a.get("trail") or [None])[:1],
+               {"in": a.get("trail"), "prev": p, "after": b.get("trail")})
+    # Z2: pinch on a phone
+    self.size(390, 844, True)
+    self.map_load()
+    self.ws.call("Emulation.setTouchEmulationEnabled", enabled=True, maxTouchPoints=5)
+    try:
+        f = (self.j(MAPZ) or {}).get("frame")
+        cx, cy = (f["l"] + f["r"]) / 2, f["t"] + 0.55 * (f["b"] - f["t"])
+        s0 = (self.j(MAPZ) or {}).get("scale")
+        pts = lambda d: [{"x": cx - d, "y": cy, "id": 1}, {"x": cx + d, "y": cy, "id": 2}]
+        self.ws.call("Input.dispatchTouchEvent", type="touchStart", touchPoints=pts(30))
+        for d in (40, 55, 70, 90):
+            self.ws.call("Input.dispatchTouchEvent", type="touchMove", touchPoints=pts(d))
+            time.sleep(0.04)
+        s1 = (self.j(MAPZ) or {}).get("scale")
+        self.ws.call("Input.dispatchTouchEvent", type="touchEnd", touchPoints=[])
+        time.sleep(0.3)
+        want = min((self.j(MAPZ) or {}).get("Z", {}).get("max", 9), (s0 or 0) * 3)
+        self.check("Z2 phone, Scroll mode: a two-finger pinch spreads the map (about the fingers' spread, 3x here)",
+                   bool(s0) and s1 is not None and abs(s1 - want) <= 0.15 * want, {"before": s0, "pinched": s1, "want": want})
+        # one finger on the empty map: a pan, no zoom
+        e = self.j("(() => { const s = document.getElementById('lgm-svg').getBoundingClientRect(); for (let y = s.top + 12; y < s.bottom; y += 9) for (let x = s.left + 12; x < s.right; x += 9) {"
+                   " const h = document.elementFromPoint(x, y); if (h && !h.closest('.lgn') && h.closest('#lgm-svg')) return JSON.stringify([x, y]); } return 'null'; })()")
+        s2 = (self.j(MAPZ) or {}).get("scale")
+        y0 = (self.j(MAPZ) or {}).get("you")
+        if e:
+            self.ws.call("Input.dispatchTouchEvent", type="touchStart", touchPoints=[{"x": e[0], "y": e[1], "id": 3}])
+            for k in range(1, 5):
+                self.ws.call("Input.dispatchTouchEvent", type="touchMove", touchPoints=[{"x": e[0] + 10 * k, "y": e[1], "id": 3}])
+                time.sleep(0.03)
+            self.ws.call("Input.dispatchTouchEvent", type="touchEnd", touchPoints=[])
+            time.sleep(0.2)
+        z3 = self.j(MAPZ) or {}
+        self.check("Z2 phone: one finger on the empty map still pans, without zooming",
+                   bool(e) and abs((z3.get("scale") or 0) - (s2 or -1)) < 1e-6 and bool(y0) and z3["you"]["x"] - y0["x"] > 20,
+                   {"at": e, "scale": [s2, z3.get("scale")], "box x": [y0 and y0["x"], z3.get("you", {}).get("x")]})
+    finally:
+        self.ws.call("Emulation.setTouchEmulationEnabled", enabled=False)
+
+
+Run.map_zoom_back = _map_zoom_back
+
+
 def main(argv):
     platform = os.path.abspath(argv[0]) if argv else os.path.dirname(os.path.dirname(HERE))
     out = os.path.abspath(argv[1]) if len(argv) > 1 else os.path.join(platform, "tests", "browser", "out")
@@ -1002,6 +1108,7 @@ def main(argv):
         r.desktop()
         r.map_desktop()
         r.map_phone()
+        r.map_zoom_back()
         r.portal()
         r.home()
     except Exception as e:  # a crash mid-run is a failed run, said with its traceback, never a quiet pass

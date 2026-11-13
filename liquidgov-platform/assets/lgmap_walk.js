@@ -107,8 +107,8 @@
 
   var arrival = LG_WALKER.takeHandoff();   // came through the portal: Drop is on, standing at that page's box
   var drop = LG_WALKER.mount({
-    // the switch sits in the map's own row (Back, the trail, Zoom out), so the map keeps its place on the page
-    dropSlot: document.getElementById('lgm-zoomout'),
+    // the switch sits in the map's own row, after the trail, so the map keeps its place on the page
+    dropIn: document.querySelector('.lgm-navrow'),
     dir: function (dir, down) { if (down) step(WAY[dir]); },
     pull: pullTo,
     // A / Enter: the same as tapping the box you stand on
@@ -119,12 +119,11 @@
       cameraSoon();
       return true;
     },
-    // B / Esc: close the open page, else the map's own Back
+    // B / Esc: close the open page, else one step back (LG_MAP.back, as the phone's back gesture)
     back: function () {
       var panel = document.getElementById('lgm-panel'), close = document.getElementById('lgm-close');
-      var backBtn = document.getElementById('lgm-back');
       if (panel && !panel.hidden && close) close.click();
-      else if (backBtn && !backBtn.disabled) backBtn.click();
+      else if (window.LG_MAP && LG_MAP.back) LG_MAP.back();
       cameraSoon();
     },
     dropping: function (on) {

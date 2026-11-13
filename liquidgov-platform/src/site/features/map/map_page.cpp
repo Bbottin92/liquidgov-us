@@ -31,12 +31,13 @@ std::string map_page_body(const std::string& user, const std::string& focus) {
             "<a class=\"lgm-privacy\" href=\"/settings#map-privacy\">Map privacy</a></div>"
             "<div class=\"lgmap-body\">"
             // the trail (M1.1 look): You > Groups > ... ; a div, since the phone CSS hides every <nav>
-            // map SPEC phase 1 (Brandon 2026-11-11): Back, the trail and Zoom out on one row, then the filter bar for
-            // this level (lgmap.js fills it); both stay at the top on a phone (position:sticky, lgmap.css)
+            // map SPEC phase 1 (Brandon 2026-11-11): the trail on one row, then the filter bar for this level (lgmap.js
+            // fills it); both stay at the top on a phone (position:sticky, lgmap.css). No Back or Zoom out buttons
+            // (Brandon 2026-11-13 5:01 AM): the trail's box you came from goes back, the wheel or a pinch zooms; the
+            // walker's Drop/Scroll switch joins this row (walker.js, lgmap_walk.js).
             "<div class=\"lgmap-canvas\"><div id=\"lgm-bars\" class=\"lgm-bars\">"
-            "<div class=\"lgm-navrow\"><button type=\"button\" id=\"lgm-back\" class=\"lgm-navbtn\" disabled>&lsaquo; Back</button>"
-            "<div id=\"lgm-trail\" class=\"lgm-trail\" role=\"navigation\" aria-label=\"Where you are on the map\"></div>"
-            "<button type=\"button\" id=\"lgm-zoomout\" class=\"lgm-navbtn\" title=\"Up one level; from You, the MAINstream\">Zoom out</button></div>"
+            "<div class=\"lgm-navrow\">"
+            "<div id=\"lgm-trail\" class=\"lgm-trail\" role=\"navigation\" aria-label=\"Where you are on the map\"></div></div>"
             "<div id=\"lgm-filter\" class=\"lgm-filter\" role=\"group\" aria-label=\"Show at this level\"></div>"
             "<p id=\"lgm-filter-note\" class=\"lgm-filter-note\" hidden>Hiding only changes what this map shows on this device. "
             "Nothing is deleted, and nobody else's view changes.</p></div>"

@@ -124,6 +124,10 @@
   // never zooms below the scale that draws every box's name at MIN_PX on screen. Names are 14 px (lgmap.css) times the
   // box's size; the small grey second lines are not names.
   var NAME_PX = 14, MIN_PX = 11;
+  // The map's zoom (Brandon 2026-11-13 5:01 AM: no Zoom out button; in Scroll mode the mouse wheel zooms, a pinch on a
+  // touch screen): the one place its limits live. min/max: the scale the map may reach (and never below the scale that
+  // keeps names MIN_PX, floorScale); wheel: one notch's factor. The walker's camera stays under max too.
+  var ZOOM = { min: 0.3, max: 2.5, wheel: 1.1 };
   function floorFor(list) {
     var f = 0;
     list.forEach(function (d) { f = Math.max(f, MIN_PX / (NAME_PX * sizeOf(d))); });
@@ -268,7 +272,7 @@
     // the longer you hold (like Messenger's thumbs-up) and letting go after HOLD_MS opens its page. Moving the
     // finger cancels, so dragging the map still works.
     g.addEventListener('pointerdown', function (ev) {
-      if (ev.pointerType === 'mouse' || !narrow()) return;
+      if (ev.pointerType === 'mouse' || !narrow() || pinch) return;   // a second finger is a pinch, not a hold
       startHold(n, ev);
     });
     g.addEventListener('contextmenu', function (ev) { if (narrow()) ev.preventDefault(); });
@@ -570,20 +574,24 @@
   //   INSIDE the panel still does, and history.back() then only steps that page back (the "ignored" click), so the
   //   button keeps stepping back (up to 10 times) until the map's own entry arrives;
   // - a second click while one is under way goes one more step, never zero.
-  var restoring = false, histAt = 0, backWant = -1, backTimer = 0, backTries = 0, backBtn = document.getElementById('lgm-back');
-  function updateBack() { if (backBtn) backBtn.disabled = histAt <= 0; }
+  // (Brandon 2026-11-13 5:01 AM: no Back button; you go back by tapping the box you came from, the trail's step before
+  // where you are, marked lgm-trail-prev. The phone's back gesture and the walker's B / Esc (LG_MAP.back) still step
+  // back through these entries.)
+  var restoring = false, histAt = 0, backWant = -1, backTimer = 0, backTries = 0;
+  function updateBack() {}
   function backStep() {
     clearTimeout(backTimer);
     if (backWant < 0 || histAt <= backWant || ++backTries > 10) { backWant = -1; return; }
     history.back();
     backTimer = setTimeout(backStep, 350);
   }
-  if (backBtn) backBtn.addEventListener('click', function () {
-    if (histAt <= 0) return;
+  function goBack() {
+    if (histAt <= 0) return false;
     backWant = backWant >= 0 ? Math.max(0, backWant - 1) : histAt - 1;
     backTries = 0;
     backStep();
-  });
+    return true;
+  }
   window.addEventListener('popstate', function (ev) {
     // each entry carries the center's own box data, so it can be drawn again even after the trail moved past it
     var st = ev.state, d = st && st.d;
@@ -600,16 +608,7 @@
     updateBack();
     if (backWant >= 0) { if (histAt > backWant) { backTries = 0; backStep(); } else { clearTimeout(backTimer); backWant = -1; } }
   });
-  // Zoom out: up one level along the trail (an item -> its center -> the center before); from You, the MAINstream.
-  function zoomOut() {
-    var cid = centerId();
-    if (selected && selected.id !== cid) { select(nodes[cid] || centerPath[centerPath.length - 1], 'now'); return; }
-    // the MAINstream is the top, above You: zooming out there stays put (it went back down to You, Grok Bot's check)
-    if (cid === 'root') { status('This is the top: the MAINstream.'); return; }
-    if (centerPath.length > 1) { select(centerPath[centerPath.length - 2], 'now'); return; }
-    toMainstream();
-  }
-  // The MAINstream view, from Zoom out at You and from the MAINstream button at the top, at any level (live look #6:
+  // The MAINstream view, from the MAINstream button at the top, at any level (live look #6:
   // the button only panned the map, and did nothing at deep levels). The MAINstream becomes the center: the ring clears,
   // its cities and Sitewide go round it; the trail says You > MAINstream, whatever level you came from.
   function toMainstream() {
@@ -619,8 +618,6 @@
     status('Loading…');
     load('root').then(function (data) { go(data.node); }).catch(function (err) { status(err.message); });
   }
-  var zoomBtn = document.getElementById('lgm-zoomout');
-  if (zoomBtn) zoomBtn.addEventListener('click', zoomOut);
   // a "+N more" box keeps its rest, so Back and the trail can draw it again
   function dataOf(n) { return { id: n.id, label: n.label, kind: n.kind, page: n.page, rel: n.rel, sub: n.sub, more: n.more }; }
   // m: the tapped box (its own element is kept and moved to the middle: a replaced element broke anything holding it,
@@ -788,10 +785,14 @@
       if (i) { var sep = document.createElement('span'); sep.className = 'lgm-trail-sep'; sep.textContent = '›'; trailEl.appendChild(sep); }
       var b = document.createElement('button');
       b.type = 'button';
-      b.className = 'lgm-trail-step' + (i === chain.length - 1 ? ' here' : '');
+      b.className = 'lgm-trail-step' + (i === chain.length - 1 ? ' here' : i === chain.length - 2 ? ' lgm-trail-prev' : '');
       b.textContent = c.kind === 'you' ? 'You' : short(c.label, 22);
       if (i === chain.length - 1) b.setAttribute('aria-current', 'location');
-      else b.addEventListener('click', function () { select(nodes[c.id] || c, false); });
+      else {
+        // the box you came from is Back (Brandon 5:01 AM: no Back button; marked lgm-trail-prev in lgmap.css)
+        if (i === chain.length - 2) b.setAttribute('aria-label', 'Back to ' + b.textContent);
+        b.addEventListener('click', function () { select(nodes[c.id] || c, false); });
+      }
       trailEl.appendChild(b);
     });
     trailEl.scrollLeft = trailEl.scrollWidth; // a phone's one-line trail shows where you are (lgmap.css)
@@ -916,16 +917,58 @@
     toMainstream();
   });
 
-  // Pan by dragging the empty map; zoom with ctrl+wheel or a pinch (around the pointer).
+  // Pan by dragging the empty map; zoom with the wheel or a pinch (around the pointer / the fingers).
   var drag = null;
+  function zoomTo(next, px, py) {   // px, py: the frame point that stays put
+    next = Math.min(ZOOM.max, Math.max(ZOOM.min, floorScale(), next));
+    tx = px - (px - tx) * next / scale;
+    ty = py - (py - ty) * next / scale;
+    scale = next;
+  }
+  function scrollMode() { return !root.classList.contains('lgm-dropping'); }   // Drop/Scroll: lgmap_walk.js sets the class
+  // Pinch (Scroll mode, touch): two fingers on the map zoom it around their middle and pan with it; one finger works
+  // as before (drag the empty map, tap or hold a box).
+  var fingers = {}, pinch = null;
+  function two() { var k = Object.keys(fingers); return k.length === 2 ? [fingers[k[0]], fingers[k[1]]] : null; }
+  function spread(f) { return Math.max(1, Math.hypot(f[0].x - f[1].x, f[0].y - f[1].y)); }
   svg.addEventListener('pointerdown', function (ev) {
+    if (ev.pointerType !== 'touch') return;
+    fingers[ev.pointerId] = { x: ev.clientX, y: ev.clientY };
+    var f = two();
+    if (!f || !scrollMode()) return;
+    endHold(null);                              // a finger on a box was a pinch, not a tap or a hold
+    suppressClickUntil = Date.now() + 600;
+    drag = null;
+    svg.classList.remove('lgm-drag');
+    var b = svg.getBoundingClientRect();
+    pinch = { d: spread(f), s: scale, mx: (f[0].x + f[1].x) / 2 - b.left, my: (f[0].y + f[1].y) / 2 - b.top, tx: tx, ty: ty };
+  }, true);
+  svg.addEventListener('pointermove', function (ev) {
+    if (!fingers[ev.pointerId]) return;
+    fingers[ev.pointerId] = { x: ev.clientX, y: ev.clientY };
+    var f = two();
+    if (!pinch || !f) return;
+    var b = svg.getBoundingClientRect(), mx = (f[0].x + f[1].x) / 2 - b.left, my = (f[0].y + f[1].y) / 2 - b.top;
+    tx = pinch.tx; ty = pinch.ty; scale = pinch.s;
+    zoomTo(pinch.s * spread(f) / pinch.d, pinch.mx, pinch.my);
+    tx += mx - pinch.mx; ty += my - pinch.my;   // and the map follows the fingers' middle
+    apply();
+  }, true);
+  function lift(ev) {
+    delete fingers[ev.pointerId];
+    if (pinch && !two()) { pinch = null; keepInside(svg.getBoundingClientRect()); apply(); }
+  }
+  svg.addEventListener('pointerup', lift, true);
+  svg.addEventListener('pointercancel', lift, true);
+  svg.addEventListener('pointerdown', function (ev) {
+    if (pinch) return;
     if (ev.target.closest && ev.target.closest('.lgn')) return;
     drag = { x: ev.clientX, y: ev.clientY, tx: tx, ty: ty };
     svg.setPointerCapture(ev.pointerId);
     svg.classList.add('lgm-drag');
   });
   svg.addEventListener('pointermove', function (ev) {
-    if (!drag) return;
+    if (!drag || pinch) return;
     tx = drag.tx + ev.clientX - drag.x;
     ty = drag.ty + ev.clientY - drag.y;
     apply();
@@ -933,18 +976,15 @@
   function endDrag() { drag = null; svg.classList.remove('lgm-drag'); }
   svg.addEventListener('pointerup', endDrag);
   svg.addEventListener('pointercancel', endDrag);
-  // Live look #9 (Brandon 2026-11-11): the wheel over the map zoomed it, so the page could not be scrolled past the map,
-  // and a zoom left the bottom row cut off. A plain wheel now scrolls the page; ctrl+wheel (what a trackpad pinch sends,
-  // and ctrl+scroll on a mouse) zooms around the pointer. After a zoom, a map that fits the frame is kept inside it.
+  // The wheel (Brandon 2026-11-13 5:01 AM, replacing live look #9's "a plain wheel scrolls the page"): in Scroll mode
+  // the wheel over the map zooms it toward the pointer and the page does not scroll; in Drop mode only ctrl+wheel (a
+  // trackpad pinch, ctrl+scroll) does, as before. After a zoom, a map that fits the frame is kept inside it.
   svg.addEventListener('wheel', function (ev) {
-    if (!ev.ctrlKey && !ev.metaKey) return;
+    if (!scrollMode() && !ev.ctrlKey && !ev.metaKey) return;
     ev.preventDefault();
+    if (!ev.deltaY) return;
     var box = svg.getBoundingClientRect();
-    var px = ev.clientX - box.left, py = ev.clientY - box.top;
-    var next = Math.min(2.5, Math.max(floorScale(), scale * (ev.deltaY < 0 ? 1.1 : 1 / 1.1))); // never under 11 px names
-    tx = px - (px - tx) * next / scale;
-    ty = py - (py - ty) * next / scale;
-    scale = next;
+    zoomTo(scale * (ev.deltaY < 0 ? ZOOM.wheel : 1 / ZOOM.wheel), ev.clientX - box.left, ev.clientY - box.top);
     keepInside(box);
     apply();
   }, { passive: false });
@@ -1012,20 +1052,23 @@
   });
   // The map walker's camera (assets/lgmap_walk.js; Brandon 2026-11-13, "when you Drop in on the map, it should look
   // bigger"): focus(id, zoom) puts box id in the middle of the frame at zoom times the fitted scale (never past the
-  // wheel's 2.5), gliding; fit() is the normal view again. The zoom is walker.js's (LG_WALKER.CONTROLS.mapZoom).
+  // map's ZOOM.max), gliding; fit() is the normal view again. The zoom is walker.js's (LG_WALKER.CONTROLS.mapZoom).
   window.LG_MAP = {
     focus: function (id, zoom) {
       var n = nodes[id], b = svg.getBoundingClientRect();
       if (!n || !b.width) return false;
       fitAll(narrow());
       var c = centerOf(n);
-      scale = Math.min(2.5, scale * zoom);
+      scale = Math.min(ZOOM.max, scale * zoom);
       tx = Math.round(b.width / 2 - c.x * scale);
       ty = Math.round(b.height / 2 - c.y * scale);
       apply(true);
       return true;
     },
-    fit: function () { fitAll(narrow()); }
+    fit: function () { fitAll(narrow()); },
+    back: goBack,       // one step back, as the phone's back gesture (the walker's B / Esc); false at the start
+    ZOOM: ZOOM,
+    scale: function () { return scale; }
   };
   // M1.1 (Brandon 2026-11-10): the map starts at you, with your kinds of connection (Friends, Groups, Places,
   // Politics, Problems) as the first ring. The whole site (MAINstream) is under Places, and its button still works.

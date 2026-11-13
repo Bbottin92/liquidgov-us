@@ -6,7 +6,7 @@
 # gets LIQUIDGOV_GIT_TRIES tries (default 3), 1 s apart. </dev/null on every call: git.exe through interop reads stdin,
 # which swallowed the rest of ci-gate.sh's run list (live probe 2026-11-08).
 # Returns 1 when no git could answer; callers decide what that means and must say so (never a silent skip).
-# Tests: commons-daemon/tests/ci_gate_interop_check.py (fake git.exe that drops calls), ci_gate_check.py, sync_gate_check.py.
+# Tests: tests/repo/ci_gate_interop_check.py (fake git.exe that drops calls), ci_gate_check.py, sync_gate_check.py.
 git_in_repo() {
     local out
     if out="$(git -C "$REPO" "$@" 2>/dev/null </dev/null)"; then printf '%s' "$out"; return 0; fi

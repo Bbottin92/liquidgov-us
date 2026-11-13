@@ -10,7 +10,7 @@ import tempfile
 
 ROOT = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(__file__), "..", ".."))
 SEL = os.path.join(ROOT, "scripts", "affected_checks.py")
-TESTS = os.path.join(ROOT, "commons-daemon", "tests")
+TESTS = os.path.join(ROOT, "tests", "repo")
 passes = fails = 0
 
 

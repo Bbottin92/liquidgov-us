@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""run_hook_checks.py: run EVERY check the git hooks can run (commons-daemon/tests/*_check.py + lgp1_consistency.py),
+"""run_hook_checks.py: run EVERY check the git hooks can run (tests/repo/*_check.py + lgp1_consistency.py),
 for CI (.github/workflows/hook-checks.yml). Waste-audit PLAN 0.3 (Grok Bot 2026-11-11; Brandon 2026-11-12 "you take
 0.3"): until then the checks ran only in .githooks, so a clone without core.hooksPath, or a push that skipped the
 hooks, got past all of them.
@@ -37,7 +37,7 @@ def load_selector(root):
 
 def check_names(root):
     ac = load_selector(root)
-    tests = os.path.join(root, "commons-daemon", "tests")
+    tests = os.path.join(root, "tests", "repo")
     return tests, ac.run_order({n for n in os.listdir(tests) if ac.is_check(n)})
 
 

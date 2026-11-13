@@ -38,7 +38,7 @@ checks="$(git_stdin="$(cat)"; printf '%s\n' "$git_stdin" | "$PY" "$ROOT/scripts/
 }
 [ -z "$checks" ] && echo "pre-push: no check is affected by this change"
 for check in $checks; do
-  out="$("$PY" "$ROOT/commons-daemon/tests/$check" "$ROOT" 2>&1)"; rc=$?
+  out="$("$PY" "$ROOT/tests/repo/$check" "$ROOT" 2>&1)"; rc=$?
   echo "$out" | tail -1
   if [ $rc -ne 0 ]; then
     echo "$out" | grep "FAIL" | head -15 >&2

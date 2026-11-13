@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run_all.sh discovers this wrapper automatically in CI.
+# The restart-bypass check (restart_bypass_check.py); CI runs every tests/repo/test_*.sh (hook-checks.yml).
 source "$(dirname "$0")/lib.sh"
 python3 "$TESTS_DIR/restart_bypass_check.py" > "$WORK/restart_bypass.out" 2>&1
 rc=$?

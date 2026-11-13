@@ -5,7 +5,7 @@ Runs ship.py against a throwaway repo with a real bare "origin" and a fake gh (n
            is waited for and then counts.
   refuses: red run; VERDICT not ALL-PASS; no screenshots; unpushed commit; master moved on (not a fast-forward);
            site change with no CI run; gh failing (fails closed); a run still in progress past --wait.
-Usage: python commons-daemon/tests/ship_check.py [repo root]   -> last line passes=N fails=M; exit 1 on any FAIL."""
+Usage: python tests/repo/ship_check.py [repo root]   -> last line passes=N fails=M; exit 1 on any FAIL."""
 import json
 import os
 import shutil

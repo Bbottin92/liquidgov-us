@@ -3,7 +3,7 @@ the Claude session's shell had its cwd in the worktree; git unregistered it, cou
 denied - and left an empty folder plus the branch). The tool's own-cwd guard could not see a different process, so the
 tool now probes the folder (rename away and back) before git touches it. Here a second process holds its cwd in the
 worktree, as the session shell did. Windows only (that is where folders in use cannot be renamed).
-Usage: python commons-daemon/tests/tidy_in_use_check.py <repo root>   (exit 0 only when every case passed)"""
+Usage: python tests/repo/tidy_in_use_check.py <repo root>   (exit 0 only when every case passed)"""
 import os
 import shutil
 import stat

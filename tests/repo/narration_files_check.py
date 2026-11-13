@@ -3,7 +3,7 @@ http_server.cpp serves /assets/chapter<N>.mp3 for N = 1..law_chapters().size(), 
 lgp1_consistency.py (literal asset names) cannot see. So this counts the chapters in law_chapters() and checks that
 liquidgov-platform/assets/chapter1..N.mp3 all exist and are not empty, and that the route's bound is still the chapter
 count. Then it proves it can fail: a throwaway copy with one file removed must be refused.
-Usage: python commons-daemon/tests/narration_files_check.py <repo root> [--self-test-off]
+Usage: python tests/repo/narration_files_check.py <repo root> [--self-test-off]
 Last line: narration_files_check: N checks, F failed. Exit 1 on any failure."""
 import os
 import re

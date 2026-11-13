@@ -7,7 +7,7 @@ reads (never the real deploy/ folder, never the server) and checks:
   auto + assets/tests only -> no-restart pair; auto + src -> build-and-restart pair; a mismatched explicit pair is
   refused both ways; bad paths are refused; the generated go.sh accepts "dry" (stopping before the backup) and still
   refuses anything else; the remote half is registered in naming.toml.
-Usage: python commons-daemon/tests/make_go_check.py <repo root>   (exit 0 only when every case passed)"""
+Usage: python tests/repo/make_go_check.py <repo root>   (exit 0 only when every case passed)"""
 import os
 import re
 import shutil

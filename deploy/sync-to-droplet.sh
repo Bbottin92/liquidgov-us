@@ -70,7 +70,7 @@ echo "Deploying commit ${COMMIT:-unknown}${DIRTY:+ (plus uncommitted changes)}"
 # made before make-go.py added its own (earlier) gate call; new ones simply pass the gate twice. Dry runs are not
 # gated: they change nothing. LIQUIDGOV_DEPLOY_ALLOW_DIRTY does not get past it (CI never saw uncommitted code);
 # LIQUIDGOV_CI_OVERRIDE="<reason>" does, logged, and only with Brandon's explicit OK for that deploy.
-# Tests: commons-daemon/tests/sync_gate_check.py.
+# Tests: tests/repo/sync_gate_check.py.
 if [ ${#DRY[@]} -eq 0 ]; then
     if ! bash "$(dirname "${BASH_SOURCE[0]}")/ci-gate.sh" go; then
         echo "Refusing to sync: the CI gate (deploy/ci-gate.sh) did not pass. Nothing was sent."
@@ -87,7 +87,7 @@ fi
 # written right after the sync, before the build, so after a failed build the running program is the older line
 # (side-agent note 2026-11-09). Cost: the deploy right after an overridden one is checked against the commit before
 # it too, so it may need the override once more.
-# Tests: commons-daemon/tests/rollback_guard_check.py.
+# Tests: tests/repo/rollback_guard_check.py.
 DEST_HOST="${DEST%%:*}"
 DEST_DIR="${DEST#*:}"
 pick_python() {

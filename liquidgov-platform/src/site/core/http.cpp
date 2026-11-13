@@ -97,14 +97,19 @@ std::string header_value(const std::string& headers, const std::string& name) {
     if (end == std::string::npos) return headers.substr(pos);
     return headers.substr(pos, end-pos);
 }
+// The client's address. nginx (on this machine) appends the address it saw to X-Forwarded-For
+// ($proxy_add_x_forwarded_for), so only the LAST entry is trustworthy; anything before it was sent by the client and
+// can be made up (until 2026-11-13 this took the first entry, so login throttling could be dodged with a fake header).
+// The header is believed only from a loopback peer (nginx); a direct connection is judged by its own address.
 std::string forwarded_ip(const std::string& req, const std::string& peer) {
-    auto xff = header_value(req, "X-Forwarded-For");
+    const bool via_proxy = peer.rfind("127.", 0) == 0;
+    auto xff = via_proxy ? header_value(req, "X-Forwarded-For") : std::string();
     if (xff.empty()) return peer;
-    auto comma = xff.find(',');
-    std::string first = comma == std::string::npos ? xff : xff.substr(0, comma);
-    while (!first.empty() && (first.front()==' '||first.front()=='\t')) first.erase(first.begin());
-    while (!first.empty() && (first.back()==' '||first.back()=='\t')) first.pop_back();
-    return first.empty() ? peer : first;
+    auto comma = xff.rfind(',');
+    std::string last = comma == std::string::npos ? xff : xff.substr(comma + 1);
+    while (!last.empty() && (last.front()==' '||last.front()=='\t')) last.erase(last.begin());
+    while (!last.empty() && (last.back()==' '||last.back()=='\t')) last.pop_back();
+    return last.empty() ? peer : last;
 }
 std::string device_label_from(const std::string& headers, const std::string& ip) {
     auto ua = header_value(headers, "User-Agent");

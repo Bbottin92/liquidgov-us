@@ -13,7 +13,8 @@ std::string here_room_for(const std::string& page);
 bool here_may_join(const std::string& viewer, const std::string& room);
 // GET /here/ws?page=<path> with Upgrade: websocket. Returns true when it took the socket (a session thread now owns
 // it, or it was answered and closed); false when the request is not this route. Called from main()'s accept loop.
-bool here_ws_upgrade(int fd, const std::string& req, const std::string& method, const std::string& rawpath);
+bool here_ws_upgrade(int fd, const std::string& req, const std::string& method, const std::string& rawpath,
+                     const std::string& peer);
 // What a profile page adds for the viewer: the one-time choice card (not chosen yet), the dots script (Yes), or "".
 std::string here_page_bits(const std::string& viewer, const std::string& page);
 // The Settings card with the Yes/No choice (nothing checked while not chosen).

@@ -11,6 +11,7 @@
 #include "site/features/live/live_sessions.hpp"
 #include "site/features/here/here.hpp"
 #include "site/router.hpp"
+#include "site/core/ws_limits.hpp"
 using namespace liquidgov::site;
 #ifndef LG_BUILD_COMMIT
 #define LG_BUILD_COMMIT "unknown"
@@ -115,7 +116,7 @@ int main(int argc, char** argv) {
                 is >> method >> rawpath;
             }
             // Dots on profile pages (/here/ws?page=...): the feature's own module checks and runs it.
-            if (here_ws_upgrade(c, req, method, rawpath)) continue;
+            if (here_ws_upgrade(c, req, method, rawpath, ipbuf)) continue;
             if (method == "GET" && rawpath == "/community/ws" &&
                 header_value(req, "Upgrade").find("websocket") != std::string::npos) {
                 std::string username;
@@ -126,6 +127,8 @@ int main(int argc, char** argv) {
                 }
                 auto key = header_value(req, "Sec-WebSocket-Key");
                 if (!username.empty() && !key.empty()) {
+                    auto slot = ws_take_slot(ws_client_ip(req, ipbuf));
+                    if (!slot) { ws_refuse(c, "/community/ws"); continue; }
                     std::string accept_val = websocket_accept_value(key);
                     std::ostringstream resp101;
                     resp101 << "HTTP/1.1 101 Switching Protocols\r\n"
@@ -133,7 +136,7 @@ int main(int argc, char** argv) {
                                "Sec-WebSocket-Accept: " << accept_val << "\r\n\r\n";
                     std::string r = resp101.str();
                     if (send(c, r.data(), r.size(), 0) > 0) {
-                        std::thread(run_community_session, c, username, std::string("")).detach();
+                        std::thread([c, username, st = std::string(""), slot = std::move(slot)] { run_community_session(c, username, st); }).detach();
                         continue;
                     }
                 }
@@ -161,6 +164,8 @@ int main(int argc, char** argv) {
                 }
                 auto key = header_value(req, "Sec-WebSocket-Key");
                 if (!username.empty() && member && !key.empty()) {
+                    auto slot = ws_take_slot(ws_client_ip(req, ipbuf));
+                    if (!slot) { ws_refuse(c, "jukebox/ws"); continue; }
                     std::string accept_val = websocket_accept_value(key);
                     std::ostringstream resp101;
                     resp101 << "HTTP/1.1 101 Switching Protocols\r\n"
@@ -168,7 +173,7 @@ int main(int argc, char** argv) {
                                "Sec-WebSocket-Accept: " << accept_val << "\r\n\r\n";
                     std::string r = resp101.str();
                     if (send(c, r.data(), r.size(), 0) > 0) {
-                        std::thread(run_community_session, c, username, slug).detach();
+                        std::thread([c, username, st = slug, slot = std::move(slot)] { run_community_session(c, username, st); }).detach();
                         continue;
                     }
                 }

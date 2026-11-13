@@ -4,6 +4,7 @@
 #include "site/core/http.hpp"
 #include "site/core/state.hpp"
 #include "site/core/text.hpp"
+#include "site/core/ws_limits.hpp"
 #include "site/ui/assets.hpp"
 
 namespace liquidgov::site {
@@ -149,7 +150,8 @@ bool here_may_join(const std::string& viewer, const std::string& room) {
     return visible_to(g_store.prefs_of(owner).profile_visibility, is_owner, true, is_friend);
 }
 
-bool here_ws_upgrade(int fd, const std::string& req, const std::string& method, const std::string& rawpath) {
+bool here_ws_upgrade(int fd, const std::string& req, const std::string& method, const std::string& rawpath,
+                     const std::string& peer) {
     if (method != "GET" || rawpath.rfind("/here/ws", 0) != 0 || (rawpath.size() > 8 && rawpath[8] != '?') ||
         header_value(req, "Upgrade").find("websocket") == std::string::npos)
         return false;
@@ -163,6 +165,11 @@ bool here_ws_upgrade(int fd, const std::string& req, const std::string& method, 
         }
     }
     auto key = header_value(req, "Sec-WebSocket-Key");
+    std::unique_ptr<WsSlot> slot;
+    if (!me.empty() && !key.empty()) {
+        slot = ws_take_slot(ws_client_ip(req, peer));
+        if (!slot) { ws_refuse(fd, "/here/ws"); return true; }
+    }
     if (!me.empty() && !key.empty()) {
         std::lock_guard<std::mutex> lock(here_mu());
         auto& r = here_rooms()[room];
@@ -187,7 +194,7 @@ bool here_ws_upgrade(int fd, const std::string& req, const std::string& method, 
         close(fd);
         return true;
     }
-    std::thread(run_here_session, fd, me, room).detach();
+    std::thread([fd, me, room, slot = std::move(slot)] { run_here_session(fd, me, room); }).detach();
     return true;
 }
 

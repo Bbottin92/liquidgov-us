@@ -234,7 +234,7 @@ curl -s -D "$W/fr.txt" -o /dev/null -b "lg_session=$STRANGER" -H "Sec-Fetch-Dest
 check "a framed redirect is guarded too" 'grep -qi "^X-Frame-Options: SAMEORIGIN" $W/fr.txt' "$(cat $W/fr.txt)"
 curl -s -D "$W/nh.txt" -o "$W/normal.html" -b "lg_session=$STRANGER" -H "Sec-Fetch-Dest: document" "$URL/c/fres1"
 check "a normal page keeps its header and jukebox" '! grep -q "header.top,footer.site{display:none" $W/normal.html && grep -q "juketube-root" $W/normal.html' "changed"
-check "a normal page has no frame headers (unchanged)" '! grep -qi "^X-Frame-Options" $W/nh.txt' "added"
+check "a normal page has frame headers too (Brandon OK 2026-11-13: every page)" 'grep -qi "^X-Frame-Options: SAMEORIGIN" $W/nh.txt' "missing"
 
 check "server log has no crash lines" '! grep -qiE "abort|segfault|terminate called" $W/server.log' "$(tail -3 $W/server.log)"
 stop

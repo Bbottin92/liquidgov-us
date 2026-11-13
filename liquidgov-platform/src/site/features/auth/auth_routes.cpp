@@ -134,7 +134,9 @@ std::optional<std::string> auth_routes(Route& r) {
         auto r=login(g_store,g_limiter,uname,f["password"],device_label_from(req,ip),ip);
         if(r.error!=AuthError::None||!r.session) {
             const char* code = (r.error==AuthError::RateLimited) ? "ratelimit" : "login";
-            std::string loc = "/login?err=" + std::string(code) + "&username=" + url_encode(uname);
+            // No username in the URL: it would sit in server logs and browser history (security gate,
+            // Brandon 2026-11-13). The form comes back empty; the person retypes it.
+            std::string loc = "/login?err=" + std::string(code);
             auto next = safe_next_path(trim_ws(f["next"]));
             if (!next.empty()) loc += "&next=" + url_encode(next);
             return http_redir(loc);

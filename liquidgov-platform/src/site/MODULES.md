@@ -59,3 +59,14 @@ NEW round-trip fixture and test (the existing ones are frozen; store_split_check
 `deploy/<feature>-undo.py` with a `<NAME>_TAGS` tuple and a `tests/rollback/<feature>_undo.sh` (undo_lists_check.py).
 `FileStore` itself is still one class: a new record type changes it, so every file that includes `file_store.hpp`
 recompiles. Only the record types' own declarations are split out. `lgp1_consistency.py` checks all of that.
+
+## Build options (liquidgov-platform/CMakeLists.txt)
+
+- `LG_PCH` (default ON): precompiled standard-library headers for `liquidgov_http` and the store. Only standard
+  headers, so editing a record or store header never invalidates them. OFF builds exactly as before (CI builds both).
+- ccache: used automatically when installed (`CMAKE_CXX_COMPILER_LAUNCHER`); nothing changes without it.
+- `LG_STATIC_RUNTIME` (default OFF), `LG_BUILD_COMMIT`, `LG_BUILD_TREE`: for prebuilt deploys
+  (`deploy/PLAN-prebuilt.md`, `scripts/build_release.sh`); `liquidgov_http --version` prints the commit and tree.
+- Includes: `site/common.hpp` no longer pulls in the store; include `site/core/adapters_store.hpp` (or
+  `liquidgov/platform/file_store.hpp`) where `g_store` is used, and only the `records/<family>.hpp` a header names.
+  `scripts/build_timing.sh` (run by lgcheck.sh) prints what a one-file touch recompiles.

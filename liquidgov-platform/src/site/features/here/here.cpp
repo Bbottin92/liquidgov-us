@@ -216,7 +216,8 @@ std::string here_page_bits(const std::string& viewer, const std::string& page) {
     if (!*choice) return "";
     // usernames and /u/ paths are [A-Za-z0-9._-] only (valid_username), so JSON-escaped text can't end the script
     return "<script>window.LG_HERE={\"me\":\"" + json_escape(viewer) + "\",\"page\":\"" + json_escape(page) +
-           "\"};</script><script src=\"" + asset_url("here.js") + "\" defer></script>";
+           "\"};</script><script src=\"" + asset_url("walker.js") + "\" defer></script>"
+           "<script src=\"" + asset_url("here.js") + "\" defer></script>";
 }
 
 std::string here_settings_card(const std::string& user) {

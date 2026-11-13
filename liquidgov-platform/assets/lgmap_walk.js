@@ -1,0 +1,100 @@
+/* Walking on the map (Brandon 2026-11-13, 12:36 AM): the walker stands on a box. The D-pad or WASD/arrows picks the
+   connector (the line to a neighboring box) that points most that way and walks along it to the next box; A or Enter
+   opens the box you stand on (the same as tapping it), B or Esc goes back (closes the open page, else the map's Back).
+   Uses lgmap.js's own drawing as it is: the boxes (#lgm-nodes .lgn[data-id]) and connectors (#lgm-edges .lge[data-a]
+   [data-b]) on the screen, wherever its ring layout put them; this file lays nothing out. The toggle, pad and keys are
+   walker.js's (window.LG_WALKER, loaded before this file). */
+(function () {
+  'use strict';
+  var root = document.getElementById('lgmap');
+  if (!root || !window.LG_WALKER) return;
+  var nodeLayer = document.getElementById('lgm-nodes'), edgeLayer = document.getElementById('lgm-edges');
+  var at = null, walker = null, follow = 0;
+  var MIN_COS = 0.2;   // a connector counts for a direction when it points within ~78 degrees of it
+
+  function box(id) { return id ? nodeLayer.querySelector('.lgn[data-id="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]') : null; }
+  function middle(el) { var r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; }
+  function shown(el) { return el.style.display !== 'none' && !el.classList.contains('lge-hiddenbox'); }
+  // where to stand when nothing is chosen yet: the box last tapped, else the center of the map (you at the start)
+  function startBox() {
+    var sel = nodeLayer.querySelector('.lgn.lgn-sel') || box('you') || nodeLayer.querySelector('.lgn');
+    return sel ? sel.getAttribute('data-id') : null;
+  }
+  // the boxes a connector from `id` leads to
+  function neighbors(id) {
+    var out = [];
+    Array.prototype.forEach.call(edgeLayer.querySelectorAll('.lge'), function (e) {
+      if (!shown(e)) return;
+      var a = e.getAttribute('data-a'), b = e.getAttribute('data-b'), o = a === id ? b : (b === id ? a : null);
+      if (o && box(o) && out.indexOf(o) < 0) out.push(o);
+    });
+    return out;
+  }
+  var WAY = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
+  // the neighbor whose connector points most along `dir` (ties: the nearer one)
+  function pick(dir) {
+    var here = box(at);
+    if (!here) return null;
+    var p = middle(here), w = WAY[dir], best = null, bestScore = -Infinity;
+    neighbors(at).forEach(function (id) {
+      var q = middle(box(id)), dx = q.x - p.x, dy = q.y - p.y, len = Math.sqrt(dx * dx + dy * dy) || 1;
+      var cos = (dx * w[0] + dy * w[1]) / len;
+      if (cos < MIN_COS) return;
+      var score = cos - len / 100000;
+      if (score > bestScore) { bestScore = score; best = id; }
+    });
+    return best;
+  }
+  function show() {
+    var el = box(at);
+    Array.prototype.forEach.call(nodeLayer.querySelectorAll('.lgn.lgn-walk'), function (o) { if (o !== el) o.classList.remove('lgn-walk'); });
+    if (!el) { walker.hidden = true; return; }
+    el.classList.add('lgn-walk');
+    var r = el.getBoundingClientRect();
+    walker.hidden = false;
+    walker.style.left = Math.round(r.left + r.width / 2) + 'px';
+    walker.style.top = Math.round(r.top) + 'px';
+    walker.setAttribute('data-at', at);
+  }
+  function step(dir) {
+    if (!box(at)) at = startBox();
+    var next = pick(dir);
+    if (next) at = next;
+    show();
+  }
+
+  walker = document.createElement('div');
+  walker.id = 'lgm-walker';
+  walker.hidden = true;
+  walker.setAttribute('aria-hidden', 'true');
+  document.body.appendChild(walker);
+
+  LG_WALKER.mount({
+    dir: function (dir, down) { if (down) step(dir); },
+    // A / Enter: the same as tapping the box you stand on
+    select: function () {
+      var el = box(at);
+      if (!el) return false;
+      el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+      return true;
+    },
+    // B / Esc: close the open page, else the map's own Back
+    back: function () {
+      var panel = document.getElementById('lgm-panel'), close = document.getElementById('lgm-close');
+      var backBtn = document.getElementById('lgm-back');
+      if (panel && !panel.hidden && close) close.click();
+      else if (backBtn && !backBtn.disabled) backBtn.click();
+    },
+    walking: function (on) {
+      clearInterval(follow);
+      if (on) {
+        if (!box(at)) at = startBox();
+        show();
+        follow = setInterval(function () { if (!box(at)) at = startBox(); show(); }, 120);   // the map glides and recenters
+      } else {
+        walker.hidden = true;
+        Array.prototype.forEach.call(nodeLayer.querySelectorAll('.lgn.lgn-walk'), function (o) { o.classList.remove('lgn-walk'); });
+      }
+    }
+  });
+})();

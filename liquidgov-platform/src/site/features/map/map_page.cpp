@@ -62,7 +62,10 @@ std::string map_page_body(const std::string& user, const std::string& focus) {
             "Cities are labels people chose, not governments. You only see what people have made visible.</p></div>"
             // People you may know, under the map: a signed-in person lands on this page, also right after signup
             + people_suggestions_html(user, 3, "/") +
-            "<script src=\""+asset_url("lgmap.js")+"\" defer></script>";
+            "<script src=\""+asset_url("lgmap.js")+"\" defer></script>"
+            // walking on the map (Brandon 2026-11-13): the shared controls, then the map walker (assets/lgmap_walk.js)
+            "<script src=\""+asset_url("walker.js")+"\" defer></script>"
+            "<script src=\""+asset_url("lgmap_walk.js")+"\" defer></script>";
 }
 
 }  // namespace liquidgov::site

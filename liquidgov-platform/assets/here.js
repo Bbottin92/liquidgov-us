@@ -3,37 +3,11 @@
    this file loads (only for someone who chose Yes). Positions are fractions of the page (0..1) so a phone and a
    desktop see roughly the same place. Tapping and clicking work as always; "Walk" turns on a D-pad (WASD or the arrow
    keys on a keyboard): walk your dot up to a button or field and press A (or Enter) to use it, B (or Esc) to go back.
-   Walker controls (Brandon 2026-11-13): on a phone the D-pad sits lower left and A/B lower right; the Walk toggle
-   ("dripping") sits at the top of the screen, just under the site header. */
+   The toggle, the pad and the keys are walker.js's (window.LG_WALKER, loaded just before this file); this file walks
+   the dot. */
 (function () {
-  // ---- the controls, ONE map: every key binding and on-screen button is named here and only here. The code below reads
-  // it, and so does tests/browser/walker_controls_check.py (through window.LG_HERE_CONTROLS), so a test never keeps its
-  // own copy. keys: KeyboardEvent.key, lowercased -> action. buttons: action -> its class, accessible name and face.
-  var CONTROLS = {
-    dirs: ['up', 'left', 'right', 'down'],
-    keys: {
-      w: 'up', arrowup: 'up', a: 'left', arrowleft: 'left', s: 'down', arrowdown: 'down', d: 'right', arrowright: 'right',
-      enter: 'select', escape: 'back'
-    },
-    buttons: {
-      toggle: { cls: 'lg-here-walk', label: 'Walk', on: 'Stop walking' },
-      up: { cls: 'lg-here-up', label: 'Walk up', text: '&#9650;' },
-      left: { cls: 'lg-here-left', label: 'Walk left', text: '&#9664;' },
-      right: { cls: 'lg-here-right', label: 'Walk right', text: '&#9654;' },
-      down: { cls: 'lg-here-down', label: 'Walk down', text: '&#9660;' },
-      select: { cls: 'lg-here-a', label: 'Use what you are next to', text: 'A' },
-      back: { cls: 'lg-here-b', label: 'Go back', text: 'B' }
-    }
-  };
-  window.LG_HERE_CONTROLS = CONTROLS;
-  function keyAction(e) {
-    if (e.ctrlKey || e.metaKey || e.altKey) return null;   // Ctrl+W, Cmd+S, ... stay the browser's
-    return CONTROLS.keys[String(e.key || '').toLowerCase()] || null;
-  }
-  function isDir(act) { return CONTROLS.dirs.indexOf(act) >= 0; }
-
   var cfg = window.LG_HERE;
-  if (!cfg || !cfg.me || !cfg.page || !window.WebSocket) return;
+  if (!cfg || !cfg.me || !cfg.page || !window.WebSocket || !window.LG_WALKER) return;
   var STEP = 7, NEAR = 30, SEND_MS = 110;
 
   var layer = document.createElement('div');
@@ -106,10 +80,6 @@
   }
 
   // ---- walking
-  function editing() {
-    var a = document.activeElement;
-    return a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT' || a.isContentEditable);
-  }
   function usable() {
     var all = document.querySelectorAll('a[href],button,input:not([type=hidden]),select,textarea,summary,[role=button]');
     var out = [];
@@ -163,104 +133,23 @@
   }
   setInterval(step, 40);
 
-  function back() {
-    if (editing()) document.activeElement.blur();   // B in a field: back to walking
-    else if (history.length > 1) history.back();
-  }
-
-  // ---- the D-pad (lower left), A and B (lower right), and the Walk toggle (top)
-  var B = CONTROLS.buttons;
-  function keyButton(act, attrs) {
-    return '<button type="button" class="' + B[act].cls + '"' + (attrs || '') + ' aria-label="' + B[act].label + '">' +
-      B[act].text + '</button>';
-  }
-  var pad = document.createElement('div');
-  pad.id = 'lg-here-pad';
-  pad.innerHTML =
-    '<button type="button" class="' + B.toggle.cls + '" aria-pressed="false">' + B.toggle.label + '</button>' +
-    '<div class="lg-here-keys" hidden><div class="lg-here-dpad">' +
-    CONTROLS.dirs.map(function (d) { return keyButton(d, ' data-dir="' + d + '"'); }).join('') +
-    '</div><div class="lg-here-ab">' + keyButton('back') + keyButton('select') + '</div></div>';
-  document.body.appendChild(pad);
-  var walkBtn = pad.querySelector('.' + B.toggle.cls), keys = pad.querySelector('.lg-here-keys');
-  var abKeys = pad.querySelector('.lg-here-ab');
-  // The toggle sits at the top of the screen, on the lower edge of the (sticky) site header: it overlaps only the
-  // header's bottom padding, so the header's own links stay uncovered, and it stays in the top of a phone's screen.
-  function placeToggle() {
-    var h = document.querySelector('header.top'), below = h ? h.getBoundingClientRect().bottom : 0;
-    var pad = h ? parseFloat(getComputedStyle(h.querySelector('.topinner') || h).paddingBottom) || 0 : 0;
-    walkBtn.style.top = below > 0 ? Math.round(below - pad) + 'px' : '';
-  }
-  // A and B stay clear of the Juketube button, which is fixed at the right edge just above the bottom.
-  function clearJuketube() {
-    abKeys.style.marginRight = '';
-    var jb = document.getElementById('jbtoggle');
-    if (!jb || keys.hidden) return;
-    var j = jb.getBoundingClientRect(), a = abKeys.getBoundingClientRect();
-    if (!j.width || !j.height) return;
-    var overlap = a.right - j.left + 8;
-    if (overlap > 0 && a.top < j.bottom && a.bottom > j.top) abKeys.style.marginRight = Math.round(overlap) + 'px';
-  }
-  // Room at the page's end for the pad (Brandon 2026-11-12 "do the dpad fix"): the page already keeps some room at the
-  // bottom (for the Juketube button); while the pad is taller than that, the page gets the pad's height plus a margin,
-  // so scrolled to the end nothing stays under it. Given back when walking stops.
-  var baseRoom = parseFloat(getComputedStyle(document.body).paddingBottom) || 0;
-  function fitRoom() {
-    var need = pad.getBoundingClientRect().height + 24;
-    document.body.style.paddingBottom = need > baseRoom ? need + 'px' : '';
-    sizeLayer();
-  }
-  function setWalking(on) {
-    walking = on;
-    walkBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
-    walkBtn.textContent = on ? B.toggle.on : B.toggle.label;
-    keys.hidden = !on;
-    clearJuketube();
-    fitRoom();
-    held = {};
-    if (on) findNear();
-    else if (near) { near.classList.remove('lg-here-near'); near = null; }
-  }
-  // blur: Enter (select) must never land on the focused toggle and switch walking off
-  walkBtn.addEventListener('click', function () { setWalking(!walking); walkBtn.blur(); });
-  Array.prototype.forEach.call(pad.querySelectorAll('[data-dir]'), function (b) {
-    var dir = b.getAttribute('data-dir');
-    var on = function (e) { e.preventDefault(); held[dir] = true; };
-    var off = function () { held[dir] = false; };
-    b.addEventListener('pointerdown', on);
-    b.addEventListener('pointerup', off);
-    b.addEventListener('pointerleave', off);
-    b.addEventListener('pointercancel', off);
+  // ---- the toggle, D-pad, A and B (walker.js)
+  LG_WALKER.mount({
+    dir: function (dir, down) { held[dir] = down; },
+    select: function () { if (!near) return false; press(); return true; },
+    back: function () { if (history.length > 1) history.back(); },
+    walking: function (on) {
+      walking = on;
+      held = {};
+      if (on) findNear();
+      else if (near) { near.classList.remove('lg-here-near'); near = null; }
+    },
+    resized: sizeLayer
   });
-  pad.querySelector('.' + B.select.cls).addEventListener('click', press);
-  pad.querySelector('.' + B.back.cls).addEventListener('click', back);
-
-  // Keys work only while walking, and never while you type in a field (there only B/Esc counts: it leaves the field).
-  document.addEventListener('keydown', function (e) {
-    if (!walking) return;
-    var act = keyAction(e);
-    if (editing()) {
-      if (act === 'back') back();
-      return;
-    }
-    if (!act) return;
-    if (isDir(act)) { held[act] = true; e.preventDefault(); }
-    else if (act === 'select' && near) { e.preventDefault(); press(); }
-    else if (act === 'back') { e.preventDefault(); back(); }
-  });
-  document.addEventListener('keyup', function (e) {
-    var act = CONTROLS.keys[String(e.key || '').toLowerCase()];
-    if (isDir(act)) held[act] = false;
-  });
-  window.addEventListener('blur', function () { held = {}; });   // a key let go in another window never sticks
 
   window.addEventListener('resize', function () {
-    placeToggle();
-    clearJuketube();
-    fitRoom();
     Object.keys(dots).forEach(function (u) { if (u === cfg.me) place(dots[u], me.x, me.y); });
   });
-  placeToggle();
   sizeLayer();
   setTimeout(sizeLayer, 1500);
   connect();

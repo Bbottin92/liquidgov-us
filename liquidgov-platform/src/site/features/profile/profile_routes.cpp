@@ -67,6 +67,8 @@ std::optional<std::string> profile_routes(Route& r) {
                                html_escape(css_reject_message(now.code)) + " Change it and save again.</p>";
             }
             html += "<div class=\"card\" id=\"profile-css\"><h2>Profile CSS</h2>"
+                // the style library, findable from here (Brandon 2026-11-12: "i dont really see anything with the style library")
+                "<p class=\"row\" style=\"margin:.2rem 0 .6rem\"><a class=\"btn ghost\" href=\"/styles\">Browse styles</a></p>"
                 "<p class=\"muted\">Styles your whole profile page (/u/"+html_escape(user)+
                 ") below the site header. Use .lg-theme to style the whole area. Visitors can always switch to a "
                 "plain view. Escapes (\\), the &amp; selector, url(), image functions, @import and @-rules other "
@@ -186,6 +188,16 @@ std::optional<std::string> profile_routes(Route& r) {
         const bool plain = qs["plain"] == "1";
         const std::string self_url = "/u/" + html_escape(found->username);
         if (css_ok) {
+            // A profile whose CSS came from a published style credits it (Brandon 2026-11-12: the library should be
+            // findable). Same rules as /me's "based on" and the library's own: only while the style is still listed
+            // and visible to this viewer (blocks, today's filter). Outside the styled area, so no CSS can hide or fake it.
+            if (!plain) {
+                if (auto base = g_store.style_based_on(found->username); base && style_visible_to(*base, acc ? user : "")) {
+                    html += "<p class=\"muted lg-style-credit\" style=\"text-align:right;margin:0 0 .25rem\">Style: <a href=\"/styles#style-" +
+                            std::to_string(base->id) + "\">" + html_escape(base->name) + "</a> by <a href=\"/u/" +
+                            html_escape(base->author) + "\">" + html_escape(base->author) + "</a></p>";
+                }
+            }
             html += plain
                 ? "<p class=\"muted lg-plain-view\" style=\"text-align:right;margin:0 0 .5rem\">Plain view. <a href=\""
                       + self_url + "\">Show " + html_escape(found->username) + "'s style</a></p>"

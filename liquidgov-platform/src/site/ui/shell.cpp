@@ -273,7 +273,7 @@ std::string nav(const std::string& user, int unread) {
         std::string burger = "<label class=\"navbtn\" for=\"navc\">Menu</label><input id=\"navc\" type=\"checkbox\">";
         // "Who holds control" is reachable from here too, but as a closed disclosure, not a top-level nav item --
         // same reasoning and the same <details><summary> pattern as the footer's, just below.
-        return burger+"<nav><a href=\"/\">Genesis</a><a href=\"/laws\">Laws</a>"
+        return burger+"<nav><a href=\"/\">Genesis</a><a href=\"/laws\">Laws</a><a href=\"/styles\">Styles</a>"
                "<details style=\"display:inline-block\"><summary class=\"muted\" style=\"cursor:pointer;display:inline;min-height:44px;align-items:center\">Disclaimer</summary>"
                "<a href=\"/control\">Who holds control</a></details>"
                "<a href=\"/apps\">App</a>"
@@ -341,6 +341,7 @@ std::string nav(const std::string& user, int unread) {
         "<a href=\"/friends\">People</a>"
         "<a href=\"/map\">Map</a>"
         "<a href=\"/communities\">Groups</a>"
+        "<a href=\"/styles\">Styles</a>"
         "<a href=\"/proposals\">Proposals</a>"
         "<a href=\"/officials\">Officials</a>"
         "<a href=\"/laws\">Laws</a>"

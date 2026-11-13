@@ -25,6 +25,9 @@ keeps no copy of the bindings.
       per 40 ms, faster than a half pull; let go, it stops
   P5  the Drop button (Brandon's name; it turns walking on) is in the top 15% of the screen and does not cover the site header's middle
   P6  the Drop button shows the map's own label for it ("Stop dropping" while on)
+  C1  the Drop button covers nothing (Brandon 1:59 AM: on the map it covered MAINstream): its box meets neither the
+      portal (CONTROLS.portal), nor the map's MAINstream button (#lgm-main), nor any other link, button or field;
+      at 390x844 and 1280x800, on the profile-like page and on the map
   Desktop 1280x800:
   D1  the Drop button is in the top 15% of the screen and does not cover the site header's middle
   D2  each movement key in the map (W/A/S/D and the arrows) moves your dot its way
@@ -160,6 +163,14 @@ BOXES = r"""(() => { const C = window.LG_WALKER && LG_WALKER.CONTROLS, q = s => 
   const h = q('header.top').getBoundingClientRect(), hit = document.elementFromPoint(h.left + h.width / 2, h.top + h.height / 2);
   out.headerHit = !!hit && q('header.top').contains(hit);
   return JSON.stringify(out); })()"""
+# The Drop button against the portal, the map's MAINstream button and every other control it could cover.
+COVER = r"""(() => { const C = LG_WALKER.CONTROLS, d = document.querySelector('#lg-here-pad .' + C.buttons.drop.cls);
+  const box = e => { if (!e) return null; const r = e.getBoundingClientRect(); return r.width && r.height ? {l: r.left, t: r.top, r: r.right, b: r.bottom} : null; };
+  const meets = (a, b) => !!a && !!b && a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b;
+  const D = box(d), P = box(document.querySelector(C.portal.selector)), M = box(document.getElementById('lgm-main'));
+  const covered = [...document.querySelectorAll('a[href],button,input:not([type=hidden]),select,textarea,summary,[role=button]')]
+    .filter(e => !e.closest('#lg-here-pad') && meets(D, box(e))).map(e => e.id || e.className || e.tagName);
+  return JSON.stringify({drop: D, portal: P, main: M, portalHit: meets(D, P), mainHit: meets(D, M), covered: covered}); })()"""
 DOT = ("(() => { const d = document.querySelector('#lg-here .lg-here-dot.me'); if (!d) return JSON.stringify(null);"
        " const r = d.getBoundingClientRect(); return JSON.stringify([r.left + scrollX, r.top + scrollY]); })()")
 WAY = {"up": (0, -1), "down": (0, 1), "left": (-1, 0), "right": (1, 0)}
@@ -222,6 +233,13 @@ class Run(m.Run):
         self.j("(() => { document.querySelector('#lg-here-pad .' + LG_WALKER.CONTROLS.buttons.drop.cls).click(); return '1'; })()")
         self.wait("!document.querySelector('#lg-here-pad .lg-here-keys').hidden", 3)
 
+    def covers_nothing(self, tag, need_main=False):
+        c = self.j(COVER) or {}
+        self.check("C1 %s: the Drop button covers nothing (not the portal%s, no other control)" % (tag, ", not MAINstream" if need_main else ""),
+                   bool(c.get("drop")) and bool(c.get("portal")) and (bool(c.get("main")) or not need_main)
+                   and not c.get("portalHit") and not c.get("mainHit") and not c.get("covered"), c)
+        return c
+
     def drop_at_top(self, tag, b):
         t = (b.get("buttons") or {}).get("drop")
         self.check("%s the Drop button is in the top 15%% of the screen and the header's middle is uncovered" % tag,
@@ -268,6 +286,7 @@ class Run(m.Run):
         self.check("P4 phone: every control is at least 44x44 px", len(ctl) >= 4 and all(ctl.values()) and not small,
                    {"small": small, "count": len(ctl)})
         self.drop_at_top("P5 phone:", b)
+        self.covers_nothing("phone")
         self.check("P6 the Drop button reads its name from the map (on: %r)" % (C.get("buttons", {}).get("drop") or {}).get("on"),
                    (btn.get("drop") or {}).get("text") == (C.get("buttons", {}).get("drop") or {}).get("on"), btn.get("drop"))
         self.shot("phone", {"x": 0, "y": 0, "width": vw, "height": vh})
@@ -321,6 +340,7 @@ class Run(m.Run):
         self.drop()
         b = self.j(BOXES) or {}
         self.drop_at_top("D1 desktop:", b)
+        self.covers_nothing("desktop")
         C = self.j("JSON.stringify((window.LG_WALKER && LG_WALKER.CONTROLS) || null)") or {}
         for k, act in sorted((C.get("keys") or {}).items()):
             if act not in WAY:
@@ -413,6 +433,7 @@ class Run(m.Run):
         self.check("M4 desktop: Drop zooms toward the walker (you grows about %sx)" % zoom,
                    bool(zoom) and 1.25 <= grow <= zoom * 1.05, {"plain w": plain.get("w"), "drop w": st.get("w"), "grow": grow})
         self.check("M0 desktop: the map is drawn and the walker stands on you", ok and st.get("at") == "you", st)
+        self.covers_nothing("map desktop", need_main=True)
         C = self.j("JSON.stringify((window.LG_WALKER && LG_WALKER.CONTROLS) || null)") or {}
         letters = {a: k for k, a in (C.get("keys") or {}).items() if len(k) == 1 and a in WAY}
         opposite = {"up": "down", "down": "up", "left": "right", "right": "left"}
@@ -496,6 +517,9 @@ class Run(m.Run):
         ok = self.map_load()
         st = self.map_walking()
         self.check("M0 phone: the map is drawn and the walker stands on you", ok and st.get("at") == "you", st)
+        c = self.covers_nothing("map phone", need_main=True)
+        if c.get("main"):   # the map's top: the Drop strip, the header with the portal, MAINstream
+            self.shot("map-top-phone", {"x": 0, "y": 0, "width": 390, "height": min(844, c["main"]["b"] + 24)})
         C = self.j("JSON.stringify((window.LG_WALKER && LG_WALKER.CONTROLS) || null)") or {}
         B = C.get("buttons") or {}
         moved = None

@@ -34,7 +34,9 @@
     // action -> the button's class, accessible name and face
     buttons: {
       // legacy: the class it had before Brandon named it Drop; only the committed dots/herepad checks still look for it
-      drop: { cls: 'lg-here-drop', legacy: 'lg-here-walk', label: 'Drop', on: 'Stop dropping' },
+      // bar: its own strip across the top of the screen (Brandon 1:59 AM: it covered the MAINstream button); the page and
+      // its sticky header move down by the strip's height, so the button covers nothing; gap px above and below it
+      drop: { cls: 'lg-here-drop', legacy: 'lg-here-walk', label: 'Drop', on: 'Stop dropping', bar: 'lg-here-dropbar', gap: 6 },
       select: { cls: 'lg-here-a', label: 'Use what you are next to', text: 'A' },
       back: { cls: 'lg-here-b', label: 'Go back', text: 'B' }
     }
@@ -72,22 +74,26 @@
     var pad = document.createElement('div');
     pad.id = 'lg-here-pad';
     pad.innerHTML =
-      '<button type="button" class="' + B.drop.cls + ' ' + B.drop.legacy + '" aria-pressed="false">' + B.drop.label + '</button>' +
+      '<div class="' + B.drop.bar + '" aria-hidden="true"></div><button type="button" class="' + B.drop.cls + ' ' + B.drop.legacy + '" aria-pressed="false">' + B.drop.label + '</button>' +
       '<div class="lg-here-keys" hidden><div class="' + T.cls + '" role="application" aria-label="' + T.label +
       '"><span class="' + T.knob + '"></span></div><div class="lg-here-ab">' + keyButton('select') + keyButton('back') + '</div></div>';
     [['--lgw-w', T.width + 'px'], ['--lgw-h', T.height + 'px'], ['--lgw-alpha', String(T.alpha)], ['--lgw-lift', T.lift + 'px'],
-      ['--lgw-margin', T.margin + 'px']].forEach(function (v) { pad.style.setProperty(v[0], v[1]); });
+      ['--lgw-margin', T.margin + 'px'], ['--lgw-dropgap', B.drop.gap + 'px']].forEach(function (v) { pad.style.setProperty(v[0], v[1]); });
     document.body.appendChild(pad);
     var dropBtn = pad.querySelector('.' + B.drop.cls), keys = pad.querySelector('.lg-here-keys');
     var dropping = false, held = {};
     var touchpad = pad.querySelector('.' + T.cls), knob = touchpad.firstChild, grip = null, from = null;
 
-    // The Drop button sits at the top of the screen, on the lower edge of the (sticky) site header: it overlaps only the
-    // header's bottom padding, so the header's own links stay uncovered, and it stays in the top of a phone's screen.
+    // The Drop button sits at the top of the screen in its own strip (B.drop.bar, above the safe area's top): the page
+    // gets the strip's height as room at its top and the sticky site header sticks just under it, so the button covers
+    // nothing (not the header's links, not the map's MAINstream button).
+    var bar = pad.querySelector('.' + B.drop.bar), header = document.querySelector('header.top');
+    var baseTop = parseFloat(getComputedStyle(document.body).paddingTop) || 0;
     function placeDrop() {
-      var h = document.querySelector('header.top'), below = h ? h.getBoundingClientRect().bottom : 0;
-      var inner = h ? parseFloat(getComputedStyle(h.querySelector('.topinner') || h).paddingBottom) || 0 : 0;
-      dropBtn.style.top = below > 0 ? Math.round(below - inner) + 'px' : '';
+      pad.style.setProperty('--lgw-droph', dropBtn.offsetHeight + 'px');
+      var h = bar.getBoundingClientRect().height;
+      document.body.style.paddingTop = (baseTop + h) + 'px';
+      if (header && getComputedStyle(header).position === 'sticky') header.style.top = h + 'px';
     }
     // The unit stays clear of the Juketube button (fixed at the right edge just above the bottom): if they meet, the
     // unit rises above it.

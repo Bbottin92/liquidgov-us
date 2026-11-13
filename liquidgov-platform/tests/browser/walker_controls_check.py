@@ -31,6 +31,7 @@ keeps no copy of the bindings.
       (the same .lg-tip look: background, border, corners, shadow, font size as a #jbhint)
   T2  the note sits in the Drop strip under the switch and covers nothing (no link, button or field; not the switch)
   T3  its close button hides it and saves the seen-flag (LG_TIP.flag); the next page view shows no note
+  T4  one tip at a time (LG_TIP): while one shows, another waits for a later page view without counting it
   C1  the Drop button covers nothing (Brandon 1:59 AM: on the map it covered MAINstream): its box meets neither the
       portal (CONTROLS.portal), nor the map's MAINstream button (#lgm-main), nor any other link, button or field;
       at 390x844 and 1280x800, on the profile-like page and on the map
@@ -286,6 +287,13 @@ class Run(m.Run):
         time.sleep(0.5)
         t3 = self.j(self.TIP) or {}
         self.check("T3 phone: the next page view shows no note", not t3.get("shown"), t3)
+        two = self.j("(() => { const mk = () => { const d = document.createElement('div'); d.innerHTML = '<span></span><button></button>'; document.body.appendChild(d); return d; };"
+                     " ['t4a', 't4b'].forEach(n => { localStorage.removeItem(LG_TIP.flag(n)); localStorage.removeItem(LG_TIP.flag(n) + '-views'); });"
+                     " const a = mk(), b = mk(), ta = LG_TIP.wire(a, a.lastChild, 't4a', {}), tb = LG_TIP.wire(b, b.lastChild, 't4b', {});"
+                     " const r = {first: ta.shown, second: tb.shown, secondViews: localStorage.getItem(LG_TIP.flag('t4b') + '-views')};"
+                     " ta.hide(false); a.remove(); b.remove(); return JSON.stringify(r); })()") or {}
+        self.check("T4 one tip at a time: while one shows, another waits (its view isn't counted)",
+                   two.get("first") is True and two.get("second") is False and two.get("secondViews") is None, two)
 
     def covers_nothing(self, tag, need_main=False):
         c = self.j(COVER) or {}

@@ -3,8 +3,11 @@
    tip's seen-flag: localStorage 'lg-<name>-hint' = '1' (seen for good) and 'lg-<name>-hint-views' (pages it was shown
    on). A tip shows only outside a framed page, on at most maxViews page views, until its close button is pressed (that
    saves the flag); hideAfterMs > 0 hides it for this page after that long. The look is juketube.css's .lg-tip and
-   .lg-tip-close. localStorage is guarded: private mode throws, and then no tip shows. */
+   .lg-tip-close. One tip at a time: while one shows, another waits for a later page view (its view isn't counted), so
+   two first-time notes never stack up and push or cover the page together. localStorage is guarded: private mode
+   throws, and then no tip shows. */
 (function () {
+  var showing = 0;   // tips on the screen now
   function flag(name) { return 'lg-' + name + '-hint'; }
   // wire(el, closeBtn, name, {maxViews, hideAfterMs, onHide}) -> {shown, hide(forGood)}: shows el now if it is due,
   // else hides it.
@@ -13,6 +16,7 @@
     var tip = { shown: false, hide: hide };
     function hide(forGood) {
       el.style.display = 'none';
+      if (tip.shown) showing--;
       tip.shown = false;
       if (forGood) { try { localStorage.setItem(flag(name), '1'); } catch (e) {} } // err-ok: private mode; hidden for this page anyway
       if (opts.onHide) opts.onHide();
@@ -25,11 +29,12 @@
       e.stopPropagation(); // a tip may open something itself (Juketube's does); the x must not
       hide(true);
     });
-    if (framed || seen === '1') { hide(false); return tip; }
+    if (framed || seen === '1' || showing > 0) { hide(false); return tip; }
     try { localStorage.setItem(flag(name) + '-views', String(views + 1)); } catch (e) {} // err-ok: private mode: the tip just shows for this page
     if (views + 1 >= (opts.maxViews || 1)) { try { localStorage.setItem(flag(name), '1'); } catch (e) {} } // err-ok: as above
     if (opts.hideAfterMs > 0) setTimeout(function () { hide(false); }, opts.hideAfterMs);
     tip.shown = true;
+    showing++;
     return tip;
   }
   window.LG_TIP = { wire: wire, flag: flag };

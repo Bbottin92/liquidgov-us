@@ -54,6 +54,7 @@ CHECKS = {
     "affected_checks_master_check.py": [],
     "ci_runs_checks_check.py": [".github/workflows/*", "scripts/run_hook_checks.py", "tests/repo/*"],
     "ci_skip_list_check.py": ["scripts/run_hook_checks.py", "tests/repo/*"],
+    "linux_only_skip_check.py": ["scripts/run_hook_checks.py", "scripts/affected_checks.py", "tests/repo/*"],
     "hook_windows_skip_check.py": [".githooks/*", "scripts/affected_checks.py", "scripts/run_hook_checks.py"],
     "prebuilt_check.py": ["deploy/fetch-prebuilt.sh", "deploy/prebuilt-go.sh", "deploy/prebuilt-remote.sh",
                           "deploy/make-go.py", "naming.toml", ".gitignore"],
@@ -136,15 +137,19 @@ def changed_files(root, mode, stdin_text=""):
     return changed, added
 
 
-def windows_only(root):
-    """run_hook_checks.WINDOWS_ONLY (the one list); () if that file is missing."""
+def runner_list(root, name):
+    """run_hook_checks.<name> (WINDOWS_ONLY or LINUX_ONLY: the one list); () if that file is missing."""
     path = os.path.join(root, "scripts", "run_hook_checks.py")
     if not os.path.exists(path):
         return ()
     spec = importlib.util.spec_from_file_location("run_hook_checks", path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    return tuple(getattr(mod, "WINDOWS_ONLY", ()))
+    return tuple(getattr(mod, name, ()))
+
+
+def windows_only(root):
+    return runner_list(root, "WINDOWS_ONLY")
 
 
 def main():
@@ -172,6 +177,13 @@ def main():
         if skipped:
             print("SKIPPED (Windows-only): %s  (not passed; the PC's git hooks run them)" % " ".join(skipped),
                   file=sys.stderr)
+    else:
+        # On Windows, leave out the Linux-only checks (run_hook_checks.LINUX_ONLY; Brandon 2026-11-13 "yes go with
+        # option A"): they exit 127 under Git Bash. GitHub CI runs them on Linux on every push.
+        skipped = [n for n in picked if n in runner_list(root, "LINUX_ONLY")]
+        picked = [n for n in picked if n not in skipped]
+        if skipped:
+            print("SKIPPED (Linux-only): %s  (not passed; GitHub CI runs them)" % " ".join(skipped), file=sys.stderr)
     for n in picked:
         print(n)
     return 0

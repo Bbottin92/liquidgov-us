@@ -13,6 +13,10 @@ WINDOWS_ONLY checks test PC-only tools (tidy_worktrees.py: Windows junctions via
 Windows they are not run and are listed on a "SKIPPED (Windows-only)" line, never counted as passed; the git hooks on
 the PC still run them (Brandon 2026-11-12, after GitHub run 43302640573). LG_CHECKS_PLATFORM overrides sys.platform
 (for ci_skip_list_check.py).
+LINUX_ONLY is the mirror: checks that need Linux tools (prebuilt_check.py drives deploy/fetch-prebuilt.sh with a fake
+gh and a fake --version program, which exit 127 under Git Bash). On Windows they are not run and are listed on a
+"SKIPPED (Linux-only)" line, never counted as passed; GitHub CI (Linux) runs them on every push (Brandon 2026-11-13
+"yes go with option A"; linux_only_skip_check.py).
 
 Usage: python3 scripts/run_hook_checks.py <repo root> [--list]   (--list prints the check names and runs nothing)"""
 import importlib.util
@@ -24,6 +28,7 @@ import time
 
 TIMEOUT = 600  # seconds per check; the slowest (temp git repos, fake gh) take a few seconds
 WINDOWS_ONLY = ("tidy_worktrees_check.py", "tidy_in_use_check.py")
+LINUX_ONLY = ("prebuilt_check.py",)
 NO_CASES = re.compile(r"\bpasses=0\b")
 
 
@@ -61,7 +66,10 @@ def main(argv):
     env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
     on_windows = os.environ.get("LG_CHECKS_PLATFORM", sys.platform).startswith("win")
     skipped = [] if on_windows else [n for n in names if n in WINDOWS_ONLY]
-    names = [n for n in names if n not in skipped]
+    linux_skipped = [n for n in names if n in LINUX_ONLY] if on_windows else []
+    names = [n for n in names if n not in skipped and n not in linux_skipped]
+    if linux_skipped:
+        print("SKIPPED (Linux-only): %s  (not passed; GitHub CI runs them)" % " ".join(linux_skipped), flush=True)
     failed = []
     for name in names:
         start = time.time()

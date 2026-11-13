@@ -46,7 +46,7 @@ check(rc == 0 and windows_only <= win, "control: on Windows the hooks still run 
 rc, lin, err = picked("linux")
 check(rc == 0 and len(lin) > 0, "on Linux the hooks still run checks", (rc, len(lin)))
 check(not (windows_only & lin), "on Linux the hooks leave out the Windows-only checks", sorted(windows_only & lin))
-check(lin == win - windows_only, "...and nothing else: Linux runs exactly Windows' list minus those", sorted(win ^ lin))
+check(lin == (win - windows_only) | set(getattr(rhc, "LINUX_ONLY", ())), "...and nothing else: Linux runs Windows' list minus those, plus the Linux-only ones (Brandon OK 2026-11-13)", sorted(win ^ lin))
 check("SKIPPED (Windows-only)" in err and all(n in err for n in windows_only),
       "...and say which were skipped (never counted as passed)", err.strip()[-200:])
 

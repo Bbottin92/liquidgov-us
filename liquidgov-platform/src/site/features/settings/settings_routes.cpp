@@ -30,7 +30,7 @@ std::optional<std::string> settings_routes(Route& r) {
         std::string html = "<h1>Settings</h1>"
             "<p class=\"muted\">Account, privacy, data, and notifications.</p>"
             // jump links (sweep 2026-11-09): nine sections were one long scroll on a phone
-            "<div class=\"setidx\" role=\"navigation\" aria-label=\"Settings sections\"><a href=\"#security\">Security</a><a href=\"#sessions\">Sessions</a><a href=\"#here\">Dots</a><a href=\"#map\">Map and connections</a><a href=\"#privacy\">Privacy</a><a href=\"#blocks\">Block list</a><a href=\"#jukebox\">Jukebox</a><a href=\"#identity\">Identity</a><a href=\"#data\">Data</a><a href=\"#notifications\">Notifications</a></div>";  // a div: the phone CSS hides every <nav> (nav{display:none} is the mobile menu)
+            "<div class=\"setidx\" role=\"navigation\" aria-label=\"Settings sections\"><a href=\"#security\">Security</a><a href=\"#sessions\">Sessions</a><a href=\"#map\">Map and connections</a><a href=\"#privacy\">Privacy</a><a href=\"#blocks\">Block list</a><a href=\"#jukebox\">Jukebox</a><a href=\"#identity\">Identity</a><a href=\"#data\">Data</a><a href=\"#notifications\">Notifications</a></div>";  // a div: the phone CSS hides every <nav> (nav{display:none} is the mobile menu)
         if (qs["ok"]=="password") html += "<p class=\"ok\">Password changed.</p>";
         html += flash_error(qs);
 

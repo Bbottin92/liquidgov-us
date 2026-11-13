@@ -250,7 +250,8 @@
       el.firstChild.textContent = P.text;
       document.body.appendChild(el);
       tip = { el: el, shown: false };
-      var t = LG_TIP.wire(el, el.lastChild, P.name, { maxViews: P.maxViews, onHide: function () { tip.shown = false; placeDrop(); } });
+      var t = LG_TIP.wire(el, el.lastChild, P.name, { maxViews: P.maxViews, onHide: function () { tip.shown = false; placeDrop(); },
+        onShow: function () { tip.shown = true; placeDrop(); } });   // after the landing intro (tip.js waits for it)
       tip.shown = t.shown;
       placeDrop();
     }

@@ -24,7 +24,6 @@ DEPLOY = ["deploy/*", "naming.toml"]
 CHECKS = {
     "lgp1_consistency.py": ["liquidgov-platform/libs/*", SRC, ASSETS, "deploy/city-undo.py",
                             "liquidgov-platform/tests/e2e/city_undo.sh", "deploy/*-undo.py"],
-                            "liquidgov-platform/tests/e2e/city_undo.sh", "deploy/styles-undo.py"],
     "one_app_check.py": [SRC, ASSETS],
     "pwa_files_check.py": ["commons/*", "commons-daemon/deploy/*", "Persistence/TheCommons/art/*", SRC],
     "naming_check.py": ["naming.toml", "liquidgov-platform/tests/*", "commons-daemon/*", SRC, "deploy/*"],

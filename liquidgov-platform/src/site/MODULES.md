@@ -33,7 +33,7 @@ module `.cpp` files, in build order, lives in one place: `sources.cmake` (CMakeL
   inside C++ strings. A script that needs per-page values gets them from a one-line inline settings object set just
   before it loads (`jukebox.js` reads `window.LG_JUKEBOX`, `canvas.js` reads `window.LG_CANVAS`, `here.js` reads
   `window.LG_HERE`). Nothing is inline any more (canvas_tool_page's engine moved to `assets/canvas.js` 2026-11-13).
-- The walker's controls (Walk toggle, D-pad, A/B, WASD/arrows/Enter/Esc) are one module, `assets/walker.js`
+- The walker's controls (the Drop button, D-pad, A/B, WASD/arrows/Enter/Esc) are one module, `assets/walker.js`
   (`window.LG_WALKER`, with the one key/button map `LG_WALKER.CONTROLS`). Pages you walk on load it first and
   mount their own walker: `here.js` (dots on profile pages) and `lgmap_walk.js` (the map). Tests read the map from
   the page, never a copy (`tests/browser/walker_controls_check.py`).

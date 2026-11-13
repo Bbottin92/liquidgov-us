@@ -13,11 +13,12 @@ keeps no copy of the bindings.
   Phone 390x844 (walking):
   P1  the D-pad's center is in the left half and the bottom quarter of the screen
   P2  A and B are each in the right half and the bottom quarter
-  P3  no two controls overlap (D-pad, A, B, the Walk toggle, the Juketube button)
+  P3  no two controls overlap (D-pad, A, B, the Drop button, the Juketube button)
   P4  every control is at least 44x44 px
-  P5  the Walk toggle ("dripping") is in the top 15% of the screen and does not cover the site header's middle
+  P5  the Drop button (Brandon's name; it turns walking on) is in the top 15% of the screen and does not cover the site header's middle
+  P6  the Drop button shows the map's own label for it ("Stop dropping" while on)
   Desktop 1280x800:
-  D1  the Walk toggle is in the top 15% of the screen and does not cover the site header's middle
+  D1  the Drop button is in the top 15% of the screen and does not cover the site header's middle
   D2  each movement key in the map (W/A/S/D and the arrows) moves your dot its way
   D3  select (Enter) uses the button you stand next to (positive control: nothing was used before)
   D4  keys typed in a text field stay in the field (the dot does not move); back (Esc) there leaves the field
@@ -138,7 +139,7 @@ BOXES = r"""(() => { const C = window.LG_WALKER && LG_WALKER.CONTROLS, q = s => 
   if (!C) return JSON.stringify({noMap: true});
   const box = e => { if (!e) return null; const r = e.getBoundingClientRect(); return {l: r.left, t: r.top, r: r.right, b: r.bottom, w: r.width, h: r.height}; };
   out.dpad = box(q('#lg-here-pad .lg-here-dpad'));
-  out.buttons = {}; Object.keys(C.buttons).forEach(k => { out.buttons[k] = box(q('#lg-here-pad .' + C.buttons[k].cls)); });
+  out.buttons = {}; Object.keys(C.buttons).forEach(k => { const e = q('#lg-here-pad .' + C.buttons[k].cls); out.buttons[k] = box(e); if (out.buttons[k]) out.buttons[k].text = e.textContent; });
   out.jb = box(q('#jbtoggle'));
   const h = q('header.top').getBoundingClientRect(), hit = document.elementFromPoint(h.left + h.width / 2, h.top + h.height / 2);
   out.headerHit = !!hit && q('header.top').contains(hit);
@@ -201,27 +202,27 @@ class Run(m.Run):
         time.sleep(hold_s)
         self.ws.call("Input.dispatchKeyEvent", type="keyUp", key=dom, windowsVirtualKeyCode=vk)
 
-    def toggle(self):
-        self.j("(() => { document.querySelector('#lg-here-pad .' + LG_WALKER.CONTROLS.buttons.toggle.cls).click(); return '1'; })()")
+    def drop(self):
+        self.j("(() => { document.querySelector('#lg-here-pad .' + LG_WALKER.CONTROLS.buttons.drop.cls).click(); return '1'; })()")
         self.wait("!document.querySelector('#lg-here-pad .lg-here-keys').hidden", 3)
 
-    def toggle_at_top(self, tag, b):
-        t = (b.get("buttons") or {}).get("toggle")
-        self.check("%s the Walk toggle is in the top 15%% of the screen and the header's middle is uncovered" % tag,
-                   bool(t) and t["b"] <= 0.15 * b["vh"] and t["t"] >= 0 and b.get("headerHit"), {"toggle": t, "vh": b.get("vh"),
+    def drop_at_top(self, tag, b):
+        t = (b.get("buttons") or {}).get("drop")
+        self.check("%s the Drop button is in the top 15%% of the screen and the header's middle is uncovered" % tag,
+                   bool(t) and t["b"] <= 0.15 * b["vh"] and t["t"] >= 0 and b.get("headerHit"), {"drop": t, "vh": b.get("vh"),
                                                                                                    "headerHit": b.get("headerHit")})
 
     def phone(self):
         self.size(390, 844, True)
         self.goto("/walk")
-        self.toggle()
+        self.drop()
         time.sleep(0.3)
         b = self.j(BOXES) or {}
         C = self.j("JSON.stringify((window.LG_WALKER && LG_WALKER.CONTROLS) || null)") or {}
         acts = set((C.get("keys") or {}).values())
         self.check("K0 the controls map binds every direction, select and back to keys and buttons",
                    bool(C) and set(C.get("dirs", [])) == set(WAY) and set(WAY) | {"select", "back"} <= acts
-                   and all(a in C.get("buttons", {}) for a in list(WAY) + ["select", "back", "toggle"]), C)
+                   and all(a in C.get("buttons", {}) for a in list(WAY) + ["select", "back", "drop"]), C)
         vw, vh, btn = b.get("vw", 0), b.get("vh", 0), b.get("buttons") or {}
         dp = b.get("dpad")
         self.check("P1 phone: the D-pad's center is in the left half and the bottom quarter",
@@ -230,15 +231,17 @@ class Run(m.Run):
             r = btn.get(act)
             self.check("P2 phone: %s (%s) is in the right half and the bottom quarter" % (act, (C.get("buttons", {}).get(act) or {}).get("text")),
                        bool(r) and (r["l"] + r["r"]) / 2 > vw / 2 and (r["t"] + r["b"]) / 2 > 0.75 * vh, r)
-        parts = {"dpad": dp, "select": btn.get("select"), "back": btn.get("back"), "toggle": btn.get("toggle"), "juketube": b.get("jb")}
+        parts = {"dpad": dp, "select": btn.get("select"), "back": btn.get("back"), "drop": btn.get("drop"), "juketube": b.get("jb")}
         names = list(parts)
         clash = [(x, y) for i, x in enumerate(names) for y in names[i + 1:] if overlaps(parts[x], parts[y])]
-        self.check("P3 phone: no two controls overlap (D-pad, A, B, Walk toggle, Juketube button)",
+        self.check("P3 phone: no two controls overlap (D-pad, A, B, Drop button, Juketube button)",
                    all(parts.values()) and not clash, {"overlaps": clash, "boxes": parts})
         small = {k: (r["w"], r["h"]) for k, r in btn.items() if r and (r["w"] < 44 or r["h"] < 44)}
         self.check("P4 phone: every control is at least 44x44 px", len(btn) >= 7 and all(btn.values()) and not small,
                    {"small": small, "count": len(btn)})
-        self.toggle_at_top("P5 phone:", b)
+        self.drop_at_top("P5 phone:", b)
+        self.check("P6 the Drop button reads its name from the map (on: %r)" % (C.get("buttons", {}).get("drop") or {}).get("on"),
+                   (btn.get("drop") or {}).get("text") == (C.get("buttons", {}).get("drop") or {}).get("on"), btn.get("drop"))
         self.shot("phone", {"x": 0, "y": 0, "width": vw, "height": vh})
 
     def desktop(self):
@@ -247,9 +250,9 @@ class Run(m.Run):
         self.j("(() => { location.href = '/walk'; return '1'; })()")
         time.sleep(0.3)
         self.wait("location.pathname === '/walk' && document.readyState === 'complete' && !!document.querySelector('#lg-here .lg-here-dot.me')")
-        self.toggle()
+        self.drop()
         b = self.j(BOXES) or {}
-        self.toggle_at_top("D1 desktop:", b)
+        self.drop_at_top("D1 desktop:", b)
         C = self.j("JSON.stringify((window.LG_WALKER && LG_WALKER.CONTROLS) || null)") or {}
         for k, act in sorted((C.get("keys") or {}).items()):
             if act not in WAY:
@@ -319,7 +322,7 @@ class Run(m.Run):
         return ok
 
     def map_walking(self):
-        self.toggle()
+        self.drop()
         self.wait("!!document.getElementById('lgm-walker') && !document.getElementById('lgm-walker').hidden", 3)
         time.sleep(0.2)
         return self.j(self.WALK) or {}

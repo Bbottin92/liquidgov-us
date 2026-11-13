@@ -1,9 +1,9 @@
 /* Dots on profile pages (Brandon 2026-11-12): everyone on this profile page who chose Yes shows as a small round
    portrait with their handle, moving around the page. Settings come from window.LG_HERE = {me, page}, set just before
    this file loads (only for someone who chose Yes). Positions are fractions of the page (0..1) so a phone and a
-   desktop see roughly the same place. Tapping and clicking work as always; "Walk" turns on a D-pad (WASD or the arrow
+   desktop see roughly the same place. Tapping and clicking work as always; "Drop" turns on a D-pad (WASD or the arrow
    keys on a keyboard): walk your dot up to a button or field and press A (or Enter) to use it, B (or Esc) to go back.
-   The toggle, the pad and the keys are walker.js's (window.LG_WALKER, loaded just before this file); this file walks
+   The Drop button, the pad and the keys are walker.js's (window.LG_WALKER, loaded just before this file); this file walks
    the dot. */
 (function () {
   var cfg = window.LG_HERE;
@@ -15,7 +15,7 @@
   layer.setAttribute('aria-hidden', 'true');
   document.body.appendChild(layer);
 
-  var dots = {}, me = { x: 0.5, y: 0.08, known: false }, walking = false, held = {}, lastSent = 0, dirty = false;
+  var dots = {}, me = { x: 0.5, y: 0.08, known: false }, dropping = false, held = {}, lastSent = 0, dirty = false;
   var near = null, ws = null, tries = 0;
 
   function pageW() { return Math.max(document.documentElement.scrollWidth, document.body.scrollWidth); }
@@ -133,13 +133,13 @@
   }
   setInterval(step, 40);
 
-  // ---- the toggle, D-pad, A and B (walker.js)
+  // ---- the Drop button, D-pad, A and B (walker.js)
   LG_WALKER.mount({
     dir: function (dir, down) { held[dir] = down; },
     select: function () { if (!near) return false; press(); return true; },
     back: function () { if (history.length > 1) history.back(); },
-    walking: function (on) {
-      walking = on;
+    dropping: function (on) {
+      dropping = on;
       held = {};
       if (on) findNear();
       else if (near) { near.classList.remove('lg-here-near'); near = null; }

@@ -2,7 +2,7 @@
    connector (the line to a neighboring box) that points most that way and walks along it to the next box; A or Enter
    opens the box you stand on (the same as tapping it), B or Esc goes back (closes the open page, else the map's Back).
    Uses lgmap.js's own drawing as it is: the boxes (#lgm-nodes .lgn[data-id]) and connectors (#lgm-edges .lge[data-a]
-   [data-b]) on the screen, wherever its ring layout put them; this file lays nothing out. The toggle, pad and keys are
+   [data-b]) on the screen, wherever its ring layout put them; this file lays nothing out. The Drop button, pad and keys are
    walker.js's (window.LG_WALKER, loaded before this file). */
 (function () {
   'use strict';
@@ -85,7 +85,7 @@
       if (panel && !panel.hidden && close) close.click();
       else if (backBtn && !backBtn.disabled) backBtn.click();
     },
-    walking: function (on) {
+    dropping: function (on) {
       clearInterval(follow);
       if (on) {
         if (!box(at)) at = startBox();

@@ -6,7 +6,9 @@ namespace liquidgov::site {
 
 std::string html_escape(const std::string& s);
 std::string linkify_post_text(const std::string& raw);
-std::string composer_attach_bar(const char* counter_id);
+// The post box's bottom bar: photo button, characters left, Post. With canvas_href, also a "Canvas" button
+// (paintbrush icon) that opens that drawing page (group pages; Brandon 2026-11-12).
+std::string composer_attach_bar(const char* counter_id, const std::string& canvas_href = "");
 std::string js_string_literal(const std::string& s);
 bool visible_to(Visibility v, bool is_owner, bool viewer_signed_in, bool is_friend);
 

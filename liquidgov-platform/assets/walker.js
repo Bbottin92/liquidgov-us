@@ -9,6 +9,10 @@
     dirs: ['up', 'left', 'right', 'down'],
     // The walker's top speed: a dot walks maxSpeed px per 40 ms tick with a key held or the touchpad pulled all the way.
     maxSpeed: 7,
+    // The drop (Brandon 2:15 AM): your portrait, circular at rest, a tail behind you and a little stretch at speed.
+    // speed is a fraction of maxSpeed; one shape function is used on profiles and the map. Reduced motion: circle.
+    shape: { cls: 'lg-walker-drop', tailCls: 'lg-walker-tail', phCls: 'lg-walker-ph', size: 38, tail: 0.9, stretch: 0.16,
+      settleMs: 180, mapMoveMs: 350 },
     // The phone's touchpad (Brandon 2026-11-13 1:08 AM, in place of the D-pad; it works like a joystick): touch anywhere
     // on it and drag; the farther your finger from where it touched (up to reach px), the faster you walk. A pull under
     // deadZone (a fraction of reach) does nothing; full reach is maxSpeed. On the map one push walks one connector, and
@@ -242,6 +246,44 @@
     return v && typeof v.t === 'number' && Date.now() - v.t <= P.handoffMs ? { box: String(v.box || '') } : null;
   }
 
-  window.LG_WALKER = { CONTROLS: CONTROLS, keyAction: keyAction, isDir: isDir, editing: editing, pullVector: pullVector, mount: mount,
+  // portrait(name): your drop: a tail (hidden at rest) behind your round portrait (its first letter if there is none)
+  function portrait(name) {
+    var S = CONTROLS.shape, el = document.createElement('span'), tail = document.createElement('span'), img = document.createElement('img');
+    el.className = S.cls;
+    tail.className = S.tailCls;
+    el.style.width = el.style.height = S.size + 'px';
+    el.style.setProperty('--lg-drop-settle', S.settleMs + 'ms');
+    img.alt = '';
+    img.src = '/portrait/' + encodeURIComponent(name || '');
+    img.onerror = function () {
+      var ph = document.createElement('span');
+      ph.className = S.phCls;
+      ph.textContent = String(name || '?').charAt(0).toUpperCase();
+      if (img.parentNode) img.parentNode.replaceChild(ph, img);
+    };
+    el.appendChild(tail);
+    el.appendChild(img);
+    shape(el, 0, 0);
+    return el;
+  }
+  // shape(el, x, y): the drop for a velocity (x, y) as a fraction of top speed (keys: 1; the touchpad: its pull).
+  // Transforms only (no layout reads): the shell stretches along the motion by up to stretch, the tail grows on the
+  // side opposite the motion up to tail x the drop's size; at rest (and with reduced motion) a plain circle. CSS
+  // eases each change over settleMs, so stopping melts back to round.
+  function shape(el, x, y) {
+    if (!el) return;
+    var S = CONTROLS.shape, speed = Math.min(1, Math.sqrt(x * x + y * y));
+    if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) speed = 0;
+    var angle = speed ? Math.round(Math.atan2(y, x) * 180 / Math.PI) : +(el.getAttribute('data-angle') || 0);
+    var key = angle + ':' + speed.toFixed(2);
+    if (el.getAttribute('data-shape') === key) return;   // unchanged: no style writes
+    el.setAttribute('data-shape', key);
+    el.setAttribute('data-angle', angle);
+    el.setAttribute('data-speed', speed.toFixed(2));
+    el.style.transform = 'rotate(' + angle + 'deg) scaleX(' + (1 + S.stretch * speed).toFixed(3) + ') rotate(' + (-angle) + 'deg)';
+    el.firstChild.style.transform = 'rotate(' + (angle + 180) + 'deg) scaleX(' + (S.tail * speed).toFixed(3) + ')';
+  }
+
+  window.LG_WALKER = { CONTROLS: CONTROLS, portrait: portrait, shape: shape, keyAction: keyAction, isDir: isDir, editing: editing, pullVector: pullVector, mount: mount,
     takeHandoff: takeHandoff };
 })();

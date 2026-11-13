@@ -57,6 +57,7 @@ Exit 1 on a FAIL."""
 import base64
 import http.server
 import json
+import re
 import os
 import sys
 import threading
@@ -345,23 +346,27 @@ class Run(m.Run):
         self.switch_state("P6 phone: walking,", C, "on")
         self.shot("phone", {"x": 0, "y": 0, "width": vw, "height": vh})
         self.touchpad_pull(C, dp, vw, vh)
+        self.drop_shape(C)
 
     def pull(self, tp, dx, dy, hold_s, shot=None):
         """Touch the touchpad left of its middle (the pull counts from there, not the middle), drag by (dx, dy) px, hold, let go; returns how far your dot went (x, y)."""
         cx, cy = tp["l"] + 0.4 * (tp["r"] - tp["l"]), (tp["t"] + tp["b"]) / 2
         before = self.j(DOT)
+        t0 = time.time()
         self.ws.call("Input.dispatchMouseEvent", type="mousePressed", x=cx, y=cy, button="left", buttons=1, clickCount=1)
         for i in range(1, 5):
             self.ws.call("Input.dispatchMouseEvent", type="mouseMoved", x=cx + dx * i / 4, y=cy + dy * i / 4, button="left", buttons=1)
         time.sleep(hold_s)
+        mid = self.j(DOT)
+        self.ticks = (time.time() - t0) / 0.04   # the walk ticks every 40 ms; measured, so a slow CDP call doesn't skew speed
         if shot:
             shot()
-        mid = self.j(DOT)
+        held = self.j(DOT)   # where it was at the let-go
         self.ws.call("Input.dispatchMouseEvent", type="mouseReleased", x=cx + dx, y=cy + dy, button="left", buttons=0, clickCount=1)
         time.sleep(0.25)
         after = self.j(DOT)
         went = (mid[0] - before[0], mid[1] - before[1]) if before and mid else None
-        settled = (after[0] - mid[0], after[1] - mid[1]) if mid and after else None
+        settled = (after[0] - held[0], after[1] - held[1]) if held and after else None
         return went, settled
 
     def touchpad_pull(self, C, tp, vw, vh):
@@ -375,15 +380,47 @@ class Run(m.Run):
                    dead is not None and abs(dead[0]) < 1 and abs(dead[1]) < 1, dead)
         half_px = reach * (dz + (1 - dz) * 0.5)
         half, _ = self.pull(tp, -half_px, 0, 0.8)   # left, then right: the dot ends where it began
+        half_ticks = self.ticks
         full, stop = self.pull(tp, reach * 1.5, 0, 0.8,
                                shot=lambda: self.shot("touchpad", {"x": 0, "y": vh - 230, "width": vw, "height": 230}))
         # speed: px per 40 ms tick over the hold (0.8 s = 20 ticks)
-        sh, sf = (abs(half[0]) / 20 if half else 0), (full[0] / 20 if full else 0)
+        sh, sf = (abs(half[0]) / half_ticks if half else 0), (full[0] / self.ticks if full else 0)
         self.check("J3 phone: a full pull walks the dot its way at about maxSpeed (%s px a tick)" % top,
                    bool(full) and full[0] > 0 and 0.6 * top <= sf <= 1.25 * top and abs(full[1]) < 2, {"full": full, "px/tick": sf})
         self.check("J3 phone: a half pull walks slower than a full one (speed grows with the pull)",
                    bool(half) and half[0] < 0 and 0.25 * sf <= sh <= 0.75 * sf, {"half": half, "px/tick": sh, "full px/tick": sf})
         self.check("J3 phone: let go, the dot stops", stop is not None and abs(stop[0]) < 1 and abs(stop[1]) < 1, stop)
+
+    def drop_shape(self, C):
+        S = C.get("shape") or {}
+
+        def sx(t):   # the scaleX in a transform string (the browser writes 0.9 for 0.900)
+            mm = re.search(r"scaleX\(([-0-9.]+)\)", t or "")
+            return float(mm.group(1)) if mm else -1
+        sel = "." + S.get("cls", "missing")
+        expr = "(() => { const e = document.querySelector(%s); return JSON.stringify(e ? {speed:+e.dataset.speed, angle:+e.dataset.angle, tail:e.firstChild.style.transform, transform:e.style.transform, tailSide:(t => { const a=e.getBoundingClientRect(), b=t.getBoundingClientRect(); return Math.round((b.left+b.right)/2-(a.left+a.right)/2); })(e.firstChild), vw: innerWidth, at: (r => [Math.round(r.left), Math.round(r.right)])(e.getBoundingClientRect()), img:!!e.querySelector('img[src^=\"/portrait/\"],.lg-walker-ph')} : null); })()" % json.dumps(sel)
+        stopped = self.j(expr) or {}
+        key = next((k for k,a in C.get("keys", {}).items() if a == "left" and len(k) == 1), "?")   # away from the button: open page behind the tail
+        self.ws.call("Input.dispatchKeyEvent", type="keyDown", key=key)
+        time.sleep(0.2)
+        moving = self.j(expr) or {}
+        d = self.j("(() => { const e=document.querySelector(%s),r=e.getBoundingClientRect(); return JSON.stringify({x:Math.max(0,r.left-150),y:Math.max(0,r.top-40),width:Math.min(260,innerWidth-Math.max(0,r.left-150)),height:r.height+95}); })()" % json.dumps(sel))
+        if d:
+            self.shot("drop-moving", d)
+        self.ws.call("Input.dispatchKeyEvent", type="keyUp", key=key)
+        time.sleep(0.4)
+        after = self.j(expr) or {}
+        self.check("S1 your drop is your portrait, circular stopped; at speed it stretches and the tail is opposite motion",
+                   stopped.get("img") and stopped.get("speed") == 0 and moving.get("speed") == 1 and moving.get("angle") == 180
+                   and "rotate(360deg)" in (moving.get("tail") or "") and (moving.get("tailSide") or 0) > 0 and abs(sx(moving.get("tail")) - S.get("tail", -9)) < 0.01
+                   and abs(sx(moving.get("transform")) - 1 - S.get("stretch", -9)) < 0.01 and sx(stopped.get("tail")) == 0,
+                   {"stopped": stopped, "moving": moving})
+        self.check("S2 stopped, the drop returns to its circle", after.get("speed") == 0 and sx(after.get("tail")) == 0, after)
+        self.ws.call("Emulation.setEmulatedMedia", features=[{"name":"prefers-reduced-motion","value":"reduce"}])
+        self.j("(() => { const e=document.querySelector(%s); LG_WALKER.shape(e,1,0); return '1'; })()" % json.dumps(sel))
+        reduced = self.j(expr) or {}
+        self.check("S3 reduced motion: a circle, no stretch", reduced.get("speed") == 0, reduced)
+        self.ws.call("Emulation.setEmulatedMedia", features=[])
 
     def desktop(self):
         self.size(1280, 800, False)
@@ -488,6 +525,15 @@ class Run(m.Run):
                    bool(zoom) and 1.25 <= grow <= zoom * 1.05, {"plain w": plain.get("w"), "drop w": st.get("w"), "grow": grow})
         self.check("M0 desktop: the map is drawn and the walker stands on you", ok and st.get("at") == "you", st)
         self.covers_nothing("map desktop", need_main=True)
+        m_expr = "(() => { const e=document.querySelector('#lgm-walker .' + LG_WALKER.CONTROLS.shape.cls); return JSON.stringify(e ? {speed:+e.dataset.speed, img:!!e.querySelector('img[src^=\"/portrait/\"],.lg-walker-ph')} : null); })()"
+        self.key("d", 0.02)
+        time.sleep(0.05)
+        mm = self.j(m_expr) or {}
+        time.sleep(0.45)
+        ms = self.j(m_expr) or {}
+        self.check("S4 map: the walker is your portrait drop, teardrop on a step and circle after", mm.get("img") and mm.get("speed") == 1 and ms.get("speed") == 0, {"moving": mm, "stopped": ms})
+        self.key("a", 0.02)
+        time.sleep(0.45)
         C = self.j("JSON.stringify((window.LG_WALKER && LG_WALKER.CONTROLS) || null)") or {}
         letters = {a: k for k, a in (C.get("keys") or {}).items() if len(k) == 1 and a in WAY}
         opposite = {"up": "down", "down": "up", "left": "right", "right": "left"}

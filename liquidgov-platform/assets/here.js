@@ -37,7 +37,7 @@
     var label = document.createElement('span');
     label.className = 'lg-here-name';
     label.textContent = u;
-    d.appendChild(img);
+    d.appendChild(u === cfg.me ? LG_WALKER.portrait(u) : img);
     d.appendChild(label);
     d.setAttribute('data-u', u);
     layer.appendChild(d);
@@ -115,6 +115,7 @@
     // keys walk at full speed; the touchpad at its pull (0..1 of full speed)
     var dx = (held.right ? 1 : 0) - (held.left ? 1 : 0), dy = (held.down ? 1 : 0) - (held.up ? 1 : 0);
     if (!dx && !dy) { dx = pull.x; dy = pull.y; }
+    if (dots[cfg.me]) LG_WALKER.shape(dots[cfg.me].querySelector('.' + LG_WALKER.CONTROLS.shape.cls), dx, dy);
     if (dx || dy) {
       me.x = Math.max(0, Math.min(1, me.x + dx * MAX_SPEED / pageW()));
       me.y = Math.max(0, Math.min(1, me.y + dy * MAX_SPEED / pageH()));

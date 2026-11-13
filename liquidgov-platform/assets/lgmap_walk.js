@@ -10,7 +10,7 @@
   var root = document.getElementById('lgmap');
   if (!root || !window.LG_WALKER) return;
   var nodeLayer = document.getElementById('lgm-nodes'), edgeLayer = document.getElementById('lgm-edges');
-  var at = null, walker = null, follow = 0, dropping = false, later = [];
+  var at = null, walker = null, follow = 0, dropping = false, later = [], settle = 0, dropPortrait;
   var ZOOM = LG_WALKER.CONTROLS.mapZoom;
   var MIN_COS = 0.2;   // a connector counts for a direction when it points within ~78 degrees of it
 
@@ -65,16 +65,23 @@
     later.forEach(clearTimeout);
     later = [350, 900, 1700].map(function (ms) { return setTimeout(camera, ms); });
   }
-  function step(w) {
+  function step(w, speed) {
     if (!box(at)) at = startBox();
     var next = pick(w);
     if (next) at = next;
     show();
-    if (next) camera();
+    if (next) {
+      camera();
+      LG_WALKER.shape(dropPortrait, w[0] * (speed || 1), w[1] * (speed || 1));
+      clearTimeout(settle);
+      settle = setTimeout(function () { LG_WALKER.shape(dropPortrait, 0, 0); }, LG_WALKER.CONTROLS.shape.mapMoveMs);
+    }
   }
 
   walker = document.createElement('div');
   walker.id = 'lgm-walker';
+  dropPortrait = LG_WALKER.portrait(root.getAttribute('data-me'));
+  walker.appendChild(dropPortrait);
   walker.hidden = true;
   walker.setAttribute('aria-hidden', 'true');
   document.body.appendChild(walker);
@@ -88,7 +95,7 @@
     clearTimeout(again);
     if (!pullNow || !dropping) return;
     var len = Math.sqrt(pullNow.x * pullNow.x + pullNow.y * pullNow.y);
-    step([pullNow.x / len, pullNow.y / len]);
+    step([pullNow.x / len, pullNow.y / len], len);
     again = setTimeout(padWalk, LG_WALKER.CONTROLS.touchpad.mapRepeatMs / len);
   }
   function pullTo(x, y) {
@@ -123,6 +130,8 @@
       root.classList.toggle('lgm-dropping', on);
       clearInterval(follow);
       pullTo(0, 0);
+      clearTimeout(settle);
+      LG_WALKER.shape(dropPortrait, 0, 0);
       later.forEach(clearTimeout);
       if (on) {
         if (!box(at)) at = startBox();

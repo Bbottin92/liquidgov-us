@@ -45,7 +45,16 @@ std::string linkify_post_text(const std::string& raw) {
 
 // Quotes a server-controlled (not user-controlled) string as a single-quoted
 // JS string literal embedded in generated HTML, e.g. the YouTube API key.
-std::string composer_attach_bar(const char* counter_id) {
+std::string composer_attach_bar(const char* counter_id, const std::string& canvas_href) {
+    // The Canvas link sits OUTSIDE the photo label: a tap on it can never reach the file input (2026-11-12: on iPhone
+    // Safari the unclipped invisible input covered the old "Draw instead" link and opened the photo picker).
+    const std::string canvas = canvas_href.empty() ? "" :
+        "<a class=\"btn ghost canvaspick\" href=\"" + html_escape(canvas_href) + "\" aria-label=\"Canvas: draw or paint a post\">"
+        "<svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" "
+        "stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\">"
+        "<path d=\"M18.4 2.6a2.1 2.1 0 0 1 3 3L11.2 15.8l-3-3z\"/>"
+        "<path d=\"M8.2 12.8c-2.3 0-3.7 1.5-3.7 3.7 0 1.4-.9 2.3-2.5 2.6 1 1.4 2.9 2.1 4.7 2.1 2.8 0 4.7-1.9 4.7-4.7\"/></svg>"
+        "Canvas</a>";
     return "<div class=\"composerbar\">"
            "<label class=\"filepick\" title=\"Add a photo or video\">"
            "<svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" "
@@ -54,6 +63,7 @@ std::string composer_attach_bar(const char* counter_id) {
            "<circle cx=\"8.5\" cy=\"10\" r=\"1.5\"/>"
            "<path d=\"m21 15-5-5L5 19\"/></svg>"
            "<input type=\"file\" name=\"media\" accept=\"image/*,video/*\"></label>"
+           + canvas +
            "<span class=\"grow\"></span>"
            "<span class=\"muted\" id=\"" + std::string(counter_id) + "\">2000 left</span>"
            "<button type=\"submit\">Post</button></div>";

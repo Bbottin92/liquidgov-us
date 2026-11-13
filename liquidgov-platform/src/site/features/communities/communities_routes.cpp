@@ -157,9 +157,8 @@ std::optional<std::string> communities_routes(Route& r) {
                     "<form method=\"POST\" action=\"/c/"+html_escape(slug)+"\" enctype=\"multipart/form-data\">"
                     "<textarea name=\"text\" maxlength=\"2000\" placeholder=\"Post in "+html_escape(c->name)+"\" "
                     "oninput=\"document.getElementById('cchars').textContent=(2000-this.value.length)+' left'\"></textarea>"
-                    + composer_attach_bar("cchars") +
-                    "</form>"
-                    "<p class=\"muted\" style=\"margin-top:.5rem\"><a href=\"/c/"+html_escape(slug)+"/canvas\">Draw instead</a></p></div>";
+                    + composer_attach_bar("cchars", "/c/" + slug + "/canvas") +
+                    "</form></div>";
         }
         auto posts = g_store.posts_in(slug, 80);
         if (posts.empty()) html += "<div class=\"card\"><p class=\"empty\">No posts yet.</p>"

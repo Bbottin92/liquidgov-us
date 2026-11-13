@@ -3,15 +3,6 @@
 namespace liquidgov::site {
 
 std::mutex g_mu;
-std::mutex g_world_mu;
-std::unordered_map<int, WorldPlayer> g_world_players; // keyed by client socket fd
-
-std::string world_color_for(const std::string& username) {
-    static const char* kPalette[] = {"#a23b3b", "#3b6ea2", "#3ba25e", "#a2823b",
-                                      "#6e3ba2", "#3ba297", "#a23b8f", "#5f7a2e"};
-    std::size_t h = std::hash<std::string>{}(username);
-    return kPalette[h % 8];
-}
 std::mutex g_yt_mu;
 std::map<std::string, YtCacheEntry> g_yt_cache;
 std::mutex g_community_mu;

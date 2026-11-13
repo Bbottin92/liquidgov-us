@@ -88,7 +88,7 @@ int main() {
             continue;
         }
 
-        // /world/ws is the one route that doesn't get the ordinary
+        // The WebSocket routes (/here/ws, /community/ws, a group's jukebox) don't get the ordinary
         // request/response treatment: a successful upgrade hands the fd to
         // its own thread and keeps it open, instead of sending one response
         // and closing. Every other route is untouched — still handled
@@ -103,30 +103,6 @@ int main() {
             }
             // Dots on profile pages (/here/ws?page=...): the feature's own module checks and runs it.
             if (here_ws_upgrade(c, req, method, rawpath)) continue;
-            if (method == "GET" && rawpath == "/world/ws" &&
-                header_value(req, "Upgrade").find("websocket") != std::string::npos) {
-                std::string username;
-                {
-                    std::lock_guard<std::mutex> lock(g_mu);
-                    auto acc = account_from_req(req);
-                    if (acc) username = acc->username;
-                }
-                auto key = header_value(req, "Sec-WebSocket-Key");
-                if (!username.empty() && !key.empty()) {
-                    std::string accept_val = websocket_accept_value(key);
-                    std::ostringstream resp101;
-                    resp101 << "HTTP/1.1 101 Switching Protocols\r\n"
-                               "Upgrade: websocket\r\nConnection: Upgrade\r\n"
-                               "Sec-WebSocket-Accept: " << accept_val << "\r\n\r\n";
-                    std::string r = resp101.str();
-                    if (send(c, r.data(), r.size(), 0) > 0) {
-                        std::thread(run_world_session, c, username).detach();
-                        continue; // socket now owned by the world session thread
-                    }
-                }
-                close(c);
-                continue;
-            }
             if (method == "GET" && rawpath == "/community/ws" &&
                 header_value(req, "Upgrade").find("websocket") != std::string::npos) {
                 std::string username;

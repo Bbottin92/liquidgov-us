@@ -10,7 +10,6 @@ From this repo, not guessed:
 
 | Source | Header |
 |---|---|
-| `liquidgov-platform/preview.py` | `lg_session={tok}; HttpOnly; Path=/; SameSite=Lax` |
 | `deploy/ux-on-droplet.patch` | same + `Max-Age=2592000` + `; Secure` when `g_https` |
 | `CLAUDE_CODE_CONTINUE.md` | Session cookie `lg_session` HttpOnly SameSite=Lax |
 

@@ -16,19 +16,6 @@ inline constexpr std::size_t kMultipartRoom = 1024 * 1024;
 extern std::mutex g_mu;
 
 
-// --- World: one shared room, connected users see each other move. ---
-// Deliberately separate from g_mu / g_store: this is ephemeral in-memory
-// position state, never persisted, touched only by world session threads
-// (one per connected /world/ws client) — the rest of the server stays on
-// its existing single-threaded accept loop, untouched by this feature.
-struct WorldPlayer {
-    double x = 128, y = 128;
-    std::string username;
-    std::string color;
-};
-extern std::mutex g_world_mu;
-extern std::unordered_map<int, WorldPlayer> g_world_players;
-std::string world_color_for(const std::string& username);
 
 
 // --- Live jukebox "stations": one shared, synced-elapsed-position queue
@@ -39,7 +26,7 @@ std::string world_color_for(const std::string& username);
 // is that community's own jukebox (/c/<slug>/jukebox/ws), gated to
 // members of that community since "everyone in the group can hear" means
 // the group, not the whole site the way the site-wide one is. One mutex,
-// one pair of maps, same one-thread-per-connection pattern as /world/ws.
+// one pair of maps, same one-thread-per-connection pattern as /here/ws.
 struct CommunityTrack {
     std::string video_id;
     std::string queued_by;

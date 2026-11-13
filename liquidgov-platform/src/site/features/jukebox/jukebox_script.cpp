@@ -6,7 +6,7 @@ namespace liquidgov::site {
 // Floating jukebox widget: a phone-icon button, present on every logged-in
 // page (injected from wrap()), that expands into a panel with two modes —
 // "Community" (synced to the site-wide queue over /community/ws, same
-// real-time pattern as /world/ws) and "My search" (private, local-only
+// real-time pattern as /here/ws) and "My search" (private, local-only
 // playback, never touches the server). One YT.Player instance is reused
 // across both modes so play/pause/mute/volume always act on whatever's
 // currently loaded.

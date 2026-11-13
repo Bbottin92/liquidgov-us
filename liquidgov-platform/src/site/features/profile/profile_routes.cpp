@@ -106,44 +106,6 @@ std::optional<std::string> profile_routes(Route& r) {
         return pg("Profile", html);
     }
 
-    // Checked before the general /u/ handler below, since that one treats
-    // everything after "/u/" as a bare username.
-    if(method=="GET"&&path.rfind("/u/",0)==0&&path.size()>7&&path.compare(path.size()-6,6,"/theme")==0) {
-        const std::string who = path.substr(3, path.size()-3-6);
-        std::string body;
-        if (!valid_username(who)) {
-            body = "<!doctype html><html><head><meta charset=\"utf-8\"></head>"
-                   "<body><p>No such profile.</p></body></html>";
-        } else {
-            auto found = g_store.find_by_username(who);
-            if (!found) {
-                body = "<!doctype html><html><head><meta charset=\"utf-8\"></head>"
-                       "<body><p>No such profile.</p></body></html>";
-            } else {
-                auto author_css = g_store.author_css(found->id);
-                // Deliberately not wrap()/page_wrap(): no nav, no jukebox
-                // widget, no session cookie context, no scripts at all --
-                // this document only ever renders inside the sandboxed,
-                // scriptless iframe below. See sanitize_author_css's
-                // comment for what's actually defended here and why a gap
-                // in the text filter still can't reach anything.
-                // No canvas background here anymore -- a profile-background
-                // drawing renders directly on the real /u/<username> page
-                // now (see profile_canvas_css), not through this document.
-                // This route/iframe exists purely for a custom .lg-theme
-                // author_css, so it's only ever reached when that's set.
-                body = "<!doctype html><html><head><meta charset=\"utf-8\">"
-                       "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
-                       "<style>body{margin:0;padding:1rem;font:16px/1.5 system-ui,sans-serif;"
-                       "background:#fff;color:#1a1814}h1{margin:.2rem 0}"
-                       "p{white-space:pre-wrap}</style>"
-                       "<style>" + author_css + "</style></head>"
-                       "<body><div class=\"lg-theme\"><h1>" + html_escape(found->username) + "</h1>"
-                       "</div></body></html>";
-            }
-        }
-        return http_raw("200 OK", "text/html; charset=utf-8", body);
-    }
     if(method=="GET"&&path.rfind("/u/",0)==0) {
         const std::string who = path.substr(3);
         if (!valid_username(who))

@@ -31,7 +31,8 @@ module `.cpp` files, in build order, lives in one place: `sources.cmake` (CMakeL
 - Page CSS and JavaScript live in `liquidgov-platform/assets/` as real files (`site.css`, `mail_widget.js`,
   `draft_publish.js`, `people_search.js`, `jukebox.js`, ...), linked with `asset_url()`. Don't add new CSS/JS
   inside C++ strings. A script that needs per-page values gets them from a one-line inline settings object set just
-  before it loads (`jukebox.js` reads `window.LG_JUKEBOX`). Still inline: `canvas_tool_page`.
+  before it loads (`jukebox.js` reads `window.LG_JUKEBOX`, `canvas.js` reads `window.LG_CANVAS`, `here.js` reads
+  `window.LG_HERE`). Nothing is inline any more (canvas_tool_page's engine moved to `assets/canvas.js` 2026-11-13).
 
 ## The store (`libs/liquidgov_file_store`)
 

@@ -192,11 +192,15 @@ std::optional<PlatformAccount> account_from_req(const std::string& headers) {
     g_store.touch_session(sid);
     return g_store.find_by_id(sess->account);
 }
-// Any page loaded into a frame (g_embed: Sec-Fetch-Dest: iframe) may be framed
-// only by liquidgov.us itself -- the map's right-hand field. Another site's
-// frame is refused, so nobody can disguise our buttons (clickjacking).
+// Every response may be framed only by liquidgov.us itself (the map's right-hand
+// field), so nobody can disguise our buttons (clickjacking). Sent on EVERY page,
+// not only framed loads (Brandon 2026-11-13, security gate run 43503116478):
+// browsers that send no Sec-Fetch-Dest were unguarded. object-src 'none' and
+// base-uri 'self' block plugin objects and a planted <base> tag. A full
+// script-src policy waits until the last inline scripts move to assets/.
 std::string frame_guard() {
-    return g_embed ? "Content-Security-Policy: frame-ancestors 'self'\r\nX-Frame-Options: SAMEORIGIN\r\n" : "";
+    return "Content-Security-Policy: frame-ancestors 'self'; object-src 'none'; base-uri 'self'\r\n"
+           "X-Frame-Options: SAMEORIGIN\r\n";
 }
 std::string http_ok(const std::string& body, const std::string& extra) {
     std::ostringstream o;

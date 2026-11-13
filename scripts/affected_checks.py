@@ -11,6 +11,7 @@ naming_check also runs whenever a file is added or renamed anywhere (it judges e
 Usage: python affected_checks.py <repo root> --staged          (pre-commit: the index against HEAD)
        python affected_checks.py <repo root> --push < <stdin>  (pre-push: git's "<lref> <lsha> <rref> <rsha>" lines)"""
 import fnmatch
+import importlib.util
 import os
 import subprocess
 import sys
@@ -53,6 +54,7 @@ CHECKS = {
     "affected_checks_master_check.py": [],
     "ci_runs_checks_check.py": [".github/workflows/*", "scripts/run_hook_checks.py", "commons-daemon/tests/*"],
     "ci_skip_list_check.py": ["scripts/run_hook_checks.py", "commons-daemon/tests/*"],
+    "hook_windows_skip_check.py": [".githooks/*", "scripts/affected_checks.py", "scripts/run_hook_checks.py"],
     "prebuilt_check.py": ["deploy/fetch-prebuilt.sh", "deploy/prebuilt-go.sh", "deploy/prebuilt-remote.sh",
                           "deploy/make-go.py", "naming.toml", ".gitignore"],
     "undo_lists_check.py": ["deploy/*-undo.py", "liquidgov-platform/tests/rollback/*",
@@ -134,6 +136,17 @@ def changed_files(root, mode, stdin_text=""):
     return changed, added
 
 
+def windows_only(root):
+    """run_hook_checks.WINDOWS_ONLY (the one list); () if that file is missing."""
+    path = os.path.join(root, "scripts", "run_hook_checks.py")
+    if not os.path.exists(path):
+        return ()
+    spec = importlib.util.spec_from_file_location("run_hook_checks", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return tuple(getattr(mod, "WINDOWS_ONLY", ()))
+
+
 def main():
     if len(sys.argv) != 3 or sys.argv[2] not in ("--staged", "--push"):
         print(__doc__, file=sys.stderr)
@@ -151,6 +164,14 @@ def main():
     except Exception as e:  # can't tell what changed: run everything rather than skip
         picked, why = run_order(on_disk), "could not list the changed files (%s): every check" % e
     print("affected_checks: " + why, file=sys.stderr)
+    # Off Windows, leave out the Windows-only checks exactly as CI does (one list: run_hook_checks.WINDOWS_ONLY;
+    # Brandon 2026-11-13 "yes skip windows checks on linux"). Listed as skipped, never as passed.
+    if not os.environ.get("LG_CHECKS_PLATFORM", sys.platform).startswith("win"):
+        skipped = [n for n in picked if n in windows_only(root)]
+        picked = [n for n in picked if n not in skipped]
+        if skipped:
+            print("SKIPPED (Windows-only): %s  (not passed; the PC's git hooks run them)" % " ".join(skipped),
+                  file=sys.stderr)
     for n in picked:
         print(n)
     return 0

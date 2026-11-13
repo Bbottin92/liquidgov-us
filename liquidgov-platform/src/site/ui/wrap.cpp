@@ -44,9 +44,8 @@ static void add_hints(std::string& page, const std::string& user) {
 }
 
 std::string wrap(const std::string& title, const std::string& user, int unread, const std::string& body, bool show_intro) {
-    // Anonymous visitors have no prefs to consult -- they always get the
-    // plain first-time-only (localStorage) behavior, same as before this
-    // setting existed.
+    // Signed in: the account's pref decides on the server (pages_routes only asks for the intro when it is on), so the
+    // overlay has no local gate. Anonymous visitors: their browser's pref, read by intro.js.
     const bool intro_always_play = show_intro && !user.empty() && g_store.prefs_of(user).intro_every_visit;
     // The one-time 988 notice goes on the next page this person sees, framed or not. Framed pages (the map's field,
     // and every page while Juketube's persistent shell keeps music playing) used to skip it, so someone browsing

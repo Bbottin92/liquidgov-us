@@ -37,6 +37,10 @@ module `.cpp` files, in build order, lives in one place: `sources.cmake` (CMakeL
   (`window.LG_WALKER`, with the one key/button map `LG_WALKER.CONTROLS`). Pages you walk on load it first and
   mount their own walker: `here.js` (dots on profile pages), `lgmap_walk.js` (the map) and `home_drop.js` (the logged-out home page's hook). The shared walking pieces (what is near, using it, speed, keeping you in view, the teardrop `shape` and the A-with-nothing `hop`) live in walker.js too. Tests read the map from
   the page, never a copy (`tests/browser/walker_controls_check.py`).
+- The landing intro (`#lgintro`, `shell.cpp` `intro_overlay_html`) runs `assets/intro.js`; it plays on every visit unless
+  turned off in Settings (`intro_setting_card`, /settings and /settings/intro). The pref's one name is `kIntroPref`
+  (`shell.hpp`): the account's field, the form field and a logged-out browser's localStorage key. While it plays,
+  `tip.js` holds any first-time tip until its `lgintro:done` (`tests/browser/intro_check.py`).
 
 ## The store (`libs/liquidgov_file_store`)
 

@@ -11,8 +11,8 @@ Cases (Bbottin signed in, phone_serve.sh sample data):
   B4 tapping the chip again shows the box
   B5 tapping a kind (Groups) makes it the center, the bar then holds that level's chips (B5b); the browser's Back
      (history.back, what the phone's back gesture does) returns to You (B5c)
-  B6 Zoom out from a kind goes up one level, to You
-  B7 Zoom out from You goes to the MAINstream
+  B6 the trail's previous box (Back; Brandon 2026-11-13: no Zoom out button) from a kind goes up one level, to You
+  B7 the MAINstream pill from You goes to the MAINstream
   B8 on a phone the trail and the bar stay at the top (position: sticky)
 Run: ci_map_bar_check.py (GitHub CI, a report-only step next to the phone check; this laptop rarely has the RAM).
 Writes <out>/phone-bar-<label>.json and <out>/phone-bar-<label>-*.png (look at them).
@@ -129,14 +129,14 @@ class BarRun(phone_check.Run):
         self.tap_sel('#lgm-nodes .lgn[data-id="mine:groups"]')
         time.sleep(1)
         before = self.trail()
-        self.tap_sel("#lgm-zoomout")
+        self.tap_sel("#lgm-trail .lgm-trail-prev")
         t6 = self.trail()
-        self.check("B6 Zoom out from Groups goes up to You", before == ["You", "Groups"] and t6 == ["You"], {"before": before, "after": t6})
-        self.tap_sel("#lgm-zoomout")
+        self.check("B6 the previous box (Back) from Groups goes up to You", before == ["You", "Groups"] and t6 == ["You"], {"before": before, "after": t6})
+        self.tap_sel("#lgm-main")
         time.sleep(1)
         t7 = self.trail()
         root = self.j("JSON.stringify(!!document.querySelector('#lgm-nodes .lgn-root'))")
-        self.check("B7 Zoom out from You goes to the MAINstream", root is True and t7 and t7[-1] == "MAINstream", {"trail": t7, "root": root})
+        self.check("B7 the MAINstream pill from You goes to the MAINstream", root is True and t7 and t7[-1] == "MAINstream", {"trail": t7, "root": root})
         self.shot("mainstream")
         st = self.j("(() => { const b = document.getElementById('lgm-bars'); return JSON.stringify(b ? getComputedStyle(b).position : null); })()")
         self.check("B8 on a phone the trail and bar stay at the top (sticky)", st == "sticky", st)

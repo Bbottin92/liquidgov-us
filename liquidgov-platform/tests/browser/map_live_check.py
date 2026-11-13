@@ -11,13 +11,15 @@ Cases (desktop 1600x1000 unless said; "narrow" is a 755 px desktop window, Grok 
   L3  #3 every shown box lies inside the map frame: You, Groups, The Gov, Roseville, MAINstream, and narrow
   L4  #4 no connector line runs through a box (lines end at box edges); L4b a label up to 40 characters is shown in
       full on a desktop (the box grows instead of ellipsizing), and every label stays inside its box (L4c)
-  L5  #5 Back: disabled at the start view; each click goes back exactly one center, also after the side panel's page
-      followed a link (an iframe history entry); disabled again at the start
+  L5  #5 Back (the trail's previous box, .lgm-trail-prev; Brandon 2026-11-13: no Back button): no previous box at the
+      start view; each click goes back exactly one center, also after the side panel's page followed a link (an iframe
+      history entry); no previous box again at the start
   L6  #6 the top MAINstream button opens the MAINstream view (trail You > MAINstream, the MAINstream at the ring's
       middle) from a deep level and from You, instead of panning the map
   L7  #7 turning every chip off at the MAINstream does not move the map (frame and MAINstream box keep their place)
   L8  #8 the first view is centered in the frame (vertically too), not stuck in the top half
-  L9  #9 a plain mouse wheel over the map scrolls the page and leaves the map alone; ctrl+wheel (a trackpad pinch)
+  L9  #9 in Scroll mode a plain mouse wheel over the map zooms the map and the page does not scroll (Brandon
+      2026-11-13); ctrl+wheel (a trackpad pinch)
       zooms the map and does not scroll the page (L9b); after zooming out every box is still inside the frame (L9c)
 Usage: LG_BROWSER=$(command -v google-chrome) python3 map_live_check.py [<liquidgov-platform dir>] [<out dir>]
 Prints "VERDICT live-map: ALL-PASS" or the failed cases; writes <out>/map-live.json and screenshots. Exit 1 on a FAIL."""
@@ -171,7 +173,7 @@ window.__m = {
   ring() { const e = document.getElementById('lgm-ring'); if (!e) return null; const r = e.getBoundingClientRect();
            return {x: (r.left + r.right) / 2, y: (r.top + r.bottom) / 2, l: r.left, t: r.top, r: r.right, b: r.bottom}; },
   view() { return document.getElementById('lgm-view').style.transform; },
-  back() { return document.getElementById('lgm-back').disabled; },
+  back() { return !document.querySelector('#lgm-trail .lgm-trail-prev'); },
   outside() {
     const f = this.frame();
     return this.boxes().filter(b => b.l < f.l - 1 || b.r > f.r + 1 || b.t < f.t - 1 || b.b > f.b + 1).map(b => b.label);
@@ -306,12 +308,12 @@ class LiveRun:
             self.check("L8 the first view is centered in the frame (within 30 px both ways)", False, [f, e])
         self.inside("You")
         self.lines("You")
-        self.check("L5 Back is disabled at the start view", self.j("__m.back()") is True, self.j("__m.back()"))
+        self.check("L5 no previous box at the start view", self.j("__m.back()") is True, self.j("__m.back()"))
 
         # L2 / L3 / L4: Groups, then The Gov (desktop click: the side panel opens and the map narrows, as on the live site)
         self.click_box("mine:groups")
         self.inside("Groups")
-        self.check("L5 precondition: Back is enabled one step in", self.j("__m.back()") is False, None)
+        self.check("L5 precondition: a previous box one step in", self.j("__m.back()") is False, None)
         self.click_box("group:gov", settle=1.6)
         self.shot("the-gov")
         t = self.j("__m.trail()")
@@ -332,21 +334,22 @@ class LiveRun:
         time.sleep(1.2)
         self.rep["frame_after_link"] = cdp.js(self.ws, "(() => { try { return document.getElementById('lgm-frame').contentWindow.location.pathname; }"
                                                        " catch (e) { return String(e); } })()")
-        self.click_sel("#lgm-back")
+        self.click_sel("#lgm-trail .lgm-trail-prev")
         t1 = self.j("__m.trail()")
         self.check("L5 Back once (after the panel's page followed a link) goes to Groups", t1 == ["You", "Groups"], t1)
-        self.click_sel("#lgm-back")
+        self.click_sel("#lgm-trail .lgm-trail-prev")
         t2 = self.j("__m.trail()")
         self.check("L5 Back again goes to You", t2 == ["You"], t2)
-        self.check("L5 Back is disabled again at the start view", self.j("__m.back()") is True, None)
-        self.click_sel("#lgm-back")
-        self.check("L5 a click on the disabled Back changes nothing", self.j("__m.trail()") == ["You"], self.j("__m.trail()"))
+        self.check("L5 no previous box again at the start view", self.j("__m.back()") is True, None)
+        cdp.js(self.ws, "(() => { const p = document.querySelector('#lgm-trail .lgm-trail-prev'); if (p) p.click(); return 1; })()")
+        time.sleep(0.6)
+        self.check("L5 with no previous box nothing goes back (the trail stays You)", self.j("__m.trail()") == ["You"], self.j("__m.trail()"))
         # two steps down (You > Politics > a proposal), then two Backs: one step each
         self.click_box("mine:politics")
         self.click_box("prop:7")
         steps = [self.j("__m.trail()")]
         for _ in range(2):
-            self.click_sel("#lgm-back", settle=0.8)
+            self.click_sel("#lgm-trail .lgm-trail-prev", settle=0.8)
             steps.append(self.j("__m.trail()"))
         self.check("L5 each Back is exactly one step (Genesis... > Politics > You)",
                    [len(s) if isinstance(s, list) else -1 for s in steps] == [3, 2, 1], steps)
@@ -357,7 +360,7 @@ class LiveRun:
         self.labels("Politics")
         self.lines("Politics")
         self.inside("Politics")
-        self.click_sel("#lgm-back")
+        self.click_sel("#lgm-trail .lgm-trail-prev")
 
         # L6: MAINstream button from a deep level, then from You
         self.click_box("mine:places")
@@ -407,7 +410,7 @@ class LiveRun:
         self.ws.call("Input.dispatchMouseEvent", type="mouseWheel", x=x, y=y, deltaX=0, deltaY=240)
         time.sleep(0.8)
         v1, s1 = self.j("__m.view()"), self.j("window.scrollY")
-        self.check("L9 a plain wheel over the map scrolls the page and leaves the map alone", s1 > s0 and v1 == v0,
+        self.check("L9 Scroll mode: a plain wheel over the map zooms the map and the page does not scroll", s1 == s0 and v1 != v0,
                    {"scroll": [s0, s1], "view": [v0, v1]})
         cdp.js(self.ws, "window.scrollTo(0, 0), 1")
         time.sleep(0.4)
@@ -445,7 +448,7 @@ class LiveRun:
                      deltaX=0, deltaY=240)
         time.sleep(0.8)
         v1, s1 = self.j("__m.view()"), self.j("window.scrollY")
-        self.check("L9 narrow: a plain wheel over the map scrolls the page", s1 > s0 and v1 == v0,
+        self.check("L9 narrow, Scroll mode: a plain wheel over the map zooms the map and the page does not scroll", s1 == s0 and v1 != v0,
                    {"scroll": [s0, s1], "view": [v0, v1]})
 
 

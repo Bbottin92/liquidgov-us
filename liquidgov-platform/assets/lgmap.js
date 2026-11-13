@@ -790,8 +790,10 @@
       if (i === chain.length - 1) b.setAttribute('aria-current', 'location');
       else {
         // the box you came from is Back (Brandon 5:01 AM: no Back button; marked lgm-trail-prev in lgmap.css)
-        if (i === chain.length - 2) b.setAttribute('aria-label', 'Back to ' + b.textContent);
-        b.addEventListener('click', function () { select(nodes[c.id] || c, false); });
+        // Back moves straight away like the old Back button ('now': no phone double-tap wait, it is not a box tap)
+        var back = i === chain.length - 2;
+        if (back) b.setAttribute('aria-label', 'Back to ' + b.textContent);
+        b.addEventListener('click', function () { select(nodes[c.id] || c, back ? 'now' : false); });
       }
       trailEl.appendChild(b);
     });

@@ -12,7 +12,7 @@ Cases, on a desktop (1600x1000, the side panel open as on the live site) and a 3
   B3  a "+N more" box is shown and N is exactly what is left out: shown + N = 41
   B4  tapping "+N more" makes it the center (the trail gains it) with the rest on its ring, inside the frame, names
       >= 11 px; following "+N more" boxes to the end, every one of the 41 links is shown exactly once
-  B5  Back from there returns to the big group, with the same boxes as before
+  B5  Back (the trail's previous box) from there returns to the big group, with the same boxes as before
   B6  ctrl+wheel out 12 notches at the big level: names stay >= 11 px (the zoom stops there)
   B7  the first view (You and your kinds) also draws every name at >= 11 px
 Usage: LG_BROWSER=$(command -v google-chrome) python3 map_big_level_check.py [<liquidgov-platform dir>] [<out dir>]
@@ -104,7 +104,7 @@ class BigRun(m2.Run2):
         if pages:
             for _ in range(pages):
                 trail = trail[:-1]
-                self.click_sel("#lgm-back", trail)
+                self.click_sel("#lgm-trail .lgm-trail-prev", trail)
             again = [i for i in self.ring_ids("group:big") if not i.startswith("more:")]
             self.check("B5 %s: Back returns to the big group with the same boxes" % tag, again == first,
                        {"before": len(first), "after": len(again)})

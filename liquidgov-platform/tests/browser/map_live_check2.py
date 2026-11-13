@@ -244,7 +244,7 @@ class Run2(mlc.LiveRun):
                                  " catch (e) { return String(e); } })()")
         self.check("K4 the side panel's page followed its link (/u/samyraine -> /other-u-samyraine)",
                    clicked is True and p0 == "/u/samyraine" and p1 == "/other-u-samyraine", {"before": p0, "after": p1})
-        self.click_sel("#lgm-back", ["You", "Groups", "The Gov"])
+        self.click_sel("#lgm-trail .lgm-trail-prev", ["You", "Groups", "The Gov"])
         t = self.j("__m.trail()")
         self.check("K4 then Back goes exactly one center back (The Gov)", t == ["You", "Groups", "The Gov"], t)
 

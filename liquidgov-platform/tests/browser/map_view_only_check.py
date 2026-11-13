@@ -118,8 +118,8 @@ class Run(mlc.LiveRun):
         s = self.wait_frame("/u/bottinbrandon")
         self.check("V6 a page with no edit forms: no Edit button", not (s.get("edit") or {}).get("shown"), s)
         # V5: back to Groups > The Gov: a fresh box opens view-only even though Edit was on before
-        self.click_sel("#lgm-back", settle=1.2)
-        self.click_sel("#lgm-back", settle=1.2)
+        self.click_sel("#lgm-trail .lgm-trail-prev", settle=1.2)
+        self.click_sel("#lgm-trail .lgm-trail-prev", settle=1.2)
         self.click_box("group:gov", settle=1.6)
         s = self.wait_frame("/g/gov")
         self.check("V5 opening another box starts view-only again", s.get("compose") is False and s.get("leave") is False

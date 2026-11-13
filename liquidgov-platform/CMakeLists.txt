@@ -36,6 +36,9 @@ target_link_libraries(liquidgov_platform_file_store_test PRIVATE liquidgov_auth 
 add_executable(liquidgov_platform_city_store_test tests/city_store_test.cpp)
 target_link_libraries(liquidgov_platform_city_store_test PRIVATE liquidgov_auth liquidgov_file_store)
 
+# Dots on profile pages: the stored choice (here, 2026-11-12): a new file, committed tests stay frozen.
+add_executable(liquidgov_platform_here_store_test tests/here_store_test.cpp)
+target_link_libraries(liquidgov_platform_here_store_test PRIVATE liquidgov_auth liquidgov_file_store)
 # The profile style library's store records (sty/styn/stu/str, 2026-11-12): a new file, committed tests stay frozen.
 add_executable(liquidgov_platform_style_store_test tests/style_store_test.cpp)
 target_link_libraries(liquidgov_platform_style_store_test PRIVATE liquidgov_auth liquidgov_file_store)

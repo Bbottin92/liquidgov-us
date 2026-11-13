@@ -119,7 +119,7 @@ std::optional<std::string> assets_routes(Route& r) {
     }
     // Page scripts that were inlined into pages until 2026-11-12 (same code, now cached): one route for all of them.
     if(method=="GET"&&(path=="/assets/mail_widget.js"||path=="/assets/draft_publish.js"||path=="/assets/people_search.js"||
-                       path=="/assets/jukebox.js")) {
+                       path=="/assets/jukebox.js"||path=="/assets/here.js")) {
         std::ifstream in(path.substr(1), std::ios::binary);   // "assets/<name>.js"
         if(!in) return http_raw("404 Not Found","text/plain; charset=utf-8","not found");
         std::ostringstream ss; ss << in.rdbuf();

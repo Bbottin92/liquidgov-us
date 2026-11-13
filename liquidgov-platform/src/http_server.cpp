@@ -9,6 +9,7 @@
 #include "site/features/mail/mail_attachments.hpp"
 #include "site/features/people/people.hpp"
 #include "site/features/live/live_sessions.hpp"
+#include "site/features/here/here.hpp"
 #include "site/router.hpp"
 using namespace liquidgov::site;
 int main() {
@@ -100,6 +101,8 @@ int main() {
                 std::istringstream is(req.substr(0, line_end));
                 is >> method >> rawpath;
             }
+            // Dots on profile pages (/here/ws?page=...): the feature's own module checks and runs it.
+            if (here_ws_upgrade(c, req, method, rawpath)) continue;
             if (method == "GET" && rawpath == "/world/ws" &&
                 header_value(req, "Upgrade").find("websocket") != std::string::npos) {
                 std::string username;

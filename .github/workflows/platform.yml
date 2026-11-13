@@ -161,6 +161,14 @@ jobs:
           set -uo pipefail
           export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
           python3 liquidgov-platform/tests/browser/ci_styles_preview_isolation_check.py "$RUNNER_TEMP/lg" "$PWD/liquidgov-platform" ci "$RUNNER_TEMP/phone"
+      - name: profile-page dots check (browser, report-only)
+        if: always()
+        timeout-minutes: 10
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
+          python3 liquidgov-platform/tests/browser/ci_here_dots_check.py "$RUNNER_TEMP/lg" "$PWD/liquidgov-platform" ci "$RUNNER_TEMP/phone"
 
       # Browser checks with no C++ server (Grok Bot's audit, ranked fix 1; Brief 5 item 1): each cuts the page's markup
       # from src/http_server.cpp and serves it with the real assets from a small stdlib server, so they run even when the

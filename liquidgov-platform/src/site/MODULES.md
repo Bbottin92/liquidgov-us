@@ -14,7 +14,7 @@ module `.cpp` files, in build order, lives in one place: `sources.cmake` (CMakeL
 | `router.cpp` | `handle()`: parses the request once, then asks each feature's routes in a fixed order; first answer wins; else 404. |
 | `core/` | Shared building blocks: `state` (the shared in-memory state and its mutexes), `adapters_store` (the store, blob store, scanners, social graph globals), `http` (request parsing, responses, cookies), `text`, `html`, `net`, `multipart`, `names_categories`, `route` (what `handle()` hands a feature's routes). |
 | `ui/` | The page shell every page uses: `shell` (`page_wrap`, `nav`), `wrap`, `assets`, `favicon_cookies`. The site stylesheet is a real file, `assets/site.css` (linked by `page_wrap` through `asset_url`, so its URL changes whenever it does). |
-| `features/<name>/` | One folder per feature: `admin`, `assets`, `auth`, `canvas`, `communities`, `feed`, `jukebox`, `live`, `mail`, `map`, `notices`, `pages`, `pains`, `people`, `profile`, `proposals`, `push`, `settings`, `system`. Each has `<name>_routes.{hpp,cpp}` for its HTTP routes, plus modules for its pages and logic. |
+| `features/<name>/` | One folder per feature: `admin`, `assets`, `auth`, `canvas`, `communities`, `feed`, `here`, `jukebox`, `live`, `mail`, `map`, `notices`, `pages`, `pains`, `people`, `profile`, `proposals`, `push`, `settings`, `styles`, `system`. Each has `<name>_routes.{hpp,cpp}` for its HTTP routes, plus modules for its pages and logic. (`here`, dots on profile pages, also runs a WebSocket: `here_ws_upgrade`, called from `main()`'s accept loop like the other sockets.) |
 
 ## Rules (standard for every module)
 

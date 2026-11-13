@@ -520,6 +520,18 @@ std::string FileStore::author_css(AccountId id) const {
     return it == author_css_.end() ? "" : it->second;
 }
 
+std::optional<bool> FileStore::here_choice(const std::string& username) const {
+    auto it = here_choice_.find(username);
+    if (it == here_choice_.end()) return std::nullopt;
+    return it->second;
+}
+
+void FileStore::set_here_choice(const std::string& username, bool on) {
+    if (!by_username_.count(username)) return;
+    here_choice_[username] = on;
+    flush();
+}
+
 // ---- profile style library (sty/styn/stu/str; Brandon 2026-11-12, profile CSS slice 2)
 
 std::optional<std::uint64_t> FileStore::publish_style(const std::string& author, const std::string& name,
@@ -2452,6 +2464,7 @@ bool FileStore::delete_account(AccountId id) {
     blurbs_.erase(id);
     profiles_.erase(name);
     author_css_.erase(id);
+    here_choice_.erase(name);
     for (auto it = styles_.begin(); it != styles_.end(); ) {
         if (it->second.author == name) {
             style_uses_.erase(it->first);
@@ -2492,6 +2505,7 @@ void FileStore::load() {
     blurbs_.clear();
     profiles_.clear();
     author_css_.clear();
+    here_choice_.clear();
     styles_.clear();
     next_style_id_ = 1;
     style_uses_.clear();
@@ -2915,6 +2929,12 @@ void FileStore::load() {
             AccountId id = parse_u64(f[1], "author_css account");
             if (id == 0) throw std::runtime_error("LGP1: empty ac record");
             author_css_[id] = pct_decode(f[2]);
+        } else if (tag == "here") {
+            // a lower bound, not an exact count: a later release may add trailing fields without breaking a rollback
+            if (f.size() < 3 || (f[2] != "0" && f[2] != "1")) throw std::runtime_error("LGP1: bad here record");
+            const std::string who = pct_decode(f[1]);
+            if (who.empty()) throw std::runtime_error("LGP1: empty here record");
+            here_choice_[who] = f[2] == "1";
         } else if (tag == "sty") {
             // lower bounds (not exact counts): a later release may add trailing fields without breaking a rollback
             if (f.size() < 6) throw std::runtime_error("LGP1: bad sty record");
@@ -3161,6 +3181,8 @@ void FileStore::load() {
         }
     }
     prune_attachment_names(); // names whose mail was purged since the last run
+    for (auto it = here_choice_.begin(); it != here_choice_.end(); )   // a choice whose person is gone
+        it = by_username_.count(it->first) ? std::next(it) : here_choice_.erase(it);
     // style library orphans: a style whose author is gone; uses and reports whose style or person is gone
     for (auto it = styles_.begin(); it != styles_.end(); )
         it = by_username_.count(it->second.author) ? std::next(it) : styles_.erase(it);
@@ -3536,6 +3558,10 @@ void FileStore::flush() {
         if (!accounts_.count(id)) continue;
         if (css.empty()) continue;
         body << "ac\t" << id << "\t" << pct_encode(css) << "\n";
+    }
+    for (const auto& [who, on] : here_choice_) {
+        if (!by_username_.count(who)) continue;
+        body << "here\t" << pct_encode(who) << "\t" << (on ? 1 : 0) << "\n";
     }
     // only once a style was ever published: until then the store stays readable by the version before the library
     if (next_style_id_ > 1) body << "styn\t" << next_style_id_ << "\n";

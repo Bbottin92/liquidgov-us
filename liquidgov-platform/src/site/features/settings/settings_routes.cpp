@@ -3,6 +3,7 @@
 #include "site/core/html.hpp"
 #include "site/core/http.hpp"
 #include "site/features/feed/composer.hpp"
+#include "site/features/here/here.hpp"
 #include "site/ui/favicon_cookies.hpp"
 
 namespace liquidgov::site {
@@ -60,6 +61,7 @@ std::optional<std::string> settings_routes(Route& r) {
         html += "<form method=\"POST\" action=\"/settings/logout-all\" style=\"margin-top:1rem\">"
                 "<button class=\"danger\" type=\"submit\">Log out other devices</button></form></div>";
 
+        html += here_settings_card(user);
         {
             // Map and connections (slice 6): what /map may show about you.
             const auto mp = g_store.map_prefs_of(user);
@@ -194,6 +196,10 @@ std::optional<std::string> settings_routes(Route& r) {
         o << "created_at: " << fmt_time(acc->created_at) << "\n";
         o << "blurb: " << g_store.blurb(acc->id) << "\n";
         o << "profile css:\n" << g_store.author_css(acc->id) << "\n\n";
+        {
+            auto hc = g_store.here_choice(user);
+            o << "dots on profile pages: " << (!hc ? "not chosen (hidden)" : *hc ? "yes" : "no") << "\n\n";
+        }
         for (const auto& s : g_store.styles())
             if (s.author == user) o << "published style #" << s.id << " \"" << s.name << "\":\n" << s.css << "\n\n";
         o << "friends:\n";

@@ -94,6 +94,10 @@ std::optional<std::string> auth_routes(Route& r) {
             return fail("Need a real phone number (at least ten digits). It is a signup binding, not stored as the number itself, and not used to log in.");
         if (pass.empty() || d.phone.empty())
             return fail("Need username, password, email, phone, and a display name.");
+        // Dots on profile pages: a required choice, nothing pre-selected (Brandon 2026-11-12)
+        const std::string here = f["here"];
+        if (here != "1" && here != "0")
+            return fail("Choose whether to show as a dot on profile pages (Yes or No). You can change it later in Settings.");
         if (g_store.phone_quarantined(fingerprint_phone(d.phone)))
             return fail("Could not create that account.");
         auto r=create_account(g_store,g_breach,d.username,pass,d.phone);
@@ -112,6 +116,7 @@ std::optional<std::string> auth_routes(Route& r) {
                 p.school = d.school.substr(0, 80);
                 g_store.set_profile(d.username, p);
                 g_store.set_map_prefs(d.username, MapPrefs{}); // today's defaults written down: no "now show" note later
+                g_store.set_here_choice(d.username, here == "1");
             }
             r=login(g_store,g_limiter,d.username,pass,device_label_from(req,ip),ip);
         }

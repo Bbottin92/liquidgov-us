@@ -23,7 +23,7 @@ DEPLOY = ["deploy/*", "naming.toml"]
 # check -> path patterns it reads (fnmatch; '*' crosses '/'). Order = run order.
 CHECKS = {
     "lgp1_consistency.py": ["liquidgov-platform/libs/*", SRC, ASSETS, "deploy/city-undo.py",
-                            "liquidgov-platform/tests/e2e/city_undo.sh", "deploy/styles-undo.py"],
+                            "liquidgov-platform/tests/e2e/city_undo.sh", "deploy/*-undo.py"],
     "one_app_check.py": [SRC, ASSETS],
     "pwa_files_check.py": ["commons/*", "commons-daemon/deploy/*", "Persistence/TheCommons/art/*", SRC],
     "naming_check.py": ["naming.toml", "liquidgov-platform/tests/*", "commons-daemon/*", SRC, "deploy/*"],
@@ -51,6 +51,8 @@ CHECKS = {
     "affected_checks_master_check.py": [],
     "ci_runs_checks_check.py": [".github/workflows/*", "scripts/run_hook_checks.py", "commons-daemon/tests/*"],
     "ci_skip_list_check.py": ["scripts/run_hook_checks.py", "commons-daemon/tests/*"],
+    "undo_lists_check.py": ["deploy/*-undo.py", "liquidgov-platform/tests/rollback/*",
+                            "liquidgov-platform/libs/liquidgov_file_store/*"],
     "styles_undo_lists_check.py": ["deploy/styles-undo.py", "liquidgov-platform/tests/rollback/*",
                                    "liquidgov-platform/libs/liquidgov_file_store/*"],
 }

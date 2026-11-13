@@ -148,6 +148,11 @@
 //          Absence means never opened. Used only for unread dots, not access control.
 //   ac     <account_id> <css>   // author CSS for /u/<username>/theme, already sanitized
 //          (see sanitize_author_css in http_server.cpp) before it ever reaches here
+//   here   <username> <0|1> [...]   // whether this person shows as a dot on profile pages they
+//          visit (Brandon 2026-11-12). A required choice at signup, nothing pre-selected; absence =
+//          not chosen yet = hidden (asked once on a profile page). Positions are never stored
+//          (memory only). Dropped on load when the person is gone; extra trailing fields accepted.
+//          (Rollback: an older binary refuses it; strip it first with deploy/here-undo.py.)
 //   sty    <id> <author> <created_at> <name> <css> [...]   // one published profile style
 //          (ProfileStyle; Brandon 2026-11-12, profile CSS slice 2): a frozen copy of the author's
 //          Profile CSS when they published it; never edited, only removed. The site checks the
@@ -792,6 +797,9 @@ public:
     void set_author_css(AccountId id, const std::string& css);
     std::string author_css(AccountId id) const;
 
+    // Dots on profile pages ("here"): nullopt = not chosen yet (hidden). Ignored for an unknown username.
+    std::optional<bool> here_choice(const std::string& username) const;
+    void set_here_choice(const std::string& username, bool on);
     // The profile style library (sty/styn/stu/str). The store checks only that the author/person exists and
     // that name and CSS are non-empty; the site checks the CSS (sanitize_author_css) and the name's length.
     std::optional<std::uint64_t> publish_style(const std::string& author, const std::string& name,
@@ -1227,6 +1235,7 @@ private:
     std::map<AccountId, std::string> blurbs_;
     std::map<std::string, Profile> profiles_;
     std::map<AccountId, std::string> author_css_;
+    std::map<std::string, bool> here_choice_;   // here: username -> shows as a dot
     std::map<std::uint64_t, ProfileStyle> styles_;                                  // sty
     std::uint64_t next_style_id_ = 1;                                               // styn
     std::map<std::uint64_t, std::map<std::string, std::int64_t>> style_uses_;      // stu: id -> person -> ts

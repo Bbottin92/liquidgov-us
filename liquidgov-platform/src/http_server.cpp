@@ -12,7 +12,20 @@
 #include "site/features/here/here.hpp"
 #include "site/router.hpp"
 using namespace liquidgov::site;
-int main() {
+#ifndef LG_BUILD_COMMIT
+#define LG_BUILD_COMMIT "unknown"
+#endif
+#ifndef LG_BUILD_TREE
+#define LG_BUILD_TREE "unknown"
+#endif
+
+int main(int argc, char** argv) {
+    // --version: which commit and liquidgov-platform tree this program was built from (set by CMake's LG_BUILD_COMMIT /
+    // LG_BUILD_TREE; "unknown" for a local build). A prebuilt deploy checks it before installing (deploy/PLAN-prebuilt.md).
+    if (argc > 1 && std::string(argv[1]) == "--version") {
+        std::cout << "liquidgov_http " << LG_BUILD_COMMIT << " tree " << LG_BUILD_TREE << std::endl;
+        return 0;
+    }
     // A write to a socket the other side already closed (a /world or jukebox player who just left, a browser
     // that hung up mid-download) or to the password-reset mail pipe after curl quit raises SIGPIPE, whose
     // default action kills this whole process -- every route, every connected user, all in-memory room state.

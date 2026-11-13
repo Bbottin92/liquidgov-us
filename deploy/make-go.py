@@ -19,6 +19,10 @@ import subprocess
 import sys
 
 AUTO_NO_RESTART, AUTO_RESTART = "jbshell", "care"
+# Prebuilt deploys (deploy/PLAN-prebuilt.md; Brandon's call before first use): LIQUIDGOV_PREBUILT=1 makes the
+# restarting pair the prebuilt template (installs the program GitHub built) instead of care (compiles on the server).
+if os.environ.get("LIQUIDGOV_PREBUILT") == "1":
+    AUTO_RESTART = "prebuilt"
 NO_RESTART_DIRS = ("assets/", "tests/")
 DRY_LINE = 'if [ "${1:-}" = "dry" ]; then echo "DRY_ONLY_DONE: nothing on the server was changed. Run with go to deploy."; exit 0; fi'
 GATE_LINE = 'bash "$ROOT/deploy/ci-gate.sh" "${1:-}" || exit 1'

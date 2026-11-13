@@ -8,6 +8,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # LG_PCH: precompile the standard library headers for liquidgov_http and the store (only standard headers, so editing a
 # record or store header never invalidates the precompiled header). OFF builds exactly as before; lgcheck.sh builds an
 # OFF tree too on CI so both keep working.
+# LG_STATIC_RUNTIME: link libstdc++ and libgcc statically (and libsodium, when its .a exists) so a binary built on
+# GitHub needs only the server's glibc. OFF by default: local and CI builds are unchanged.
+option(LG_STATIC_RUNTIME "Link libstdc++/libgcc (and libsodium if possible) statically into liquidgov_http" OFF)
 option(LG_PCH "Precompile standard headers for liquidgov_http and liquidgov_file_store" ON)
 set(LG_PCH_HEADERS <algorithm> <atomic> <cctype> <chrono> <cmath> <cstdint> <cstdio> <cstdlib> <cstring> <ctime> <deque> <fstream> <functional> <iostream> <map> <mutex> <optional> <set> <sstream> <stdexcept> <string> <string_view> <thread> <unordered_map> <utility> <vector>)
 # ccache, when it is installed: repeated builds of unchanged files come from its cache. Nothing changes without it.
@@ -96,6 +99,18 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/src/site/sources.cmake)
 add_executable(liquidgov_http src/http_server.cpp ${LG_SITE_SOURCES})
 if(LG_PCH)
   target_precompile_headers(liquidgov_http PRIVATE ${LG_PCH_HEADERS})
+endif()
+# Build identity for --version (a prebuilt deploy checks it; deploy/PLAN-prebuilt.md). Empty -> "unknown".
+set(LG_BUILD_COMMIT "" CACHE STRING "commit liquidgov_http is built from (printed by --version)")
+set(LG_BUILD_TREE "" CACHE STRING "liquidgov-platform tree hash liquidgov_http is built from (printed by --version)")
+if(LG_BUILD_COMMIT)
+  target_compile_definitions(liquidgov_http PRIVATE LG_BUILD_COMMIT="${LG_BUILD_COMMIT}")
+endif()
+if(LG_BUILD_TREE)
+  target_compile_definitions(liquidgov_http PRIVATE LG_BUILD_TREE="${LG_BUILD_TREE}")
+endif()
+if(LG_STATIC_RUNTIME)
+  target_link_options(liquidgov_http PRIVATE -static-libstdc++ -static-libgcc)
 endif()
 target_include_directories(liquidgov_http PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(liquidgov_http PRIVATE

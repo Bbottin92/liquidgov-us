@@ -1,0 +1,46 @@
+# Prebuilt deploys (deploy/PLAN-prebuilt.md): build the production program on GitHub and keep it as an artifact.
+# Lives in deploy/ci/ until someone with workflow access moves it to .github/workflows/release-binary.yml (the cloud
+# session that wrote it cannot write workflow files). Nothing is deployed by this workflow; a go fetches the artifact.
+name: release-binary
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "liquidgov-platform/**"
+      - "scripts/build_release.sh"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-binary-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+      - name: build tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libsodium-dev pkg-config
+      - name: build the release program
+        id: build
+        run: |
+          set -euo pipefail
+          bash scripts/build_release.sh "$RUNNER_TEMP/dist" "$RUNNER_TEMP/build-release" | tee "$RUNNER_TEMP/release.txt"
+          tail -1 "$RUNNER_TEMP/release.txt" | grep -q '^RELEASE_BUILT ' || exit 1
+          echo "tree=$(git rev-parse HEAD:liquidgov-platform)" >> "$GITHUB_OUTPUT"
+      - name: keep it
+        uses: actions/upload-artifact@v4
+        with:
+          name: liquidgov_http-${{ steps.build.outputs.tree }}
+          path: ${{ runner.temp }}/dist/
+          retention-days: 14
+          if-no-files-found: error

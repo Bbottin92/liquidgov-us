@@ -27,3 +27,8 @@ liquidgov_blobs/
 # the expected shape.
 .env.local
 liquidgov-platform/.env.local
+
+# Prebuilt deploys: the fetched program (deploy/fetch-prebuilt.sh) and local release builds (scripts/build_release.sh)
+liquidgov-platform/.prebuilt/
+/dist/
+/build-release/

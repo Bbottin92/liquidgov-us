@@ -53,6 +53,8 @@ CHECKS = {
     "affected_checks_master_check.py": [],
     "ci_runs_checks_check.py": [".github/workflows/*", "scripts/run_hook_checks.py", "commons-daemon/tests/*"],
     "ci_skip_list_check.py": ["scripts/run_hook_checks.py", "commons-daemon/tests/*"],
+    "prebuilt_check.py": ["deploy/fetch-prebuilt.sh", "deploy/prebuilt-go.sh", "deploy/prebuilt-remote.sh",
+                          "deploy/make-go.py", "naming.toml", ".gitignore"],
     "undo_lists_check.py": ["deploy/*-undo.py", "liquidgov-platform/tests/rollback/*",
                             "liquidgov-platform/libs/liquidgov_file_store/*"],
     "styles_undo_lists_check.py": ["deploy/styles-undo.py", "liquidgov-platform/tests/rollback/*",

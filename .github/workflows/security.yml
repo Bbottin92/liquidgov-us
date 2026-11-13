@@ -91,17 +91,36 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 75
     continue-on-error: true
+    # Compile cache, same pattern as platform.yml (CMakeLists.txt uses ccache when present). Own key: the ASan/UBSan
+    # flags make different objects, so platform's cache would never hit here (Brandon 2026-11-13 "yes to all four").
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 500M
+      CCACHE_BASEDIR: ${{ github.workspace }}
     steps:
       - uses: actions/checkout@v5
       - name: tools the build and the suites call
         run: |
           set -euo pipefail
           sudo apt-get update -qq
-          sudo apt-get install -y -qq libsodium-dev pkg-config
-          for t in cmake g++ curl python3 nc; do command -v "$t" >/dev/null || { echo "missing $t"; exit 1; }; done
+          sudo apt-get install -y -qq libsodium-dev pkg-config ccache
+          for t in cmake g++ curl python3 nc ccache; do command -v "$t" >/dev/null || { echo "missing $t"; exit 1; }; done
           g++ --version | head -1
+      - name: restore the compile cache
+        uses: actions/cache@v4
+        with:
+          path: .ccache
+          key: ccache-asan-${{ runner.os }}-${{ github.ref_name }}-${{ github.sha }}
+          restore-keys: |
+            ccache-asan-${{ runner.os }}-${{ github.ref_name }}-
+            ccache-asan-${{ runner.os }}-master-
+            ccache-asan-${{ runner.os }}-
       - name: sanitize (ASan + UBSan, every unit test and e2e suite)
-        run: bash scripts/security_gate.sh "$PWD" "$RUNNER_TEMP/gate" sanitize
+        run: |
+          ccache -z
+          bash scripts/security_gate.sh "$PWD" "$RUNNER_TEMP/gate" sanitize; rc=$?
+          ccache -s | grep -iE "hits|misses|cacheable" || true
+          exit $rc
       - uses: actions/upload-artifact@v4
         if: always()
         timeout-minutes: 5
@@ -119,17 +138,35 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     continue-on-error: true
+    # Compile cache: a plain Debug build like platform.yml's, so it may also start from platform's master cache.
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 500M
+      CCACHE_BASEDIR: ${{ github.workspace }}
     steps:
       - uses: actions/checkout@v5
       - name: tools the build calls
         run: |
           set -euo pipefail
           sudo apt-get update -qq
-          sudo apt-get install -y -qq libsodium-dev pkg-config
+          sudo apt-get install -y -qq libsodium-dev pkg-config ccache
           docker pull -q "$ZAP_IMAGE"
           docker image inspect --format '{{index .RepoDigests 0}}' "$ZAP_IMAGE"
+      - name: restore the compile cache
+        uses: actions/cache@v4
+        with:
+          path: .ccache
+          key: ccache-probe-${{ runner.os }}-${{ github.ref_name }}-${{ github.sha }}
+          restore-keys: |
+            ccache-probe-${{ runner.os }}-${{ github.ref_name }}-
+            ccache-probe-${{ runner.os }}-
+            ccache-${{ runner.os }}-master-
       - name: probe (OWASP ZAP baseline, signed out)
-        run: bash scripts/security_gate.sh "$PWD" "$RUNNER_TEMP/gate" probe
+        run: |
+          ccache -z
+          bash scripts/security_gate.sh "$PWD" "$RUNNER_TEMP/gate" probe; rc=$?
+          ccache -s | grep -iE "hits|misses|cacheable" || true
+          exit $rc
       - uses: actions/upload-artifact@v4
         if: always()
         timeout-minutes: 5

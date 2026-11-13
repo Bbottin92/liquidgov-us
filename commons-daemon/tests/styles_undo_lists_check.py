@@ -43,7 +43,9 @@ check(g is not None and set(g.group(1).split("|")) == tags, "styles_undo.sh stri
 pre = re.search(r"for t in ([a-z ]+); do", sh)
 check(pre is not None and set(pre.group(1).split()) == tags, "styles_undo.sh's precondition loop covers STYLE_TAGS (%s)" % (pre and pre.group(1)))
 
-cpp = rd("liquidgov-platform/libs/liquidgov_file_store/src/file_store.cpp")
+# 2026-11-13 (edited with Brandon's OK, "yes"): the store is split into src/records/*.cpp; read the joined text of the
+# files sources.cmake lists, as lgp1_consistency.py does
+cpp = __import__("runpy").run_path(os.path.join(ROOT, "deploy", "rollback_guard.py"))["store_text"](lambda rel: rd("liquidgov-platform/libs/liquidgov_file_store/" + rel) if os.path.exists(os.path.join(ROOT, "liquidgov-platform/libs/liquidgov_file_store", rel)) else None)
 hpp = rd("liquidgov-platform/libs/liquidgov_file_store/include/liquidgov/platform/file_store.hpp")
 read = set(re.findall(r'tag == "([a-z]+)"', cpp))
 documented = set(re.findall(r"^//\s{2,3}([a-z]+)\s{1,}<", hpp, re.M))

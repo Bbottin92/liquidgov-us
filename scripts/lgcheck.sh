@@ -28,6 +28,8 @@ BIN="$OUT/liquidgov_http"; SEED="$OUT/liquidgov_e2e_seed"
 # the instrument is fresh: the binary is newer than every source file it was built from
 newest=$(find "$SRC/src" "$SRC/libs" -name '*.cpp' -o -name '*.hpp' | xargs ls -t | head -1)
 [ "$BIN" -nt "$newest" ] || { echo "EXIT=binary-older-than-source ($newest)"; exit 1; }
+# rebuild timings (touch one feature / record file each, -j1): TIMING lines for the CI log
+bash "$(dirname "$0")/build_timing.sh" "$SRC" "$OUT"
 ln -sfn "$SRC/assets" "$TREE/assets"
 [ -d "$TREE/assets" ] || { echo "EXIT=assets-link-broken"; exit 1; }
 fail=0

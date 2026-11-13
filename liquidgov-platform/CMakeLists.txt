@@ -4,6 +4,19 @@ project(liquidgov_platform CXX C)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Faster builds (Brandon 2026-11-13, "MODULARIZE EVERYTHING": a deploy should recompile only what it touches).
+# LG_PCH: precompile the standard library headers for liquidgov_http and the store (only standard headers, so editing a
+# record or store header never invalidates the precompiled header). OFF builds exactly as before; lgcheck.sh builds an
+# OFF tree too on CI so both keep working.
+option(LG_PCH "Precompile standard headers for liquidgov_http and liquidgov_file_store" ON)
+set(LG_PCH_HEADERS <algorithm> <atomic> <cctype> <chrono> <cmath> <cstdint> <cstdio> <cstdlib> <cstring> <ctime> <deque> <fstream> <functional> <iostream> <map> <mutex> <optional> <set> <sstream> <stdexcept> <string> <string_view> <thread> <unordered_map> <utility> <vector>)
+# ccache, when it is installed: repeated builds of unchanged files come from its cache. Nothing changes without it.
+find_program(LG_CCACHE ccache)
+if(LG_CCACHE)
+  set(CMAKE_C_COMPILER_LAUNCHER "${LG_CCACHE}")
+  set(CMAKE_CXX_COMPILER_LAUNCHER "${LG_CCACHE}")
+endif()
+
 add_subdirectory(libs/third_party_miniz)
 add_subdirectory(libs/third_party_stb)
 
@@ -81,6 +94,9 @@ target_link_libraries(liquidgov_e2e_seed PRIVATE liquidgov_auth liquidgov_file_s
 find_package(Threads REQUIRED)
 include(${CMAKE_CURRENT_SOURCE_DIR}/src/site/sources.cmake)
 add_executable(liquidgov_http src/http_server.cpp ${LG_SITE_SOURCES})
+if(LG_PCH)
+  target_precompile_headers(liquidgov_http PRIVATE ${LG_PCH_HEADERS})
+endif()
 target_include_directories(liquidgov_http PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(liquidgov_http PRIVATE
     liquidgov_auth

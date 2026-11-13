@@ -1,6 +1,7 @@
 #pragma once
 // styles.hpp: the profile style library (Brandon 2026-11-12, profile CSS slice 2): pages and rules other modules use.
 #include "site/common.hpp"
+#include "liquidgov/platform/records/styles.hpp"
 
 namespace liquidgov::site {
 

@@ -30,6 +30,14 @@ newest=$(find "$SRC/src" "$SRC/libs" -name '*.cpp' -o -name '*.hpp' | xargs ls -
 [ "$BIN" -nt "$newest" ] || { echo "EXIT=binary-older-than-source ($newest)"; exit 1; }
 # rebuild timings (touch one feature / record file each, -j1): TIMING lines for the CI log
 bash "$(dirname "$0")/build_timing.sh" "$SRC" "$OUT"
+# On GitHub CI only: the precompiled-header option OFF must still build (CMake option LG_PCH, default ON)
+if [ -n "${GITHUB_ACTIONS:-}" ]; then
+    echo "== compile with LG_PCH=OFF (CI only)"
+    cmake -S "$SRC" -B "$OUT-nopch" -DCMAKE_BUILD_TYPE=Debug -DLG_PCH=OFF >/dev/null || { echo "EXIT=nopch-configure-fail"; exit 1; }
+    cmake --build "$OUT-nopch" --target liquidgov_http -j2 2>&1 | grep -E "error|Error" | head -20
+    [ "${PIPESTATUS[0]}" = 0 ] || { echo "EXIT=nopch-compile-fail"; exit 1; }
+    echo "PASS liquidgov_http builds with LG_PCH=OFF"
+fi
 ln -sfn "$SRC/assets" "$TREE/assets"
 [ -d "$TREE/assets" ] || { echo "EXIT=assets-link-broken"; exit 1; }
 fail=0

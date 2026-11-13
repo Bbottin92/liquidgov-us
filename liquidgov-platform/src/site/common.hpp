@@ -4,7 +4,6 @@
 #include "liquidgov/platform/avatar.hpp"
 #include "liquidgov/platform/blob.hpp"
 #include "liquidgov/platform/clock.hpp"
-#include "liquidgov/platform/file_store.hpp"
 #include "liquidgov/platform/file_transfer.hpp"
 #include "liquidgov/platform/file_type.hpp"
 #include "liquidgov/platform/messenger.hpp"

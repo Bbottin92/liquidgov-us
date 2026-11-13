@@ -28,6 +28,7 @@ std::string admin_nav(const char* active) {
         +tab("/admin/proposals","proposals","Proposals")
         +tab("/admin/comments","comments","Comments")
         +tab("/admin/departments","departments","Departments")
+        +tab("/admin/styles","styles","Styles")
         +tab("/admin/communities","communities","Groups")
         +tab("/admin/log","log","Log")
         +"</div>";
@@ -253,6 +254,80 @@ std::string admin_proposals_page(const std::string& msg) {
                 "<button class=\"danger\" type=\"submit\">Delete</button></form></td></tr>";
     }
     html += "</table></div>";
+    return html;
+}
+
+// One profile style taken down by an operator (Brandon 2026-11-12, style library), archived like a deleted proposal:
+// same <store>.moderation.jsonl, with its CSS, use count and reports; the take-down is refused if the archive can't
+// be written. Copies people made stay in their own Profile CSS.
+bool archive_deleted_style(const ProfileStyle& s, const std::string& by) {
+    std::string line = "{\"deleted_by\":\"" + json_escape(by) + "\",\"deleted_at\":" + std::to_string(std::time(nullptr)) +
+        ",\"kind\":\"style\",\"id\":" + std::to_string(s.id) + ",\"author\":\"" + json_escape(s.author) +
+        "\",\"ts\":" + std::to_string(s.created_at) + ",\"name\":\"" + json_escape(s.name) + "\",\"css\":\"" +
+        json_escape(s.css) + "\",\"uses\":" + std::to_string(g_store.style_use_count(s.id)) + ",\"reports\":[";
+    bool first = true;
+    for (const auto& r : g_store.style_reports(s.id)) {
+        line += std::string(first ? "" : ",") + "{\"by\":\"" + json_escape(r.reporter) + "\",\"ts\":" +
+                std::to_string(r.at) + ",\"reason\":\"" + json_escape(r.reason) + "\"}";
+        first = false;
+    }
+    line += "]}\n";
+    const std::string path = std::string(store_path_from_env()) + ".moderation.jsonl";
+    std::ofstream out(path, std::ios::app | std::ios::binary);
+    if (!out) {
+        std::cerr << "moderation archive not writable: " << path << "\n";
+        return false;
+    }
+    out << line;
+    out.flush();
+    return static_cast<bool>(out);
+}
+
+// Every style in the library, reported ones first (most reports first), then newest. The preview is the same
+// sandboxed iframe /styles shows, so a hostile style can't reach this page either.
+std::string admin_styles_page(const std::string& msg) {
+    std::string html = admin_header() + admin_nav("styles");
+    if (!msg.empty()) html += "<p class=\"muted\" role=\"status\">" + html_escape(msg) + "</p>";
+    auto all = g_store.styles();
+    if (all.empty()) {
+        html += "<p class=\"empty\">No styles in the library.</p>";
+        return html;
+    }
+    std::stable_sort(all.begin(), all.end(), [](const ProfileStyle& a, const ProfileStyle& b) {
+        return g_store.style_reports(a.id).size() > g_store.style_reports(b.id).size();
+    });
+    html += "<p class=\"muted\">Reported first. Take down keeps a copy (CSS and reports) in the moderation archive "
+            "on the server and removes the style from the library; copies people already made stay theirs. Dismiss "
+            "clears the reports and keeps the style.</p><div class=\"lg-style-grid\">";
+    for (const auto& s : all) {
+        const std::string id = std::to_string(s.id);
+        auto reps = g_store.style_reports(s.id);
+        html += "<article class=\"card lg-style-card\" id=\"style-" + id + "\">"
+                "<iframe class=\"lg-style-preview\" sandbox src=\"/styles/" + id + "/preview\" loading=\"lazy\" "
+                "referrerpolicy=\"no-referrer\" tabindex=\"-1\" title=\"Preview of " + html_escape(s.name) + "\"></iframe>"
+                "<h3 class=\"lg-style-name\">" + html_escape(s.name) + "</h3>"
+                "<p class=\"muted\">#" + id + " by <a href=\"/u/" + html_escape(s.author) + "\">" + html_escape(s.author) +
+                "</a> &middot; " + html_escape(fmt_time(s.created_at)) + " &middot; " +
+                std::to_string(g_store.style_use_count(s.id)) + (g_store.style_use_count(s.id) == 1 ? " use" : " uses") + "</p>";
+        if (!reps.empty()) {
+            html += "<p><strong>" + std::to_string(reps.size()) + (reps.size() == 1 ? " report" : " reports") +
+                    "</strong></p><ul class=\"plain\">";
+            for (const auto& r : reps)
+                html += "<li><a href=\"/u/" + html_escape(r.reporter) + "\">" + html_escape(r.reporter) + "</a>: " +
+                        (r.reason.empty() ? "<span class=\"muted\">(no reason given)</span>" : html_escape(r.reason)) + "</li>";
+            html += "</ul>";
+        }
+        html += "<details><summary>CSS</summary><pre style=\"white-space:pre-wrap;overflow-wrap:anywhere\">" +
+                html_escape(s.css) + "</pre></details><div class=\"row\">"
+                "<form class=\"inline\" method=\"POST\" action=\"/admin/styles/takedown\" "
+                "onsubmit=\"return confirm('Take this style down? A copy is kept in the moderation archive.');\">"
+                "<input type=\"hidden\" name=\"id\" value=\"" + id + "\"><button class=\"danger\" type=\"submit\">Take down</button></form>";
+        if (!reps.empty())
+            html += "<form class=\"inline\" method=\"POST\" action=\"/admin/styles/dismiss\">"
+                    "<input type=\"hidden\" name=\"id\" value=\"" + id + "\"><button class=\"ghost\" type=\"submit\">Dismiss reports</button></form>";
+        html += "</div></article>";
+    }
+    html += "</div>";
     return html;
 }
 

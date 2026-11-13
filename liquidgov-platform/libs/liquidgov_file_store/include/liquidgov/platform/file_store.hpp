@@ -153,6 +153,20 @@
 //          not chosen yet = hidden (asked once on a profile page). Positions are never stored
 //          (memory only). Dropped on load when the person is gone; extra trailing fields accepted.
 //          (Rollback: an older binary refuses it; strip it first with deploy/here-undo.py.)
+//   sty    <id> <author> <created_at> <name> <css> [...]   // one published profile style
+//          (ProfileStyle; Brandon 2026-11-12, profile CSS slice 2): a frozen copy of the author's
+//          Profile CSS when they published it; never edited, only removed. The site checks the
+//          CSS with sanitize_author_css at publish, use and render time. Dropped on load when
+//          the author is gone. Extra trailing fields are accepted (forward compatible), as on
+//          stu, str and styn, so a later release can add one without breaking a rollback.
+//   styn   <next_style_id>
+//   stu    <style_id> <username> <ts>   // this person copied that style into their own
+//          Profile CSS (newest ts = last copy). One row per (style, person): "most used" counts
+//          people, never the author. "Based on" is the person's newest use whose style still
+//          exists. Dropped with the style, or when the person is gone.
+//   str    <style_id> <reporter> <ts> <reason>   // one report per (style, reporter); a later
+//          report replaces the reason. For /admin/styles. Dropped with the style or reporter.
+//   (Rollback: an older binary refuses these four; strip them first with deploy/styles-undo.py.)
 //   cvf    <account_id> <frame_index> <blob_id>   // one canvas snapshot, in draw order;
 //          bytes live in the blob dir, same as avatars. A fresh drawing clears all of an
 //          account's cvf lines first (see clear_canvas_frames), so index is always 0..N-1
@@ -229,8 +243,9 @@
 //          action, newest last (same append order as everything else here);
 //          trimmed to kAuditLogCap on write. action is one of lock/unlock/
 //          logout_all/delete_account/delete_post/delete_community/
-//          programs_grant/programs_revoke; target is a bare username, post
-//          id, or slug -- never a phone/email fingerprint or anything else
+//          programs_grant/programs_revoke (and since 2026-11-08/12 delete_proposal,
+//          delete_comment, delete_style, dismiss_style_reports); target is a bare username,
+//          post/style id, or slug -- never a phone/email fingerprint or anything else
 //          that counts as PII.
 //   prgr   <username> <kinds> <max_bytes> <granted_by> <granted_at>   // an
 //          operator's permission to send programs in mail (ProgramGrant):
@@ -532,6 +547,23 @@ struct BallotSpec {
 // genesis-phase copy is clear real governmental authority is a later,
 // separate landslide). Any member can open one and any member can cast one
 // vote on it, changeable, to gauge sentiment on something not yet decided.
+// A published profile style (sty): see the tag's comment above.
+struct ProfileStyle {
+    std::uint64_t id = 0;
+    std::string author;
+    std::int64_t created_at = 0;
+    std::string name;
+    std::string css;
+};
+
+// One report of a style (str).
+struct StyleReport {
+    std::uint64_t style_id = 0;
+    std::string reporter;
+    std::int64_t at = 0;
+    std::string reason;
+};
+
 struct Proposal {
     std::uint64_t id = 0;
     std::string author;
@@ -768,6 +800,19 @@ public:
     // Dots on profile pages ("here"): nullopt = not chosen yet (hidden). Ignored for an unknown username.
     std::optional<bool> here_choice(const std::string& username) const;
     void set_here_choice(const std::string& username, bool on);
+    // The profile style library (sty/styn/stu/str). The store checks only that the author/person exists and
+    // that name and CSS are non-empty; the site checks the CSS (sanitize_author_css) and the name's length.
+    std::optional<std::uint64_t> publish_style(const std::string& author, const std::string& name,
+                                               const std::string& css);
+    std::vector<ProfileStyle> styles() const;                 // newest first
+    std::optional<ProfileStyle> style(std::uint64_t id) const;
+    bool remove_style(std::uint64_t id);                      // with its use and report rows
+    bool use_style(std::uint64_t id, const std::string& username);  // records (or refreshes) one use
+    std::size_t style_use_count(std::uint64_t id) const;      // people other than the author
+    std::optional<ProfileStyle> style_based_on(const std::string& username) const;
+    bool report_style(std::uint64_t id, const std::string& reporter, const std::string& reason);
+    std::vector<StyleReport> style_reports(std::uint64_t id) const;  // oldest first
+    bool dismiss_style_reports(std::uint64_t id);
 
     // Canvas: an ordered sequence of blob-stored PNG snapshots captured
     // while the account was drawing, used to set the profile theme's
@@ -1191,6 +1236,10 @@ private:
     std::map<std::string, Profile> profiles_;
     std::map<AccountId, std::string> author_css_;
     std::map<std::string, bool> here_choice_;   // here: username -> shows as a dot
+    std::map<std::uint64_t, ProfileStyle> styles_;                                  // sty
+    std::uint64_t next_style_id_ = 1;                                               // styn
+    std::map<std::uint64_t, std::map<std::string, std::int64_t>> style_uses_;      // stu: id -> person -> ts
+    std::map<std::uint64_t, std::map<std::string, StyleReport>> style_reports_;    // str: id -> reporter -> row
     std::map<AccountId, std::vector<std::string>> canvas_frames_;
     std::map<AccountId, bool> canvas_timelapse_;
     std::map<AccountId, std::string> phone_fp_;

@@ -20,6 +20,7 @@ set(LG_SITE_SOURCES
   src/site/features/mail/mail_attachments.cpp
   src/site/features/profile/portrait.cpp
   src/site/features/here/here.cpp
+  src/site/features/styles/styles.cpp
   src/site/features/jukebox/jukebox_browse.cpp
   src/site/features/people/people.cpp
   src/site/features/notices/notices.cpp
@@ -52,6 +53,7 @@ set(LG_SITE_SOURCES
   src/site/features/proposals/proposals_routes.cpp
   src/site/features/profile/profile_routes.cpp
   src/site/features/here/here_routes.cpp
+  src/site/features/styles/styles_routes.cpp
   src/site/features/people/people_routes.cpp
   src/site/features/communities/communities_routes.cpp
   src/site/features/map/map_routes.cpp

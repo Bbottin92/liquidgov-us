@@ -9,6 +9,7 @@
 #include "site/features/profile/portrait.hpp"
 #include "site/features/profile/profile_css.hpp"
 #include "site/features/here/here.hpp"
+#include "site/features/styles/styles.hpp"
 #include "site/ui/wrap.hpp"
 
 namespace liquidgov::site {
@@ -66,7 +67,7 @@ std::optional<std::string> profile_routes(Route& r) {
                     css_msg += "<p class=\"err\">Your saved CSS isn't shown on your profile: " +
                                html_escape(css_reject_message(now.code)) + " Change it and save again.</p>";
             }
-            html += "<div class=\"card\"><h2>Profile CSS</h2>"
+            html += "<div class=\"card\" id=\"profile-css\"><h2>Profile CSS</h2>"
                 "<p class=\"muted\">Styles your whole profile page (/u/"+html_escape(user)+
                 ") below the site header. Use .lg-theme to style the whole area. Visitors can always switch to a "
                 "plain view. Escapes (\\), the &amp; selector, url(), image functions, @import and @-rules other "
@@ -78,7 +79,7 @@ std::optional<std::string> profile_routes(Route& r) {
                 // 16px, not .85rem: under 16px iOS Safari zooms the page in on focus and leaves it zoomed (2026-11-07)
                 "style=\"font-family:ui-monospace,Consolas,monospace;font-size:16px\" "
                 "placeholder=\".lg-theme h1{color:#a23b3b}\">"+html_escape(current_css)+"</textarea>"
-                "</form></div>";
+                "</form>" + styles_me_card(user, !current_css.empty(), qs) + "</div>";
         }
         html += jukebox_widget(user, true, user, qs);
         {

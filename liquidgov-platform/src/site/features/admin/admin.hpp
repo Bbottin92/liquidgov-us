@@ -17,5 +17,7 @@ bool archive_deleted_city_tag(const std::string& key, const std::string& tag, co
 std::string admin_departments_page(const std::string& q, const std::string& msg);
 std::string admin_communities_page();
 std::string admin_log_page();
+bool archive_deleted_style(const ProfileStyle& s, const std::string& by);
+std::string admin_styles_page(const std::string& msg);
 
 }  // namespace liquidgov::site

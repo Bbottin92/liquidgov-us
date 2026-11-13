@@ -200,6 +200,8 @@ std::optional<std::string> settings_routes(Route& r) {
             auto hc = g_store.here_choice(user);
             o << "dots on profile pages: " << (!hc ? "not chosen (hidden)" : *hc ? "yes" : "no") << "\n\n";
         }
+        for (const auto& s : g_store.styles())
+            if (s.author == user) o << "published style #" << s.id << " \"" << s.name << "\":\n" << s.css << "\n\n";
         o << "friends:\n";
         for (auto& n : g_store.friends_of(user)) o << "  " << n << "\n";
         o << "\ncommunities:\n";

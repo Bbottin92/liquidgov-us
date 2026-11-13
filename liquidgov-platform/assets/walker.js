@@ -10,6 +10,10 @@
     // Dropped in on the map, the camera shows the boxes this many times bigger than the fitted view and follows the
     // walker box to box (Brandon 2026-11-13 12:55 AM: "it should look bigger"); off again, the normal view.
     mapZoom: 1.8,
+    // The portal (Brandon 2026-11-13 1:02 AM): the site's MAINstream link (the brand in the header, to /) drawn as a
+    // round ring. Dropped in, using it (A / Enter next to it) takes you to the map at the box of the page you were on:
+    // the page's box id rides along in sessionStorage[handoff] for up to handoffMs.
+    portal: { selector: 'header.top a.brand', cls: 'lg-portal', handoff: 'lg-walker-portal', handoffMs: 120000 },
     // KeyboardEvent.key, lowercased -> action
     keys: {
       w: 'up', arrowup: 'up', a: 'left', arrowleft: 'left', s: 'down', arrowdown: 'down', d: 'right', arrowright: 'right',
@@ -44,7 +48,8 @@
   }
 
   // mount(page): puts the Drop button and the pad on the page (once) and wires keys and buttons to the page's walker.
-  // page: {dir(dir, down), select() -> true when it used something, back(), dropping(on)}. Returns {dropping(), stop()}.
+  // page: {dir(dir, down), select() -> true when it used something, back(), dropping(on), box: this page's map box id
+  // (optional; the portal takes you there)}. Returns {dropping(), start(), stop()}.
   function mount(page) {
     var pad = document.createElement('div');
     pad.id = 'lg-here-pad';
@@ -129,11 +134,28 @@
       var act = CONTROLS.keys[String(e.key || '').toLowerCase()];
       if (isDir(act)) hold(act, false);
     });
+    var portal = document.querySelector(CONTROLS.portal.selector);
+    if (portal) {
+      portal.classList.add(CONTROLS.portal.cls);
+      portal.addEventListener('click', function () {
+        if (!dropping) return;
+        try { sessionStorage.setItem(CONTROLS.portal.handoff, JSON.stringify({ box: page.box || '', t: Date.now() })); } catch (e) {} // err-ok: private mode: the map just starts at you
+      });
+    }
     window.addEventListener('blur', letGo);   // a key let go in another window never sticks
     window.addEventListener('resize', function () { placeDrop(); clearJuketube(); fitRoom(); });
     placeDrop();
-    return { dropping: function () { return dropping; }, stop: function () { if (dropping) setDropping(false); } };
+    return { dropping: function () { return dropping; }, start: function () { if (!dropping) setDropping(true); },
+      stop: function () { if (dropping) setDropping(false); } };
   }
 
-  window.LG_WALKER = { CONTROLS: CONTROLS, keyAction: keyAction, isDir: isDir, editing: editing, mount: mount };
+  // The portal's arrival: {box} once (it is removed as it is read), or null (none, or older than handoffMs).
+  function takeHandoff() {
+    var P = CONTROLS.portal, v = null;
+    try { v = JSON.parse(sessionStorage.getItem(P.handoff) || 'null'); sessionStorage.removeItem(P.handoff); } catch (e) { v = null; } // err-ok: unreadable = no arrival
+    return v && typeof v.t === 'number' && Date.now() - v.t <= P.handoffMs ? { box: String(v.box || '') } : null;
+  }
+
+  window.LG_WALKER = { CONTROLS: CONTROLS, keyAction: keyAction, isDir: isDir, editing: editing, mount: mount,
+    takeHandoff: takeHandoff };
 })();

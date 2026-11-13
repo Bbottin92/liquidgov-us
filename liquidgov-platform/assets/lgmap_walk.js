@@ -81,7 +81,8 @@
 
   window.addEventListener('resize', function () { if (dropping) cameraSoon(); });   // lgmap.js fits on a resize
 
-  LG_WALKER.mount({
+  var arrival = LG_WALKER.takeHandoff();   // came through the portal: Drop is on, standing at that page's box
+  var drop = LG_WALKER.mount({
     dir: function (dir, down) { if (down) step(dir); },
     // A / Enter: the same as tapping the box you stand on
     select: function () {
@@ -116,4 +117,10 @@
       }
     }
   });
+  if (arrival && window.LG_MAP && LG_MAP.ready) {
+    LG_MAP.ready.then(function () { return arrival.box ? LG_MAP.goTo(arrival.box) : null; })
+      .then(function () { if (arrival.box && box(arrival.box)) at = arrival.box; },
+            function () { /* that box is not on your map (privacy): arrive at you */ })
+      .then(function () { drop.start(); cameraSoon(); });
+  }
 })();

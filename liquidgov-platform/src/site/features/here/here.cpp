@@ -198,6 +198,12 @@ bool here_ws_upgrade(int fd, const std::string& req, const std::string& method, 
     return true;
 }
 
+// The map box of a page with dots (the map walker's portal arrives there): a profile /u/<name> is "user:<name>",
+// as the map names people (map_rules.cpp). Any other page: "" (the walker arrives at you).
+static std::string here_box_id(const std::string& page) {
+    return page.rfind("/u/", 0) == 0 && page.size() > 3 ? "user:" + page.substr(3) : std::string();
+}
+
 std::string here_page_bits(const std::string& viewer, const std::string& page) {
     if (viewer.empty() || here_room_for(page).empty()) return "";
     auto choice = g_store.here_choice(viewer);
@@ -216,6 +222,7 @@ std::string here_page_bits(const std::string& viewer, const std::string& page) {
     if (!*choice) return "";
     // usernames and /u/ paths are [A-Za-z0-9._-] only (valid_username), so JSON-escaped text can't end the script
     return "<script>window.LG_HERE={\"me\":\"" + json_escape(viewer) + "\",\"page\":\"" + json_escape(page) +
+           "\",\"box\":\"" + json_escape(here_box_id(page)) +
            "\"};</script><script src=\"" + asset_url("walker.js") + "\" defer></script>"
            "<script src=\"" + asset_url("here.js") + "\" defer></script>";
 }

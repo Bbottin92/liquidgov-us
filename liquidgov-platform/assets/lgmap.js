@@ -1029,7 +1029,19 @@
   };
   // M1.1 (Brandon 2026-11-10): the map starts at you, with your kinds of connection (Friends, Groups, Places,
   // Politics, Problems) as the first ring. The whole site (MAINstream) is under Places, and its button still works.
-  load('you').then(function (data) {
+  // Show box id: select it if it is drawn, else load it and its links to drawn boxes first. open: as select's.
+  // ?focus=<id> uses it at the start, and the map walker's portal arrival (LG_MAP.goTo) uses it after.
+  function focusBox(id, open) {
+    if (nodes[id]) { select(nodes[id], open); return Promise.resolve(nodes[id]); }
+    return load(id).then(function (data) {
+      var n = addNode(data.node, 0, 0);
+      data.links.forEach(function (l) { if (nodes[l.node.id]) addEdge(n.id, l.node.id, l.edge); });
+      select(n, open);
+      return n;
+    });
+  }
+  window.LG_MAP.goTo = function (id) { return focusBox(id, 'now'); };   // moves there without opening its page
+  window.LG_MAP.ready = load('you').then(function (data) {
     var r = addNode(data.node, 0, 0);
     centerPath = [dataOf(r)];
     // the first view is the history entry Back returns to (map SPEC phase 1)
@@ -1040,11 +1052,7 @@
   }).then(function () {
     var focus = root.getAttribute('data-focus');
     if (!focus) { fitAll(narrow()); return; } // the whole ring in view near the top, phone included (nothing cut off or covered)
-    if (nodes[focus]) { select(nodes[focus], !narrow()); return; }
-    return load(focus).then(function (data) {
-      var n = addNode(data.node, 0, 0);
-      data.links.forEach(function (l) { if (nodes[l.node.id]) addEdge(n.id, l.node.id, l.edge); });
-      select(n, !narrow());
-    });
-  }).catch(function (err) { status(err.message); });
+    return focusBox(focus, !narrow()).then(function () {});
+  });
+  window.LG_MAP.ready.catch(function (err) { status(err.message); });
 })();

@@ -26,6 +26,8 @@ keeps no copy of the bindings.
   Map (Brandon 2026-11-13 12:36 AM: the walker stands on a box and walks along a connector to the next one):
   M1  1280x800: each letter key of the map (D/A/W/S) moves the walker from you along a drawn connector to a connected
       box that lies that way, and the opposite key walks it back to you
+  Q1  the portal (walker.js's CONTROLS.portal: the header's MAINstream link) is round and marked when you stand by it
+  Q2  dropped in next to it, select (Enter) takes you to the map, dropped in, standing at this page's box (user:pal)
   M4  1280x800: Drop zooms the map toward the walker (a box grows by about LG_WALKER.CONTROLS.mapZoom), the camera
       follows it to the next box (that box ends up near the frame's middle), and leaving Drop restores the zoom
   M2  1280x800: select (Enter) opens the box you stand on (its page opens in the side panel; positive control: closed
@@ -59,15 +61,17 @@ window.WebSocket = function () {
   var ws = this; ws.readyState = 1;
   function tell(x, y) { if (ws.onmessage) ws.onmessage({data: JSON.stringify({people: [{u: 'Bbottin', x: x, y: y}]})}); }
   setTimeout(function () {
-    var b = document.getElementById('use').getBoundingClientRect();
+    var t = /near=portal/.test(location.search) ? document.querySelector(LG_WALKER.CONTROLS.portal.selector) : document.getElementById('use');
+    var b = t.getBoundingClientRect();
     var W = Math.max(document.documentElement.scrollWidth, document.body.scrollWidth);
     var H = Math.max(document.documentElement.scrollHeight, document.body.scrollHeight);
     if (ws.onopen) ws.onopen();
-    tell((b.left + scrollX - 20) / W, (b.top + scrollY + b.height / 2) / H);
+    var x = t.id === 'use' ? b.left - 20 : b.right + 20;
+    tell((x + scrollX) / W, (b.top + scrollY + b.height / 2) / H);
   }, 50);
   ws.send = function (s) { var p = JSON.parse(s); tell(p.x, p.y); };
 };
-window.LG_HERE = {me: 'Bbottin', page: '/u/stranger'};
+window.LG_HERE = {me: 'Bbottin', page: '/u/pal', box: 'user:pal'};
 </script>"""
 
 
@@ -75,7 +79,8 @@ def page(title):
     return ("<!doctype html><html lang=en><head><meta charset=utf-8>"
             "<meta name=viewport content='width=device-width,initial-scale=1,viewport-fit=cover'><title>%s</title>"
             "<link rel=stylesheet href=/assets/site.css><link rel=stylesheet href=/assets/juketube.css></head><body>"
-            "<header class=top><div class=topinner><a class=brand href=/start><div><div class=word><strong>LiquidGov</strong>"
+            "<header class=top><div class=topinner><a class=brand href=/map><svg class=mark viewBox='0 0 48 48' width=28 height=28>"
+            "<circle cx=24 cy=24 r=19 fill=none stroke=#8a6620 /></svg><div><div class=word><strong>LiquidGov</strong>"
             "<span class=tld>.US</span></div><div class=tagline>Civic association</div></div></a>"
             "<label class=navbtn>Menu</label></div></header>"
             "<main class=wrap><h1>stranger</h1><p>A profile page.</p>"
@@ -118,7 +123,7 @@ def make_handler(assets, markup):
                     return
                 body = open(f, "rb").read()
                 ctype = "text/css" if f.endswith(".css") else "text/javascript"
-            elif path in ("/walk", "/start"):
+            elif path in ("/walk", "/start", "/u/pal"):
                 body = page("walk" if path == "/walk" else "start").encode()
                 ctype = "text/html"
             else:   # a box's page, opened in the map's side panel
@@ -457,6 +462,32 @@ class Run(m.Run):
         self.check("M3 phone: B goes back (the trail is You again)", st.get("trail") == "You", st.get("trail"))
 
 
+    # ---- the portal
+    def portal(self):
+        self.size(1280, 800, False)
+        self.ws.call("Page.navigate", url=self.base + "/u/pal?near=portal")
+        self.wait("document.readyState === 'complete' && !!document.querySelector('#lg-here .lg-here-dot.me')")
+        self.drop()
+        time.sleep(0.4)
+        q = self.j("(() => { const P = LG_WALKER.CONTROLS.portal, e = document.querySelector(P.selector), m = e && e.querySelector('.mark');"
+                   " return JSON.stringify({cls: !!e && e.classList.contains(P.cls), near: !!e && e.classList.contains('lg-here-near'),"
+                   " round: m ? getComputedStyle(m).borderRadius : null, r: e ? (r => [r.left, r.top, r.right, r.bottom])(e.getBoundingClientRect()) : null}); })()") or {}
+        self.check("Q1 the portal is round and marked when you stand by it", q.get("cls") and q.get("near") and q.get("round") == "50%", q)
+        if q.get("r"):
+            l, t, rr, b = q["r"]
+            self.shot("portal", {"x": 0, "y": 0, "width": max(320, rr + 120), "height": b + 30})
+        C = self.j("JSON.stringify(LG_WALKER.CONTROLS)") or {}
+        for kk in sorted(k for k, a in C.get("keys", {}).items() if a == "select"):
+            self.key(kk)
+        self.wait("location.pathname === '/map' && !!document.getElementById('lgm-walker')"
+                  " && document.getElementById('lgm-walker').getAttribute('data-at') === 'user:pal'", 10)
+        time.sleep(0.5)
+        st = self.j("(() => { const w = document.getElementById('lgm-walker'), d = document.querySelector('#lg-here-pad .' + LG_WALKER.CONTROLS.buttons.drop.cls);"
+                    " return JSON.stringify({path: location.pathname, at: w && !w.hidden ? w.getAttribute('data-at') : null,"
+                    " dropping: d ? d.getAttribute('aria-pressed') : null}); })()") or {}
+        self.check("Q2 select by the portal: the map, dropped in, at this page's box (user:pal)",
+                   st.get("path") == "/map" and st.get("at") == "user:pal" and st.get("dropping") == "true", st)
+
 def main(argv):
     platform = os.path.abspath(argv[0]) if argv else os.path.dirname(os.path.dirname(HERE))
     out = os.path.abspath(argv[1]) if len(argv) > 1 else os.path.join(platform, "tests", "browser", "out")
@@ -473,6 +504,7 @@ def main(argv):
         r.desktop()
         r.map_desktop()
         r.map_phone()
+        r.portal()
     except Exception as e:  # a crash mid-run is a failed run, said with its traceback, never a quiet pass
         traceback.print_exc()
         r.check("run finished without an exception", False, "%s: %s" % (type(e).__name__, e))

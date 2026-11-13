@@ -144,7 +144,8 @@
       if (on) findNear();
       else if (near) { near.classList.remove('lg-here-near'); near = null; }
     },
-    resized: sizeLayer
+    resized: sizeLayer,
+    box: cfg.box || ''
   });
 
   window.addEventListener('resize', function () {

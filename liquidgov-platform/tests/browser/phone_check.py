@@ -246,8 +246,8 @@ class Run:
             if name == "settings":
                 r = self.j("(() => { const e = document.querySelector('.setidx'); const b = e && e.getBoundingClientRect();"
                            " return JSON.stringify({there: !!e, h: b ? Math.round(b.height) : 0, links: e ? e.querySelectorAll('a').length : 0}); })()")
-                self.check("5 settings index visible on a phone (height > 0, 9 links)",
-                           isinstance(r, dict) and r.get("h", 0) > 0 and r.get("links") == 9, r)
+                self.check("5 settings index visible on a phone (height > 0, 10 links)",
+                           isinstance(r, dict) and r.get("h", 0) > 0 and r.get("links") == 10, r)
 
 
 def run(base, session, expected_js, label, out):

@@ -175,7 +175,7 @@ drop-last-field:87:pref	ERR LGP1: bad pref record
 extra-field:87:pref	ERR LGP1: bad pref record
 drop-last-field:88:pref	ERR LGP1: bad pref record
 extra-field:88:pref	ERR LGP1: bad intro_every_visit
-drop-last-field:89:pref	OK e3d1cbc474c62f51
+drop-last-field:89:pref	OK f2040069794839bf
 extra-field:89:pref	ERR LGP1: bad hide_profile_from_friends
 drop-last-field:90:pref	OK c9aff195682f34d8
 extra-field:90:pref	ERR LGP1: bad pref record

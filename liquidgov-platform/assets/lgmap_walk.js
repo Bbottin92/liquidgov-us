@@ -86,9 +86,12 @@
     later.forEach(clearTimeout);
     later = [350, 900, 1700].map(function (ms) { return setTimeout(camera, ms); });
   }
+  // spatial step 6: the entry path. A box is entered only through its valve; Open (the default) lets everyone in.
+  function mayEnter(id) { var el = box(id); return !!el && (el.getAttribute('data-valve') || 'open') === 'open'; }
   function step(w, speed) {
     if (!box(at)) at = startBox();
     var next = pick(w);
+    if (next && !mayEnter(next)) next = null;
     if (next) at = next;
     show();
     if (next) {

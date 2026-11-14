@@ -225,13 +225,14 @@
   function addNode(d, x, y) {
     if (nodes[d.id]) return nodes[d.id];
     var n = { id: d.id, label: d.label, kind: d.kind, page: d.page, rel: d.rel, sub: d.sub || '', x: x, y: y,
-      expanded: false, more: d.more };  // ring places are exact (see ringPlace)
+      expanded: false, more: d.more,    // ring places are exact (see ringPlace)
+      valve: d.valve && d.valve.type ? d.valve : { type: 'open' } };  // spatial step 6: who may enter; Open unless the data says otherwise
     n.w = widthOf(n);
     // spatial step 2: the box's region (center + half extents, map units), always current; nothing reads it yet
     Object.defineProperty(n, 'region', { get: function () { var k = sizeOf(n);
       return { cx: n.x + W / 2, cy: n.y + H / 2, hw: (n.w || W) * k / 2, hh: H * k / 2 }; } });
     var s = sizeOf(n), ox = (W - n.w) / 2;
-    var g = el('g', { 'class': 'lgn lgn-' + n.kind + ' lgn-new', tabindex: '0', role: 'button', 'data-id': n.id,
+    var g = el('g', { 'class': 'lgn lgn-' + n.kind + ' lgn-new', tabindex: '0', role: 'button', 'data-id': n.id, 'data-valve': n.valve.type,
       transform: 'translate(' + (n.x + W / 2 * (1 - s)) + ',' + (n.y + H / 2 * (1 - s)) + ') scale(' + s + ')' });
     var shape = shapeEl(n.kind, n.w, H);
     if (ox) shape.setAttribute('transform', 'translate(' + ox + ',0)');

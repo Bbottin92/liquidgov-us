@@ -222,17 +222,21 @@
     sizeEdge(e);
   }
 
-  function addNode(d, x, y) {
+  function copyValve(v) { return { type: v.type, owner: v.owner || '', invite: (v.invite || []).slice() }; }
+  function addNode(d, x, y, parent) {
     if (nodes[d.id]) return nodes[d.id];
     var n = { id: d.id, label: d.label, kind: d.kind, page: d.page, rel: d.rel, sub: d.sub || '', x: x, y: y,
       expanded: false, more: d.more,    // ring places are exact (see ringPlace)
-      valve: d.valve && d.valve.type ? d.valve : { type: 'open' } };  // spatial step 6: who may enter; Open unless the data says otherwise
+      // spatial steps 6-7: who may enter. The box's own valve if its data has one, else a copy of its parent's (the box
+      // it was opened from), else Open. A valve is { type: open|conduit|invite|private|request|closed, owner, invite[] }.
+      valve: d.valve && d.valve.type ? d.valve : parent && parent.valve ? copyValve(parent.valve) : { type: 'open' } };
     n.w = widthOf(n);
     // spatial step 2: the box's region (center + half extents, map units), always current; nothing reads it yet
     Object.defineProperty(n, 'region', { get: function () { var k = sizeOf(n);
       return { cx: n.x + W / 2, cy: n.y + H / 2, hw: (n.w || W) * k / 2, hh: H * k / 2 }; } });
     var s = sizeOf(n), ox = (W - n.w) / 2;
     var g = el('g', { 'class': 'lgn lgn-' + n.kind + ' lgn-new', tabindex: '0', role: 'button', 'data-id': n.id, 'data-valve': n.valve.type,
+      'data-valve-owner': n.valve.owner || '', 'data-valve-invite': (n.valve.invite || []).join(','),
       transform: 'translate(' + (n.x + W / 2 * (1 - s)) + ',' + (n.y + H / 2 * (1 - s)) + ') scale(' + s + ')' });
     var shape = shapeEl(n.kind, n.w, H);
     if (ox) shape.setAttribute('transform', 'translate(' + ox + ',0)');
@@ -699,7 +703,7 @@
         var ring = el('ellipse', { id: 'lgm-ring', 'class': 'lgm-ring', cx: n.x + W / 2, cy: n.y + H / 2, rx: rr.rx, ry: rr.ry });
         edgeLayer.insertBefore(ring, edgeLayer.firstChild);
       }
-      lay.items.forEach(function (d, i) { var p = ringPlace(n, i, lay.items.length, rr); addNode(d, p.x, p.y).from = n.id; });
+      lay.items.forEach(function (d, i) { var p = ringPlace(n, i, lay.items.length, rr); addNode(d, p.x, p.y, n).from = n.id; });
       links.forEach(function (l) { addEdge(n.id, l.node.id, l.edge); }); // the rest (behind "+N more") are not drawn: skipped
       lay.items.forEach(function (d) { if (d.kind === 'more') addEdge(n.id, d.id, 'more'); });
       if (n.id === centerId()) renderFilter();

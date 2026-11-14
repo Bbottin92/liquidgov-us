@@ -86,12 +86,40 @@
     later.forEach(clearTimeout);
     later = [350, 900, 1700].map(function (ms) { return setTimeout(camera, ms); });
   }
-  // spatial step 6: the entry path. A box is entered only through its valve; Open (the default) lets everyone in.
-  function mayEnter(id) { var el = box(id); return !!el && (el.getAttribute('data-valve') || 'open') === 'open'; }
+  // spatial steps 6-7: the entry path. A box is entered only through its valve (data-valve, -owner, -invite on the box):
+  //   open: anyone; closed: no one; private: only its owner; invite: only people on its list;
+  //   request: turned away at the door, and a request is recorded for the owner (data-requested-by, and an
+  //   'lg-valve-request' event); conduit: passed through to the next box in the same direction, never stood on.
+  // Returns 'in', 'through' or 'no'.
+  var me = root.getAttribute('data-me') || '';
+  function entry(id, record) {
+    var el = box(id);
+    if (!el) return 'no';
+    var type = el.getAttribute('data-valve') || 'open';
+    if (type === 'open') return 'in';
+    if (type === 'conduit') return 'through';
+    if (type === 'private') return me && el.getAttribute('data-valve-owner') === me ? 'in' : 'no';
+    if (type === 'invite') return me && (el.getAttribute('data-valve-invite') || '').split(',').indexOf(me) >= 0 ? 'in' : 'no';
+    if (type === 'request' && record) {
+      el.setAttribute('data-requested-by', me);
+      document.dispatchEvent(new CustomEvent('lg-valve-request', { detail: { box: id, by: me } }));
+    }
+    return 'no';   // closed, request, and any type this file does not know
+  }
+  // where a push in direction w ends: the box it picks if that is enterable; through a conduit on to the next box
+  function target(w) {
+    var from = at, next = pick(w), guard = 0;
+    while (next && entry(next, false) === 'through' && guard++ < 8) {
+      at = next;
+      next = pick(w);
+      if (next === from) next = null;
+    }
+    at = from;
+    return next && entry(next, true) === 'in' ? next : null;
+  }
   function step(w, speed) {
     if (!box(at)) at = startBox();
-    var next = pick(w);
-    if (next && !mayEnter(next)) next = null;
+    var next = target(w);
     if (next) at = next;
     show();
     if (next) {

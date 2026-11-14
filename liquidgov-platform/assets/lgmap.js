@@ -226,7 +226,7 @@
   function addNode(d, x, y, parent) {
     if (nodes[d.id]) return nodes[d.id];
     var n = { id: d.id, label: d.label, kind: d.kind, page: d.page, rel: d.rel, sub: d.sub || '', x: x, y: y,
-      expanded: false, more: d.more,    // ring places are exact (see ringPlace)
+      expanded: false, more: d.more, css: d.css || '',   // ring places are exact (see ringPlace); css: spatial step 10, an admin's CSS for this instance
       // spatial steps 6-7: who may enter. The box's own valve if its data has one, else a copy of its parent's (the box
       // it was opened from), else Open. A valve is { type: open|conduit|invite|private|request|closed, owner, invite[] }.
       valve: d.valve && d.valve.type ? d.valve : parent && parent.valve ? copyValve(parent.valve) : { type: 'open' } };
@@ -1065,7 +1065,7 @@
   // map's ZOOM.max), gliding; fit() is the normal view again. The zoom is walker.js's (LG_WALKER.CONTROLS.mapZoom).
   window.LG_MAP = {
     // spatial step 8: a box is an instance; this is its record (region and valve, as built), or null if it is not on the map
-    instance: function (id) { var n = nodes[id]; return n ? { id: n.id, region: n.region, valve: n.valve } : null; },
+    instance: function (id) { var n = nodes[id]; return n ? { id: n.id, region: n.region, valve: n.valve, css: n.css } : null; },
     focus: function (id, zoom) {
       var n = nodes[id], b = svg.getBoundingClientRect();
       if (!n || !b.width) return false;

@@ -10,12 +10,25 @@
 #include "site/features/map/map_rules.hpp"
 #include "site/features/map/map_svg.hpp"
 #include "site/features/pains/pains.hpp"
+#include "site/features/profile/profile_css.hpp"
 #include "site/features/profile/portrait.hpp"
 #include "site/features/proposals/proposals.hpp"
 #include "site/ui/assets.hpp"
 #include "site/ui/wrap.hpp"
 
 namespace liquidgov::site {
+
+namespace {
+// Spatial step 10: instance id -> the admin's CSS. Only touched inside route handlers, which run under g_mu.
+std::map<std::string, std::string>& instance_css() { static std::map<std::string, std::string> m; return m; }
+// the node's JSON with its instance CSS added as "css" (checked again here: stored text is never trusted blind)
+std::string with_instance_css(std::string node_json, const std::string& id) {
+    auto it = instance_css().find(id);
+    if (it == instance_css().end() || node_json.empty() || node_json.back() != '}' || !sanitize_author_css(it->second).ok) return node_json;
+    node_json.pop_back();
+    return node_json + ",\"css\":\"" + json_escape(it->second) + "\"}";
+}
+}  // namespace
 
 std::optional<std::string> map_routes(Route& r) {
     LG_ROUTE_LOCALS(r)
@@ -183,6 +196,24 @@ std::optional<std::string> map_routes(Route& r) {
             "<p><a href=\"/map?focus=pain:" + std::to_string(p->id) + "\">See it on the map</a></p></div>";
         return pg(p->phrase, html);
     }
+    // Spatial step 10: an admin's CSS for an instance (a map box), shown only while a droplet is Inside it. One operator-only
+    // edit path: id = a box on the map, css = the CSS ("" clears it). It must pass the same filter as profile CSS
+    // (sanitize_author_css: no scripts or loads, no escapes, braces balanced) and is checked again on every delivery.
+    // Kept in memory (gone at a restart): a stored record would be a store-format change.
+    if(method=="POST"&&path=="/map/instance-css") {
+        if(!acc) return http_raw("401 Unauthorized","application/json; charset=utf-8","{\"error\":\"login\"}");
+        if(!is_operator(user)) return http_raw("403 Forbidden","application/json; charset=utf-8","{\"error\":\"operators only\"}");
+        auto f = parse_form(body);
+        const std::string id = f["id"], css = f["css"];
+        if (id.empty() || id.size() > 64 || !map_gnode(id, user))
+            return http_raw("404 Not Found","application/json; charset=utf-8","{\"error\":\"not a box on the map\"}");
+        if (css.size() > 4000) return http_raw("400 Bad Request","application/json; charset=utf-8","{\"error\":\"too long\"}");
+        if (css.empty()) { instance_css().erase(id); return http_raw("200 OK","application/json; charset=utf-8","{\"ok\":true,\"css\":false}"); }
+        const auto check = sanitize_author_css(css);
+        if (!check.ok) return http_raw("400 Bad Request","application/json; charset=utf-8","{\"error\":\"" + json_escape(check.code) + "\"}");
+        instance_css()[id] = css;
+        return http_raw("200 OK","application/json; charset=utf-8","{\"ok\":true,\"css\":true}");
+    }
     // One box and its connections, as JSON, for assets/lgmap.js.
     if(method=="GET"&&path=="/map/node") {
         if(!acc) return http_raw("401 Unauthorized","application/json; charset=utf-8","{\"error\":\"login\"}");
@@ -191,13 +222,13 @@ std::optional<std::string> map_routes(Route& r) {
         if (!n) return http_raw("404 Not Found","application/json; charset=utf-8","{\"error\":\"not found\"}");
         const MapCtx ctx = map_ctx(user); // relevance colours, for this viewer only
         map_add_sub(*n, user);
-        std::string out = "{\"node\":" + map_node_json(*n, map_relevance(*n, ctx)) + ",\"links\":[";
+        std::string out = "{\"node\":" + with_instance_css(map_node_json(*n, map_relevance(*n, ctx)), id) + ",\"links\":[";
         bool first = true;
         for (auto l : map_links(id, user)) {
             if (!first) out += ",";
             first = false;
             map_add_sub(l.to, user);
-            out += "{\"node\":" + map_node_json(l.to, map_relevance(l.to, ctx)) + ",\"edge\":\"" + json_escape(l.edge) + "\"}";
+            out += "{\"node\":" + with_instance_css(map_node_json(l.to, map_relevance(l.to, ctx)), l.to.id) + ",\"edge\":\"" + json_escape(l.edge) + "\"}";
         }
         out += "]}";
         return http_raw("200 OK","application/json; charset=utf-8", out, "Cache-Control: no-store\r\n");

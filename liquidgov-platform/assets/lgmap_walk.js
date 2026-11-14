@@ -50,9 +50,24 @@
   // spatial step 3: the instance the walker is in. Standing on a box (always inside its region: the walker only
   // stands on boxes) it is that box's id; at the you box, or in Scroll mode, it is the parent, mainstream.
   var MAINSTREAM = 'mainstream', instanceId = MAINSTREAM;
+  // spatial step 10: an admin's CSS for the instance you are Inside, as text in one <style> (never markup), nested under
+  // #lgm-panel so it styles only what is inside the side panel, with the panel itself held in a paint-contained box.
+  // The server only delivers CSS that passed sanitize_author_css. Gone again when you leave the instance.
+  var cssFor = null;
+  function scopeCss() {
+    if (cssFor === instanceId) return;
+    cssFor = instanceId;
+    var rec = instanceId !== MAINSTREAM && window.LG_MAP && LG_MAP.instance ? LG_MAP.instance(instanceId) : null;
+    var panel = document.getElementById('lgm-panel'), st = document.getElementById('lgm-instance-css');
+    if (!rec || !rec.css || !panel) { if (st) st.parentNode.removeChild(st); if (panel) panel.removeAttribute('data-instance'); return; }
+    if (!st) { st = document.createElement('style'); st.id = 'lgm-instance-css'; document.head.appendChild(st); }
+    st.textContent = '#lgm-panel *{' + rec.css + '}#lgm-panel[data-instance]{contain:paint;isolation:isolate}';
+    panel.setAttribute('data-instance', instanceId);
+  }
   function instance() {
     instanceId = dropping && at && at !== 'you' && box(at) ? at : MAINSTREAM;
     walker.setAttribute('data-instance', instanceId);
+    scopeCss();
   }
   // spatial step 4: while Drop is on, only the box you stand on (Inside) and the boxes connected to it (Near) are
   // shown; the rest (Far) and their connectors are hidden. Scroll mode shows everything again.

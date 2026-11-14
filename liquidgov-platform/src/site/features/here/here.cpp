@@ -271,6 +271,11 @@ void run_here_session(int fd, std::string me, std::string room) {
 
 }  // namespace
 
+// The map walker's room (2026-11-14): one room for /map; each walker names the box it stands on as its instanceId,
+// so a snapshot only holds the walkers on the same box (spatial step 5). Not a page with dots: here_room_for and
+// here_page_bits do not know it.
+static const char* const kHereMapRoom = "/map";
+
 std::string here_room_for(const std::string& page) {
     if (page.rfind("/u/", 0) != 0) return "";
     const std::string who = page.substr(3);
@@ -279,9 +284,11 @@ std::string here_room_for(const std::string& page) {
 }
 
 bool here_may_join(const std::string& viewer, const std::string& room) {
-    if (viewer.empty() || room.rfind("/u/", 0) != 0) return false;
+    if (viewer.empty()) return false;
     auto choice = g_store.here_choice(viewer);
     if (!choice || !*choice) return false;
+    if (room == kHereMapRoom) return true;   // the map's one room: anyone who chose Yes (blocks filter each snapshot)
+    if (room.rfind("/u/", 0) != 0) return false;
     const std::string owner = room.substr(3);
     auto found = g_store.find_by_username(owner);
     if (!found) return false;
@@ -301,7 +308,8 @@ bool here_ws_upgrade(int fd, const std::string& req, const std::string& method, 
         std::lock_guard<std::mutex> lock(g_mu);
         auto acc = account_from_req(req);
         if (acc) {
-            room = here_room_for(query_param(rawpath, "page"));
+            const std::string page = query_param(rawpath, "page");
+            room = page == kHereMapRoom ? page : here_room_for(page);   // the map walker's room (lgmap_walk.js), else a profile page
             if (!room.empty() && here_may_join(acc->username, room)) me = acc->username;
         }
     }

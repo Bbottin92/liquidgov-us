@@ -50,6 +50,7 @@
   // spatial step 3: the instance the walker is in. Standing on a box (always inside its region: the walker only
   // stands on boxes) it is that box's id; at the you box, or in Scroll mode, it is the parent, mainstream.
   var MAINSTREAM = 'mainstream', instanceId = MAINSTREAM;
+  var me = root.getAttribute('data-me') || '';
   // spatial step 10: an admin's CSS for the instance you are Inside, as text in one <style> (never markup), nested under
   // #lgm-panel so it styles only what is inside the side panel, with the panel itself held in a paint-contained box.
   // The server only delivers CSS that passed sanitize_author_css. Gone again when you leave the instance.
@@ -81,9 +82,49 @@
       e.style.visibility = !keep || (keep.indexOf(e.getAttribute('data-a')) >= 0 && keep.indexOf(e.getAttribute('data-b')) >= 0) ? '' : 'hidden';
     });
   }
+  // Presence (2026-11-14): while Drop is on, the walker is in the presence server's map room (/here/ws?page=/map, the
+  // socket and message shape of the dots on profile pages, here.js): every position update sends {x, y, instanceId}.
+  // The server's snapshot then holds only the walkers in the same instance (spatial step 5); who that is right now
+  // is kept on #lgm-walker[data-here] (handles, comma separated). Nothing is drawn yet. Scroll mode closes the socket.
+  // x, y: where the walker is on the screen, as fractions of it (the map has no page coordinates of its own).
+  var hws = null, hsent = '';
+  function unit(v) { return Math.round(Math.max(0, Math.min(1, v)) * 1000) / 1000; }
+  function presence() {
+    if (!hws || hws.readyState !== 1 || !box(at)) return;
+    var p = middle(box(at));
+    var msg = JSON.stringify({ x: unit(p.x / (window.innerWidth || 1)), y: unit(p.y / (window.innerHeight || 1)), instanceId: instanceId });
+    if (msg === hsent) return;
+    hsent = msg;
+    hws.send(msg);
+  }
+  function presenceOn() {
+    if (hws || !me || !window.WebSocket) return;
+    var s;
+    try { s = new WebSocket((location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + location.host + '/here/ws?page=%2Fmap'); }
+    catch (e) { return; }
+    hws = s;
+    hsent = '';
+    s.onopen = presence;
+    s.onmessage = function (ev) {
+      if (s !== hws) return;
+      try {
+        var d = JSON.parse(ev.data);
+        if (!d.people) return;
+        walker.setAttribute('data-here', d.people.map(function (q) { return q.u; }).filter(function (u) { return u !== me; }).join(','));
+      } catch (e) { /* a bad frame is skipped */ }
+    };
+    s.onclose = function () { if (s === hws) { hws = null; walker.removeAttribute('data-here'); } };   // refused (chose No) or dropped: not retried until the next Drop
+  }
+  function presenceOff() {
+    var s = hws;
+    hws = null;
+    walker.removeAttribute('data-here');
+    if (s) s.close();
+  }
   function show() {
     instance();
     proximity();
+    presence();
     var el = box(at);
     Array.prototype.forEach.call(nodeLayer.querySelectorAll('.lgn.lgn-walk'), function (o) { if (o !== el) o.classList.remove('lgn-walk'); });
     if (!el) { walker.hidden = true; return; }
@@ -106,7 +147,6 @@
   //   request: turned away at the door, and a request is recorded for the owner (data-requested-by, and an
   //   'lg-valve-request' event); conduit: passed through to the next box in the same direction, never stood on.
   // Returns 'in', 'through' or 'no'.
-  var me = root.getAttribute('data-me') || '';
   function entry(id, record) {
     var el = box(id);
     if (!el) return 'no';
@@ -204,6 +244,7 @@
       later.forEach(clearTimeout);
       if (on) {
         if (!box(at)) at = startBox();
+        presenceOn();
         show();
         camera();
         follow = setInterval(function () { if (!box(at)) at = startBox(); show(); }, 120);   // the map glides and recenters
@@ -213,6 +254,7 @@
         Array.prototype.forEach.call(nodeLayer.querySelectorAll('.lgn.lgn-walk'), function (o) { o.classList.remove('lgn-walk'); });
         instance();
         proximity();
+        presenceOff();
       }
     }
   });

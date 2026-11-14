@@ -1,0 +1,107 @@
+"""The map draws the other droplets in your instance (2026-11-14): while Drop is on, each person in the presence
+snapshot (walker_presence_check.py) is a small circle on a ring around the walker (#lgm-here .lgm-here-dot[data-u],
+lgmap_walk.js hereDraw). They are removed when that person leaves your instance or you switch to Scroll. New file.
+
+Two real browsers (Bbottin and pal) on the REAL server, as walker_presence_check.py (its Tab is reused as it is).
+
+  D0  precondition: both on the map, Drop on, on the you box in mainstream; no dot is drawn for yourself
+  D1  same instance: each sees one dot, the other's, a small circle on the screen next to the walker
+  D2  Bbottin walks onto the group's box (another instance): neither has a dot
+  D3  pal walks onto the same box: each has the other's dot again
+  D4  Bbottin switches to Scroll: Bbottin has no dots and pal no longer has Bbottin's
+
+Usage as ci_phone_check.py's checks; see ci_walker_presence_dots_check.py."""
+import os
+import sys
+import traceback
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+import cdp  # noqa: E402
+import walker_presence_check as wp  # noqa: E402
+
+DOTS = """(() => { const w = document.getElementById('lgm-walker'), wr = w.getBoundingClientRect();
+  const dots = [...document.querySelectorAll('.lgm-here-dot')].map(d => { const r = d.getBoundingClientRect(), cs = getComputedStyle(d);
+    return {u: d.getAttribute('data-u'), w: r.width, h: r.height, round: cs.borderTopLeftRadius,
+            shown: r.width > 0 && cs.visibility !== 'hidden' && cs.display !== 'none',
+            onscreen: r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight,
+            far: Math.hypot(r.left + r.width / 2 - (wr.left + wr.width / 2), r.top + r.height / 2 - (wr.top + wr.height / 2))}; });
+  return JSON.stringify(dots); })()"""
+
+
+def dots(tab):
+    return tab.j(DOTS) or []
+
+
+def who(tab):
+    return sorted(d["u"] for d in dots(tab) if d["shown"])
+
+
+def good(d):
+    """a small circle next to the walker"""
+    return d["shown"] and d["onscreen"] and 8 <= d["w"] <= 28 and abs(d["w"] - d["h"]) < 1 and d["round"] == "50%" and 10 <= d["far"] <= 60
+
+
+def cases(a, b):
+    A, B = "Bbottin", "pal"
+    ok = a.enter_map() and b.enter_map()
+    sa, sb = a.state(), b.state()
+    a.check("D0 precondition: both on the map, Drop on, on the you box in mainstream; no dot for yourself",
+            ok and all(s.get("at") == "you" and s.get("instance") == "mainstream" and not s.get("hidden") for s in (sa, sb))
+            and A not in who(a) and B not in who(b),
+            {"A": {k: sa.get(k) for k in ("at", "instance", "hidden")}, "B": {k: sb.get(k) for k in ("at", "instance", "hidden")}})
+
+    both = wp.until(lambda: who(a) == [B] and who(b) == [A])
+    da, db = dots(a), dots(b)
+    a.check("D1 same instance: each sees one dot, the other's, a small circle next to the walker",
+            both and len(da) == 1 and len(db) == 1 and good(da[0]) and good(db[0]), {"A draws": da, "B draws": db})
+
+    st = a.walk_to_group()
+    apart = wp.until(lambda: not dots(a) and not dots(b))
+    a.check("D2 Bbottin walks onto the group's box (another instance): neither has a dot",
+            both and st.get("instance") == wp.BOX and b.state().get("instance") == "mainstream" and apart,
+            {"A instance": st.get("instance"), "A draws": dots(a), "B draws": dots(b)})
+
+    st = b.walk_to_group()
+    together = wp.until(lambda: who(a) == [B] and who(b) == [A] and all(good(d) for d in dots(a) + dots(b)))
+    a.check("D3 pal walks onto the same box: each has the other's dot again",
+            apart and st.get("instance") == wp.BOX and together, {"A draws": dots(a), "B draws": dots(b)})
+
+    a.j("(() => { document.querySelector('.' + LG_WALKER.CONTROLS.buttons.drop.cls).click(); return '1'; })()")
+    off = wp.until(lambda: a.state().get("hidden") and not dots(a) and not dots(b))
+    a.check("D4 Bbottin switches to Scroll: Bbottin has no dots and pal no longer has Bbottin's",
+            together and off and not b.state().get("hidden"),
+            {"A hidden": a.state().get("hidden"), "A draws": dots(a), "B draws": dots(b)})
+
+
+def run(base, session, expected_js, label, out):
+    """Same shape as phone_check.run (expected_js unused). Returns the failed check names (empty = all pass)."""
+    os.makedirs(out, exist_ok=True)
+    pal = None
+    with open("/tmp/lg-phone-check/sessions.txt", encoding="utf-8") as f:   # phone_serve.sh's seed: who has which session
+        for row in f:
+            p = row.split()
+            if len(p) >= 2 and p[0] == "pal":
+                pal = p[1]
+    a, b = wp.Tab(base, out), wp.Tab(base, out)
+    a.label = b.label = "walkerdots-" + label
+    procs = []
+    try:
+        for tab, sess in ((a, session), (b, pal)):
+            proc, tab.ws = cdp.launch_edge("lg-walker-dots-")
+            procs.append((proc, tab))
+            for d in ("Page.enable", "Runtime.enable", "Network.enable"):
+                tab.ws.call(d)
+            host = base.split("//", 1)[1].split("/")[0].split(":")[0]
+            tab.ws.call("Network.setCookie", name="lg_session", value=sess, domain=host, path="/")
+        cases(a, b)
+    except Exception as e:  # a crash mid-run is a failed run, said with its traceback, never a quiet pass
+        traceback.print_exc()
+        a.check("run finished without an exception", False, "%s: %s" % (type(e).__name__, e))
+    finally:
+        for proc, tab in procs:
+            cdp.stop_edge(proc, tab.ws.profile if tab.ws else None)
+        fails = a.fails + b.fails
+        print("VERDICT walkerdots-%s: %s  (%d checks)" % (label, "ALL-PASS" if not fails else "FAILS: " + ", ".join(fails), a.n + b.n),
+              flush=True)
+    return a.fails + b.fails

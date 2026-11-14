@@ -85,9 +85,52 @@
   // Presence (2026-11-14): while Drop is on, the walker is in the presence server's map room (/here/ws?page=/map, the
   // socket and message shape of the dots on profile pages, here.js): every position update sends {x, y, instanceId}.
   // The server's snapshot then holds only the walkers in the same instance (spatial step 5); who that is right now
-  // is kept on #lgm-walker[data-here] (handles, comma separated). Nothing is drawn yet. Scroll mode closes the socket.
+  // is kept on #lgm-walker[data-here] (handles, comma separated) and drawn as small round portraits around the walker
+  // (hereDraw). Scroll mode closes the socket and removes them.
   // x, y: where the walker is on the screen, as fractions of it (the map has no page coordinates of its own).
   var hws = null, hsent = '';
+  // The other droplets in your instance: one small circle each (#lgm-here .lgm-here-dot[data-u], lgmap.css), on a ring
+  // around the walker, in handle order so they keep their places. Their portrait, else their first letter. Not
+  // tappable. At most HERE_MAX are drawn. Gone when they leave the snapshot (another instance, Scroll, left the map).
+  var hereLayer = null, hereDots = {}, HERE_MAX = 12, HERE_R = 30;
+  function hereDot(u) {
+    var d = document.createElement('div'), img = document.createElement('img');
+    d.className = 'lgm-here-dot';
+    d.setAttribute('data-u', u);
+    d.textContent = u.charAt(0).toUpperCase();
+    img.alt = '';
+    img.onerror = function () { if (img.parentNode) img.parentNode.removeChild(img); };
+    img.src = '/portrait/' + encodeURIComponent(u);
+    d.appendChild(img);
+    hereLayer.appendChild(d);
+    return d;
+  }
+  function herePlace() {
+    var names = Object.keys(hereDots).sort(), n = Math.max(names.length, 6);
+    var cx = parseFloat(walker.style.left) || 0, cy = (parseFloat(walker.style.top) || 0) - 15;   // the walker's own circle sits just above the box
+    names.forEach(function (u, i) {
+      var a = -Math.PI / 2 + (i + 1) * 2 * Math.PI / (n + 1);
+      hereDots[u].style.left = Math.round(cx + HERE_R * Math.cos(a)) + 'px';
+      hereDots[u].style.top = Math.round(cy + HERE_R * Math.sin(a)) + 'px';
+    });
+    if (hereLayer) hereLayer.hidden = walker.hidden;
+  }
+  function hereDraw(list) {
+    if (list.length) walker.setAttribute('data-here', list.join(','));
+    else if (hws) walker.setAttribute('data-here', '');
+    else walker.removeAttribute('data-here');
+    if (!hereLayer) {
+      if (!list.length) return;
+      hereLayer = document.createElement('div');
+      hereLayer.id = 'lgm-here';
+      hereLayer.setAttribute('aria-hidden', 'true');
+      document.body.appendChild(hereLayer);
+    }
+    var keep = {};
+    list.slice().sort().slice(0, HERE_MAX).forEach(function (u) { keep[u] = true; if (!hereDots[u]) hereDots[u] = hereDot(u); });
+    Object.keys(hereDots).forEach(function (u) { if (!keep[u]) { hereLayer.removeChild(hereDots[u]); delete hereDots[u]; } });
+    herePlace();
+  }
   function unit(v) { return Math.round(Math.max(0, Math.min(1, v)) * 1000) / 1000; }
   function presence() {
     if (!hws || hws.readyState !== 1 || !box(at)) return;
@@ -110,15 +153,15 @@
       try {
         var d = JSON.parse(ev.data);
         if (!d.people) return;
-        walker.setAttribute('data-here', d.people.map(function (q) { return q.u; }).filter(function (u) { return u !== me; }).join(','));
+        hereDraw(d.people.map(function (q) { return String(q.u); }).filter(function (u) { return u && u !== me; }));
       } catch (e) { /* a bad frame is skipped */ }
     };
-    s.onclose = function () { if (s === hws) { hws = null; walker.removeAttribute('data-here'); } };   // refused (chose No) or dropped: not retried until the next Drop
+    s.onclose = function () { if (s === hws) { hws = null; hereDraw([]); } };   // refused (chose No) or dropped: not retried until the next Drop
   }
   function presenceOff() {
     var s = hws;
     hws = null;
-    walker.removeAttribute('data-here');
+    hereDraw([]);
     if (s) s.close();
   }
   function show() {
@@ -127,13 +170,14 @@
     presence();
     var el = box(at);
     Array.prototype.forEach.call(nodeLayer.querySelectorAll('.lgn.lgn-walk'), function (o) { if (o !== el) o.classList.remove('lgn-walk'); });
-    if (!el) { walker.hidden = true; return; }
+    if (!el) { walker.hidden = true; herePlace(); return; }
     el.classList.add('lgn-walk');
     var r = el.getBoundingClientRect();
     walker.hidden = false;
     walker.style.left = Math.round(r.left + r.width / 2) + 'px';
     walker.style.top = Math.round(r.top) + 'px';
     walker.setAttribute('data-at', at);
+    herePlace();
   }
   // the camera on the box you stand on; again a little later after the map moves by itself (a box opened, Back: the
   // map recenters and fits itself once its connections load)

@@ -1064,6 +1064,8 @@
   // bigger"): focus(id, zoom) puts box id in the middle of the frame at zoom times the fitted scale (never past the
   // map's ZOOM.max), gliding; fit() is the normal view again. The zoom is walker.js's (LG_WALKER.CONTROLS.mapZoom).
   window.LG_MAP = {
+    // spatial step 8: a box is an instance; this is its record (region and valve, as built), or null if it is not on the map
+    instance: function (id) { var n = nodes[id]; return n ? { id: n.id, region: n.region, valve: n.valve } : null; },
     focus: function (id, zoom) {
       var n = nodes[id], b = svg.getBoundingClientRect();
       if (!n || !b.width) return false;

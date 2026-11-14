@@ -47,7 +47,15 @@
     });
     return best;
   }
+  // spatial step 3: the instance the walker is in. Standing on a box (always inside its region: the walker only
+  // stands on boxes) it is that box's id; at the you box, or in Scroll mode, it is the parent, mainstream.
+  var MAINSTREAM = 'mainstream', instanceId = MAINSTREAM;
+  function instance() {
+    instanceId = dropping && at && at !== 'you' && box(at) ? at : MAINSTREAM;
+    walker.setAttribute('data-instance', instanceId);
+  }
   function show() {
+    instance();
     var el = box(at);
     Array.prototype.forEach.call(nodeLayer.querySelectorAll('.lgn.lgn-walk'), function (o) { if (o !== el) o.classList.remove('lgn-walk'); });
     if (!el) { walker.hidden = true; return; }
@@ -84,6 +92,7 @@
   walker.appendChild(dropPortrait);
   walker.hidden = true;
   walker.setAttribute('aria-hidden', 'true');
+  walker.setAttribute('data-instance', 'mainstream');
   document.body.appendChild(walker);
 
   window.addEventListener('resize', function () { if (dropping) cameraSoon(); });   // lgmap.js fits on a resize
@@ -143,6 +152,7 @@
         walker.hidden = true;
         if (window.LG_MAP) LG_MAP.fit();
         Array.prototype.forEach.call(nodeLayer.querySelectorAll('.lgn.lgn-walk'), function (o) { o.classList.remove('lgn-walk'); });
+        instance();
       }
     }
   });

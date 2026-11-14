@@ -24,7 +24,15 @@ struct HereDot {
     std::string username;
     double x = 0.5, y = 0.1;
     std::string instanceId;  // spatial step 1: defaults to room; unused by current logic
+    bool mic = false, cam = false;        // spatial step 11: opted in to share a microphone / camera (off until they say so)
+    std::vector<std::string> inbox;       // spatial step 11: signaling frames waiting for this person's session thread to send
 };
+
+// Spatial step 11: proximity voice and video. The media itself flows between the two browsers; the server only relays the
+// setup messages (offer, answer, ICE) and only between two dots that are in the same instance, both opted in, within
+// this distance of each other (the room's 0..1 page coordinates) and not blocked either way. The client uses the same
+// number (assets/here_media.js RANGE.aware) as the edge past which it hangs up.
+constexpr double kMediaAware = 0.5;
 
 // Function-local statics (not namespace-scope globals): MODULES.md's rule against dynamic initializers outside the
 // shared-state modules.
@@ -43,6 +51,35 @@ std::optional<double> json_number(const std::string& s, const char* key) {
     } catch (...) {
         return std::nullopt;
     }
+}
+
+// "<key>":true / false -> its value; nullopt when absent
+std::optional<bool> json_bool(const std::string& s, const char* key) {
+    auto p = s.find(key);
+    if (p == std::string::npos) return std::nullopt;
+    p = s.find(':', p);
+    if (p == std::string::npos) return std::nullopt;
+    p = s.find_first_not_of(' ', p + 1);
+    if (p == std::string::npos) return std::nullopt;
+    if (s.compare(p, 4, "true") == 0) return true;
+    if (s.compare(p, 5, "false") == 0) return false;
+    return std::nullopt;
+}
+
+// The text between the quotes of "<key>":"...", exactly as sent (escapes untouched, ends at the first unescaped quote);
+// "" when absent or malformed. Relayed as it is: it stays inside its own string literal in what the receiver gets.
+std::string json_raw_string(const std::string& s, const char* key) {
+    auto p = s.find(key);
+    if (p == std::string::npos) return "";
+    p = s.find(':', p);
+    if (p == std::string::npos) return "";
+    p = s.find_first_not_of(' ', p + 1);
+    if (p == std::string::npos || s[p] != '"') return "";
+    for (std::size_t i = p + 1; i < s.size(); ++i) {
+        if (s[i] == '\\') { ++i; continue; }
+        if (s[i] == '"') return s.substr(p + 1, i - p - 1);
+    }
+    return "";
 }
 
 double clamp01(double v) { return v < 0 ? 0 : (v > 1 ? 1 : v); }
@@ -118,6 +155,39 @@ std::string query_param(const std::string& rawpath, const std::string& key) {
     return "";
 }
 
+// A signaling message {"to":"<user>","sig":"<escaped JSON text>"} from `me`: queued for <user> only if the server's own
+// state says they may talk (same instance, both opted in, in range, not blocked). Anything else is dropped without a word.
+void relay_signal(int fd, const std::string& me, const std::string& room, const std::string& payload) {
+    const std::string to = json_raw_string(payload, "\"to\"");
+    const std::string raw = json_raw_string(payload, "\"sig\"");
+    if (to.empty() || to == me || !valid_username(to) || raw.empty() || raw.size() > 7000) return;
+    int target = -1;
+    {
+        std::lock_guard<std::mutex> lock(here_mu());
+        auto rit = here_rooms().find(room);
+        if (rit == here_rooms().end()) return;
+        auto sit = rit->second.find(fd);
+        if (sit == rit->second.end() || !(sit->second.mic || sit->second.cam)) return;
+        for (const auto& [ofd, d] : rit->second) {
+            if (d.username != to) continue;
+            if (d.instanceId == sit->second.instanceId && (d.mic || d.cam) &&
+                std::hypot(d.x - sit->second.x, d.y - sit->second.y) <= kMediaAware) target = ofd;
+            break;
+        }
+    }
+    if (target < 0) return;
+    {
+        std::lock_guard<std::mutex> lock(g_mu);
+        if (g_store.is_blocked(me, to) || g_store.is_blocked(to, me)) return;
+    }
+    std::lock_guard<std::mutex> lock(here_mu());
+    auto rit = here_rooms().find(room);
+    if (rit == here_rooms().end()) return;
+    auto tit = rit->second.find(target);
+    if (tit == rit->second.end() || tit->second.username != to || tit->second.inbox.size() >= 32) return;
+    tit->second.inbox.push_back("{\"sig\":{\"from\":\"" + json_escape(me) + "\",\"data\":\"" + raw + "\"}}");
+}
+
 void run_here_session(int fd, std::string me, std::string room) {
     timeval tv{}; tv.tv_sec = 0; tv.tv_usec = 200000;  // a snapshot about five times a second
     setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
@@ -131,28 +201,36 @@ void run_here_session(int fd, std::string me, std::string room) {
             const auto now = std::chrono::steady_clock::now();
             if (now - window > std::chrono::seconds(1)) { window = now; moves = 0; }
             // at most 20 moves a second, small frames only: anything else is dropped, never echoed
-            if (result.frame.opcode == WsOpcode::Text && result.frame.payload.size() <= 200 && ++moves <= 20) {
+            const std::string& pl = result.frame.payload;
+            const bool is_sig = pl.size() <= 8192 && pl.find("\"sig\"") != std::string::npos;   // a setup message, not a move
+            if (result.frame.opcode == WsOpcode::Text && is_sig && ++moves <= 20) relay_signal(fd, me, room, pl);
+            else if (result.frame.opcode == WsOpcode::Text && result.frame.payload.size() <= 200 && ++moves <= 20) {
+                const auto mic = json_bool(result.frame.payload, "\"mic\""), cam = json_bool(result.frame.payload, "\"cam\"");
                 auto nx = json_number(result.frame.payload, "\"x\"");
                 auto ny = json_number(result.frame.payload, "\"y\"");
                 const std::string inst = json_instance(result.frame.payload);
-                if ((nx && ny) || !inst.empty()) {
+                if ((nx && ny) || !inst.empty() || mic || cam) {
                     std::lock_guard<std::mutex> lock(here_mu());
                     auto& r = here_rooms()[room];
                     auto it = r.find(fd);
                     if (it != r.end() && nx && ny) { it->second.x = clamp01(*nx); it->second.y = clamp01(*ny); }
                     if (it != r.end() && !inst.empty()) it->second.instanceId = inst;
+                    if (it != r.end() && mic) it->second.mic = *mic;
+                    if (it != r.end() && cam) it->second.cam = *cam;
                     if (it != r.end()) apply_eject(it->second, room);   // spatial step 9: the server's rule, after every move
                 }
             }
         }
         // copy the room, then check blocks under the store lock (never both locks at once)
         std::vector<HereDot> dots;
+        std::vector<std::string> setup;   // spatial step 11: setup messages queued for me
         {
             std::lock_guard<std::mutex> lock(here_mu());
             auto rit = here_rooms().find(room);
             if (rit == here_rooms().end() || !rit->second.count(fd)) break;
             // spatial step 5: only the dots in the same instance as this person (everyone starts in the room's own)
             const std::string mine = rit->second.at(fd).instanceId;
+            setup.swap(rit->second.at(fd).inbox);
             for (const auto& [ofd, d] : rit->second) if (d.instanceId == mine) dots.push_back(d);
         }
         bool still_ok = true;
@@ -165,12 +243,16 @@ void run_here_session(int fd, std::string me, std::string room) {
             }), dots.end());
         }
         if (!still_ok) break;
+        bool wrote = true;
+        for (const auto& m : setup) wrote = wrote && ws_write_frame(fd, WsOpcode::Text, m);
+        if (!wrote) break;
         std::ostringstream os;
         os << "{\"people\":[";
         bool first = true;
         for (const auto& d : dots) {
             os << (first ? "" : ",") << "{\"u\":\"" << json_escape(d.username) << "\",\"x\":" << d.x << ",\"y\":" << d.y
-               << ",\"instanceId\":\"" << json_escape(d.instanceId.empty() ? room : d.instanceId) << "\"}";
+               << ",\"instanceId\":\"" << json_escape(d.instanceId.empty() ? room : d.instanceId) << "\""
+               << ",\"mic\":" << (d.mic ? "true" : "false") << ",\"cam\":" << (d.cam ? "true" : "false") << "}";
             first = false;
         }
         os << "]}";
@@ -283,7 +365,8 @@ std::string here_page_bits(const std::string& viewer, const std::string& page) {
     return "<script>window.LG_HERE={\"me\":\"" + json_escape(viewer) + "\",\"page\":\"" + json_escape(page) +
            "\",\"box\":\"" + json_escape(here_box_id(page)) +
            "\"};</script><script src=\"" + asset_url("walker.js") + "\" defer></script>"
-           "<script src=\"" + asset_url("here.js") + "\" defer></script>";
+           "<script src=\"" + asset_url("here.js") + "\" defer></script>"
+           "<script src=\"" + asset_url("here_media.js") + "\" defer></script>";
 }
 
 std::string here_settings_card(const std::string& user) {

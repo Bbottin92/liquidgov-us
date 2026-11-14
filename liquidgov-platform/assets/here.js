@@ -17,6 +17,18 @@
 
   var dots = {}, me = { x: 0.5, y: 0.08, known: false }, dropping = false, held = {}, pull = { x: 0, y: 0 }, lastSent = 0, dirty = false;
   var near = null, ws = null, tries = 0;
+  var peopleFns = [], sigFns = [];
+  // spatial step 11: what assets/here_media.js needs from this file (proximity voice and video): who is here, a way to
+  // send, and the setup messages other people's browsers send through the server.
+  window.LG_HERE_API = {
+    send: function (o) { if (!ws || ws.readyState !== 1) return false; ws.send(JSON.stringify(o)); return true; },
+    moveTo: function (x, y) {
+      me.x = Math.max(0, Math.min(1, x)); me.y = Math.max(0, Math.min(1, y)); me.known = true; dirty = true;
+      if (dots[cfg.me]) place(dots[cfg.me], me.x, me.y);
+    },
+    onPeople: function (fn) { peopleFns.push(fn); },
+    onSignal: function (fn) { sigFns.push(fn); }
+  };
 
   function pageW() { return Math.max(document.documentElement.scrollWidth, document.body.scrollWidth); }
   function pageH() { return Math.max(document.documentElement.scrollHeight, document.body.scrollHeight); }
@@ -71,7 +83,11 @@
     ws = new WebSocket(proto + '//' + location.host + '/here/ws?page=' + encodeURIComponent(cfg.page));
     ws.onopen = function () { tries = 0; dirty = true; };
     ws.onmessage = function (ev) {
-      try { render(JSON.parse(ev.data).people || []); } catch (e) { /* a bad frame is skipped */ }
+      try {
+        var d = JSON.parse(ev.data);
+        if (d.sig) sigFns.forEach(function (fn) { fn(d.sig); });
+        else { render(d.people || []); peopleFns.forEach(function (fn) { fn(d.people || []); }); }
+      } catch (e) { /* a bad frame is skipped */ }
     };
     ws.onclose = function () {
       Object.keys(dots).forEach(function (u) { if (u !== cfg.me) { dots[u].remove(); delete dots[u]; } });

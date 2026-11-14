@@ -54,8 +54,21 @@
     instanceId = dropping && at && at !== 'you' && box(at) ? at : MAINSTREAM;
     walker.setAttribute('data-instance', instanceId);
   }
+  // spatial step 4: while Drop is on, only the box you stand on (Inside) and the boxes connected to it (Near) are
+  // shown; the rest (Far) and their connectors are hidden. Scroll mode shows everything again.
+  function proximity() {
+    var keep = null;
+    if (dropping && box(at)) { keep = neighbors(at); keep.push(at); }
+    Array.prototype.forEach.call(nodeLayer.querySelectorAll('.lgn'), function (o) {
+      o.style.visibility = !keep || keep.indexOf(o.getAttribute('data-id')) >= 0 ? '' : 'hidden';
+    });
+    Array.prototype.forEach.call(edgeLayer.querySelectorAll('.lge'), function (e) {
+      e.style.visibility = !keep || (keep.indexOf(e.getAttribute('data-a')) >= 0 && keep.indexOf(e.getAttribute('data-b')) >= 0) ? '' : 'hidden';
+    });
+  }
   function show() {
     instance();
+    proximity();
     var el = box(at);
     Array.prototype.forEach.call(nodeLayer.querySelectorAll('.lgn.lgn-walk'), function (o) { if (o !== el) o.classList.remove('lgn-walk'); });
     if (!el) { walker.hidden = true; return; }
@@ -153,6 +166,7 @@
         if (window.LG_MAP) LG_MAP.fit();
         Array.prototype.forEach.call(nodeLayer.querySelectorAll('.lgn.lgn-walk'), function (o) { o.classList.remove('lgn-walk'); });
         instance();
+        proximity();
       }
     }
   });

@@ -9,7 +9,9 @@ can't be found. A check file in this folder that is not in CHECKS always runs (a
 naming_check also runs whenever a file is added or renamed anywhere (it judges every new name).
 
 Usage: python affected_checks.py <repo root> --staged          (pre-commit: the index against HEAD)
-       python affected_checks.py <repo root> --push < <stdin>  (pre-push: git's "<lref> <lsha> <rref> <rsha>" lines)"""
+       python affected_checks.py <repo root> --push < <stdin>  (pre-push: git's "<lref> <lsha> <rref> <rsha>" lines)
+       python affected_checks.py <repo root> --linux-only      (the hook: on Windows prints run_hook_checks.LINUX_ONLY,
+                                                                the checks it must not run here; elsewhere nothing)"""
 import fnmatch
 import importlib.util
 import os
@@ -56,6 +58,7 @@ CHECKS = {
     "ci_skip_list_check.py": ["scripts/run_hook_checks.py", "commons-daemon/tests/*"],
     "hook_windows_skip_check.py": [".githooks/*", "scripts/affected_checks.py", "scripts/run_hook_checks.py"],
     "hook_git_env_check.py": [".githooks/*", "scripts/affected_checks.py", "scripts/run_hook_checks.py"],
+    "hook_linux_only_skip_check.py": [".githooks/*", "scripts/affected_checks.py", "scripts/run_hook_checks.py"],
     "prebuilt_check.py": ["deploy/fetch-prebuilt.sh", "deploy/prebuilt-go.sh", "deploy/prebuilt-remote.sh",
                           "deploy/make-go.py", "naming.toml", ".gitignore"],
     "undo_lists_check.py": ["deploy/*-undo.py", "liquidgov-platform/tests/rollback/*",
@@ -137,24 +140,35 @@ def changed_files(root, mode, stdin_text=""):
     return changed, added
 
 
-def windows_only(root):
-    """run_hook_checks.WINDOWS_ONLY (the one list); () if that file is missing."""
+def runner_list(root, name):
+    """run_hook_checks.<name> (the one list); () if that file is missing."""
     path = os.path.join(root, "scripts", "run_hook_checks.py")
     if not os.path.exists(path):
         return ()
     spec = importlib.util.spec_from_file_location("run_hook_checks", path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    return tuple(getattr(mod, "WINDOWS_ONLY", ()))
+    return tuple(getattr(mod, name, ()))
+
+
+def windows_only(root):
+    return runner_list(root, "WINDOWS_ONLY")
 
 
 def main():
-    if len(sys.argv) != 3 or sys.argv[2] not in ("--staged", "--push"):
+    if len(sys.argv) != 3 or sys.argv[2] not in ("--staged", "--push", "--linux-only"):
         print(__doc__, file=sys.stderr)
         return 2
     root = sys.argv[1]
     # plain \n: Windows Python writes \r\n, and the hook's `for check in $checks` kept the \r on every name (2026-11-10)
     sys.stdout.reconfigure(newline="\n")
+    if sys.argv[2] == "--linux-only":
+        # The selection below stays the same on every platform (hook_windows_skip_check.py compares the two lists);
+        # the hook asks here which of the selected checks it must leave to GitHub's Linux run (2026-11-14).
+        if os.environ.get("LG_CHECKS_PLATFORM", sys.platform).startswith("win"):
+            for n in runner_list(root, "LINUX_ONLY"):
+                print(n)
+        return 0
     on_disk = {n for n in os.listdir(HERE) if is_check(n)}
     try:
         stdin_text = sys.stdin.read() if sys.argv[2] == "--push" else ""

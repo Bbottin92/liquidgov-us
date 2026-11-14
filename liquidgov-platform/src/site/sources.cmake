@@ -11,6 +11,7 @@ set(LG_SITE_SOURCES
   src/site/ui/shell.cpp
   src/site/core/http.cpp
   src/site/core/ws_limits.cpp
+  src/site/core/accept_ready.cpp
   src/site/ui/wrap.cpp
   src/site/core/multipart.cpp
   src/site/core/names_categories.cpp

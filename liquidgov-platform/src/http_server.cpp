@@ -12,6 +12,7 @@
 #include "site/features/here/here.hpp"
 #include "site/router.hpp"
 #include "site/core/ws_limits.hpp"
+#include "site/core/accept_ready.hpp"
 using namespace liquidgov::site;
 #ifndef LG_BUILD_COMMIT
 #define LG_BUILD_COMMIT "unknown"
@@ -70,8 +71,10 @@ int main(int argc, char** argv) {
     std::cerr<<"LiquidGov http://0.0.0.0:"<<port<<" store="<<g_store.path()
              <<" blobs="<<blob_path_from_env()<<" (auth.cpp + FileStore LGP1)\n";
     for(;;){
-        sockaddr_in peer{}; socklen_t plen=sizeof(peer);
-        int c=accept(fd,reinterpret_cast<sockaddr*>(&peer),&plen); if(c<0) continue;
+        // The next connection that has sent something: a client that connects and stays silent no longer holds up
+        // the requests behind it (site/core/accept_ready.hpp).
+        sockaddr_in peer{};
+        int c=accept_ready(fd,peer);
         timeval tv{}; tv.tv_sec=30; tv.tv_usec=0;
         setsockopt(c,SOL_SOCKET,SO_RCVTIMEO,&tv,sizeof(tv));
         char ipbuf[INET_ADDRSTRLEN]="0.0.0.0"; inet_ntop(AF_INET,&peer.sin_addr,ipbuf,sizeof(ipbuf));

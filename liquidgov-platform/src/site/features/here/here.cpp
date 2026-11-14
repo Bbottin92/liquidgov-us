@@ -76,6 +76,33 @@ double start_x(const std::string& u) {
     return 0.1 + (h % 800) / 1000.0;
 }
 
+// Spatial step 9: eject rules. An instance can carry a hazard region (in the room's 0..1 page coordinates); a dot that is
+// in that instance and inside the region is put back in its parent, the room's own instance. Admin-defined, read once
+// from LIQUIDGOV_HERE_EJECT = "<instance>:<x0>,<y0>,<x1>,<y1>;<instance>:..." (no endpoint, nothing stored). The server
+// applies it after every move, so a client cannot stay inside a hazard by keeping quiet or by claiming an instance.
+struct EjectRule { std::string instance; double x0, y0, x1, y1; };
+const std::vector<EjectRule>& eject_rules() {
+    static const std::vector<EjectRule> rules = [] {
+        std::vector<EjectRule> out;
+        const char* env = std::getenv("LIQUIDGOV_HERE_EJECT");
+        if (!env) return out;
+        std::istringstream all(env);
+        std::string one;
+        while (std::getline(all, one, ';')) {
+            const auto colon = one.rfind(':');
+            if (colon == std::string::npos || colon == 0) continue;
+            EjectRule r{one.substr(0, colon), 0, 0, 0, 0};
+            if (std::sscanf(one.c_str() + colon + 1, "%lf,%lf,%lf,%lf", &r.x0, &r.y0, &r.x1, &r.y1) == 4) out.push_back(r);
+        }
+        return out;
+    }();
+    return rules;
+}
+void apply_eject(HereDot& d, const std::string& room) {
+    for (const auto& r : eject_rules())
+        if (d.instanceId == r.instance && d.x >= r.x0 && d.x <= r.x1 && d.y >= r.y0 && d.y <= r.y1) { d.instanceId = room; return; }
+}
+
 std::string query_param(const std::string& rawpath, const std::string& key) {
     auto q = rawpath.find('?');
     if (q == std::string::npos) return "";
@@ -114,6 +141,7 @@ void run_here_session(int fd, std::string me, std::string room) {
                     auto it = r.find(fd);
                     if (it != r.end() && nx && ny) { it->second.x = clamp01(*nx); it->second.y = clamp01(*ny); }
                     if (it != r.end() && !inst.empty()) it->second.instanceId = inst;
+                    if (it != r.end()) apply_eject(it->second, room);   // spatial step 9: the server's rule, after every move
                 }
             }
         }

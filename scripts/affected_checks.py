@@ -55,6 +55,7 @@ CHECKS = {
     "ci_runs_checks_check.py": [".github/workflows/*", "scripts/run_hook_checks.py", "commons-daemon/tests/*"],
     "ci_skip_list_check.py": ["scripts/run_hook_checks.py", "commons-daemon/tests/*"],
     "hook_windows_skip_check.py": [".githooks/*", "scripts/affected_checks.py", "scripts/run_hook_checks.py"],
+    "hook_git_env_check.py": [".githooks/*", "scripts/affected_checks.py", "scripts/run_hook_checks.py"],
     "prebuilt_check.py": ["deploy/fetch-prebuilt.sh", "deploy/prebuilt-go.sh", "deploy/prebuilt-remote.sh",
                           "deploy/make-go.py", "naming.toml", ".gitignore"],
     "undo_lists_check.py": ["deploy/*-undo.py", "liquidgov-platform/tests/rollback/*",

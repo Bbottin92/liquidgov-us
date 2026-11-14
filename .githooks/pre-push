@@ -37,6 +37,12 @@ checks="$(git_stdin="$(cat)"; printf '%s\n' "$git_stdin" | "$PY" "$ROOT/scripts/
   exit 1
 }
 [ -z "$checks" ] && echo "pre-push: no check is affected by this change"
+# Checks never get git's hook variables (2026-11-14). Git runs a hook with GIT_DIR, GIT_INDEX_FILE and friends set; a
+# check that builds a throwaway repo (prebuilt_check.py: git init, commit "one"/"two") then acted on THIS repository:
+# core.bare=true in the main checkout and junk commits on a linked worktree's branch (twice, 2026-11-12). The selector
+# above still needs them (a `git commit -a` index is in GIT_INDEX_FILE), so they are dropped only here, after it.
+# Every GIT_* goes, the same as scripts/run_hook_checks.py does for CI (hook_git_env_check.py).
+for v in $(env | sed -n 's/^\(GIT_[A-Za-z0-9_]*\)=.*/\1/p'); do unset "$v"; done
 for check in $checks; do
   out="$("$PY" "$ROOT/commons-daemon/tests/$check" "$ROOT" 2>&1)"; rc=$?
   echo "$out" | tail -1

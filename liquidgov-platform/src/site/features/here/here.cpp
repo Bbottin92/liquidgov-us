@@ -47,6 +47,28 @@ std::optional<double> json_number(const std::string& s, const char* key) {
 
 double clamp01(double v) { return v < 0 ? 0 : (v > 1 ? 1 : v); }
 
+// Spatial step 5: the instance a client says it is in ("instanceId":"<a map box id or mainstream>" in its move
+// message). "" when absent, longer than 64, or anything but letters, digits and : _ - . / (never echoed otherwise).
+std::string json_instance(const std::string& s) {
+    const std::string key = "\"instanceId\"";
+    auto p = s.find(key);
+    if (p == std::string::npos) return "";
+    p = s.find(':', p + key.size());
+    if (p == std::string::npos) return "";
+    p = s.find('"', p);
+    if (p == std::string::npos) return "";
+    const auto e = s.find('"', p + 1);
+    if (e == std::string::npos) return "";
+    const std::string v = s.substr(p + 1, e - p - 1);
+    if (v.empty() || v.size() > 64) return "";
+    for (char c : v) {
+        const bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+                        c == ':' || c == '_' || c == '-' || c == '.' || c == '/';
+        if (!ok) return "";
+    }
+    return v;
+}
+
 // A start point that differs per person, so two newcomers don't sit on top of each other.
 double start_x(const std::string& u) {
     unsigned h = 2166136261u;
@@ -85,11 +107,13 @@ void run_here_session(int fd, std::string me, std::string room) {
             if (result.frame.opcode == WsOpcode::Text && result.frame.payload.size() <= 200 && ++moves <= 20) {
                 auto nx = json_number(result.frame.payload, "\"x\"");
                 auto ny = json_number(result.frame.payload, "\"y\"");
-                if (nx && ny) {
+                const std::string inst = json_instance(result.frame.payload);
+                if ((nx && ny) || !inst.empty()) {
                     std::lock_guard<std::mutex> lock(here_mu());
                     auto& r = here_rooms()[room];
                     auto it = r.find(fd);
-                    if (it != r.end()) { it->second.x = clamp01(*nx); it->second.y = clamp01(*ny); }
+                    if (it != r.end() && nx && ny) { it->second.x = clamp01(*nx); it->second.y = clamp01(*ny); }
+                    if (it != r.end() && !inst.empty()) it->second.instanceId = inst;
                 }
             }
         }
@@ -99,7 +123,9 @@ void run_here_session(int fd, std::string me, std::string room) {
             std::lock_guard<std::mutex> lock(here_mu());
             auto rit = here_rooms().find(room);
             if (rit == here_rooms().end() || !rit->second.count(fd)) break;
-            for (const auto& [ofd, d] : rit->second) dots.push_back(d);
+            // spatial step 5: only the dots in the same instance as this person (everyone starts in the room's own)
+            const std::string mine = rit->second.at(fd).instanceId;
+            for (const auto& [ofd, d] : rit->second) if (d.instanceId == mine) dots.push_back(d);
         }
         bool still_ok = true;
         {

@@ -37,6 +37,12 @@ checks="$(git_stdin="$(cat)"; printf '%s\n' "$git_stdin" | "$PY" "$ROOT/scripts/
   exit 1
 }
 [ -z "$checks" ] && echo "pre-push: no check is affected by this change"
+# Linux-only checks are not run on Windows (2026-11-14, Brandon: "fix the windows hook so i dont need no-verify"):
+# prebuilt_check.py's plain `bash` is WSL's bash.exe from Windows Python and exits 127, which refused every deploy-pair
+# commit and every push to master from the PC. The list is run_hook_checks.LINUX_ONLY (one list); on other systems this
+# prints nothing. Said on a SKIPPED line, never counted as passed; GitHub's hook-checks run (Linux) runs them on every
+# push and ship.py waits for it. If the list cannot be read nothing is skipped (hook_linux_only_skip_check.py).
+linux_only="$("$PY" "$ROOT/scripts/affected_checks.py" "$ROOT" --linux-only 2>/dev/null | tr '\n' ' ')" || linux_only=""
 # Checks never get git's hook variables (2026-11-14). Git runs a hook with GIT_DIR, GIT_INDEX_FILE and friends set; a
 # check that builds a throwaway repo (prebuilt_check.py: git init, commit "one"/"two") then acted on THIS repository:
 # core.bare=true in the main checkout and junk commits on a linked worktree's branch (twice, 2026-11-12). The selector
@@ -44,6 +50,9 @@ checks="$(git_stdin="$(cat)"; printf '%s\n' "$git_stdin" | "$PY" "$ROOT/scripts/
 # Every GIT_* goes, the same as scripts/run_hook_checks.py does for CI (hook_git_env_check.py).
 for v in $(env | sed -n 's/^\(GIT_[A-Za-z0-9_]*\)=.*/\1/p'); do unset "$v"; done
 for check in $checks; do
+  case " $linux_only " in *" $check "*)
+    echo "SKIPPED (Linux-only): $check  (not passed; GitHub's hook-checks run runs it)"; continue;;
+  esac
   out="$("$PY" "$ROOT/commons-daemon/tests/$check" "$ROOT" 2>&1)"; rc=$?
   echo "$out" | tail -1
   if [ $rc -ne 0 ]; then

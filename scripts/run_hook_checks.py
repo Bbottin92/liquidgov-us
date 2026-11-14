@@ -13,6 +13,12 @@ WINDOWS_ONLY checks test PC-only tools (tidy_worktrees.py: Windows junctions via
 Windows they are not run and are listed on a "SKIPPED (Windows-only)" line, never counted as passed; the git hooks on
 the PC still run them (Brandon 2026-11-12, after GitHub run 43302640573). LG_CHECKS_PLATFORM overrides sys.platform
 (for ci_skip_list_check.py).
+LINUX_ONLY checks are the other way round (Brandon 2026-11-14: "fix the windows hook so i dont need no-verify"):
+prebuilt_check.py starts deploy/fetch-prebuilt.sh with a plain `bash`, which from Windows Python is System32's WSL
+bash.exe (Windows looks there before PATH) and exits 127, so every commit of a deploy pair and every push to master
+from the PC was refused. On Windows they are not run and are listed on a "SKIPPED (Linux-only)" line, never counted as
+passed; GitHub's hook-checks run (Linux) runs them on every push, and ship.py waits for that run
+(hook_linux_only_skip_check.py).
 
 Usage: python3 scripts/run_hook_checks.py <repo root> [--list]   (--list prints the check names and runs nothing)"""
 import importlib.util
@@ -24,6 +30,7 @@ import time
 
 TIMEOUT = 600  # seconds per check; the slowest (temp git repos, fake gh) take a few seconds
 WINDOWS_ONLY = ("tidy_worktrees_check.py", "tidy_in_use_check.py")
+LINUX_ONLY = ("prebuilt_check.py",)
 NO_CASES = re.compile(r"\bpasses=0\b")
 
 
@@ -61,7 +68,8 @@ def main(argv):
     env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
     on_windows = os.environ.get("LG_CHECKS_PLATFORM", sys.platform).startswith("win")
     skipped = [] if on_windows else [n for n in names if n in WINDOWS_ONLY]
-    names = [n for n in names if n not in skipped]
+    skipped_linux = [n for n in names if n in LINUX_ONLY] if on_windows else []
+    names = [n for n in names if n not in skipped and n not in skipped_linux]
     failed = []
     for name in names:
         start = time.time()
@@ -84,6 +92,8 @@ def main(argv):
             print("\n".join("   " + l for l in shown), flush=True)
     if skipped:
         print("SKIPPED (Windows-only): %s  (not passed; the PC's git hooks run them)" % " ".join(skipped))
+    if skipped_linux:
+        print("SKIPPED (Linux-only): %s  (not passed; GitHub's hook-checks run runs them)" % " ".join(skipped_linux))
     print("SUMMARY hook-checks passes=%d fails=%d" % (len(names) - len(failed), len(failed)))
     if failed:
         print("failed: " + " ".join(failed))

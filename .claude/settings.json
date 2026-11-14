@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(.env)",
+      "Read(.env.*)",
+      "Read(./.env.local)",
+      "Read(./liquidgov-platform/.env.local)",
+      "Read(./secrets/**)",
+      "Read(./config/credentials.*)",
+      "Read(*.lgp)",
+      "Read(liquidgov_accounts.lgp)",
+      "Read(liquidgov_blobs/**)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "command": "echo 'File written: $CLAUDE_FILE_PATH'"
+      }
+    ]
+  }
+}

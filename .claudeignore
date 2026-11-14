@@ -1,0 +1,39 @@
+# Build outputs
+build/
+dist/
+build-release/
+liquidgov-platform/.prebuilt/
+liquidgov-platform/liquidgov_http
+liquidgov-platform/liquidgov_platform_*_test
+*.o
+
+# Dependencies / caches
+__pycache__/
+*.pyc
+
+# Large media / assets that rarely need AI context
+liquidgov-platform/assets/*.mp3
+liquidgov-platform/assets/*.mp4
+liquidgov-platform/assets/*.jpg
+liquidgov-platform/assets/*.png
+liquidgov-platform/assets/chapter*.mp3
+
+# Runtime data / secrets
+*.lgp
+*.lgp.tmp
+liquidgov_accounts.lgp
+liquidgov_blobs/
+.env.local
+liquidgov-platform/.env.local
+
+# IDE / OS
+.DS_Store
+.idea/
+.vscode/
+*:Zone.Identifier
+
+# Persistence noise if too verbose (optional; remove if useful)
+# Persistence/TheCommons/CLAUDE_*.md
+
+# Backups
+liquidgov-platform.bak/

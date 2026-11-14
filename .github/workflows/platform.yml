@@ -346,6 +346,69 @@ jobs:
           export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
           python3 liquidgov-platform/tests/browser/walker_controls_check.py "$PWD/liquidgov-platform" "$RUNNER_TEMP/phone"
 
+      - name: map walker instanceId, spatial step 3 (walker_instance_check) (browser, report-only)
+        if: always()
+        timeout-minutes: 5
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
+          python3 liquidgov-platform/tests/browser/walker_instance_check.py "$PWD/liquidgov-platform" "$RUNNER_TEMP/phone"
+
+      - name: map Drop-mode proximity filter, spatial step 4 (walker_proximity_check) (browser, report-only)
+        if: always()
+        timeout-minutes: 5
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
+          python3 liquidgov-platform/tests/browser/walker_proximity_check.py "$PWD/liquidgov-platform" "$RUNNER_TEMP/phone"
+
+      - name: map walker valve, spatial step 6 (walker_valve_check) (browser, report-only)
+        if: always()
+        timeout-minutes: 5
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
+          python3 liquidgov-platform/tests/browser/walker_valve_check.py "$PWD/liquidgov-platform" "$RUNNER_TEMP/phone"
+
+      - name: map walker valve types, spatial step 7 (walker_valve_types_check) (browser, report-only)
+        if: always()
+        timeout-minutes: 5
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
+          python3 liquidgov-platform/tests/browser/walker_valve_types_check.py "$PWD/liquidgov-platform" "$RUNNER_TEMP/phone"
+
+      - name: map walker group instance, spatial step 8 (walker_group_instance_check) (browser, report-only)
+        if: always()
+        timeout-minutes: 10
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
+          python3 liquidgov-platform/tests/browser/ci_walker_group_instance_check.py "$RUNNER_TEMP/lg" "$PWD/liquidgov-platform" ci "$RUNNER_TEMP/phone"
+
+      - name: map walker instance CSS, spatial step 10 (walker_instance_css_check) (browser, report-only)
+        if: always()
+        timeout-minutes: 10
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
+          python3 liquidgov-platform/tests/browser/ci_walker_instance_css_check.py "$RUNNER_TEMP/lg" "$PWD/liquidgov-platform" ci "$RUNNER_TEMP/phone"
+
+      - name: proximity voice and video, spatial step 11 (here_media_check) (browser, report-only)
+        if: always()
+        timeout-minutes: 10
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
+          python3 liquidgov-platform/tests/browser/ci_here_media_check.py "$RUNNER_TEMP/lg" "$PWD/liquidgov-platform" ci "$RUNNER_TEMP/phone"
+
       # Static checks (no browser): American spelling in the site's strings, and this file keeping every browser
       # check in a report-only, bounded step.
       - name: site spelling (site_spelling_check, report-only)

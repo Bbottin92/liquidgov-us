@@ -59,6 +59,11 @@ jobs:
             echo "platform=false" >> "$GITHUB_OUTPUT"; echo "no platform change against the base: build and tests skipped, run reports success"
           fi
 
+  # Browser checks run in three jobs beside this one (2026-11-14, Brandon: "make the browser checks run in parallel if
+  # that would help"): on run 43607546171 they took 7 min 53 s one after another, after a 1 min build and 4 min of
+  # lgcheck, 13 min in all. Now check (build + lgcheck) and the three browser jobs run side by side. Every browser step
+  # is still report-only and bounded; what CAN fail a browser job is its own setup (checkout, tools, build), which is
+  # the same build the check job does.
   check:
     needs: changes
     if: needs.changes.outputs.platform == 'true'
@@ -118,6 +123,78 @@ jobs:
         timeout-minutes: 5
         run: python3 liquidgov-platform/tests/assets_js_parse_check.py "$PWD/liquidgov-platform"
 
+      # Static checks (no browser): American spelling in the site's strings, and this file keeping every browser
+      # check in a report-only, bounded step.
+      - name: site spelling (site_spelling_check, report-only)
+        if: always()
+        timeout-minutes: 5
+        continue-on-error: true
+        run: python3 liquidgov-platform/tests/browser/site_spelling_check.py "$PWD/liquidgov-platform"
+
+      - name: every repo file a workflow names exists (workflow_paths_check, report-only)
+        if: always()
+        timeout-minutes: 5
+        continue-on-error: true
+        run: python3 liquidgov-platform/tests/browser/workflow_paths_check.py "$PWD"
+
+      - name: browser checks wired into CI (workflow_browser_steps_check, report-only)
+        if: always()
+        timeout-minutes: 5
+        continue-on-error: true
+        # The second argument is unused: the check's W3 reads its own text as "takes an <out dir>" (a false positive in
+        # that committed check, reported in REPORT5, not edited).
+        run: python3 liquidgov-platform/tests/browser/workflow_browser_steps_check.py "$PWD" "$RUNNER_TEMP/phone"
+
+      - name: keep the suite logs on failure
+        if: failure()
+        timeout-minutes: 5
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: lgcheck-logs
+          path: |
+            ${{ runner.temp }}/lgcheck.txt
+            ${{ runner.temp }}/lg/*.out
+          if-no-files-found: warn
+
+  # Browser checks that start the real server, first half (the phone screenshots among them).
+  browser-site-a:
+    needs: changes
+    if: needs.changes.outputs.platform == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 500M
+      CCACHE_BASEDIR: ${{ github.workspace }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: tools the build calls
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libsodium-dev pkg-config ccache
+          pkg-config --modversion libsodium
+
+      # Read only: the check job saves the cache; these jobs start from the last saved one.
+      - name: restore the compile cache (read only)
+        uses: actions/cache/restore@v4
+        with:
+          path: .ccache
+          key: ccache-${{ runner.os }}-${{ github.ref_name }}-${{ github.sha }}
+          restore-keys: |
+            ccache-${{ runner.os }}-${{ github.ref_name }}-
+            ccache-${{ runner.os }}-master-
+            ccache-${{ runner.os }}-
+
+      # Only the two programs the browser checks start (the server and the store seeder).
+      - name: build the server
+        run: |
+          set -euo pipefail
+          cmake -S liquidgov-platform -B "$RUNNER_TEMP/lg" -DCMAKE_BUILD_TYPE=Debug
+          cmake --build "$RUNNER_TEMP/lg" -j2 --target liquidgov_http liquidgov_e2e_seed
+
       # Phone screenshots in CI (Brandon 2026-11-11 'ci'): the laptop often has under the 2.5 GB the browser check needs,
       # so the same check runs here on every push and the PNGs are kept as an artifact (download from the run page or
       # `gh run download <id> -n phone-screenshots`). Headless Chrome, phone viewport, Bbottin signed in.
@@ -133,27 +210,6 @@ jobs:
           export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
           echo "browser: $LG_BROWSER"
           python3 liquidgov-platform/tests/browser/ci_phone_check.py "$RUNNER_TEMP/lg" "$PWD/liquidgov-platform" ci "$RUNNER_TEMP/phone"
-
-      # Map SPEC phase 1 (Brandon 2026-11-11): the filter bar, Back, Zoom out, sticky bars. Report-only for the same reason
-      # as the step above; its "VERDICT bar-ci" line is read by ship.py like the phone VERDICT. Same screenshot folder.
-      - name: map bar check (browser, report-only)
-        if: always()
-        timeout-minutes: 10
-        continue-on-error: true
-        run: |
-          set -uo pipefail
-          export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
-          python3 liquidgov-platform/tests/browser/ci_map_bar_check.py "$RUNNER_TEMP/lg" "$PWD/liquidgov-platform" ci "$RUNNER_TEMP/phone"
-
-      # The map's Hidden mode (Brandon 2026-11-11). Report-only like the two above; "VERDICT hidden-ci" is gated by ship.py.
-      - name: map hidden-mode check (browser, report-only)
-        if: always()
-        timeout-minutes: 10
-        continue-on-error: true
-        run: |
-          set -uo pipefail
-          export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
-          python3 liquidgov-platform/tests/browser/ci_map_hidden_check.py "$RUNNER_TEMP/lg" "$PWD/liquidgov-platform" ci "$RUNNER_TEMP/phone"
 
       # The bars stay at the top WHILE THE PAGE SCROLLS (Grok Bot's map check, should-fix 5: B8 in the bar check reads
       # only the computed style, which stays "sticky" when an ancestor traps it). Report-only like the three above.
@@ -178,6 +234,121 @@ jobs:
           export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
           python3 liquidgov-platform/tests/browser/ci_profile_css_contain_check.py "$RUNNER_TEMP/lg" "$PWD/liquidgov-platform" ci "$RUNNER_TEMP/phone"
 
+      - name: style library preview isolation check (browser, report-only)
+        if: always()
+        timeout-minutes: 10
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
+          python3 liquidgov-platform/tests/browser/ci_styles_preview_isolation_check.py "$RUNNER_TEMP/lg" "$PWD/liquidgov-platform" ci "$RUNNER_TEMP/phone"
+
+      - name: dots pad room check (browser, report-only)
+        if: always()
+        timeout-minutes: 10
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
+          python3 liquidgov-platform/tests/browser/ci_here_pad_room_check.py "$RUNNER_TEMP/lg" "$PWD/liquidgov-platform" ci "$RUNNER_TEMP/phone"
+
+      - name: map walker instance CSS, spatial step 10 (walker_instance_css_check) (browser, report-only)
+        if: always()
+        timeout-minutes: 10
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
+          python3 liquidgov-platform/tests/browser/ci_walker_instance_css_check.py "$RUNNER_TEMP/lg" "$PWD/liquidgov-platform" ci "$RUNNER_TEMP/phone"
+
+      - name: map walker presence, spatial (walker_presence_check) (browser, report-only)
+        if: always()
+        timeout-minutes: 10
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
+          python3 liquidgov-platform/tests/browser/ci_walker_presence_check.py "$RUNNER_TEMP/lg" "$PWD/liquidgov-platform" ci "$RUNNER_TEMP/phone"
+
+      - name: camera bubble on the dot (here_media_bubble_check) (browser, report-only)
+        if: always()
+        timeout-minutes: 10
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
+          python3 liquidgov-platform/tests/browser/ci_here_media_bubble_check.py "$RUNNER_TEMP/lg" "$PWD/liquidgov-platform" ci "$RUNNER_TEMP/phone"
+
+      # This job's pictures; the screenshots job below joins the three sets into phone-screenshots.
+      - name: keep this job's screenshots
+        if: always()
+        timeout-minutes: 5
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: phone-shots-browser-site-a
+          path: ${{ runner.temp }}/phone
+          if-no-files-found: warn
+
+  # Browser checks that start the real server, second half.
+  browser-site-b:
+    needs: changes
+    if: needs.changes.outputs.platform == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 500M
+      CCACHE_BASEDIR: ${{ github.workspace }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: tools the build calls
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libsodium-dev pkg-config ccache
+          pkg-config --modversion libsodium
+
+      # Read only: the check job saves the cache; these jobs start from the last saved one.
+      - name: restore the compile cache (read only)
+        uses: actions/cache/restore@v4
+        with:
+          path: .ccache
+          key: ccache-${{ runner.os }}-${{ github.ref_name }}-${{ github.sha }}
+          restore-keys: |
+            ccache-${{ runner.os }}-${{ github.ref_name }}-
+            ccache-${{ runner.os }}-master-
+            ccache-${{ runner.os }}-
+
+      # Only the two programs the browser checks start (the server and the store seeder).
+      - name: build the server
+        run: |
+          set -euo pipefail
+          cmake -S liquidgov-platform -B "$RUNNER_TEMP/lg" -DCMAKE_BUILD_TYPE=Debug
+          cmake --build "$RUNNER_TEMP/lg" -j2 --target liquidgov_http liquidgov_e2e_seed
+
+      # Map SPEC phase 1 (Brandon 2026-11-11): the filter bar, Back, Zoom out, sticky bars. Report-only for the same reason
+      # as the step above; its "VERDICT bar-ci" line is read by ship.py like the phone VERDICT. Same screenshot folder.
+      - name: map bar check (browser, report-only)
+        if: always()
+        timeout-minutes: 10
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
+          python3 liquidgov-platform/tests/browser/ci_map_bar_check.py "$RUNNER_TEMP/lg" "$PWD/liquidgov-platform" ci "$RUNNER_TEMP/phone"
+
+      # The map's Hidden mode (Brandon 2026-11-11). Report-only like the two above; "VERDICT hidden-ci" is gated by ship.py.
+      - name: map hidden-mode check (browser, report-only)
+        if: always()
+        timeout-minutes: 10
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
+          python3 liquidgov-platform/tests/browser/ci_map_hidden_check.py "$RUNNER_TEMP/lg" "$PWD/liquidgov-platform" ci "$RUNNER_TEMP/phone"
+
       # Post drawings at 1280 x 960 (Brief 6 item 5): the real server takes the bigger PNG, sizes still look the same.
       - name: canvas resolution check (browser, report-only)
         if: always()
@@ -198,14 +369,7 @@ jobs:
           set -uo pipefail
           export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
           python3 liquidgov-platform/tests/browser/ci_group_canvas_tap_check.py "$RUNNER_TEMP/lg" "$PWD/liquidgov-platform" ci "$RUNNER_TEMP/phone"
-      - name: style library preview isolation check (browser, report-only)
-        if: always()
-        timeout-minutes: 10
-        continue-on-error: true
-        run: |
-          set -uo pipefail
-          export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
-          python3 liquidgov-platform/tests/browser/ci_styles_preview_isolation_check.py "$RUNNER_TEMP/lg" "$PWD/liquidgov-platform" ci "$RUNNER_TEMP/phone"
+
       - name: profile-page dots check (browser, report-only)
         if: always()
         timeout-minutes: 10
@@ -214,14 +378,53 @@ jobs:
           set -uo pipefail
           export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
           python3 liquidgov-platform/tests/browser/ci_here_dots_check.py "$RUNNER_TEMP/lg" "$PWD/liquidgov-platform" ci "$RUNNER_TEMP/phone"
-      - name: dots pad room check (browser, report-only)
+
+      - name: map walker group instance, spatial step 8 (walker_group_instance_check) (browser, report-only)
         if: always()
         timeout-minutes: 10
         continue-on-error: true
         run: |
           set -uo pipefail
           export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
-          python3 liquidgov-platform/tests/browser/ci_here_pad_room_check.py "$RUNNER_TEMP/lg" "$PWD/liquidgov-platform" ci "$RUNNER_TEMP/phone"
+          python3 liquidgov-platform/tests/browser/ci_walker_group_instance_check.py "$RUNNER_TEMP/lg" "$PWD/liquidgov-platform" ci "$RUNNER_TEMP/phone"
+
+      - name: proximity voice and video, spatial step 11 (here_media_check) (browser, report-only)
+        if: always()
+        timeout-minutes: 10
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
+          python3 liquidgov-platform/tests/browser/ci_here_media_check.py "$RUNNER_TEMP/lg" "$PWD/liquidgov-platform" ci "$RUNNER_TEMP/phone"
+
+      - name: map walker presence dots, spatial (walker_presence_dots_check) (browser, report-only)
+        if: always()
+        timeout-minutes: 10
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
+          python3 liquidgov-platform/tests/browser/ci_walker_presence_dots_check.py "$RUNNER_TEMP/lg" "$PWD/liquidgov-platform" ci "$RUNNER_TEMP/phone"
+
+      # This job's pictures; the screenshots job below joins the three sets into phone-screenshots.
+      - name: keep this job's screenshots
+        if: always()
+        timeout-minutes: 5
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: phone-shots-browser-site-b
+          path: ${{ runner.temp }}/phone
+          if-no-files-found: warn
+
+  # Browser checks that serve their own pages (no server build).
+  browser-pages:
+    needs: changes
+    if: needs.changes.outputs.platform == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
 
       # Browser checks with no C++ server (Grok Bot's audit, ranked fix 1; Brief 5 item 1): each cuts the page's markup
       # from src/http_server.cpp and serves it with the real assets from a small stdlib server, so they run even when the
@@ -382,104 +585,34 @@ jobs:
           export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
           python3 liquidgov-platform/tests/browser/walker_valve_types_check.py "$PWD/liquidgov-platform" "$RUNNER_TEMP/phone"
 
-      - name: map walker group instance, spatial step 8 (walker_group_instance_check) (browser, report-only)
-        if: always()
-        timeout-minutes: 10
-        continue-on-error: true
-        run: |
-          set -uo pipefail
-          export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
-          python3 liquidgov-platform/tests/browser/ci_walker_group_instance_check.py "$RUNNER_TEMP/lg" "$PWD/liquidgov-platform" ci "$RUNNER_TEMP/phone"
-
-      - name: map walker instance CSS, spatial step 10 (walker_instance_css_check) (browser, report-only)
-        if: always()
-        timeout-minutes: 10
-        continue-on-error: true
-        run: |
-          set -uo pipefail
-          export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
-          python3 liquidgov-platform/tests/browser/ci_walker_instance_css_check.py "$RUNNER_TEMP/lg" "$PWD/liquidgov-platform" ci "$RUNNER_TEMP/phone"
-
-      - name: proximity voice and video, spatial step 11 (here_media_check) (browser, report-only)
-        if: always()
-        timeout-minutes: 10
-        continue-on-error: true
-        run: |
-          set -uo pipefail
-          export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
-          python3 liquidgov-platform/tests/browser/ci_here_media_check.py "$RUNNER_TEMP/lg" "$PWD/liquidgov-platform" ci "$RUNNER_TEMP/phone"
-
-      - name: map walker presence, spatial (walker_presence_check) (browser, report-only)
-        if: always()
-        timeout-minutes: 10
-        continue-on-error: true
-        run: |
-          set -uo pipefail
-          export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
-          python3 liquidgov-platform/tests/browser/ci_walker_presence_check.py "$RUNNER_TEMP/lg" "$PWD/liquidgov-platform" ci "$RUNNER_TEMP/phone"
-
-      - name: map walker presence dots, spatial (walker_presence_dots_check) (browser, report-only)
-        if: always()
-        timeout-minutes: 10
-        continue-on-error: true
-        run: |
-          set -uo pipefail
-          export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
-          python3 liquidgov-platform/tests/browser/ci_walker_presence_dots_check.py "$RUNNER_TEMP/lg" "$PWD/liquidgov-platform" ci "$RUNNER_TEMP/phone"
-      - name: camera bubble on the dot (here_media_bubble_check) (browser, report-only)
-        if: always()
-        timeout-minutes: 10
-        continue-on-error: true
-        run: |
-          set -uo pipefail
-          export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
-          python3 liquidgov-platform/tests/browser/ci_here_media_bubble_check.py "$RUNNER_TEMP/lg" "$PWD/liquidgov-platform" ci "$RUNNER_TEMP/phone"
-
-      # Static checks (no browser): American spelling in the site's strings, and this file keeping every browser
-      # check in a report-only, bounded step.
-      - name: site spelling (site_spelling_check, report-only)
-        if: always()
-        timeout-minutes: 5
-        continue-on-error: true
-        run: python3 liquidgov-platform/tests/browser/site_spelling_check.py "$PWD/liquidgov-platform"
-
-      - name: every repo file a workflow names exists (workflow_paths_check, report-only)
-        if: always()
-        timeout-minutes: 5
-        continue-on-error: true
-        run: python3 liquidgov-platform/tests/browser/workflow_paths_check.py "$PWD"
-
-      - name: browser checks wired into CI (workflow_browser_steps_check, report-only)
-        if: always()
-        timeout-minutes: 5
-        continue-on-error: true
-        # The second argument is unused: the check's W3 reads its own text as "takes an <out dir>" (a false positive in
-        # that committed check, reported in REPORT5, not edited).
-        run: python3 liquidgov-platform/tests/browser/workflow_browser_steps_check.py "$PWD" "$RUNNER_TEMP/phone"
-
-      # Bounded (2026-11-11): run 43094476050 sat in this upload for hours while GitHub's artifact API returned 502s,
-      # so the run never finished and ship.py could not call the commit CI-proven. A stuck upload is cancelled after
-      # 5 minutes and does not turn the run red; ship.py still refuses a site change with no screenshots (fails closed
-      # there). Its check (ci_upload_bounds_check.py) is not on this branch yet: it is in patch 02, waiting on the
-      # scripts/affected_checks.py mapping it needs. Name its path here again when it lands (workflow_paths_check).
-      - name: keep the phone screenshots
+      # This job's pictures; the screenshots job below joins the three sets into phone-screenshots.
+      - name: keep this job's screenshots
         if: always()
         timeout-minutes: 5
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
-          name: phone-screenshots
+          name: phone-shots-browser-pages
           path: ${{ runner.temp }}/phone
           if-no-files-found: warn
 
-      - name: keep the suite logs on failure
-        if: failure()
+  # One artifact, phone-screenshots, as before (ship.py and `gh run download <id> -n phone-screenshots` read that name).
+  # Bounded (2026-11-11): run 43094476050 sat in this upload for hours while GitHub's artifact API returned 502s,
+  # so the run never finished and ship.py could not call the commit CI-proven. A stuck upload is cancelled after
+  # 5 minutes and does not turn the run red; ship.py still refuses a site change with no screenshots (fails closed
+  # there). Its check (ci_upload_bounds_check.py) is not on this branch yet: it is in patch 02, waiting on the
+  # scripts/affected_checks.py mapping it needs. Name its path here again when it lands (workflow_paths_check).
+  screenshots:
+    needs: [changes, browser-site-a, browser-site-b, browser-pages]
+    if: always() && needs.changes.outputs.platform == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: keep the phone screenshots
         timeout-minutes: 5
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact/merge@v4
         with:
-          name: lgcheck-logs
-          path: |
-            ${{ runner.temp }}/lgcheck.txt
-            ${{ runner.temp }}/lg/*.out
-          if-no-files-found: warn
+          name: phone-screenshots
+          pattern: phone-shots-*
+          delete-merged: true

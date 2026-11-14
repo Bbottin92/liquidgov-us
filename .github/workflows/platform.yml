@@ -409,6 +409,23 @@ jobs:
           export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
           python3 liquidgov-platform/tests/browser/ci_here_media_check.py "$RUNNER_TEMP/lg" "$PWD/liquidgov-platform" ci "$RUNNER_TEMP/phone"
 
+      - name: map walker presence, spatial (walker_presence_check) (browser, report-only)
+        if: always()
+        timeout-minutes: 10
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
+          python3 liquidgov-platform/tests/browser/ci_walker_presence_check.py "$RUNNER_TEMP/lg" "$PWD/liquidgov-platform" ci "$RUNNER_TEMP/phone"
+
+      - name: map walker presence dots, spatial (walker_presence_dots_check) (browser, report-only)
+        if: always()
+        timeout-minutes: 10
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
+          python3 liquidgov-platform/tests/browser/ci_walker_presence_dots_check.py "$RUNNER_TEMP/lg" "$PWD/liquidgov-platform" ci "$RUNNER_TEMP/phone"
       # Static checks (no browser): American spelling in the site's strings, and this file keeping every browser
       # check in a report-only, bounded step.
       - name: site spelling (site_spelling_check, report-only)

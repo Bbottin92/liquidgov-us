@@ -16,14 +16,17 @@ Tests: commons-daemon/tests/ship_check.py"""
 import datetime
 import json
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
 
 REPO = os.environ.get("SHIP_REPO") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GH = json.loads(os.environ["SHIP_GH"]) if os.environ.get("SHIP_GH") else ["gh"]
 GH_REPO = ["--repo", "Bbottin92/liquidgov-us"]
 POLL = float(os.environ.get("SHIP_POLL_SECONDS") or 30)
+RUN_GRACE_LOOKS = 4  # extra looks, POLL apart, for a platform run GitHub has not listed yet (about two minutes)
 PLATFORM = "liquidgov-platform/"
 PLATFORM_NAME = "platform"  # the `name:` of .github/workflows/platform.yml (read via gh, 2026-11-11)
 NO_RESTART = (PLATFORM + "assets/", PLATFORM + "tests/")
@@ -101,6 +104,15 @@ def check(branch, wait_min, out_dir):
 
     r = newest_run(sha)
     deadline = time.time() + wait_min * 60
+    # GitHub lists a run a few seconds after the push. A check started right after `git push` saw none and, for a
+    # change with no site files, called the branch ready with no verdicts (three times on 2026-11-14). Look again a
+    # few times before believing there is none (ship_recheck_check.py).
+    looks = 0
+    while not r and looks < RUN_GRACE_LOOKS and time.time() < deadline:
+        print("   no platform run for %s yet; looking again..." % sha[:7], flush=True)
+        time.sleep(POLL)
+        r = newest_run(sha)
+        looks += 1
     while r and r.get("status") != "completed" and time.time() < deadline:
         print("   CI run %s is %s; waiting..." % (r.get("databaseId"), r.get("status")), flush=True)
         time.sleep(POLL)
@@ -128,13 +140,27 @@ def check(branch, wait_min, out_dir):
             if site_changed and (not verdicts or any("ALL-PASS" not in v for v in verdicts)):
                 reasons.append("phone VERDICT not ALL-PASS")
             os.makedirs(out_dir, exist_ok=True)
+            # gh will not write over a file that is already there, so a second check of the same branch (ship.py merge
+            # runs one) reported "screenshots: NONE ... The file exists" and, for a site change, refused
+            # (2026-11-14). Download beside the folder, then move each file in over the old one.
+            fresh = tempfile.mkdtemp(prefix=".ship-shots-", dir=os.path.dirname(os.path.abspath(out_dir)))
             try:
-                run(GH + ["run", "download", rid] + GH_REPO + ["-n", "phone-screenshots", "-D", out_dir],
+                run(GH + ["run", "download", rid] + GH_REPO + ["-n", "phone-screenshots", "-D", fresh],
                     "gh run download")
-                pngs = sorted(os.path.join(dp, f) for dp, _, fs in os.walk(out_dir) for f in fs if f.endswith(".png"))
+                pngs = []
+                for dp, _, fs in os.walk(fresh):
+                    for f in fs:
+                        dst = os.path.join(out_dir, os.path.relpath(os.path.join(dp, f), fresh))
+                        os.makedirs(os.path.dirname(dst), exist_ok=True)
+                        os.replace(os.path.join(dp, f), dst)
+                        if f.endswith(".png"):
+                            pngs.append(dst)
+                pngs.sort()
             except Fail as e:
                 print("6. screenshots: NONE (%s)" % e)
                 pngs = None
+            finally:
+                shutil.rmtree(fresh, ignore_errors=True)
             if pngs is not None:
                 print("6. screenshots (%d) in %s" % (len(pngs), out_dir))
                 for p in pngs:

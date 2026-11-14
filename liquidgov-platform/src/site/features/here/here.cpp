@@ -14,12 +14,16 @@ namespace liquidgov::site {
 // so a phone and a desktop put a dot in roughly the same place. Rooms live in memory only: leaving removes your dot
 // and nothing about it is ever stored. Who may be seen: people who chose Yes (a required choice, the "here" record),
 // never across a block in either direction.
+//
+// Spatial step 1: HereDot now also carries instanceId (defaults to the room/page). No behavior change; old clients
+// ignore the extra field. Positions remain in-memory only.
 
 namespace {
 
 struct HereDot {
     std::string username;
     double x = 0.5, y = 0.1;
+    std::string instanceId;  // spatial step 1: defaults to room; unused by current logic
 };
 
 // Function-local statics (not namespace-scope globals): MODULES.md's rule against dynamic initializers outside the
@@ -111,7 +115,8 @@ void run_here_session(int fd, std::string me, std::string room) {
         os << "{\"people\":[";
         bool first = true;
         for (const auto& d : dots) {
-            os << (first ? "" : ",") << "{\"u\":\"" << json_escape(d.username) << "\",\"x\":" << d.x << ",\"y\":" << d.y << "}";
+            os << (first ? "" : ",") << "{\"u\":\"" << json_escape(d.username) << "\",\"x\":" << d.x << ",\"y\":" << d.y
+               << ",\"instanceId\":\"" << json_escape(d.instanceId.empty() ? room : d.instanceId) << "\"}";
             first = false;
         }
         os << "]}";
@@ -174,7 +179,7 @@ bool here_ws_upgrade(int fd, const std::string& req, const std::string& method, 
         std::lock_guard<std::mutex> lock(here_mu());
         auto& r = here_rooms()[room];
         if (r.size() >= kHereRoomCap) me.clear();   // full: refused like any other refusal
-        else r[fd] = HereDot{me, start_x(me), 0.08};
+        else r[fd] = HereDot{me, start_x(me), 0.08, room};  // instanceId defaults to room
         if (r.empty()) here_rooms().erase(room);
     }
     if (me.empty() || key.empty()) {

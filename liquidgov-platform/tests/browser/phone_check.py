@@ -68,8 +68,11 @@ class Run:
         time.sleep(settle)
 
     def sheet(self):
-        return self.j("JSON.stringify({sheet: document.documentElement.classList.contains('lgm-sheet-open'),"
-                      " panel: !document.getElementById('lgm-panel').hidden})")
+        """Did the box's page open? Since 2026-11-15 a page opens as the page itself, through the portal (Brandon: the
+        side panel "should be abandoned"), so "the page sheet opens" means the browser left the map for that page.
+        Both keys say the same (the cases were written for the sheet and its panel)."""
+        left = cdp.js(self.ws, "location.pathname") not in ("/map", "/", None)
+        return {"sheet": left, "panel": left, "path": cdp.js(self.ws, "location.pathname")}
 
     def map_zoom_out(self):
         """Zoom the map out to the whole ring, the way a person does (2026-11-15, Brandon: "yes update the phone check,
@@ -98,14 +101,16 @@ class Run:
 
     def two_taps(self, x, y, gap_s):
         """Two quick taps with explicit input timestamps; returns (pointerup times the page saw, sheet state)."""
-        cdp.js(self.ws, "(() => { window.__up = []; document.addEventListener('pointerup', e => window.__up.push(e.timeStamp),"
+        # kept in sessionStorage: the double tap leaves the map for the page, and a window variable would go with it
+        cdp.js(self.ws, "(() => { sessionStorage.setItem('__up', '[]'); document.addEventListener('pointerup', e => {"
+                        " const a = JSON.parse(sessionStorage.getItem('__up')); a.push(e.timeStamp); sessionStorage.setItem('__up', JSON.stringify(a)); },"
                         " {capture: true}); return 1; })()")
         t0 = time.time()
         pt = [{"x": x, "y": y, "id": 1}]
         for typ, dt in (("touchStart", 0), ("touchEnd", 0.05), ("touchStart", gap_s), ("touchEnd", gap_s + 0.05)):
             self.ws.call("Input.dispatchTouchEvent", type=typ, touchPoints=pt if typ == "touchStart" else [], timestamp=t0 + dt)
         time.sleep(2)
-        return self.j("JSON.stringify(window.__up.map(Math.round))"), self.sheet()
+        return self.j("JSON.stringify(JSON.parse(sessionStorage.getItem('__up') || '[]').map(Math.round))"), self.sheet()
 
     # ---- the cases ----
     def case0_fresh(self, expected_js):
@@ -189,9 +194,8 @@ class Run:
         self.ws.call("Input.synthesizeTapGesture", x=target["x"], y=target["y"], duration=60, tapCount=1, gestureSourceType="touch")
         time.sleep(2.5)
         tap_ms = self.j("JSON.stringify(window.__tap.u && window.__tap.d ? Math.round(window.__tap.u - window.__tap.d) : null)")
-        after = self.j("JSON.stringify({sheet: document.documentElement.classList.contains('lgm-sheet-open'),"
-                       " panel: !document.getElementById('lgm-panel').hidden,"
-                       " open: document.querySelector('[data-pc]').classList.contains('lgn-open')})")
+        after = self.j("JSON.stringify({sheet: location.pathname !== '/map', panel: location.pathname !== '/map',"
+                       " open: !!document.querySelector('[data-pc]') && document.querySelector('[data-pc]').classList.contains('lgn-open')})")
         self.shot("after-quick-tap")
         self.check("3 precondition: the tap really was quick in page time (< 200 ms)", isinstance(tap_ms, int) and tap_ms < 200, tap_ms)
         self.check(name, isinstance(after, dict) and after.get("open") and not after.get("sheet") and not after.get("panel"),

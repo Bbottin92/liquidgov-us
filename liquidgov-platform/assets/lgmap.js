@@ -171,7 +171,8 @@
   var ZOOM = { min: 0.3, max: 2.5, wheel: 1.1 };
   function floorFor(list) {
     var f = 0;
-    list.forEach(function (d) { f = Math.max(f, MIN_PX / (POOLS ? poolFont(d) : NAME_PX * sizeOf(d))); });
+    // pools: their names are big, and the whole ring round you must fit a phone when you zoom out, so 8 px is the floor there
+    list.forEach(function (d) { f = Math.max(f, POOLS ? 8 / poolFont(d) : MIN_PX / (NAME_PX * sizeOf(d))); });
     return Math.min(1, f + 0.002); // + rounding slack
   }
   function floorScale() { return floorFor(Object.keys(nodes).map(function (id) { return nodes[id]; })); }

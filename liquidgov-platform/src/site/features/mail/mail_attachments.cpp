@@ -145,12 +145,6 @@ std::string mail_file_input_html(const std::string& user, const std::string& big
     return "<input type=\"file\" name=\"attachment\" accept=\"" + accept + "\"" + onchange + "\">";
 }
 
-std::string mail_program_note_html(const std::string& user) {
-    auto policy = program_policy_for(user);
-    if (!policy) return {};
-    return "<p class=\"muted\" style=\"margin:.2rem 0 0\">You can send programs: " +
-           html_escape(program_kinds_text(policy->kinds)) + ", up to " + fmt_size(policy->max_bytes) + ".</p>";
-}
 MailUpload take_mail_upload(const std::string& ctype, std::string& body) {
     MailUpload up;
     if (ctype.find("multipart/form-data") == std::string::npos) return up;

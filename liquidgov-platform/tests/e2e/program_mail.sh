@@ -125,7 +125,8 @@ check "pal still can't send an exe" '[[ "$r" == *"err=program"* ]]' "$r"
 r=$(send $PAL stranger $W/two_mb.zip "two.zip")
 check "pal's 2 MB zip is over their 1 MB limit" '[[ "$r" == *"err=large"* ]]' "$r"
 curl -s -b "lg_session=$PAL" "$URL/mail?with=stranger" > $W/pal_compose.html
-check "pal's composer lists what they may send" 'grep -q "You can send programs: zip, up to 1.0 MB" $W/pal_compose.html' "no note"
+# 2026-11-15 (Brandon): no "You can send programs" note under the box any more; sending them still works (above)
+check "pal's composer has no programs note" '! grep -q "You can send programs" $W/pal_compose.html' "note still there"
 check "pal's file picker offers .zip" 'grep -q "accept=\"[^\"]*\.zip" $W/pal_compose.html' "no .zip"
 r=$(send $STRANGER pal $W/small.zip "S.zip")
 check "a grant is per person (stranger still can't)" '[[ "$r" == *"err=program"* ]]' "$r"

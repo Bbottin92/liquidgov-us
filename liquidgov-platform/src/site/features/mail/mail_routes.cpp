@@ -150,8 +150,9 @@ std::optional<std::string> mail_routes(Route& r) {
                     "<span aria-hidden=\"true\">\xF0\x9F\x93\x8E</span></label>"
                     "<button type=\"submit\">Send</button></div>"
                     + std::string(kComposerFileLine) +
-                    "<p class=\"muted\" style=\"margin:.3rem 0 0\">Enter sends. Shift+Enter is a new line.</p>"
-                    + mail_program_note_html(user) + "</form>";
+                    // no instructions under the box (Brandon 2026-11-15: "it shouldnt say that you can send programs or
+                    // have instructions. everyone gets how it works already ... plus its half untrue")
+                    "</form>";
         }
         html += "</div>";
 

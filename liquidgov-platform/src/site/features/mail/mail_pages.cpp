@@ -133,8 +133,9 @@ std::string mail_thread_html(const std::string& user, const std::string& other,
         "<span aria-hidden=\"true\">\xF0\x9F\x93\x8E</span></label>"
         "<button type=\"submit\">Send</button></div>"
         + std::string(kComposerFileLine) +
-        "<p class=\"muted\" style=\"margin:.3rem 0 0\">Enter sends. Shift+Enter is a new line.</p>"
-        + mail_program_note_html(user) + "</form></div>"
+        // no instructions under the box (Brandon 2026-11-15: "it shouldnt say that you can send programs or have
+        // instructions. everyone gets how it works already ... plus its half untrue")
+        "</form></div>"
         "<script>(function(){"
         "var list=document.getElementById('msglist');if(list)list.scrollTop=list.scrollHeight;"
         // the full Messages page scrolls as a whole (Brief 4 item 8): open at the newest message, composer in view.

@@ -77,7 +77,7 @@ def thread_html():
             '<div class="row" style="align-items:flex-end;gap:.4rem;flex-wrap:nowrap">'
             '<textarea name="text" id="mailtext" rows="2" style="flex:1;min-width:0;min-height:44px"></textarea>'
             '<label class="mailattbtn">&#128206;</label><button type="submit">Send</button></div>'
-            '<p class="muted" style="margin:.3rem 0 0">Enter sends. Shift+Enter is a new line.</p></form></div>')
+            '</form></div>')
 
 
 def inbox_html():

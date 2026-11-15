@@ -22,7 +22,6 @@ inline const char* const kComposerOnSubmit =
 
 // Where the picked file's name shows (filled by the file input's onchange).
 inline const char* const kComposerFileLine = "<p class=\"muted mailfile\" style=\"margin:.3rem 0 0\"></p>";
-std::string mail_program_note_html(const std::string& user);
 
 
 // A mail send's attachment, taken out of the request: the file bytes and

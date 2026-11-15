@@ -139,3 +139,18 @@ a door, not at nothing. Discovery comes from the open and visible streams, which
 - Size by membership or by recent activity.
 - What counts as traveling together.
 - Whether privacy is set per noun (each group or proposal) or per kind of relation (all "member of" streams).
+
+## Round 3 (2026-11-14)
+
+**Traveling together, decided:** just walking alongside someone. No switch. Proposed rule: people in the same pool
+within a few drop-widths of each other for a couple of seconds are together; drifting apart ends it.
+
+**Size, proposed:** size is the noun's weight, activity is the verb's. A pool's size follows how many belong to it
+(steady, so places become landmarks you learn); how alive it is right now shows in the water instead: stronger
+currents toward it, ripples, light. Belonging is counted per kind (members of a group, residents listed in a city,
+voters on a proposal, people who share an interest), on a log scale with a floor and a ceiling.
+
+**Privacy, proposed:** two owners, two layers. The owner of a thing (a group's admins, a proposal's author) sets the
+pool: open, visible but closed, or hidden. Each person sets their own relations by kind, with an exception per item
+("my group memberships: friends can see; except this one: no one"). A stream shows only if both ends allow it: the
+stricter of the two wins. Together, the party sees the strictest of everyone's.

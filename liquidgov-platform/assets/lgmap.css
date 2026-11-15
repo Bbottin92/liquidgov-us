@@ -184,15 +184,29 @@ html.lgm-sheet-open,html.lgm-sheet-open body{overflow:hidden}
 /* Pools and gates (Brandon 2026-11-15): with the walker on the map, every box is a pool of water and every connection
    that shows is a channel wide enough to swim (lgmap_walk.js CHANNEL: 17 map units either side, so 34 wide); the land
    around them is dry and stops your drop. */
-#lgmap.lgm-dropping .lge{stroke:rgba(61,147,187,.5)!important;stroke-width:34px!important;stroke-dasharray:none!important;stroke-linecap:round;opacity:.75}
+#lgmap.lgm-dropping:not([data-pools]) .lge{stroke:rgba(61,147,187,.5)!important;stroke-width:34px!important;stroke-dasharray:none!important;stroke-linecap:round;opacity:.75}
 #lgmap.lgm-dropping .lge-flow{fill:none;stroke:rgba(215,245,255,.38);stroke-width:5px;stroke-linecap:round;stroke-dasharray:0.1 47 0.1 71;
   animation:lgm-flow 7s linear infinite;pointer-events:none;filter:blur(1px)}
 @keyframes lgm-flow{to{stroke-dashoffset:-118}}
-#lgmap.lgm-dropping .lgn .lgs{fill:url(#lgm-water)!important;stroke:rgba(170,225,245,.55);stroke-width:1.5;rx:20px;ry:20px;
+#lgmap.lgm-dropping:not([data-pools]) .lgn .lgs{fill:url(#lgm-water)!important;stroke:rgba(170,225,245,.55);stroke-width:1.5;rx:20px;ry:20px;
   filter:drop-shadow(0 0 10px rgba(100,190,230,.22))}
 #lgmap.lgm-dropping .lgn text{fill:#eef9ff;paint-order:stroke;stroke:rgba(8,30,45,.55);stroke-width:3px}
-#lgmap.lgm-dropping .lgn.lgn-walk .lgs{stroke:rgba(243,212,143,.85);stroke-width:2;filter:drop-shadow(0 0 16px rgba(243,212,143,.45))}
+#lgmap.lgm-dropping:not([data-pools]) .lgn.lgn-walk .lgs{stroke:rgba(243,212,143,.85);stroke-width:2;filter:drop-shadow(0 0 16px rgba(243,212,143,.45))}
 @media(prefers-reduced-motion:reduce){#lgmap.lgm-dropping .lge-flow{animation:none}}
+/* Big oval pools (Brandon's drawing 2026-11-15: "bigger and not square"; the colours stay the night river's). Each
+   channel is its shore (.lge, wide and pale) under its water (.lge-fill, lgmap_walk.js), 84 map units wide (CHANNEL);
+   pools sit over the channels with a pale shore of their own; at each mouth a patch of water (.lge-mouth) opens that
+   shore; signs (.lge-sign) inside the pool name where each channel goes. */
+#lgmap[data-pools].lgm-dropping .lge{stroke:#8fd0ea!important;stroke-width:98px!important;stroke-dasharray:none!important;stroke-linecap:round;opacity:1}
+#lgmap[data-pools] .lge-fill{fill:none;stroke:#2a7ea6;stroke-width:84px;stroke-linecap:round;pointer-events:none}
+#lgmap[data-pools].lgm-dropping .lgn .lgs{fill:url(#lgm-pool)!important;stroke:#8fd0ea;stroke-width:7px;filter:drop-shadow(0 0 18px rgba(110,200,240,.35))}
+#lgmap[data-pools].lgm-dropping .lgn.lgn-walk .lgs{stroke:#bfe9f8;filter:drop-shadow(0 0 26px rgba(150,220,250,.55))}
+#lgmap[data-pools] .lge-mouth{fill:none;stroke:#2a7ea6;stroke-width:84px;stroke-linecap:butt;pointer-events:none}
+#lgmap[data-pools] .lgn text.lgn-pool-name{font-weight:800;fill:#eef9ff;stroke:rgba(8,30,45,.45);stroke-width:4px;paint-order:stroke;letter-spacing:.01em}
+#lgmap[data-pools] .lgn-pool-wave{fill:none;stroke:rgba(215,245,255,.45);stroke-width:4px;stroke-linecap:round;pointer-events:none}
+#lgmap[data-pools] .lge-sign{font-weight:800;fill:#eef9ff;text-anchor:middle;dominant-baseline:central;paint-order:stroke;
+  stroke:rgba(8,30,45,.5);stroke-width:3px;pointer-events:none;opacity:.92}
+#lgmap[data-pools] .lge-flow{stroke-width:7px}
 /* The map fills the screen (Brandon 2026-11-15: "the mainstream map should be like fullscreen besides the liquidgov
    title and notifications and mail and profile pic and juketube"). This file is only on the map page, so these rules
    only touch it: the site header stays, the map takes everything under it, and the page itself does not scroll.

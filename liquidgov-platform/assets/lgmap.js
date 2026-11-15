@@ -47,6 +47,14 @@
   if (editBtn) editBtn.addEventListener('click', function () { editing = !editing; applyView(); });
   function narrow() { return window.matchMedia ? matchMedia('(max-width: 760px)').matches : innerWidth <= 760; }
   var W = 200, H = 36, YOU_R = 58;
+  // Pools (Brandon's drawing 2026-11-15, "bigger and not square"): with the walker on the map (data-pools on #lgmap),
+  // every box is a big oval pool, about a screen wide for the one you are in, and every connection a wide channel.
+  // poolR: a pool's half width in map units (its half height is POOL_Y of that); the label's size follows the pool.
+  var POOLS = root.getAttribute('data-pools') === '1';
+  var POOL_Y = 0.9, POOL_GAP = 240;
+  function poolR(d) { return d.kind === 'you' ? 220 : d.kind === 'mine' ? 175 : d.kind === 'more' ? 120 : 145; }
+  function poolFont(d) { return Math.round(poolR(d) * (d.kind === 'you' ? 0.3 : 0.2)); }
+  function poolLabel(d) { return d.kind === 'you' ? 'Main' : d.label; }
   var nodes = {};   // id -> {id,label,kind,page,rel,x,y,el,expanded}
   var edges = {};   // "a|b" -> {a,b,kind,el}
   var selected = null;
@@ -117,6 +125,7 @@
   }
   // Size from relevance: your own things are bigger (0.85x far .. 1.25x yours); the MAINstream stays 1x.
   function sizeOf(n) {
+    if (POOLS) return 1;   // a pool's size is its radius (poolR), not a scale
     if (n.kind === 'more') return 1.1; // the "+N more" box: as big as the boxes around it, so it never sets the zoom floor
     return (typeof n.rel === 'number' && n.rel >= 0) ? 0.85 + 0.4 * Math.min(1, n.rel) : 1;
   }
@@ -130,7 +139,7 @@
   var ZOOM = { min: 0.3, max: 2.5, wheel: 1.1 };
   function floorFor(list) {
     var f = 0;
-    list.forEach(function (d) { f = Math.max(f, MIN_PX / (NAME_PX * sizeOf(d))); });
+    list.forEach(function (d) { f = Math.max(f, MIN_PX / (POOLS ? poolFont(d) : NAME_PX * sizeOf(d))); });
     return Math.min(1, f + 0.002); // + rounding slack
   }
   function floorScale() { return floorFor(Object.keys(nodes).map(function (id) { return nodes[id]; })); }
@@ -161,7 +170,7 @@
   // room for the pointed ends of proposals, Sitewide and problems
   function padOf(kind) { return kind === 'prop' || kind === 'sitewide' || kind === 'pain' ? 44 : 28; }
   function widthOf(d) {
-    if (d.kind === 'you') return W;
+    if (d.kind === 'you' || POOLS) return W;
     if (narrow()) return phoneW;
     var need = d.kind === 'mine' ? Math.max(textW(d.label, F_TITLE), textW(d.sub, F_SUB)) + 28 : textW(d.label, F_LABEL) + padOf(d.kind);
     return Math.ceil(Math.min(MAX_W, Math.max(W, need)));
@@ -185,7 +194,7 @@
   // through the labels; a box's fill is see-through, so a line under it still showed).
   function edgeEnd(n, x, y) {
     var c = centerOf(n), dx = x - c.x, dy = y - c.y, len = Math.sqrt(dx * dx + dy * dy), s = sizeOf(n), t;
-    if (len < 1) return c;
+    if (len < 1 || POOLS) return c;   // pools: channels run middle to middle, under the pools
     if (n.kind === 'you') t = YOU_R * s / len;
     else if (n.kind === 'city') { var rx = (n.w || W) / 2 * s, ry = H / 2 * s; t = 1 / Math.sqrt(dx * dx / (rx * rx) + dy * dy / (ry * ry)); }
     else {
@@ -227,15 +236,25 @@
     n.w = widthOf(n);
     // spatial step 2: the box's region (center + half extents, map units), always current; nothing reads it yet
     Object.defineProperty(n, 'region', { get: function () { var k = sizeOf(n);
+      if (POOLS) { var R = poolR(n); return { cx: n.x + W / 2, cy: n.y + H / 2, hw: R, hh: R * POOL_Y, pool: true }; }
       return { cx: n.x + W / 2, cy: n.y + H / 2, hw: (n.w || W) * k / 2, hh: H * k / 2 }; } });
     var s = sizeOf(n), ox = (W - n.w) / 2;
     var g = el('g', { 'class': 'lgn lgn-' + n.kind + ' lgn-new', tabindex: '0', role: 'button', 'data-id': n.id, 'data-valve': n.valve.type,
       'data-valve-owner': n.valve.owner || '', 'data-valve-invite': (n.valve.invite || []).join(','),
       transform: 'translate(' + (n.x + W / 2 * (1 - s)) + ',' + (n.y + H / 2 * (1 - s)) + ') scale(' + s + ')' });
-    var shape = shapeEl(n.kind, n.w, H);
+    var shape = POOLS ? el('ellipse', { cx: W / 2, cy: H / 2, rx: poolR(n), ry: poolR(n) * POOL_Y, 'class': 'lgs' }) : shapeEl(n.kind, n.w, H);
     if (ox) shape.setAttribute('transform', 'translate(' + ox + ',0)');
     g.appendChild(shape);
-    if (n.kind === 'you') {
+    if (POOLS) {
+      // the pool's name, big in its middle, with a line of waves under it
+      var R = poolR(n), fs = poolFont(n), pt = el('text', { x: W / 2, y: H / 2 + fs * 0.3, 'class': 'lgn-pool-name' });
+      pt.style.fontSize = fs + 'px';
+      pt.textContent = fitText(poolLabel(n), '700 ' + fs + 'px', R * 1.6);
+      g.appendChild(pt);
+      var wy = H / 2 + fs * 0.75, ww = Math.min(R * 1.2, textW(pt.textContent, '700 ' + fs + 'px') * 1.15), wx = W / 2 - ww / 2, amp = fs * 0.12, waves = 4, d = 'M' + wx.toFixed(1) + ' ' + wy.toFixed(1);
+      for (var wi = 0; wi < waves; wi++) d += ' q' + (ww / waves / 2).toFixed(1) + ' ' + (wi % 2 ? amp : -amp).toFixed(1) + ' ' + (ww / waves).toFixed(1) + ' 0';
+      g.appendChild(el('path', { d: d, 'class': 'lgn-pool-wave' }));
+    } else if (n.kind === 'you') {
       // M1.1 look (Grok Bot's mockup 1): a gold disc with your initial, your handle, "YOU", all inside the ringed circle
       g.appendChild(el('circle', { cx: W / 2, cy: H / 2 - 16, r: 20, 'class': 'lgn-face' }));
       var ini = el('text', { x: W / 2, y: H / 2 - 9, 'class': 'lgn-initial' });
@@ -333,6 +352,15 @@
   // Box i of k on an ellipse around box c, starting at the top and going clockwise. A phone gets a narrower, taller
   // ring so the whole ring fits the width at a readable scale.
   function ringPlace(c, i, k, r) {
+    if (POOLS) {
+      // pools: half the ring above the pool, half below, fanned across 120 degrees (none level with it), far enough that
+      // the channels between them are long and wide (Brandon's drawing: four channels leaving diagonally)
+      var up = Math.ceil(k / 2), j = i < up ? i : i - up, m = i < up ? up : k - up, span = Math.PI * 2 / 3;
+      var t = m === 1 ? 0.5 : m === 2 ? (j ? 0.75 : 0.25) : j / (m - 1);   // left to right
+      var ang = i < up ? -Math.PI * 5 / 6 + span * t : Math.PI * 5 / 6 - span * t;
+      var D = poolR(c) + 175 + POOL_GAP + Math.max(0, m - 2) * 60;
+      return { x: Math.round(c.x + D * Math.cos(ang)), y: Math.round(c.y + D * POOL_Y * 1.15 * Math.sin(ang)) };
+    }
     // Phone (map SPEC phase 1 added Feeds, Interests, Events: 5 or more kinds ran off the edges and overlapped, CI
     // phone_check 2, 2026-11-11): the look Brandon saw with 4 kinds - two columns, a row above you and a row below - kept
     // and grown downward and upward, two cards a row, in reading order; an odd last card sits centered under you.
@@ -542,21 +570,22 @@
   // places for new boxes around box c: on its far side from the box it was opened from (all round for you), at the
   // first spot on growing circles where a box would not overlap any box already on the map (GAP apart). Map units.
   var GAP = 34;
-  function halfOf(d) { var k = sizeOf(d); return { w: (widthOf(d) * k) / 2, h: ((d.kind === 'mine' ? H + 10 : H) * k) / 2 }; }
+  function halfOf(d) { if (POOLS) return { w: poolR(d), h: poolR(d) * POOL_Y }; var k = sizeOf(d); return { w: (widthOf(d) * k) / 2, h: ((d.kind === 'mine' ? H + 10 : H) * k) / 2 }; }
   function worldPlace(c, items) {
     var cc = centerOf(c), p = c.from && nodes[c.from] ? centerOf(nodes[c.from]) : null;
     var out0 = p ? Math.atan2(cc.y - p.y, cc.x - p.x) : -Math.PI / 2, all = !p;
     var taken = Object.keys(nodes).map(function (id) { var r = nodes[id].region; return { x: r.cx, y: r.cy, w: r.hw, h: r.hh }; });
-    var hc = c.kind === 'you' ? { w: YOU_R * sizeOf(c), h: YOU_R * sizeOf(c) } : halfOf(c);
+    var hc = POOLS ? halfOf(c) : c.kind === 'you' ? { w: YOU_R * sizeOf(c), h: YOU_R * sizeOf(c) } : halfOf(c);
+    var far = POOLS ? POOL_GAP : 120, step = POOLS ? 160 : 90, gap = POOLS ? 90 : GAP;
     var placed = [];
     items.forEach(function (d) {
-      var h = halfOf(d), R = Math.max(hc.w, hc.h) + Math.max(h.w, h.h) + 120, spot = null;
-      for (var ring = 0; ring < 30 && !spot; ring++, R += 90) {
+      var h = halfOf(d), R = Math.max(hc.w, hc.h) + Math.max(h.w, h.h) + far, spot = null;
+      for (var ring = 0; ring < 30 && !spot; ring++, R += step) {
         var steps = all ? 16 : 11, span = all ? Math.PI : Math.PI * 0.6;
         for (var j = 0; j <= steps * 2 && !spot; j++) {
           var off = (j % 2 ? 1 : -1) * Math.ceil(j / 2) * span / steps, a = out0 + off;
           var x = cc.x + R * Math.cos(a), y = cc.y + R * Math.sin(a);
-          var free = taken.every(function (t) { return Math.abs(t.x - x) >= t.w + h.w + GAP || Math.abs(t.y - y) >= t.h + h.h + GAP; });
+          var free = taken.every(function (t) { return Math.abs(t.x - x) >= t.w + h.w + gap || Math.abs(t.y - y) >= t.h + h.h + gap; });
           if (free) spot = { x: x, y: y };
         }
       }
@@ -891,6 +920,11 @@
   function extent() {
     var ids = Object.keys(nodes);
     if (!ids.length) return null;
+    if (POOLS) {   // pools: their own ovals
+      var e = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
+      ids.forEach(function (id) { var r = nodes[id].region; e.x0 = Math.min(e.x0, r.cx - r.hw); e.x1 = Math.max(e.x1, r.cx + r.hw); e.y0 = Math.min(e.y0, r.cy - r.hh); e.y1 = Math.max(e.y1, r.cy + r.hh); });
+      return e;
+    }
     var ring = document.getElementById('lgm-ring'); // the whole dotted ring stays in view too (a 1-item ring zoomed in
     return extentOf(ids.map(function (id) {          // and cut it off, CI screenshot 2026-11-11)
       var n = nodes[id]; return { x: n.x, y: n.y, kind: n.kind, w: n.w || W, s: sizeOf(n) };
@@ -969,6 +1003,7 @@
     // view(): where the camera is going (map point p is at frame point tx + p.x * scale); setView puts it there
     // (glide: eased); fitScale(): the scale that shows the whole map; frame(): the map's frame on the screen;
     // toScreen(x, y): where a map point is on the screen right now, mid-glide included; extent(): the map's bounds.
+    pools: POOLS ? { R: poolR, Y: POOL_Y, label: poolLabel } : null,   // the map walker's water (lgmap_walk.js)
     view: function () { return { tx: tx, ty: ty, scale: scale }; },
     setView: function (x, y, k, glide) {
       scale = Math.min(ZOOM.max, Math.max(ZOOM.min, k));

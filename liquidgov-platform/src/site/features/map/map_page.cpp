@@ -17,7 +17,7 @@ namespace liquidgov::site {
 std::string map_page_body(const std::string& user, const std::string& focus) {
     return
             "<link rel=\"stylesheet\" href=\""+asset_url("lgmap.css")+"\">"
-            "<div id=\"lgmap\" class=\"lgmap\" data-focus=\""+html_escape(focus)+"\" data-me=\""+html_escape(user)+"\">"
+            "<div id=\"lgmap\" class=\"lgmap\" data-focus=\""+html_escape(focus)+"\" data-me=\""+html_escape(user)+"\""+(g_drop_off ? "" : " data-pools=\"1\"")+">"
             "<div class=\"lgmap-bar\">"
             "<button type=\"button\" id=\"lgm-main\" class=\"lgm-main\" title=\"Back to the MAINstream; shrinks the field\">MAINstream</button>"
             // the "Turn on alerts" pill sits here, beside MAINstream, not in its own row above the map: that row pushed a

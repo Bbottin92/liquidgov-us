@@ -24,6 +24,7 @@
   var held = {}, pull = { x: 0, y: 0 }, anchor = null, asked = '';
   var myName = root.getAttribute('data-me') || '';
   var userZoom = 0, userOut = false, rezoom = 0;
+  var POOLS = MAP.pools;   // big oval pools and wide channels (Brandon's drawing, 2026-11-15); null: the box map
 
   function box(id) { return id ? nodeLayer.querySelector('.lgn[data-id="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]') : null; }
   function shown(el) { return el.style.display !== 'none'; }
@@ -61,7 +62,10 @@
   }
   // is the point in the region? The same rule as assets/spatial.js isInside (spatial step 2, the edge counts as
   // inside); that file is not served to pages, so the one line is repeated here.
-  function isInside(p, r) { return Math.abs(p.x - r.cx) <= r.hw && Math.abs(p.y - r.cy) <= r.hh; }
+  function isInside(p, r) {
+    if (r.pool) { var ex = (p.x - r.cx) / r.hw, ey = (p.y - r.cy) / r.hh; return ex * ex + ey * ey <= 1; }   // an oval pool
+    return Math.abs(p.x - r.cx) <= r.hw && Math.abs(p.y - r.cy) <= r.hh;
+  }
   function holding(all, p) { return all.filter(function (b) { return isInside(p, b.r); }); }
   // the box you are in: the smallest enterable box whose region holds the point
   function insideOf(all, p) {
@@ -97,9 +101,17 @@
   }
 
   // The zoom you walk at, and the scale under which you count as zoomed out (halfway back to the fitted view).
-  function walkScale() { return Math.min(MAP.ZOOM.max, MAP.fitScale() * C.mapZoom); }
+  // Pools: the pool you are in (else the main one) fills the width of what you see, or its height on a wide screen,
+  // so the channels leave it at the screen's edges, as in Brandon's drawing.
+  function walkScale() {
+    if (POOLS) {
+      var r = region(at || last || 'you') || region('you'), s = seen();
+      if (r) return Math.max(MAP.ZOOM.min, Math.min(MAP.ZOOM.max, (s.x1 - s.x0) / (2 * r.hw * 1.04), (s.y1 - s.y0) / (2 * r.hh * 1.12)));
+    }
+    return Math.min(MAP.ZOOM.max, MAP.fitScale() * C.mapZoom);
+  }
   function zoomedIn() {
-    var fit = MAP.fitScale(), walk = walkScale();
+    var walk = walkScale(), fit = POOLS ? Math.min(MAP.fitScale(), walk * 0.6) : MAP.fitScale();
     return MAP.view().scale >= fit + (walk - fit) / 2 - 0.001;
   }
   // Layers (Brandon 2026-11-15: "3 or 4 layers of pools and streams"; rings outward from wherever you are): zoomed in,
@@ -268,7 +280,7 @@
   // units either side of the line between their middles. First version: a connection is relevant when it is yours, and
   // every connection on your map is, so every showing channel is open; a box you may not enter still stops you at its
   // edge (its valve). If a new layout ever leaves you on dry land you may still move (never trapped).
-  var CHANNEL = 17;
+  var CHANNEL = POOLS ? 42 : 17;   // pools: a channel 84 map units wide (lgmap.css .lge-fill)
   function nearSeg(p, a, b, w) {
     var dx = b.cx - a.cx, dy = b.cy - a.cy, L = dx * dx + dy * dy, t = L ? ((p.x - a.cx) * dx + (p.y - a.cy) * dy) / L : 0;
     t = Math.max(0, Math.min(1, t));
@@ -354,7 +366,11 @@
     W.shape(dropPortrait, v.x, v.y);
     if (v.x || v.y) moved = move(all, v);
     var now = insideOf(all, me);
-    if (now !== at) { at = now; anchor = null; carry(); }
+    if (now !== at) {
+      at = now; anchor = null; carry();
+      // pools: the pool you swam into fills the screen, as the main one does
+      if (POOLS && at && !userOut) centerView(walkScale(), true);
+    }
     if (at) last = at;
     instanceId = at && at !== 'you' ? at : MAINSTREAM;
     Array.prototype.forEach.call(nodeLayer.querySelectorAll('.lgn.lgn-walk'), function (o) { if (o.getAttribute('data-id') !== at) o.classList.remove('lgn-walk'); });
@@ -363,6 +379,7 @@
     if (moved || carried) follow();
     watchZoom();
     proximity(all);
+    if (POOLS) water();   // the water follows the fading at once
     var p = MAP.toScreen(me.x, me.y);
     spot = { x: Math.round(p.x), y: Math.round(p.y) };
     walker.hidden = false;
@@ -378,6 +395,7 @@
     poolTick();
   }
 
+  var water = function () {};   // the channels' water, mouths and signs (set up below)
   var walker = document.createElement('div');
   walker.id = 'lgm-walker';
   var dropPortrait = W.portrait(myName);
@@ -402,19 +420,78 @@
     defs.innerHTML = '<radialGradient id="lgm-water" cx="50%" cy="45%" r="65%"><stop offset="0" stop-color="#1b5d80"/>' +
       '<stop offset=".7" stop-color="#2a7ea6"/><stop offset="1" stop-color="#5fb4d6"/></radialGradient>';
     svg.insertBefore(defs, svg.firstChild);
-    function flows() {
-      var have = {};
-      Array.prototype.forEach.call(edgeLayer.querySelectorAll('.lge-flow'), function (f) { have[f.getAttribute('data-for')] = f; });
-      Array.prototype.forEach.call(edgeLayer.querySelectorAll('.lge'), function (e) {
-        var key = e.getAttribute('data-a') + '|' + e.getAttribute('data-b'), f = have[key];
-        if (!f) { f = document.createElementNS(NS, 'path'); f.setAttribute('class', 'lge-flow'); f.setAttribute('data-for', key); edgeLayer.appendChild(f); }
-        delete have[key];
-        if (f.getAttribute('d') !== e.getAttribute('d')) f.setAttribute('d', e.getAttribute('d'));
-        f.style.visibility = e.style.visibility; f.style.opacity = e.style.opacity;
-      });
-      Object.keys(have).forEach(function (k) { have[k].remove(); });
+    // Pools: each channel is its shore (the .lge line, drawn wide) under its water (.lge-fill), so where channels cross
+    // the water joins; the pools sit over the channels, and at each mouth a patch of water (.lge-mouth) opens the pool's
+    // shore so the channel runs into it. The name of where a channel goes is written inside the pool at its mouth, along
+    // the shore (.lge-sign). All copy the channel's own visibility and fading (proximity), every tick.
+    var fillLayer = null, flowLayer = edgeLayer, mouthLayer = null;
+    if (POOLS) {
+      fillLayer = document.createElementNS(NS, 'g'); fillLayer.id = 'lgm-fills';
+      flowLayer = document.createElementNS(NS, 'g'); flowLayer.id = 'lgm-flows';
+      mouthLayer = document.createElementNS(NS, 'g'); mouthLayer.id = 'lgm-mouths';
+      edgeLayer.parentNode.insertBefore(fillLayer, edgeLayer.nextSibling);
+      edgeLayer.parentNode.insertBefore(flowLayer, fillLayer.nextSibling);
+      nodeLayer.parentNode.insertBefore(mouthLayer, nodeLayer.nextSibling);
+      defs.innerHTML += '<radialGradient id="lgm-pool" cx="50%" cy="45%" r="60%"><stop offset="0" stop-color="#1b5d80"/>' +
+        '<stop offset="1" stop-color="#2a7ea6"/></radialGradient>';
     }
-    setInterval(flows, 400);
+    function same(x, e) {
+      if (x.style.visibility !== e.style.visibility) x.style.visibility = e.style.visibility;
+      if (x.style.opacity !== e.style.opacity) x.style.opacity = e.style.opacity;
+    }
+    function mirror(layer, cls, e, key) {
+      var f = layer.querySelector('.' + cls + '[data-for="' + key + '"]');
+      if (!f) { f = document.createElementNS(NS, 'path'); f.setAttribute('class', cls); f.setAttribute('data-for', key); layer.appendChild(f); }
+      if (f.getAttribute('d') !== e.getAttribute('d')) f.setAttribute('d', e.getAttribute('d'));
+      same(f, e);
+    }
+    function nameOf(id) {
+      if (id === 'you') return POOLS.label({ kind: 'you' });
+      var b = box(id), t = b && b.querySelector('title');
+      return t ? t.textContent : '';
+    }
+    // one end of a channel: where it meets pool `from`'s shore (heading to `to`), its patch and its sign
+    function mouth(key, from, to, e) {
+      var a = region(from), b = region(to);
+      if (!a || !b) return;
+      var dx = b.cx - a.cx, dy = b.cy - a.cy, L = Math.sqrt(dx * dx + dy * dy) || 1, ux = dx / L, uy = dy / L;
+      var t = 1 / Math.sqrt(ux * ux / (a.hw * a.hw) + uy * uy / (a.hh * a.hh)), px = a.cx + ux * t, py = a.cy + uy * t;
+      var mk = key + '>' + from;
+      var m = mouthLayer.querySelector('.lge-mouth[data-for="' + mk + '"]');
+      if (!m) { m = document.createElementNS(NS, 'path'); m.setAttribute('class', 'lge-mouth'); m.setAttribute('data-for', mk); mouthLayer.insertBefore(m, mouthLayer.firstChild); }
+      var d = 'M' + (px - ux * 26).toFixed(1) + ' ' + (py - uy * 26).toFixed(1) + ' L' + (px + ux * 22).toFixed(1) + ' ' + (py + uy * 22).toFixed(1);
+      if (m.getAttribute('d') !== d) m.setAttribute('d', d);
+      var sg = mouthLayer.querySelector('.lge-sign[data-for="' + mk + '"]');
+      if (!sg) { sg = document.createElementNS(NS, 'text'); sg.setAttribute('class', 'lge-sign'); sg.setAttribute('data-for', mk); mouthLayer.appendChild(sg); }
+      var fs = Math.round(a.hw * 0.11), inset = fs * 1.4, sx = px - ux * inset, sy = py - uy * inset;
+      var deg = Math.atan2(uy, ux) * 180 / Math.PI + 90;
+      if (deg > 90) deg -= 180; else if (deg <= -90) deg += 180;   // never upside down
+      var tr = 'rotate(' + deg.toFixed(1) + ' ' + sx.toFixed(1) + ' ' + sy.toFixed(1) + ')', name = nameOf(to);
+      var most = Math.max(4, Math.floor(a.hw * 0.85 / (fs * 0.6)));   // a sign stays inside its pool
+      if (name.length > most) name = name.slice(0, most - 1).replace(/\s+$/, '') + '\u2026';
+      if (sg.getAttribute('transform') !== tr) { sg.setAttribute('x', sx.toFixed(1)); sg.setAttribute('y', sy.toFixed(1)); sg.setAttribute('transform', tr); sg.style.fontSize = fs + 'px'; }
+      if (sg.textContent !== name) sg.textContent = name;
+      same(m, e); same(sg, e);
+      m.setAttribute('data-keep', '1'); sg.setAttribute('data-keep', '1');
+    }
+    water = function () {
+      var keep = {};
+      Array.prototype.forEach.call(edgeLayer.querySelectorAll('.lge'), function (e) {
+        var a = e.getAttribute('data-a'), b = e.getAttribute('data-b'), key = a + '|' + b;
+        keep[key] = 1;
+        mirror(flowLayer, 'lge-flow', e, key);
+        if (!POOLS) return;
+        mirror(fillLayer, 'lge-fill', e, key);
+        mouth(key, a, b, e); mouth(key, b, a, e);
+      });
+      [flowLayer, fillLayer].forEach(function (layer) {
+        if (layer) Array.prototype.slice.call(layer.querySelectorAll('.lge-flow,.lge-fill')).forEach(function (f) { if (!keep[f.getAttribute('data-for')]) f.remove(); });
+      });
+      if (mouthLayer) Array.prototype.slice.call(mouthLayer.children).forEach(function (x) {
+        if (x.getAttribute('data-keep')) x.removeAttribute('data-keep'); else x.remove();
+      });
+    };
+    setInterval(water, 400);
   })();
 
   // the box A acts on: the one you are in, else one whose edge is within CONTROLS.near px of your drop

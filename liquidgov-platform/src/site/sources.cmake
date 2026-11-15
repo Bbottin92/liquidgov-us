@@ -21,6 +21,7 @@ set(LG_SITE_SOURCES
   src/site/features/mail/mail_attachments.cpp
   src/site/features/profile/portrait.cpp
   src/site/features/here/here.cpp
+  src/site/features/credibility/credibility.cpp
   src/site/features/styles/styles.cpp
   src/site/features/jukebox/jukebox_browse.cpp
   src/site/features/people/people.cpp

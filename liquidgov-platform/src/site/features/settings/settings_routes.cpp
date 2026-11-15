@@ -4,6 +4,7 @@
 #include "site/core/http.hpp"
 #include "site/features/feed/composer.hpp"
 #include "site/features/here/here.hpp"
+#include "site/features/credibility/credibility.hpp"
 #include "site/ui/favicon_cookies.hpp"
 
 namespace liquidgov::site {
@@ -79,6 +80,7 @@ std::optional<std::string> settings_routes(Route& r) {
                 + (g_nsfw_on ? "<p><strong>Cover off in this browser.</strong></p><p><a class=\"btn\" href=\"/nsfw/off\">Cover adult videos</a></p>"
                              : "<p><strong>Cover on in this browser.</strong></p><p><a class=\"btn ghost\" href=\"/nsfw/on\">Show adult videos without a cover</a></p>")
                 + "</div>";
+        html += credibility_settings_card(user);   // credibility, first slice: only you see yours (2026-11-15)
         html += here_settings_card(user);
         {
             // Map and connections (slice 6): what /map may show about you.

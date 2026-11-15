@@ -128,6 +128,11 @@
     function fitRoom() {
       var need = pad.getBoundingClientRect().height + 24;
       document.body.style.paddingBottom = need > baseRoom ? need + 'px' : '';
+      // A bar pinned to the bottom of a page (the Messages composer) sits above the pad, not under it (2026-11-15: on a
+      // phone the pad covered the message box and Send): --lg-pad-room is how much of the screen's bottom the pad takes
+      // (0 with a mouse, where the pad is not shown).
+      var kb = keys.getBoundingClientRect();
+      document.documentElement.style.setProperty('--lg-pad-room', kb.height ? Math.max(0, Math.round(window.innerHeight - kb.top + 8)) + 'px' : '0px');
       if (page.resized) page.resized();
     }
     function hold(dir, down) {

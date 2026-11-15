@@ -152,6 +152,9 @@
   });
   sizeLayer();
   setTimeout(sizeLayer, 1500);
-  if (solo) { me.known = true; dots[cfg.me] = makeDot(cfg.me); place(dots[cfg.me], me.x, me.y); }   // yours, at once
+  if (solo) {   // yours, at once, where you are looking (a page may open scrolled, like Messages at its newest message)
+    me.y = Math.max(0, Math.min(1, (window.scrollY + window.innerHeight * 0.4) / pageH()));
+    me.known = true; dots[cfg.me] = makeDot(cfg.me); place(dots[cfg.me], me.x, me.y);
+  }
   connect();
 })();

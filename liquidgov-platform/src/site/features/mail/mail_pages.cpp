@@ -48,25 +48,9 @@ std::string mail_inbox_html(const std::string& user, AccountId acc_id) {
         }
         return out;
     };
-    auto checks = [&](const std::vector<std::string>& people) {
-        std::string out;
-        for (auto& other : people) {
-            out += "<label class=\"grouppickrow\" style=\"display:flex;align-items:center;gap:.5rem;min-height:44px;padding:.3rem .4rem;cursor:pointer\">";
-            out += portrait_tag(other, "sm") + "<span style=\"flex:1\">" + html_escape(other) + "</span>";
-            out += "<input type=\"checkbox\" data-who=\"" + html_escape(other) + "\"></label>";
-        }
-        return out;
-    };
     std::string html = "<div class=\"mailsection\">";
-    html += "<button type=\"button\" class=\"ghost mailgroupbtn\">Group</button>";
-    html += "<div class=\"mailgroupbox\" hidden>";
-    html += "<form method=\"POST\" action=\"/mail/group/new\" class=\"mailnewgroup mailgroupform\">";
-    html += "<input name=\"title\" maxlength=\"80\" placeholder=\"Group name (optional)\">";
-    html += "<input type=\"hidden\" name=\"who\" class=\"mailgroupwho\" value=\"\">";
-    html += "<p class=\"muted\">Pick who to invite</p><div class=\"grouppick\" style=\"max-height:min(40vh,320px);overflow-y:auto\">";
-    html += checks(top) + checks(rest);
-    if (top.empty() && rest.empty()) html += "<p class=\"muted\">Add friends first.</p>";
-    html += "</div><button type=\"submit\">Start group</button></form>";
+    // The Group button and its pick-friends form are gone (Brandon 2026-11-15: "the group button at the top of messenger
+    // is annoying... that needs to go away"). Group chats you are already in stay listed, and open as before.
     std::string groups;
     for (auto& conv : g_store.conversations_for(acc_id)) {
         if (!conv.is_group) continue;
@@ -86,15 +70,14 @@ std::string mail_inbox_html(const std::string& user, AccountId acc_id) {
         groups += "</span></span></a>";
     }
     if (!groups.empty()) html += "<p class=\"eyebrow\">Your groups</p><div class=\"inboxlist\">" + groups + "</div>";
-    html += "</div>";
     if (top.empty() && rest.empty()) {
         html += "<p class=\"muted\">No friends yet. <a href=\"/friends\">Find people</a></p>";
     } else {
-        if (!top.empty()) html += "<p class=\"eyebrow\">Inner circle</p><div class=\"inboxlist\">" + rows_for(top) + "</div>";
-        if (!rest.empty()) html += "<p class=\"eyebrow\">Friends</p><div class=\"inboxlist\">" + rows_for(rest) + "</div>";
+        // one list (Brandon 2026-11-15: remove "Inner circle"); your inner circle still comes first
+        html += "<p class=\"eyebrow\">Friends</p><div class=\"inboxlist\">" + rows_for(top) + rows_for(rest) + "</div>";
     }
-    html += "<p class=\"maildisclose\">Messages on this copy are stored so the operator can read them. "
-            "Direct mail is friends-only until age assurance exists. Unfriending leaves shared groups.</p></div>";
+    // The storage note under the list is gone (Brandon 2026-11-15); /privacy says how messages are kept.
+    html += "</div>";
     return html;
 }
 // Kept for the widget's "start a group" only — inbox is the unified list.
@@ -154,8 +137,16 @@ std::string mail_thread_html(const std::string& user, const std::string& other,
         + mail_program_note_html(user) + "</form></div>"
         "<script>(function(){"
         "var list=document.getElementById('msglist');if(list)list.scrollTop=list.scrollHeight;"
-        // the full Messages page scrolls as a whole (Brief 4 item 8): open at the newest message, composer in view
-        "if(list&&list.closest('.mailpage')){var mc=document.getElementById('mailcomposer');if(mc)mc.scrollIntoView({block:'end'});}"
+        // the full Messages page scrolls as a whole (Brief 4 item 8): open at the newest message, composer in view.
+        // Not composer.scrollIntoView: the composer is sticky at the bottom, so the browser counted it
+        // as in view and did not scroll, and every send reopened the page at its top (Brandon 2026-11-15). Again once
+        // pictures have loaded, since they push the newest message down.
+        // Scrolled so the newest message sits just above the composer and the pad (--lg-pad-room, walker.js), not to the
+        // page's very end, which is the footer.
+        "if(list&&list.closest('.mailpage')){var end=function(){var mc=document.getElementById('mailcomposer'),last=list.lastElementChild;"
+        "if(!mc||!last)return;var room=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--lg-pad-room'))||0;"
+        "window.scrollTo(0,Math.max(0,last.getBoundingClientRect().bottom+window.scrollY+mc.offsetHeight+room+12-window.innerHeight));};"
+        "end();window.addEventListener('load',end);}"
         "var form=document.getElementById('mailcomposer'),ta=document.getElementById('mailtext');"
         "if(!form||!ta)return;"
         "ta.addEventListener('keydown',function(e){"

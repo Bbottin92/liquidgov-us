@@ -9,32 +9,37 @@ serve map_page_body's markup with the real lgmap.js/lgmap.css + walker.js + lgma
 fake graph. Every key and button name comes from walker.js's one controls map (window.LG_WALKER.CONTROLS); this file
 keeps no copy of the bindings.
 
-Walking is always on (Brandon 2026-11-14/15: no Drop/Scroll switch, a Center button, free walking on the map), so
-the old switch and hopping cases are gone (P5, P6, T1-T3, C1, C2, D1, and the old M1/M3/M4, H0/H1); the names below
+Walking is always on (Brandon 2026-11-14/15: no Drop/Scroll switch, free walking on the map), the screen always keeps
+your drop in its middle (no Center button), and a tap on your drop opens its menu (microphone, camera, drip speed); so
+the old switch, hopping and Center cases are gone (P5, P6, T1-T3, C1, C2, D1, and the old M1/M3/M4, H0/H1); the names below
 are the cases this file runs now.
 
-  K0  the controls map (LG_WALKER.CONTROLS) binds every direction, select and back to keys and buttons, and names Center
+  K0  the controls map (LG_WALKER.CONTROLS) binds every direction, select and back to keys and buttons, has no Center
+      button, and names the drop menu (microphone, camera, a drip speed range around 1x)
   Phone 390x844, the profile-like page:
   N1  there is no Drop/Scroll switch, strip or note; the pad is on the page from the start
   P1  the touchpad + A/B unit is centered, in the bottom quarter, lifted CONTROLS.touchpad.lift px, inside its margins
   P2  A and B are attached to the touchpad's right side, stacked, each half its height
   U1  the touchpad, A and B are equally see-through (CONTROLS.touchpad.alpha)
   J1  the touchpad replaced the D-pad: no direction buttons are left on the pad
-  P3  no two controls overlap (touchpad, A, B, the Center button, the Juketube button)
+  P3  no two controls overlap (touchpad, A, B, the Juketube button)
   P4  every control is at least 44x44 px
-  A1  the Center button's label meets WCAG AA (4.5:1), disarmed and armed (the site's --lg-switch-* colors)
+  A1  a switch in your drop's menu meets WCAG AA (4.5:1), off and on (the site's --lg-switch-* colors)
   T5  a tip's close button does not cover its text (Juketube's tip; the walker has no note of its own any more)
   T4  one tip at a time (LG_TIP): while one shows, another waits without its view being counted
   J2  a pull inside the dead zone does not move your dot
   J3  a full pull walks the dot at about CONTROLS.maxSpeed px a tick, a half pull slower; let go, it stops
   S1-S3  your drop is your portrait: a circle stopped, stretched with a tail at speed, a circle under reduced motion
-  The Center button and plain scrolling:
-  CE0 a first visit: disarmed
-  CE1 disarmed: walking down scrolls the page only to keep the dot in view (not held in the middle)
+  The screen follows your drop, and your drop's menu:
+  CE1 walking down keeps the dot in the middle of the screen
   SC1 scrolling by hand works as always: the page stays where you scrolled it and the dot where it stood
-  CE2 armed: the screen slides so the dot is in its middle, at once and after every move
-  CE3 the choice is remembered on the device (armed after a reload)
-  CE4 disarmed again: as before, and that is remembered too
+  CE2 the next move brings the dot back to the middle, and every move after keeps it there
+  MN1 no microphone or camera buttons on the screen; a tap on your drop opens its menu next to it, on the screen, at
+      1.0x, with no switches where the page has no microphone or camera
+  MN2 a tap elsewhere closes it, and so does B (Esc)
+  MN3 the drip speed at 2.0x walks about twice as far as 1x in the same hold
+  MN4 the drip speed is remembered on the device
+  MN5 where the page has a microphone and camera (window.LG_MEDIA), both switches show, off; a tap flips one
   Desktop 1280x800:
   D2  each movement key (W/A/S/D and the arrows) moves your dot its way
   D3  select (Enter) uses the button you stand next to (positive control: nothing was used before)
@@ -52,8 +57,8 @@ are the cases this file runs now.
       box shows and stays shown while you walk; zoom back in and the far boxes are hidden again
   M2  select (Enter) opens the box you stand in (positive control: closed before); back (Esc) closes it
   M6  when the map zooms out by itself (a box was opened), the walking zoom comes back
-  MC1 phone, Center disarmed: the touchpad walks the walker across the map; the map stays put
-  MC2 phone, Center armed: the map slides so the walker stays in the middle of the part you can see (above the pad)
+  MC2 phone: the map slides so the walker stays in the middle of the part you can see (above the pad)
+  MN6 phone: a tap on your drop on the map opens the same menu
   M3  phone: the touchpad walks the walker onto a connected box; A does what a tap does; B goes back
   Z1  1280x800: the wheel over the map zooms in toward the pointer and back out, the page does not scroll, and the
       zoom stops at LG_MAP.ZOOM.max / never goes under ZOOM.min
@@ -237,8 +242,9 @@ BOXES = r"""(() => { const C = window.LG_WALKER && LG_WALKER.CONTROLS, q = s => 
   const h = q('header.top').getBoundingClientRect(), hit = document.elementFromPoint(h.left + h.width / 2, h.top + h.height / 2);
   out.headerHit = !!hit && q('header.top').contains(hit);
   return JSON.stringify(out); })()"""
-# The Center button's label against its background (WCAG relative luminance), disarmed and armed; the site's colors.
-CONTRAST = r"""(() => { const D = LG_WALKER.CONTROLS.buttons.center, b = document.querySelector('#lg-here-pad .' + D.cls);
+# A switch in your drop's menu against its background (WCAG relative luminance), off and on; the site's colors.
+CONTRAST = r"""(() => { const b = document.querySelector('#' + LG_WALKER.CONTROLS.menu.id + ' [data-kind]');
+  if (!b) return JSON.stringify(null);
   const lum = c => { const [r, g, bb] = c.match(/[\d.]+/g).map(Number).slice(0, 3).map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }); return 0.2126 * r + 0.7152 * g + 0.0722 * bb; };
   const ratio = (a, c) => { const x = lum(a), y = lum(c); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
   const out = {opacity: getComputedStyle(b).opacity, states: {},
@@ -353,7 +359,7 @@ class Run(m.Run):
     def contrast(self, tag):
         c = self.j(CONTRAST) or {}
         st = c.get("states") or {}
-        self.check("A1 %s: the Center button's label meets WCAG AA 4.5:1, disarmed and armed (site colors --lg-switch-*)" % tag,
+        self.check("A1 %s: a switch in your drop's menu meets WCAG AA 4.5:1, off and on (site colors --lg-switch-*)" % tag,
                    len(st) == 2 and all(v.get("ratio", 0) >= 4.5 for v in st.values()) and c.get("opacity") == "1" and all(c.get("vars") or [""]),
                    c)
 
@@ -365,7 +371,7 @@ class Run(m.Run):
     def phone(self):
         self.size(390, 844, True)
         self.goto("/walk")
-        self.j("(() => { localStorage.removeItem(LG_WALKER.CONTROLS.buttons.center.store); return '1'; })()")
+        self.j("(() => { localStorage.removeItem(LG_WALKER.CONTROLS.menu.speed.store); return '1'; })()")
         self.goto("/walk")
         self.drop()
         time.sleep(0.3)
@@ -377,9 +383,13 @@ class Run(m.Run):
         b = self.j(BOXES) or {}
         C = self.j("JSON.stringify((window.LG_WALKER && LG_WALKER.CONTROLS) || null)") or {}
         acts = set((C.get("keys") or {}).values())
-        self.check("K0 the controls map binds every direction, select and back to keys and buttons, and names Center",
+        S = (C.get("menu") or {}).get("speed") or {}
+        self.check("K0 the controls map binds every direction, select and back to keys and buttons, has no Center button,"
+                   " and names the drop menu (microphone, camera, a drip speed range around 1x)",
                    bool(C) and set(C.get("dirs", [])) == set(WAY) and set(WAY) | {"select", "back"} <= acts
-                   and all(a in C.get("buttons", {}) for a in ["select", "back", "center"])
+                   and all(a in C.get("buttons", {}) for a in ["select", "back"]) and "center" not in C.get("buttons", {})
+                   and set((C.get("menu") or {}).get("toggles") or {}) == {"mic", "cam"}
+                   and 0 < S.get("min", 0) < 1 < S.get("max", 0) and S.get("store")
                    and (C.get("maxSpeed") or 0) > 0 and all((C.get("touchpad") or {}).get(k, 0) > 0
                                                             for k in ("reach", "width", "height", "alpha", "lift", "margin"))
                    and 0 < (C.get("touchpad") or {}).get("deadZone", 0) < 1, C)
@@ -399,85 +409,146 @@ class Run(m.Run):
         self.check("U1 phone: the touchpad, A and B are equally see-through (opacity %s)" % T.get("alpha"),
                    len(al) == 3 and all(x is not None and abs(x - T.get("alpha", 9)) < 0.01 for x in al) and al[0] < 1, al)
         self.check("J1 phone: the touchpad replaced the D-pad (no direction buttons on the pad)", b.get("dirButtons") == 0, b.get("dirButtons"))
-        parts = {"touchpad": dp, "select": btn.get("select"), "back": btn.get("back"), "center": btn.get("center"), "juketube": b.get("jb")}
+        parts = {"touchpad": dp, "select": btn.get("select"), "back": btn.get("back"), "juketube": b.get("jb")}
         names = list(parts)
         clash = [(x, y) for i, x in enumerate(names) for y in names[i + 1:] if overlaps(parts[x], parts[y])]
-        self.check("P3 phone: no two controls overlap (touchpad, A, B, Center button, Juketube button)",
+        self.check("P3 phone: no two controls overlap (touchpad, A, B, Juketube button)",
                    all(parts.values()) and not clash, {"overlaps": clash, "boxes": parts})
         ctl = dict(btn, touchpad=dp)
         small = {k: (r["w"], r["h"]) for k, r in ctl.items() if r and (r["w"] < 44 or r["h"] < 44)}
-        self.check("P4 phone: every control is at least 44x44 px", len(ctl) >= 4 and all(ctl.values()) and not small,
+        self.check("P4 phone: every control is at least 44x44 px", len(ctl) >= 3 and all(ctl.values()) and not small,
                    {"small": small, "count": len(ctl)})
-        self.contrast("phone")
         self.tips()
         self.shot("phone", {"x": 0, "y": 0, "width": vw, "height": vh})
         self.touchpad_pull(C, dp, vw, vh)
         self.drop_shape(C)
 
-    CENTER = ("(() => { const b = document.querySelector('#lg-here-pad .' + LG_WALKER.CONTROLS.buttons.center.cls),"
-              " d = document.querySelector('#lg-here .lg-here-dot.me .' + LG_WALKER.CONTROLS.shape.cls), r = d.getBoundingClientRect();"
-              " return JSON.stringify({pressed: b.getAttribute('aria-pressed'), stored: localStorage.getItem(LG_WALKER.CONTROLS.buttons.center.store),"
+    CENTER = ("(() => { const d = document.querySelector('#lg-here .lg-here-dot.me .' + LG_WALKER.CONTROLS.shape.cls), r = d.getBoundingClientRect();"
+              " return JSON.stringify({stored: localStorage.getItem(LG_WALKER.CONTROLS.menu.speed.store),"
               " y: r.top + r.height / 2, x: r.left + r.width / 2, vh: innerHeight, vw: innerWidth, sy: scrollY,"
               " pageY: r.top + r.height / 2 + scrollY, maxSy: document.documentElement.scrollHeight - innerHeight}); })()")
+    MENU = ("(() => { const M = LG_WALKER.CONTROLS.menu, m = document.getElementById(M.id), d = document.querySelector('#lg-here .lg-here-dot.me .' + LG_WALKER.CONTROLS.shape.cls);"
+            " const box = e => { if (!e) return null; const r = e.getBoundingClientRect(); return {l: r.left, t: r.top, r: r.right, b: r.bottom, w: r.width, h: r.height}; };"
+            " const tg = m ? [...m.querySelectorAll('[data-kind]')].map(b => ({kind: b.getAttribute('data-kind'), shown: !b.hidden && b.getBoundingClientRect().width > 0,"
+            "  pressed: b.getAttribute('aria-pressed'), text: b.textContent})) : [];"
+            " const range = m && m.querySelector('input[type=range]');"
+            " return JSON.stringify({open: !!m && !m.hidden, menu: box(m && !m.hidden ? m : null), drop: box(d), expanded: d && d.getAttribute('aria-expanded'),"
+            "  role: d && d.getAttribute('role'), toggles: tg, speed: range ? +range.value : null, out: m && m.querySelector('output') ? m.querySelector('output').textContent : null,"
+            "  vw: innerWidth, vh: innerHeight, onScreenMedia: !!document.querySelector('#lg-media')}); })()")
+
+    def tap_drop(self):
+        """A real tap (mouse down and up) on your own drop."""
+        return self.tap("#lg-here .lg-here-dot.me ." + (self.j("JSON.stringify(LG_WALKER.CONTROLS.shape.cls)") or "none"))
 
     def center_cases(self):
-        """CE0-CE4 and SC1: the Center button and plain scrolling, on the profile-like page (phone 390x844)."""
+        """CE1, SC1, CE2 and the drop menu MN1-MN5, on the profile-like page (phone 390x844).
+        2026-11-14 (Brandon): "keep the screen tracking logic the way it is when center is selected, but like thats it,
+        no other options", and the microphone, camera and a drip speed slider move into a menu on your drop."""
         self.size(390, 844, True)
         self.goto("/walk")
-        self.j("(() => { localStorage.removeItem(LG_WALKER.CONTROLS.buttons.center.store); return '1'; })()")
+        self.j("(() => { localStorage.removeItem(LG_WALKER.CONTROLS.menu.speed.store); return '1'; })()")
         self.goto("/walk")
         self.drop()
         time.sleep(0.4)
-        c0 = self.j(self.CENTER) or {}
-        self.check("CE0 a first visit: the Center button is disarmed", c0.get("pressed") == "false" and c0.get("stored") in (None, "0"), c0)
-        # walk down until the page has scrolled well past SC1's 260 px (2026-11-15: a fixed 2 s stopped short of the
-        # point where the page starts to follow, so CE1 and SC1 measured a page that had not moved)
         for _ in range(14):
             self.key("s", 1.0)
             if ((self.j(self.CENTER) or {}).get("sy") or 0) >= 300:
                 break
         time.sleep(0.3)
         c1 = self.j(self.CENTER) or {}
-        self.check("CE1 disarmed: walking down scrolls the page only to keep the dot in view (it is on the screen, not in the middle)",
-                   c1.get("sy", 0) > 0 and 0 < c1.get("y", -1) < c1.get("vh", 0) and abs(c1["y"] - c1["vh"] / 2) > 80, c1)
+        self.check("CE1 walking down keeps the dot in the middle of the screen (no Center button: always)",
+                   c1.get("sy", 0) >= 300 and abs(c1.get("y", 0) - c1.get("vh", 0) / 2) <= 12
+                   and not self.j("JSON.stringify(!!document.querySelector('.lg-here-center'))"), c1)
         self.j("(() => { window.scrollBy(0, -260); return '1'; })()")
         time.sleep(0.8)
         c2 = self.j(self.CENTER) or {}
         self.check("SC1 scrolling by hand works as always: the page stays where you scrolled it and your dot stays where it stood",
                    abs(c2.get("sy", 0) - (c1.get("sy", 0) - 260)) <= 2 and abs(c2.get("pageY", 0) - c1.get("pageY", -99)) <= 2,
                    {"before": c1, "after": c2})
-        self.tap("#lg-here-pad ." + (self.j("JSON.stringify(LG_WALKER.CONTROLS.buttons.center.cls)") or "none"))
-        time.sleep(0.5)
+        self.key("s", 0.3)
+        time.sleep(0.3)
         c3 = self.j(self.CENTER) or {}
-        self.check("CE2 armed: the screen slides at once so the dot is in its middle (top to bottom)",
-                   c3.get("pressed") == "true" and c3.get("stored") == "1" and abs(c3.get("y", 0) - c3.get("vh", 0) / 2) <= 12, c3)
-        self.key("s", 0.6)
+        self.key("w", 0.6)
         time.sleep(0.3)
         c4 = self.j(self.CENTER) or {}
-        self.key("w", 0.3)
+        self.check("CE2 the next move brings the dot back to the middle, and every move after keeps it there (down, then up)",
+                   c3.get("pageY", 0) > c2.get("pageY", 0) + 20 and abs(c3["y"] - c3["vh"] / 2) <= 12
+                   and c4.get("pageY", 0) < c3.get("pageY", 0) - 40 and abs(c4["y"] - c4["vh"] / 2) <= 12, {"down": c3, "up": c4})
+        self.shot("center-phone", {"x": 0, "y": c4.get("sy", 0), "width": 390, "height": 844})
+
+        # the menu: a page with no microphone or camera first (no window.LG_MEDIA: this test page has no here_media.js)
+        m0 = self.j(self.MENU) or {}
+        self.tap_drop()
         time.sleep(0.3)
-        c5 = self.j(self.CENTER) or {}
-        self.check("CE2 armed: after every move the dot is in the middle again (down, then up)",
-                   c4.get("pageY", 0) > c3.get("pageY", 0) + 40 and abs(c4["y"] - c4["vh"] / 2) <= 12
-                   and c5.get("pageY", 0) < c4.get("pageY", 0) - 20 and abs(c5["y"] - c5["vh"] / 2) <= 12, {"down": c4, "up": c5})
-        # the picture is of the screen where it is scrolled to (a clip from the page's top came out blank: 2026-11-15)
-        self.shot("center-armed-phone", {"x": 0, "y": c5.get("sy", 0), "width": 390, "height": 844})
+        m1 = self.j(self.MENU) or {}
+        mb, db = m1.get("menu") or {}, m1.get("drop") or {}
+        self.check("MN1 no microphone or camera buttons on the screen; tap your drop and its menu opens next to it, on the"
+                   " screen, with the drip speed at 1.0x (and no switches where the page has no microphone or camera)",
+                   not m0.get("open") and not m1.get("onScreenMedia") and m1.get("open") and m1.get("expanded") == "true"
+                   and m1.get("role") == "button" and m1.get("speed") == 1 and (m1.get("out") or "").startswith("1.0")
+                   and bool(mb) and mb["l"] >= 0 and mb["r"] <= m1.get("vw", 0) and mb["t"] >= 0 and mb["b"] <= m1.get("vh", 0)
+                   and (mb["b"] <= db.get("t", 0) or mb["t"] >= db.get("b", 0))
+                   and len(m1.get("toggles") or []) == 2 and not any(t["shown"] for t in m1["toggles"]), {"before": m0, "open": m1})
+        self.shot("drop-menu-phone", {"x": 0, "y": self.j("JSON.stringify(scrollY)") or 0, "width": 390, "height": 844})
+        # the drip speed: 2x walks about twice as far in the same hold, and it is remembered on the device
+        self.tap("body > footer.site")   # a tap elsewhere closes it
+        time.sleep(0.2)
+        closed = self.j(self.MENU) or {}
+        self.goto("/walk")
+        self.drop()
+        time.sleep(0.4)
+        y0 = (self.j(self.CENTER) or {}).get("pageY", 0)
+        self.key("s", 0.6)
+        time.sleep(0.3)
+        y1 = (self.j(self.CENTER) or {}).get("pageY", 0)
+        self.tap_drop()
+        time.sleep(0.3)
+        self.j("(() => { const r = document.querySelector('#' + LG_WALKER.CONTROLS.menu.id + ' input[type=range]');"
+               " r.value = '2'; r.dispatchEvent(new Event('input', {bubbles: true})); return '1'; })()")
+        m2 = self.j(self.MENU) or {}
+        self.key("escape")   # B closes the menu
+        time.sleep(0.2)
+        m3 = self.j(self.MENU) or {}
+        y2 = (self.j(self.CENTER) or {}).get("pageY", 0)
+        self.key("s", 0.6)
+        time.sleep(0.3)
+        y3 = (self.j(self.CENTER) or {}).get("pageY", 0)
+        one, two = y1 - y0, y3 - y2
+        self.check("MN2 a tap elsewhere closes the menu, and so does B (Esc)",
+                   not closed.get("open") and closed.get("expanded") == "false" and m2.get("open") and not m3.get("open"),
+                   {"tap elsewhere": closed.get("open"), "open": m2.get("open"), "after B": m3.get("open")})
+        self.check("MN3 the drip speed slider at 2.0x walks about twice as far as 1x in the same hold",
+                   (m2.get("out") or "").startswith("2.0") and one > 20 and 1.6 <= two / max(one, 1) <= 2.4,
+                   {"1x px": one, "2x px": two, "label": m2.get("out")})
         self.goto("/walk")
         self.drop()
         time.sleep(0.3)
-        c6 = self.j(self.CENTER) or {}
-        self.check("CE3 the choice is remembered on this device: armed after a reload", c6.get("pressed") == "true", c6)
-        self.tap("#lg-here-pad ." + (self.j("JSON.stringify(LG_WALKER.CONTROLS.buttons.center.cls)") or "none"))
+        self.tap_drop()
         time.sleep(0.3)
-        self.key("s", 2.0)
+        m4 = self.j(self.MENU) or {}
+        self.check("MN4 the drip speed is remembered on this device (2.0x after a reload)",
+                   m4.get("speed") == 2 and (self.j(self.CENTER) or {}).get("stored") == "2", m4)
+        self.key("escape")
+        # where the page has a microphone and camera (here_media.js sets window.LG_MEDIA), the menu shows them and a
+        # tap on one flips it through LG_MEDIA (here_media_check.py does the same with the real one on the real server)
+        self.j("(() => { localStorage.removeItem(LG_WALKER.CONTROLS.menu.speed.store); const st = {mic: false, cam: false}; window.__flips = [];"
+               " window.LG_MEDIA = {state: () => ({mic: st.mic, cam: st.cam}), toggle: k => { st[k] = !st[k]; window.__flips.push(k);"
+               " document.dispatchEvent(new CustomEvent('lg-media-change')); }}; return '1'; })()")
+        self.tap_drop()
         time.sleep(0.3)
-        c7 = self.j(self.CENTER) or {}
-        self.goto("/walk")
-        self.drop()
-        c8 = self.j(self.CENTER) or {}
-        self.check("CE4 disarmed again: walking is as before (not held in the middle), and that is remembered too",
-                   c7.get("pressed") == "false" and abs(c7.get("y", 0) - c7.get("vh", 0) / 2) > 80 and c8.get("pressed") == "false",
-                   {"walked": c7, "reloaded": c8})
+        m5 = self.j(self.MENU) or {}
+        self.tap("#" + (self.j("JSON.stringify(LG_WALKER.CONTROLS.menu.id)") or "none") + " [data-kind=mic]")
+        time.sleep(0.2)
+        m6 = self.j(self.MENU) or {}
+        flips = self.j("JSON.stringify(window.__flips)")
+        self.contrast("phone")
+        self.key("escape")
+        self.check("MN5 with a microphone and camera on the page, the menu shows both switches (off); a tap on Microphone"
+                   " turns it on through LG_MEDIA and the switch says so; Camera is untouched",
+                   [t["kind"] for t in m5.get("toggles") or [] if t["shown"]] == ["mic", "cam"]
+                   and all(t["pressed"] == "false" for t in m5["toggles"]) and flips == ["mic"]
+                   and [(t["kind"], t["pressed"]) for t in m6.get("toggles") or []] == [("mic", "true"), ("cam", "false")],
+                   {"before": m5.get("toggles"), "after": m6.get("toggles"), "flips": flips})
 
     def pull(self, tp, dx, dy, hold_s, shot=None):
         """Touch the touchpad left of its middle (the pull counts from there, not the middle), drag by (dx, dy) px, hold, let go; returns how far your dot went (x, y)."""
@@ -628,8 +699,8 @@ class Run(m.Run):
             " const at = w && !w.hidden ? w.getAttribute('data-at') : null, wr = w ? w.getBoundingClientRect() : null;"
             " const mids = {}; document.querySelectorAll('#lgm-nodes .lgn').forEach(b => { mids[b.getAttribute('data-id')] = mid(b.getAttribute('data-id')); });"
             " const s = document.getElementById('lgm-svg').getBoundingClientRect();"
-            " const c = document.querySelector('#lg-here-pad .' + LG_WALKER.CONTROLS.buttons.center.cls), k = document.querySelector('#lg-here-pad .lg-here-keys');"
-            " const padTop = k && k.getBoundingClientRect().height && c ? c.getBoundingClientRect().top : Infinity;"
+            " const k = document.querySelector('#lg-here-pad .lg-here-keys');"
+            " const padTop = k && k.getBoundingClientRect().height ? k.getBoundingClientRect().top : Infinity;"
             " const top = Math.max(s.top, 0), bot = Math.min(s.bottom, innerHeight, padTop - 8 > top + 80 ? padTop - 8 : Infinity);"
             " return JSON.stringify({at: at, mid: mid(at), you: mid('you'), mids: mids, trail: t ? t.textContent : null, edges: edges,"
             " panel: !!p && !p.hidden, page: f ? f.getAttribute('data-page') : null,"
@@ -829,17 +900,7 @@ class Run(m.Run):
         B = C.get("buttons") or {}
         tp = (self.j(BOXES) or {}).get("touchpad")
         reach = (C.get("touchpad") or {}).get("reach", 0)
-        # Center disarmed (the default): a short walk moves the walker over a map that stays where it is
-        a0 = self.j(self.WALK) or {}
-        if tp:
-            self.pull(tp, reach, 0, 0.3)
-        time.sleep(0.2)
-        a1 = self.j(self.WALK) or {}
-        s0, s1, y0, y1 = a0.get("spot") or [0, 0], a1.get("spot") or [0, 0], a0.get("you") or [0, 0], a1.get("you") or [9, 9]
-        self.check("MC1 phone, Center disarmed: the touchpad walks the walker across the map; the map itself stays put",
-                   bool(tp) and s1[0] - s0[0] > 20 and abs(y1[0] - y0[0]) <= 2 and abs(y1[1] - y0[1]) <= 2, {"walker": [s0, s1], "you box": [y0, y1]})
-        self.tap("#lg-here-pad ." + (B.get("center") or {}).get("cls", "none"))
-        time.sleep(0.7)
+        # always centered (no Center button, Brandon 2026-11-14): the map slides so the walker stays in the middle
         c0 = self.j(self.WALK) or {}
         if tp:
             self.pull(tp, 0, -reach, 0.4)
@@ -847,13 +908,19 @@ class Run(m.Run):
         c1 = self.j(self.WALK) or {}
         sp, sn = c1.get("spot") or [-999, -999], c1.get("seen") or [0, 0]
         p0, p1 = c0.get("pos") or [0, 0], c1.get("pos") or [0, 0]
-        self.check("MC2 phone, Center armed: the walker walks on and the map slides so it stays in the middle of the part "
-                   "of the map you can see (above the pad)",
-                   p0[1] - p1[1] > 10 and abs(sp[0] - sn[0]) <= 12 and abs(sp[1] - sn[1]) <= 12
-                   and abs(((c0.get("spot") or [0, 0])[1]) - sn[1]) <= 12, {"walked": [p0, p1], "walker": sp, "middle": sn})
+        self.check("MC2 phone: the walker walks on and the map slides so it stays in the middle of the part of the map you"
+                   " can see (above the pad)",
+                   p0[1] - p1[1] > 10 and abs(sp[0] - sn[0]) <= 12 and abs(sp[1] - sn[1]) <= 12,
+                   {"walked": [p0, p1], "walker": sp, "middle": sn})
         self.shot("map-center-phone", {"x": 0, "y": 0, "width": 390, "height": 844})
-        self.tap("#lg-here-pad ." + (B.get("center") or {}).get("cls", "none"))   # disarmed again (it is remembered)
+        # your drop on the map opens the same menu (the map has no microphone or camera yet: speed only)
+        self.tap("#lgm-walker ." + (C.get("shape") or {}).get("cls", "none"))
+        time.sleep(0.3)
+        mm = self.j("(() => { const m = document.getElementById(LG_WALKER.CONTROLS.menu.id); return JSON.stringify({open: !!m && !m.hidden,"
+                    " range: !!(m && m.querySelector('input[type=range]'))}); })()") or {}
+        self.key("escape")
         time.sleep(0.2)
+        self.check("MN6 phone: tap your drop on the map and its menu opens (drip speed)", mm.get("open") and mm.get("range"), mm)
         first = self.j(self.WALK) or {}
         ring = [i for i in (first.get("shown") or []) if i != "you" and self.linked(first, "you", i)
                 and (m2.NODES.get(i) or {}).get("label")]
@@ -1106,8 +1173,8 @@ def _map_zoom_back(self):
         f = (self.j(MAPZ) or {}).get("frame")
         # the fingers go on the map you can see: above the pad (on a phone the frame runs under it; a finger on the
         # Center button is a press of that button, not a pinch: 2026-11-15, the first version of this case did that)
-        pad_top = self.j("(() => { const c = document.querySelector('#lg-here-pad .' + LG_WALKER.CONTROLS.buttons.center.cls);"
-                         " return JSON.stringify(c ? c.getBoundingClientRect().top : innerHeight); })()")
+        pad_top = self.j("(() => { const k = document.querySelector('#lg-here-pad .lg-here-keys');"
+                         " return JSON.stringify(k && k.getBoundingClientRect().height ? k.getBoundingClientRect().top : innerHeight); })()")
         top, bottom = max(f["t"], 0), min(f["b"], pad_top)
         cx, cy = (f["l"] + f["r"]) / 2, (top + bottom) / 2
         hit = self.j("JSON.stringify([-30, 30, -90, 90].map(d => { const h = document.elementFromPoint(%f + d, %f);"

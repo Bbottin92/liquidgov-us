@@ -63,7 +63,11 @@ class Tab(wc.Run):
         self.j("(() => { LG_HERE_API.moveTo(%s, %s); return '1'; })()" % (x, y))
 
     def click(self, kind):
-        self.j("(() => { document.querySelector('#lg-media [data-kind=\"%s\"]').click(); return '1'; })()" % kind)
+        """The switch is in your drop's menu now (Brandon 2026-11-14: no microphone or camera buttons on the screen):
+        open the menu from your own drop, press the switch, close the menu."""
+        self.j("(() => { const W = LG_WALKER, d = document.querySelector('#lg-here .lg-here-dot.me .' + W.CONTROLS.shape.cls);"
+               " d.click(); document.querySelector('#' + W.CONTROLS.menu.id + ' [data-kind=\"%s\"]').click(); W.menuClose(false);"
+               " return '1'; })()" % kind)
 
     def peer(self, who):
         return (self.st().get("peers") or {}).get(who)

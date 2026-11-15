@@ -1,5 +1,5 @@
-/* Proximity voice and video on profile pages (spatial step 11, SPATIAL_EVOLUTION.md). Off until you turn it on: the Mic and
-   Camera buttons ask the browser for permission, then tell the server you are sharing. With someone else in the same
+/* Proximity voice and video on profile pages (spatial step 11, SPATIAL_EVOLUTION.md). Off until you turn it on: the Microphone and
+   Camera switches in your drop's menu (walker.js) ask the browser for permission, then tell the server you are sharing. With someone else in the same
    instance who is also sharing, within RANGE.aware of you, a direct browser-to-browser connection (WebRTC) carries the
    sound and picture; its volume is full inside RANGE.near and falls in a straight line to nothing at RANGE.aware. Past
    that, or when either of you leaves the instance or stops sharing, the connection is closed and nothing is sent or
@@ -16,30 +16,18 @@
   var RANGE = { near: 0.15, aware: 0.5 };
   var want = { mic: false, cam: false }, stream = null, peers = {}, pendingOffer = {}, pendingIce = {}, last = [];
 
-  var box = document.createElement('div');
-  box.id = 'lg-media';
-  box.style.cssText = 'position:fixed;left:8px;bottom:8px;z-index:50;display:flex;gap:6px';
   var held = document.createElement('div');
   held.id = 'lg-media-held';
   held.style.cssText = 'position:fixed;right:8px;bottom:8px;z-index:50;display:flex;gap:6px;max-width:60vw';
-  var buttons = {};
-  [['mic', 'Mic'], ['cam', 'Camera']].forEach(function (k) {
-    var b = document.createElement('button');
-    b.type = 'button';
-    b.setAttribute('data-kind', k[0]);
-    b.addEventListener('click', function () { toggle(k[0]); });
-    buttons[k[0]] = { el: b, label: k[1] };
-    box.appendChild(b);
-  });
-  document.body.appendChild(box);
   document.body.appendChild(held);
-  function paint() {
-    Object.keys(buttons).forEach(function (k) {
-      buttons[k].el.textContent = buttons[k].label + (want[k] ? ' on' : ' off');
-      buttons[k].el.setAttribute('aria-pressed', want[k] ? 'true' : 'false');
-    });
-  }
-  paint();
+  // The Microphone and Camera switches are in your drop's menu (walker.js, Brandon 2026-11-14: "the microphone/camera
+  // buttons shouldnt be on the screen"): it reads and flips them through window.LG_MEDIA and repaints on
+  // 'lg-media-change'.
+  function paint() { document.dispatchEvent(new CustomEvent('lg-media-change', { detail: { mic: want.mic, cam: want.cam } })); }
+  window.LG_MEDIA = {
+    state: function () { return { mic: want.mic, cam: want.cam }; },
+    toggle: function (kind) { if (kind === 'mic' || kind === 'cam') toggle(kind); }
+  };
 
   function gain(d) { return d <= RANGE.near ? 1 : d >= RANGE.aware ? 0 : (RANGE.aware - d) / (RANGE.aware - RANGE.near); }
   function sendFlags() { api.send({ mic: want.mic, cam: want.cam }); }

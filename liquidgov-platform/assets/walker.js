@@ -4,13 +4,15 @@
    Walking is always on (Brandon 2026-11-14: "we gotta get rid of the drop/scroll switch... just leave it on drop mode
    and if you wanna scroll you can just do that instead of using the joystick"): there is no switch. You scroll the
    page, or pinch and wheel the map, the way you always do; the touchpad and the keys walk your drop.
-   Phone: a see-through touchpad with A and B stacked on its right side, one unit at the bottom center, in thumb reach,
-   and the Center button above it. With a mouse (a screen that can hover) the touchpad and A/B are not shown.
+   Phone: a see-through touchpad with A and B stacked on its right side, one unit at the bottom center, in thumb reach.
+   With a mouse (a screen that can hover) the touchpad and A/B are not shown.
    Desktop: WASD or the arrows move, Enter = A (select), Esc = B (back); never while you type in a field (there B/Esc
    just leaves the field).
-   Center (his words: "an active droplet centering button that you can arm or disarm"): armed, every move slides the
-   screen so your drop sits in its middle; disarmed, the screen only moves to keep the drop in view. It starts
-   disarmed and the choice is remembered on this device. */
+   The screen keeps your drop in its middle as you walk, always (Brandon 2026-11-14: "keep the screen tracking logic the
+   way it is when center is selected, but like thats it, no other options"; the Center button is gone).
+   Your drop's menu (same day: "if you click on or tap your droplet it should expand a menu with things like microphone,
+   camera (toggle on/off), and a drip speed adjustment slider"): menu(el) makes a drop open it. Microphone and Camera
+   show where the page has them (here_media.js sets window.LG_MEDIA); the speed is remembered on this device. */
 (function () {
   var CONTROLS = {
     dirs: ['up', 'left', 'right', 'down'],
@@ -56,14 +58,18 @@
     },
     // action -> the button's class, accessible name and face
     buttons: {
-      // The centering button: aria-pressed says whether it is armed; store is its localStorage key ('1' armed).
-      center: { cls: 'lg-here-center', label: 'Keep my drop in the middle of the screen', text: 'Center',
-        store: 'lg-walker-center' },
       select: { cls: 'lg-here-a', label: 'Use what you are next to', text: 'A' },
       back: { cls: 'lg-here-b', label: 'Go back', text: 'B' }
     }
   };
-  var B = CONTROLS.buttons;
+  // Your drop's menu: id and look of the popup, the accessible name of your drop, the toggles' names, and the drip speed
+  // slider (a multiple of maxSpeed, from min to max in steps; store: its localStorage key).
+  CONTROLS.menu = { id: 'lg-drop-menu', label: 'Your drop: microphone, camera and speed',
+    toggles: { mic: 'Microphone', cam: 'Camera' },
+    speed: { label: 'Drip speed', min: 0.5, max: 2, step: 0.1, store: 'lg-walker-speed' } };
+  var B = CONTROLS.buttons, M = CONTROLS.menu;
+  var speedMul = 1;
+  try { var sv = parseFloat(localStorage.getItem(M.speed.store)); if (sv >= M.speed.min && sv <= M.speed.max) speedMul = sv; } catch (e) {} // err-ok: no storage: 1x
 
   function keyAction(e) {
     if (e.ctrlKey || e.metaKey || e.altKey) return null;   // Ctrl+W, Cmd+S, ... stay the browser's
@@ -88,26 +94,22 @@
     return { x: dx * k, y: dy * k };
   }
 
-  // mount(page): puts the pad and the Center button on the page (once) and wires keys, the touchpad and buttons to
-  // the page's walker. page: {dir(dir, down) (keys), pull(x, y) (the touchpad's vector; 0, 0 = let go), select() ->
-  // true when it used something, back(), center(on) (optional: the Center button was armed or disarmed), resized()
-  // (optional), box: this page's map box id (optional; the portal takes you there)}.
-  // Returns {centered()}: whether Center is armed.
+  // mount(page): puts the pad on the page (once) and wires keys, the touchpad and buttons to the page's walker.
+  // page: {dir(dir, down) (keys), pull(x, y) (the touchpad's vector; 0, 0 = let go), select() -> true when it used
+  // something, back(), resized() (optional), box: this page's map box id (optional; the portal takes you there)}.
   function mount(page) {
     var T = CONTROLS.touchpad;
     var pad = document.createElement('div');
     pad.id = 'lg-here-pad';
     pad.innerHTML =
-      '<button type="button" class="' + B.center.cls + '" aria-pressed="false" aria-label="' + B.center.label + '">' + B.center.text + '</button>' +
       '<div class="lg-here-keys"><div class="' + T.cls + '" role="application" aria-label="' + T.label +
       '"><span class="' + T.knob + '"></span></div><div class="lg-here-ab">' + keyButton('select') + keyButton('back') + '</div></div>';
     [['--lgw-w', T.width + 'px'], ['--lgw-h', T.height + 'px'], ['--lgw-alpha', String(T.alpha)], ['--lgw-lift', T.lift + 'px'],
       ['--lgw-margin', T.margin + 'px']].forEach(function (v) { pad.style.setProperty(v[0], v[1]); });
     document.body.appendChild(pad);
-    var centerBtn = pad.querySelector('.' + B.center.cls), keys = pad.querySelector('.lg-here-keys');
-    var held = {}, centered = false;
+    var keys = pad.querySelector('.lg-here-keys');
+    var held = {};
     var touchpad = pad.querySelector('.' + T.cls), knob = touchpad.firstChild, grip = null, from = null;
-    try { centered = localStorage.getItem(B.center.store) === '1'; } catch (e) { centered = false; } // err-ok: no storage: disarmed
 
     // The unit stays clear of the Juketube button (fixed at the right edge just above the bottom): if they meet, the
     // unit rises above it.
@@ -152,18 +154,10 @@
     }
     function letGo() { Object.keys(held).forEach(function (d) { hold(d, false); }); release(); }
     function back() {
+      if (menuOpenNow()) { menuClose(true); return; }   // B with your drop's menu open: it closes
       if (editing()) document.activeElement.blur();   // B in a field: back to walking
       else page.back();
     }
-    function showCenter() { centerBtn.setAttribute('aria-pressed', centered ? 'true' : 'false'); }
-    // blur: Enter (select) must never land on the focused Center button and flip it
-    centerBtn.addEventListener('click', function () {
-      centered = !centered;
-      try { localStorage.setItem(B.center.store, centered ? '1' : '0'); } catch (e) {} // err-ok: no storage: it lasts this page view
-      showCenter();
-      centerBtn.blur();
-      if (page.center) page.center(centered);
-    });
     touchpad.addEventListener('pointerdown', function (e) {
       e.preventDefault();
       grip = e.pointerId;
@@ -182,8 +176,8 @@
     document.addEventListener('keydown', function (e) {
       if (e.defaultPrevented) return;   // the focused element already took the key
       var act = keyAction(e);
-      if (editing()) {
-        if (act === 'back') back();
+      if (editing() || (menuOpenNow() && menuEl.contains(document.activeElement))) {
+        if (act === 'back') { e.preventDefault(); back(); }
         return;
       }
       if (!act) return;
@@ -204,10 +198,97 @@
     }
     window.addEventListener('blur', letGo);   // a key let go in another window never sticks
     window.addEventListener('resize', function () { clearJuketube(); fitRoom(); });
-    showCenter();
     clearJuketube();
     fitRoom();
-    return { centered: function () { return centered; } };
+    return {};
+  }
+
+  // ---- your drop's menu (Brandon 2026-11-14). One popup for the page, next to the drop that opened it; it closes on a
+  // tap or click anywhere else, on B / Esc, or on the drop again. Toggles come from window.LG_MEDIA (here_media.js):
+  // {state() -> {mic, cam}, toggle(kind)}; it fires 'lg-media-change' on document when they change.
+  var menuEl = null, menuFor = null;
+  function menuOpenNow() { return !!menuEl && !menuEl.hidden; }
+  function menuClose(refocus) {
+    if (!menuOpenNow()) return;
+    menuEl.hidden = true;
+    if (menuFor) { menuFor.setAttribute('aria-expanded', 'false'); if (refocus && menuFor.focus) menuFor.focus(); }
+  }
+  function menuPaint() {
+    if (!menuEl) return;
+    var media = window.LG_MEDIA, st = media ? media.state() : null;
+    Array.prototype.forEach.call(menuEl.querySelectorAll('[data-kind]'), function (b) {
+      var k = b.getAttribute('data-kind'), on = !!(st && st[k]);
+      b.hidden = !st;
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      b.lastChild.textContent = on ? 'On' : 'Off';
+    });
+  }
+  function menuBuild() {
+    var S = M.speed;
+    menuEl = document.createElement('div');
+    menuEl.id = M.id;
+    menuEl.setAttribute('role', 'group');
+    menuEl.setAttribute('aria-label', M.label);
+    menuEl.hidden = true;
+    var h = '';
+    Object.keys(M.toggles).forEach(function (k) {
+      h += '<button type="button" data-kind="' + k + '" aria-pressed="false"><span>' + M.toggles[k] + '</span><span></span></button>';
+    });
+    h += '<label class="lg-drop-speed"><span>' + S.label + ' <output>' + speedMul.toFixed(1) + 'x</output></span>' +
+      '<input type="range" min="' + S.min + '" max="' + S.max + '" step="' + S.step + '" value="' + speedMul + '"></label>';
+    menuEl.innerHTML = h;
+    document.body.appendChild(menuEl);
+    Array.prototype.forEach.call(menuEl.querySelectorAll('[data-kind]'), function (b) {
+      b.addEventListener('click', function () { if (window.LG_MEDIA) window.LG_MEDIA.toggle(b.getAttribute('data-kind')); menuPaint(); });
+    });
+    var range = menuEl.querySelector('input'), out = menuEl.querySelector('output');
+    range.addEventListener('input', function () {
+      var v = Math.min(S.max, Math.max(S.min, parseFloat(range.value) || 1));
+      speedMul = v;
+      out.textContent = v.toFixed(1) + 'x';
+      try { localStorage.setItem(S.store, String(v)); } catch (e) {} // err-ok: no storage: it lasts this page view
+    });
+    document.addEventListener('pointerdown', function (e) {
+      if (menuOpenNow() && !menuEl.contains(e.target) && !(menuFor && menuFor.contains(e.target))) menuClose(false);
+    }, true);
+    document.addEventListener('lg-media-change', menuPaint);
+    window.addEventListener('resize', function () { if (menuOpenNow()) menuPlace(); });
+  }
+  // next to the drop: above it when there is room, else below; kept on the screen
+  function menuPlace() {
+    var r = menuFor.getBoundingClientRect(), w = menuEl.offsetWidth, h = menuEl.offsetHeight, gap = 10;
+    var top = r.top - h - gap >= 8 ? r.top - h - gap : Math.min(window.innerHeight - h - 8, r.bottom + gap);
+    var left = Math.max(8, Math.min(window.innerWidth - w - 8, (r.left + r.right) / 2 - w / 2));
+    menuEl.style.left = Math.round(left) + 'px';
+    menuEl.style.top = Math.round(Math.max(8, top)) + 'px';
+  }
+  function menuOpen(el) {
+    if (!menuEl) menuBuild();
+    if (menuFor && menuFor !== el) menuFor.setAttribute('aria-expanded', 'false');
+    menuFor = el;
+    menuEl.querySelector('input').value = speedMul;
+    menuEl.querySelector('output').textContent = speedMul.toFixed(1) + 'x';
+    menuPaint();
+    menuEl.hidden = false;
+    el.setAttribute('aria-expanded', 'true');
+    menuPlace();
+  }
+  // menu(el): your drop el opens and closes the menu (tap, click, or Enter / Space when it has the focus)
+  function menu(el) {
+    if (!el || el.getAttribute('data-menu')) return;
+    el.setAttribute('data-menu', '1');
+    el.setAttribute('role', 'button');
+    el.setAttribute('tabindex', '0');
+    el.setAttribute('aria-label', M.label);
+    el.setAttribute('aria-haspopup', 'true');
+    el.setAttribute('aria-expanded', 'false');
+    el.style.pointerEvents = 'auto';
+    el.style.cursor = 'pointer';
+    function flip() { if (menuOpenNow() && menuFor === el) menuClose(false); else menuOpen(el); }
+    el.addEventListener('click', function (e) { e.stopPropagation(); flip(); });
+    el.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flip(); }
+    });
   }
 
   // The portal's arrival: {box} once (it is removed as it is read), or null (none, or older than handoffMs).
@@ -244,21 +325,16 @@
     if (t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT') el.focus();
     else el.click();
   }
-  // velocity(held, pull): keys walk at full speed; else the touchpad at its pull (0..1 of full speed)
+  // velocity(held, pull): keys walk at full speed; else the touchpad at its pull (0..1 of full speed); both times the
+  // drip speed from your drop's menu (1x unless you changed it)
   function velocity(held, pull) {
     var x = (held.right ? 1 : 0) - (held.left ? 1 : 0), y = (held.down ? 1 : 0) - (held.up ? 1 : 0);
-    return x || y ? { x: x, y: y } : { x: pull.x, y: pull.y };
+    return x || y ? { x: x * speedMul, y: y * speedMul } : { x: pull.x * speedMul, y: pull.y * speedMul };
   }
   // centerOn(left, top): scrolls so the page point (px from the page's left and top) is in the middle of the screen,
-  // as far as the page's ends allow (Center armed)
+  // as far as the page's ends allow (after every move: the screen always follows your drop)
   function centerOn(left, top) {
     window.scrollTo(Math.round(left - window.innerWidth / 2), Math.round(top - window.innerHeight / 2));
-  }
-  // follow(top): scrolls so the page point top (px from the page's top) stays in view
-  function follow(top) {
-    var margin = 90;
-    if (top < window.scrollY + margin) window.scrollTo(window.scrollX, top - margin);
-    else if (top > window.scrollY + window.innerHeight - margin * 2) window.scrollTo(window.scrollX, top - window.innerHeight + margin * 2);
   }
   function reducedMotion() { return !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches); }
 
@@ -324,6 +400,7 @@
   }
 
   window.LG_WALKER = { CONTROLS: CONTROLS, portrait: portrait, shape: shape, hop: hop, keyAction: keyAction, isDir: isDir, editing: editing,
-    pullVector: pullVector, mount: mount, takeHandoff: takeHandoff, nearest: nearest, use: use, velocity: velocity, follow: follow, centerOn: centerOn,
+    pullVector: pullVector, mount: mount, takeHandoff: takeHandoff, nearest: nearest, use: use, velocity: velocity, centerOn: centerOn,
+    menu: menu, menuClose: menuClose,
     reducedMotion: reducedMotion };
 })();

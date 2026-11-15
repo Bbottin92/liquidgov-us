@@ -6,11 +6,11 @@
    Walking is always on: there is no Drop/Scroll switch. The view starts zoomed in around your drop
    (LG_WALKER.CONTROLS.mapZoom times the fitted view) and, zoomed in, only the box you are at and the boxes connected to
    it are shown. Zoom out yourself (a pinch on the map, the wheel, a trackpad pinch) and the whole map is shown; zoom
-   back in and it narrows again. With Center armed the camera keeps your drop in the middle; disarmed it only moves to
-   keep the drop in view.
+   back in and it narrows again. The camera always keeps your drop in the middle of the part of
+   the map you can see. Tap or click your drop for its menu (drip speed).
    Uses lgmap.js's own drawing as it is: the boxes (#lgm-nodes .lgn[data-id]), their regions (LG_MAP.instance(id)
    .region, map units), the connectors (#lgm-edges .lge[data-a][data-b]) and the camera (LG_MAP.view / setView /
-   toScreen); this file lays nothing out. The pad, keys and Center button are walker.js's (window.LG_WALKER). */
+   toScreen); this file lays nothing out. The pad, keys and drop menu are walker.js's (window.LG_WALKER). */
 (function () {
   'use strict';
   var root = document.getElementById('lgmap');
@@ -18,10 +18,10 @@
   var W = LG_WALKER, C = W.CONTROLS, MAP = LG_MAP;
   var nodeLayer = document.getElementById('lgm-nodes'), edgeLayer = document.getElementById('lgm-edges');
   var svg = document.getElementById('lgm-svg');
-  var MAINSTREAM = 'mainstream', EDGE = 70;   // EDGE: disarmed, the camera moves when the drop is this near the frame's edge (px)
+  var MAINSTREAM = 'mainstream';
   var me = null;                              // where the drop is, in map units; null until the map has drawn
   var at = '', last = '', instanceId = MAINSTREAM;   // the box you are in ('' = none), the last one you were in, the instance
-  var held = {}, pull = { x: 0, y: 0 }, ctl = null, anchor = null, asked = '';
+  var held = {}, pull = { x: 0, y: 0 }, anchor = null, asked = '';
   var myName = root.getAttribute('data-me') || '';
   var userZoom = 0, userOut = false, rezoom = 0;
 
@@ -217,8 +217,8 @@
   function seen() {
     var f = MAP.frame(), top = Math.max(f.top, 0), bottom = Math.min(f.bottom, window.innerHeight);
     var left = Math.max(f.left, 0), right = Math.min(f.right, window.innerWidth);
-    var c = document.querySelector('#lg-here-pad .' + C.buttons.center.cls), k = document.querySelector('#lg-here-pad .lg-here-keys');
-    var padTop = k && k.getBoundingClientRect().height && c ? c.getBoundingClientRect().top : Infinity;
+    var k = document.querySelector('#lg-here-pad .lg-here-keys'), kb = k ? k.getBoundingClientRect() : null;
+    var padTop = kb && kb.height ? kb.top : Infinity;
     if (padTop - 8 > top + 80) bottom = Math.min(bottom, padTop - 8);
     if (bottom <= top || right <= left) return { x0: 0, y0: 0, x1: f.width, y1: f.height };
     return { x0: left - f.left, y0: top - f.top, x1: right - f.left, y1: bottom - f.top };
@@ -232,16 +232,8 @@
     rezoom = 0;
     if (me && !userOut && !zoomedIn()) centerView(walkScale(), true);
   }
-  // after a move: armed, the drop in the middle; disarmed, the camera moves only to keep the drop EDGE px inside the frame
-  function follow() {
-    var r = seen(), v = MAP.view();
-    if (ctl && ctl.centered()) { centerView(v.scale, false); return; }
-    var mx = Math.min(EDGE, (r.x1 - r.x0) / 4), my = Math.min(EDGE, (r.y1 - r.y0) / 4);
-    var sx = v.tx + me.x * v.scale, sy = v.ty + me.y * v.scale, tx = v.tx, ty = v.ty;
-    if (sx < r.x0 + mx) tx += r.x0 + mx - sx; else if (sx > r.x1 - mx) tx -= sx - (r.x1 - mx);
-    if (sy < r.y0 + my) ty += r.y0 + my - sy; else if (sy > r.y1 - my) ty -= sy - (r.y1 - my);
-    if (tx !== v.tx || ty !== v.ty) MAP.setView(tx, ty, v.scale, false);
-  }
+  // after a move: the drop back in the middle of the part of the map you can see (always, Brandon 2026-11-14)
+  function follow() { centerView(MAP.view().scale, false); }
   // You zoomed (the wheel, a pinch): remembered for a moment, so a view that ends up zoomed out is known to be yours.
   svg.addEventListener('wheel', function () { userZoom = Date.now(); }, { passive: true });
   var touches = {};
@@ -333,6 +325,13 @@
   walker.id = 'lgm-walker';
   var dropPortrait = W.portrait(myName);
   walker.appendChild(dropPortrait);
+  W.menu(dropPortrait);   // tap or click your drop: microphone, camera, drip speed
+  // the drop takes taps now (its menu), so a wheel over it would scroll the page: it is handed to the map, which zooms
+  dropPortrait.addEventListener('wheel', function (e) {
+    e.preventDefault();
+    svg.dispatchEvent(new WheelEvent('wheel', { deltaX: e.deltaX, deltaY: e.deltaY, deltaMode: e.deltaMode, clientX: e.clientX,
+      clientY: e.clientY, ctrlKey: e.ctrlKey, metaKey: e.metaKey, bubbles: true, cancelable: true }));
+  }, { passive: false });
   walker.hidden = true;
   walker.setAttribute('aria-hidden', 'true');
   walker.setAttribute('data-at', '');
@@ -355,7 +354,7 @@
   }
   var want = '', ready = false;
   var arrival = W.takeHandoff();   // came through the portal: you start at that page's box
-  ctl = W.mount({
+  W.mount({
     dir: function (dir, down) { held[dir] = down; },
     pull: function (x, y) { pull = { x: x, y: y }; },
     // A / Enter: the same as tapping the box you stand on (or right next to); nothing there: squish and bounce
@@ -371,7 +370,6 @@
       if (panel && !panel.hidden && close) close.click();
       else if (MAP.back) MAP.back();
     },
-    center: function (on) { if (on && me) centerView(MAP.view().scale, true); }
   });
   (MAP.ready || Promise.resolve())
     .then(function () { return arrival && arrival.box ? MAP.goTo(arrival.box) : null; })

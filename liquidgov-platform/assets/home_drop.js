@@ -2,7 +2,7 @@
    the top of the page and a guide points you down; past the scrolling-words section the floor is a moving sidewalk
    (with it you go faster, against it slower). A next to a link or button uses it; A with nothing next to you is a
    squish-and-bounce. Walking is always on (no Drop/Scroll switch, Brandon 2026-11-14); scrolling works as always.
-   Every number and name is walker.js's CONTROLS (home, hop, near, maxSpeed, shape); the touchpad, keys, Center button,
+   Every number and name is walker.js's CONTROLS (home, hop, near, maxSpeed, shape); the touchpad, keys, drop menu,
    shape and hop are walker.js's too: this file only walks the drop on this page. Positions are page px (one visitor,
    nothing is sent anywhere). */
 (function () {
@@ -16,6 +16,7 @@
   var dot = document.createElement('div');
   dot.className = 'lg-here-dot me';
   var drop = W.portrait('');
+  W.menu(drop);   // tap or click your drop: its menu (here only the drip speed: no account, no microphone or camera)
   dot.appendChild(drop);
   var guide = document.createElement('div');
   guide.className = H.guide.cls;
@@ -31,7 +32,7 @@
   document.body.appendChild(belt);
   document.body.appendChild(layer);
 
-  var me = { x: 0, y: 0 }, held = {}, pull = { x: 0, y: 0 }, near = null, beltTop = Infinity, ctl = null;
+  var me = { x: 0, y: 0 }, held = {}, pull = { x: 0, y: 0 }, near = null, beltTop = Infinity;
 
   function pageW() { return Math.max(document.documentElement.scrollWidth, document.body.scrollWidth); }
   function pageH() { return Math.max(document.documentElement.scrollHeight, document.body.scrollHeight); }
@@ -64,19 +65,17 @@
     me.x = Math.max(0, Math.min(pageW(), me.x + v.x * MAX_SPEED));
     me.y = Math.max(0, Math.min(pageH(), me.y + v.y * MAX_SPEED));
     place();
-    if (ctl && ctl.centered()) W.centerOn(me.x, me.y);
-    else W.follow(me.y);
+    W.centerOn(me.x, me.y);   // the screen always keeps your drop in its middle
     findNear();
   }
   setInterval(step, 40);
 
-  ctl = W.mount({
+  W.mount({
     dir: function (dir, down) { held[dir] = down; },
     pull: function (x, y) { pull = { x: x, y: y }; },
     // A: use what you stand next to; nothing there: squish and bounce (A was still yours, so the key is taken)
     select: function () { if (near) W.use(near); else W.hop(drop); return true; },
     back: function () { if (history.length > 1) history.back(); },
-    center: function (on) { if (on) W.centerOn(me.x, me.y); },
     resized: measure,
     box: ''
   });

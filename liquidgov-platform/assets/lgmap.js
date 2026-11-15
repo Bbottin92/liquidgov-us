@@ -1120,11 +1120,20 @@
   (function () {
     var form = document.getElementById('lgm-search'), q = document.getElementById('lgm-q'), list = document.getElementById('lgm-hits');
     if (!form || !q || !list) return;
-    var KIND = { person: 'Person', group: 'Group', city: 'Place', prop: 'Proposal', post: 'Post', dept: 'Topic' };
+    var KIND = { person: 'Person', group: 'Group', city: 'Place', prop: 'Proposal', post: 'Post', dept: 'Topic', comment: 'Comment', message: 'Message' };
+    // when something was written, short: "3:05 PM" today, "Nov 12" this year, "Nov 12, 2025" before
+    function when(ts) {
+      if (!ts) return '';
+      var d = new Date(ts * 1000), now = new Date();
+      if (d.toDateString() === now.toDateString()) return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      return d.toLocaleDateString([], d.getFullYear() === now.getFullYear() ? { month: 'short', day: 'numeric' } : { month: 'short', day: 'numeric', year: 'numeric' });
+    }
     var timer = 0, asked = '', hits = [];
     function close() { list.hidden = true; list.textContent = ''; hits = []; }
+    // a message has no place on the map: its conversation opens; anything else is swum to
     function go(d) {
       close(); q.value = ''; q.blur();
+      if (!d.id) { if (d.page) location.assign(d.page); return; }
       LG_MAP.goTo(d.id).catch(function () { status('That is not on your map.'); });
     }
     function show(results) {
@@ -1138,9 +1147,18 @@
         var li = document.createElement('li'), b = document.createElement('button'), k = document.createElement('span');
         li.setAttribute('role', 'option');
         b.type = 'button'; b.className = 'lgm-hit'; b.setAttribute('data-id', d.id);
-        b.textContent = short(d.label, 60);
+        var main = document.createElement('span'), t = document.createElement('span');
+        main.className = 'lgm-hit-main';
+        t.className = 'lgm-hit-text'; t.textContent = short(d.label, 90);
+        main.appendChild(t);
+        if (d.who || d.ts) {
+          var by = document.createElement('span');
+          by.className = 'lgm-hit-by';
+          by.textContent = [d.who, when(d.ts)].filter(Boolean).join(' \u00b7 ');
+          main.appendChild(by);
+        }
         k.className = 'lgm-hit-kind'; k.textContent = KIND[d.kind] || '';
-        b.appendChild(k);
+        b.appendChild(main); b.appendChild(k);
         b.addEventListener('click', function () { go(d); });
         li.appendChild(b); list.appendChild(li);
       });
@@ -1151,7 +1169,7 @@
       if (term.length < 2) { asked = ''; close(); return; }
       if (term === asked) return;
       asked = term;
-      fetch('/map/search?q=' + encodeURIComponent(term), { credentials: 'same-origin' })
+      fetch('/map/search?q=' + encodeURIComponent(term) + '&tz=' + (-new Date().getTimezoneOffset()), { credentials: 'same-origin' })
         .then(function (r) { return r.json(); })
         .then(function (data) { if (asked === term && q.value.trim() === term) show(data.results || []); })
         .catch(function () { /* err-ok: a failed search leaves the list as it was */ });

@@ -252,3 +252,7 @@ main.wrap>.lgmap .lgmap-canvas{flex:1;min-height:0;height:auto;border-radius:0}
 .lgm-hit:hover,.lgm-hit:focus{background:rgba(143,208,234,.16)}
 .lgm-hit-kind{font-size:.75rem;color:rgba(200,230,245,.65);flex:none}
 .lgm-hit-none{padding:.55rem .7rem;color:rgba(220,240,250,.6)}
+.lgm-hit-main{display:flex;flex-direction:column;gap:.1rem;min-width:0}
+.lgm-hit-text{overflow-wrap:anywhere}
+.lgm-hit-by{font-size:.75rem;color:rgba(200,230,245,.6)}
+.lgm-bars:has(.lgm-hits:not([hidden])){z-index:70}   /* the open results list sits over your drop, the pad and the peek */

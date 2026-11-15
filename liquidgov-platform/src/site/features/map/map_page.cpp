@@ -40,7 +40,7 @@ std::string map_page_body(const std::string& user, const std::string& focus) {
             // search (Brandon 2026-11-15: "a search bar at the top where you can search for stuff"): GET /map/search;
             // picking a result takes you to it on the map (lgmap.js). Without scripts it is the people search.
             "<form id=\"lgm-search\" class=\"lgm-search\" role=\"search\" method=\"GET\" action=\"/search\">"
-            "<input id=\"lgm-q\" name=\"q\" type=\"search\" placeholder=\"Search people, groups, places, proposals, posts\" "
+            "<input id=\"lgm-q\" name=\"q\" type=\"search\" placeholder=\"Search people, places, posts, messages, dates\" "
             "aria-label=\"Search the map\" autocomplete=\"off\" enterkeyhint=\"search\" maxlength=\"80\">"
             "<ul id=\"lgm-hits\" class=\"lgm-hits\" role=\"listbox\" aria-label=\"Results\" hidden></ul></form>"
             "<div class=\"lgm-navrow\">"

@@ -59,6 +59,7 @@ set(LG_SITE_SOURCES
   src/site/features/people/people_routes.cpp
   src/site/features/communities/communities_routes.cpp
   src/site/features/map/map_routes.cpp
+  src/site/features/map/map_search.cpp
   src/site/features/notices/notices_routes.cpp
   src/site/features/settings/settings_routes.cpp
   src/site/features/admin/admin_routes.cpp

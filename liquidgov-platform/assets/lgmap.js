@@ -52,7 +52,20 @@
   // poolR: a pool's half width in map units (its half height is POOL_Y of that); the label's size follows the pool.
   var POOLS = root.getAttribute('data-pools') === '1';
   var POOL_Y = 0.9, POOL_GAP = 240;
-  function poolR(d) { return d.kind === 'you' ? 220 : d.kind === 'mine' ? 175 : d.kind === 'more' ? 120 : 145; }
+  function poolR(d) { return d.R || (d.kind === 'you' ? 220 : d.kind === 'mine' ? 175 : d.kind === 'more' ? 120 : 145); }
+  // Room on a pool's shore: each channel's mouth takes MOUTH map units of it (its 98-wide shore and some land either
+  // side), so a pool with many channels grows (poolFit) until they all fit, and the channels leaving it are spread at
+  // least mouthAngle apart (worldPlace): mouths never run into each other.
+  var MOUTH = 140;
+  function mouthAngle(R) { return 2 * Math.asin(Math.min(1, MOUTH / 2 / R)); }
+  function poolFit(c, k) {
+    var R = poolR(c), R0 = R;
+    while (k * mouthAngle(R) > 2 * Math.PI * 0.9 && R < 1200) R += 10;
+    if (R === R0) return;
+    c.R = R;
+    var sh = c.el && c.el.querySelector('.lgs');
+    if (sh) { sh.setAttribute('rx', R); sh.setAttribute('ry', R * POOL_Y); }
+  }
   function poolFont(d) { return Math.round(poolR(d) * (d.kind === 'you' ? 0.3 : 0.2)); }
   function poolLabel(d) { return d.kind === 'you' ? 'Main' : d.label; }
   var nodes = {};   // id -> {id,label,kind,page,rel,x,y,el,expanded}
@@ -574,6 +587,7 @@
   function worldPlace(c, items) {
     var cc = centerOf(c), p = c.from && nodes[c.from] ? centerOf(nodes[c.from]) : null;
     var out0 = p ? Math.atan2(cc.y - p.y, cc.x - p.x) : -Math.PI / 2, all = !p;
+    if (POOLS) return poolPlace(c, items, cc, out0, all);
     var taken = Object.keys(nodes).map(function (id) { var r = nodes[id].region; return { x: r.cx, y: r.cy, w: r.hw, h: r.hh }; });
     var hc = POOLS ? halfOf(c) : c.kind === 'you' ? { w: YOU_R * sizeOf(c), h: YOU_R * sizeOf(c) } : halfOf(c);
     var far = POOLS ? POOL_GAP : 120, step = POOLS ? 160 : 90, gap = POOLS ? 90 : GAP;
@@ -594,6 +608,74 @@
       placed.push({ x: Math.round(spot.x - W / 2), y: Math.round(spot.y - H / 2) });
     });
     return placed;
+  }
+  // pools: the new pools go round pool c on its far side, each channel at least a mouth's width from the next (the
+  // pool grows first if they do not fit), leaving the way back clear; each as near as it can be without touching another
+  // pool (POOL_GAP of land at least, so channels stay long enough to read).
+  // how far pool o's middle is from the straight channel between p and (x, y)
+  function segAway(p, x, y, o) {
+    var dx = x - p.x, dy = y - p.y, L = dx * dx + dy * dy, t = L ? Math.max(0, Math.min(1, ((o.x - p.x) * dx + (o.y - p.y) * dy) / L)) : 0;
+    return Math.hypot(p.x + t * dx - o.x, p.y + t * dy - o.y);
+  }
+  function poolPlace(c, items, cc, out0, all) {
+    if (!items.length) return [];
+    poolFit(c, items.length + (all ? 0 : 1));
+    var R0 = poolR(c), step = mouthAngle(R0) * 1.05, k = items.length;
+    var span = all ? 2 * Math.PI : 2 * Math.PI - 2 * step;   // the way back keeps a mouth's width either side
+    var gapA = Math.min(span / k, Math.max(step * 1.5, Math.PI / 4));   // close together, never closer than a mouth
+    var start = all ? out0 : out0 - gapA * (k - 1) / 2;
+    var taken = Object.keys(nodes).map(function (id) { var r = nodes[id].region; return { x: r.cx, y: r.cy, w: r.hw, h: r.hh }; });
+    var LAND = 120;
+    // the directions channels already leave c by (to boxes on the map linked to it): a new one keeps a mouth away
+    var used = [];
+    Object.keys(edges).forEach(function (k) {
+      var e = edges[k], o = e.a === c.id ? nodes[e.b] : e.b === c.id ? nodes[e.a] : null;
+      if (o) { var q = centerOf(o); used.push(Math.atan2(q.y - cc.y, q.x - cc.x)); }
+    });
+    function roomAt(a) { return used.every(function (u) { var d = Math.abs(Math.atan2(Math.sin(a - u), Math.cos(a - u))); return d >= step; }); }
+    // a shore with no room left for one more mouth: the pool grows until there is (its mouths then sit closer)
+    function makeRoom() {
+      for (var g = 0; g < 120; g++) {
+        for (var q = 0; q < 72; q++) if (roomAt(q * Math.PI / 36)) return;
+        poolFit(c, 0); c.R = poolR(c) + 10;
+        var sh = c.el && c.el.querySelector('.lgs');
+        if (sh) { sh.setAttribute('rx', c.R); sh.setAttribute('ry', c.R * POOL_Y); }
+        R0 = c.R; step = mouthAngle(R0) * 1.05;
+      }
+    }
+    function grow(by) {
+      c.R = poolR(c) + by;
+      var sh = c.el && c.el.querySelector('.lgs');
+      if (sh) { sh.setAttribute('rx', c.R); sh.setAttribute('ry', c.R * POOL_Y); }
+      R0 = c.R; step = mouthAngle(R0) * 1.05;
+    }
+    return items.map(function (d, i) {
+      makeRoom();
+      var h = halfOf(d), a0 = start + gapA * i, x = 0, y = 0, found = false;
+      // nearest first; at each distance its own direction, then turned further either way. The spot must not touch
+      // another pool, its channel must not run through one, and its mouth needs room on the shore. Nothing within 8
+      // steps out: the pool grows a little and it looks again; still nothing: the first spot not touching a pool.
+      function look(rings, needRoom) {
+        var D = Math.max(R0, R0 * POOL_Y) + h.w + POOL_GAP;
+        for (var t = 0; t < rings; t++, D += 90) {
+          for (var j = 0; j < 25; j++) {
+            var a = a0 + (j % 2 ? 1 : -1) * Math.ceil(j / 2) * Math.PI / 12;
+            x = cc.x + D * Math.cos(a); y = cc.y + D * Math.sin(a);
+            if ((!needRoom || roomAt(a)) && taken.every(function (o) {
+              if (o.x === cc.x && o.y === cc.y) return true;   // the pool it leaves
+              if (Math.abs(o.x - x) < o.w + h.w + LAND && Math.abs(o.y - y) < o.h + h.h + LAND) return false;
+              return !needRoom || segAway(cc, x, y, o) >= Math.max(o.w, o.h) + 60;
+            })) return true;
+          }
+        }
+        return false;
+      }
+      for (var tries = 0; tries < 12 && !found; tries++) { found = look(8, true); if (!found) grow(20); }
+      if (!found) look(60, false);
+      taken.push({ x: x, y: y, w: h.w, h: h.h });
+      used.push(Math.atan2(y - cc.y, x - cc.x));
+      return { x: Math.round(x - W / 2), y: Math.round(y - H / 2) };
+    });
   }
   // a "+N more" box keeps its rest, so Back and the trail can draw it again
   function dataOf(n) { return { id: n.id, label: n.label, kind: n.kind, page: n.page, rel: n.rel, sub: n.sub, more: n.more }; }
@@ -1032,6 +1114,56 @@
     });
   }
   window.LG_MAP.goTo = function (id) { return focusBox(id, 'now'); };   // moves there without opening its page
+  // Search (Brandon 2026-11-15: "a search bar at the top where you can search for stuff"): as you type (two letters),
+  // GET /map/search lists what your map may show; picking one (tap, or Enter for the first) takes you there: it is put
+  // next to where you are and your drop goes to it (LG_MAP.goTo). Esc or an empty box closes the list.
+  (function () {
+    var form = document.getElementById('lgm-search'), q = document.getElementById('lgm-q'), list = document.getElementById('lgm-hits');
+    if (!form || !q || !list) return;
+    var KIND = { person: 'Person', group: 'Group', city: 'Place', prop: 'Proposal', post: 'Post', dept: 'Topic' };
+    var timer = 0, asked = '', hits = [];
+    function close() { list.hidden = true; list.textContent = ''; hits = []; }
+    function go(d) {
+      close(); q.value = ''; q.blur();
+      LG_MAP.goTo(d.id).catch(function () { status('That is not on your map.'); });
+    }
+    function show(results) {
+      list.textContent = '';
+      hits = results;
+      if (!results.length) {
+        var none = document.createElement('li'); none.className = 'lgm-hit-none'; none.textContent = 'Nothing found';
+        list.appendChild(none);
+      }
+      results.forEach(function (d) {
+        var li = document.createElement('li'), b = document.createElement('button'), k = document.createElement('span');
+        li.setAttribute('role', 'option');
+        b.type = 'button'; b.className = 'lgm-hit'; b.setAttribute('data-id', d.id);
+        b.textContent = short(d.label, 60);
+        k.className = 'lgm-hit-kind'; k.textContent = KIND[d.kind] || '';
+        b.appendChild(k);
+        b.addEventListener('click', function () { go(d); });
+        li.appendChild(b); list.appendChild(li);
+      });
+      list.hidden = false;
+    }
+    function ask() {
+      var term = q.value.trim();
+      if (term.length < 2) { asked = ''; close(); return; }
+      if (term === asked) return;
+      asked = term;
+      fetch('/map/search?q=' + encodeURIComponent(term), { credentials: 'same-origin' })
+        .then(function (r) { return r.json(); })
+        .then(function (data) { if (asked === term && q.value.trim() === term) show(data.results || []); })
+        .catch(function () { /* err-ok: a failed search leaves the list as it was */ });
+    }
+    q.addEventListener('input', function () { clearTimeout(timer); timer = setTimeout(ask, 180); });
+    q.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') { close(); q.blur(); }
+      e.stopPropagation();   // typing never walks your drop
+    });
+    form.addEventListener('submit', function (e) { e.preventDefault(); if (hits.length) go(hits[0]); else ask(); });
+    document.addEventListener('pointerdown', function (e) { if (!form.contains(e.target)) close(); });
+  })();
   window.LG_MAP.ready = load('you').then(function (data) {
     var r = addNode(data.node, 0, 0);
     centerPath = [dataOf(r)];

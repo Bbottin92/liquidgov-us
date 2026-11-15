@@ -37,6 +37,12 @@ std::string map_page_body(const std::string& user, const std::string& focus) {
             // (Brandon 2026-11-13 5:01 AM): the trail's box you came from goes back, the wheel or a pinch zooms; the
             // walker's Drop/Scroll switch joins this row (walker.js, lgmap_walk.js).
             "<div class=\"lgmap-canvas\"><div id=\"lgm-bars\" class=\"lgm-bars\">"
+            // search (Brandon 2026-11-15: "a search bar at the top where you can search for stuff"): GET /map/search;
+            // picking a result takes you to it on the map (lgmap.js). Without scripts it is the people search.
+            "<form id=\"lgm-search\" class=\"lgm-search\" role=\"search\" method=\"GET\" action=\"/search\">"
+            "<input id=\"lgm-q\" name=\"q\" type=\"search\" placeholder=\"Search people, groups, places, proposals, posts\" "
+            "aria-label=\"Search the map\" autocomplete=\"off\" enterkeyhint=\"search\" maxlength=\"80\">"
+            "<ul id=\"lgm-hits\" class=\"lgm-hits\" role=\"listbox\" aria-label=\"Results\" hidden></ul></form>"
             "<div class=\"lgm-navrow\">"
             "<div id=\"lgm-trail\" class=\"lgm-trail\" role=\"navigation\" aria-label=\"Where you are on the map\"></div></div>"
             "<div id=\"lgm-filter\" class=\"lgm-filter\" role=\"group\" aria-label=\"Show at this level\"></div>"

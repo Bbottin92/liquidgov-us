@@ -215,6 +215,38 @@ std::optional<std::string> map_routes(Route& r) {
         return http_raw("200 OK","application/json; charset=utf-8","{\"ok\":true,\"css\":true}");
     }
     // One box and its connections, as JSON, for assets/lgmap.js.
+    // Search on the map (Brandon 2026-11-15: "there should be a search bar at the top where you can search for stuff"):
+    // GET /map/search?q= -> {"results":[node, ...]}, at most 12: people (the people search's own rule: findability,
+    // blocks), then groups, cities, proposals and posts whose name or text holds the words. Every result passes
+    // map_gnode, so it is exactly what this viewer's map may show. Two letters at least.
+    if(method=="GET"&&path=="/map/search") {
+        if(!acc) return http_raw("401 Unauthorized","application/json; charset=utf-8","{\"error\":\"login\"}");
+        auto low = [](std::string t) { for (auto& c : t) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c))); return t; };
+        const std::string raw = trim_ws(qs.count("q") ? qs.at("q") : std::string()), q = low(raw);
+        std::string out = "{\"results\":[";
+        if (q.size() >= 2 && q.size() <= 80) {
+            const MapCtx ctx = map_ctx(user);
+            std::set<std::string> seen;
+            std::size_t n = 0;
+            const std::size_t kMax = 12;
+            auto add = [&](const std::string& id) {
+                if (n >= kMax || seen.count(id)) return;
+                auto g = map_gnode(id, user);
+                if (!g) return;
+                seen.insert(id);
+                out += std::string(n++ ? "," : "") + map_node_json(*g, map_relevance(*g, ctx));
+            };
+            auto has = [&](const std::string& text) { return low(text).find(q) != std::string::npos; };
+            for (const auto& u : people_hits(user, raw)) add("user:" + u);
+            for (const auto& c : g_store.all_communities()) if (n < kMax && (has(c.name) || has(c.subcategory))) add("group:" + c.slug);
+            for (const auto& cu : g_store.cities_in_use()) if (n < kMax && has(cu.name)) add("city:" + cu.key);
+            auto props = g_store.all_proposals();
+            for (auto it = props.rbegin(); it != props.rend() && n < kMax; ++it) if (has(it->title)) add("prop:" + std::to_string(it->id));
+            for (const auto& p : g_store.recent_posts(400)) if (n < kMax && has(p.text)) add("post:" + std::to_string(p.id));
+        }
+        out += "]}";
+        return http_raw("200 OK","application/json; charset=utf-8", out, "Cache-Control: no-store\r\n");
+    }
     if(method=="GET"&&path=="/map/node") {
         if(!acc) return http_raw("401 Unauthorized","application/json; charset=utf-8","{\"error\":\"login\"}");
         const std::string id = qs.count("n") ? qs.at("n") : std::string("root");

@@ -424,14 +424,12 @@
     // the water joins; the pools sit over the channels, and at each mouth a patch of water (.lge-mouth) opens the pool's
     // shore so the channel runs into it. The name of where a channel goes is written inside the pool at its mouth, along
     // the shore (.lge-sign). All copy the channel's own visibility and fading (proximity), every tick.
-    var fillLayer = null, flowLayer = edgeLayer, mouthLayer = null;
+    var fillLayer = null, flowLayer = edgeLayer;
     if (POOLS) {
       fillLayer = document.createElementNS(NS, 'g'); fillLayer.id = 'lgm-fills';
       flowLayer = document.createElementNS(NS, 'g'); flowLayer.id = 'lgm-flows';
-      mouthLayer = document.createElementNS(NS, 'g'); mouthLayer.id = 'lgm-mouths';
       edgeLayer.parentNode.insertBefore(fillLayer, edgeLayer.nextSibling);
       edgeLayer.parentNode.insertBefore(flowLayer, fillLayer.nextSibling);
-      nodeLayer.parentNode.insertBefore(mouthLayer, nodeLayer.nextSibling);
       defs.innerHTML += '<radialGradient id="lgm-pool" cx="50%" cy="45%" r="60%"><stop offset="0" stop-color="#1b5d80"/>' +
         '<stop offset="1" stop-color="#2a7ea6"/></radialGradient>';
     }
@@ -456,18 +454,23 @@
       if (!a || !b) return;
       var dx = b.cx - a.cx, dy = b.cy - a.cy, L = Math.sqrt(dx * dx + dy * dy) || 1, ux = dx / L, uy = dy / L;
       var t = 1 / Math.sqrt(ux * ux / (a.hw * a.hw) + uy * uy / (a.hh * a.hh)), px = a.cx + ux * t, py = a.cy + uy * t;
+      // drawn inside the pool's own drawing (its <g>, in its own units), so a pool laid over another covers its mouths
+      var g = box(from), sh = g && g.querySelector('.lgs');
+      if (!sh) return;
+      var ox = a.cx - +sh.getAttribute('cx'), oy = a.cy - +sh.getAttribute('cy');
+      px -= ox; py -= oy;
       var mk = key + '>' + from;
-      var m = mouthLayer.querySelector('.lge-mouth[data-for="' + mk + '"]');
-      if (!m) { m = document.createElementNS(NS, 'path'); m.setAttribute('class', 'lge-mouth'); m.setAttribute('data-for', mk); mouthLayer.insertBefore(m, mouthLayer.firstChild); }
+      var m = g.querySelector('.lge-mouth[data-for="' + mk + '"]');
+      if (!m) { m = document.createElementNS(NS, 'path'); m.setAttribute('class', 'lge-mouth'); m.setAttribute('data-for', mk); sh.parentNode.insertBefore(m, sh.nextSibling); }
       var d = 'M' + (px - ux * 26).toFixed(1) + ' ' + (py - uy * 26).toFixed(1) + ' L' + (px + ux * 22).toFixed(1) + ' ' + (py + uy * 22).toFixed(1);
       if (m.getAttribute('d') !== d) m.setAttribute('d', d);
-      var sg = mouthLayer.querySelector('.lge-sign[data-for="' + mk + '"]');
-      if (!sg) { sg = document.createElementNS(NS, 'text'); sg.setAttribute('class', 'lge-sign'); sg.setAttribute('data-for', mk); mouthLayer.appendChild(sg); }
-      var fs = Math.round(a.hw * 0.11), inset = fs * 1.4, sx = px - ux * inset, sy = py - uy * inset;
+      var sg = g.querySelector('.lge-sign[data-for="' + mk + '"]');
+      if (!sg) { sg = document.createElementNS(NS, 'text'); sg.setAttribute('class', 'lge-sign'); sg.setAttribute('data-for', mk); g.appendChild(sg); }
+      var fs = Math.round(Math.min(a.hw * 0.11, 22)), inset = fs * 1.4, sx = px - ux * inset, sy = py - uy * inset;
       var deg = Math.atan2(uy, ux) * 180 / Math.PI + 90;
       if (deg > 90) deg -= 180; else if (deg <= -90) deg += 180;   // never upside down
       var tr = 'rotate(' + deg.toFixed(1) + ' ' + sx.toFixed(1) + ' ' + sy.toFixed(1) + ')', name = nameOf(to);
-      var most = Math.max(4, Math.floor(a.hw * 0.85 / (fs * 0.6)));   // a sign stays inside its pool
+      var most = Math.max(4, Math.floor(Math.min(a.hw * 0.85, 150) / (fs * 0.6)));   // a sign stays inside its pool and its mouth's stretch of shore
       if (name.length > most) name = name.slice(0, most - 1).replace(/\s+$/, '') + '\u2026';
       if (sg.getAttribute('transform') !== tr) { sg.setAttribute('x', sx.toFixed(1)); sg.setAttribute('y', sy.toFixed(1)); sg.setAttribute('transform', tr); sg.style.fontSize = fs + 'px'; }
       if (sg.textContent !== name) sg.textContent = name;
@@ -487,7 +490,7 @@
       [flowLayer, fillLayer].forEach(function (layer) {
         if (layer) Array.prototype.slice.call(layer.querySelectorAll('.lge-flow,.lge-fill')).forEach(function (f) { if (!keep[f.getAttribute('data-for')]) f.remove(); });
       });
-      if (mouthLayer) Array.prototype.slice.call(mouthLayer.children).forEach(function (x) {
+      if (POOLS) Array.prototype.slice.call(nodeLayer.querySelectorAll('.lge-mouth,.lge-sign')).forEach(function (x) {
         if (x.getAttribute('data-keep')) x.removeAttribute('data-keep'); else x.remove();
       });
     };

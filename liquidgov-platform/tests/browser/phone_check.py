@@ -83,7 +83,11 @@ class Run:
                    " return JSON.stringify({x: (b.left + b.right) / 2, y: Math.max(b.top, 0) + 40, s: window.LG_MAP ? LG_MAP.scale() : null}); })()")
         if not isinstance(f, dict):
             return None
-        for _ in range(12):
+        # until the whole map fits (the scale reaches LG_MAP.fitScale()), at most 40 notches: pools are big, so more are needed
+        for _ in range(40):
+            now = self.j("JSON.stringify([LG_MAP.scale(), LG_MAP.fitScale()])")
+            if isinstance(now, list) and now[0] <= now[1] * 1.02:
+                break
             self.ws.call("Input.dispatchMouseEvent", type="mouseWheel", x=f["x"], y=f["y"], deltaX=0, deltaY=100)
             time.sleep(0.05)
         time.sleep(0.8)

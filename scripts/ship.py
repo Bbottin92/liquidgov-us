@@ -102,6 +102,19 @@ def check(branch, wait_min, out_dir):
         print("     " + f)
     site_changed = any(f.startswith(SITE) for f in files)
 
+    # A local CI record (scripts/local_ci.py, Brandon 2026-11-15: "can we skip github if it costs money now?"): when the
+    # branch head carries deploy/ci-pass/<its liquidgov-platform tree>.txt saying PASS, that run of every workflow
+    # stands in for GitHub's; its VERDICT lines are the phone verdicts. Without one, GitHub is asked as before.
+    rec = local_record(branch)
+    if rec is not None:
+        print("4. CI: local record deploy/ci-pass/%s.txt (%s)" % (rec["tree"], rec["when"] or "no time"))
+        print("5. phone VERDICT: " + ("; ".join(rec["verdicts"]) if rec["verdicts"] else "none in the record"))
+        if site_changed and (not rec["verdicts"] or any("ALL-PASS" not in v for v in rec["verdicts"])):
+            reasons.append("phone VERDICT not ALL-PASS")
+        print("6. screenshots: on the machine that ran local_ci.py (not uploaded)")
+        print("7. other workflows: in the same local record")
+        return finish(branch, reasons, pair, files)
+
     r = newest_run(sha)
     deadline = time.time() + wait_min * 60
     # GitHub lists a run a few seconds after the push. A check started right after `git push` saw none and, for a
@@ -183,6 +196,24 @@ def check(branch, wait_min, out_dir):
             reasons.append("%s %s" % (name, o.get("conclusion")))
     print("7. other workflows on this commit: " + (", ".join("%s %s" % (o["workflowName"], o.get("conclusion")
                                                                         or o.get("status")) for o in others) or "none"))
+    return finish(branch, reasons, pair, files)
+
+
+def local_record(branch):
+    """The branch head's local CI pass record for its own liquidgov-platform tree, or None."""
+    try:
+        tree = git("rev-parse", branch + ":liquidgov-platform")
+        text = git("show", "%s:deploy/ci-pass/%s.txt" % (branch, tree))
+    except Fail:
+        return None
+    lines = text.splitlines()
+    if not lines or lines[0].strip() != "LIQUIDGOV_LOCAL_CI PASS":
+        return None
+    when = next((l[5:].strip() for l in lines if l.startswith("when ")), "")
+    return {"tree": tree, "when": when, "verdicts": [l.strip() for l in lines if l.startswith("VERDICT ")]}
+
+
+def finish(branch, reasons, pair, files):
     print()
     if reasons:
         print("SHIP_NOT_READY %s: %s" % (branch, "; ".join(reasons)))

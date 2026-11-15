@@ -130,6 +130,28 @@ try:
     check("deploy-only commit on top of a green tree -> CI_GATE_OK (matched by tree, not commit)",
           rc == 0 and out.startswith("CI_GATE_OK") and pair != code, (rc, out))
 
+    # the local CI record (scripts/local_ci.py, 2026-11-15: GitHub Actions costs money): deploy/ci-pass/<tree>.txt
+    os.makedirs(os.path.join(repo, "deploy", "ci-pass"), exist_ok=True)
+    commit("deploy/ci-pass/%s.txt" % t_old, "LIQUIDGOV_LOCAL_CI PASS\n", "record for the OLD tree")
+    rc, out = gate("go", ["FAIL"])
+    check("a local pass record for a DIFFERENT tree -> refused (GitHub asked, and it fails)", rc == 1 and "CI_GATE_REFUSED" in out, (rc, out))
+    commit("deploy/ci-pass/%s.txt" % t_code, "LIQUIDGOV_LOCAL_CI FAIL\n", "a failed record")
+    rc, out = gate("go", [])
+    check("a record that does not say PASS -> refused", rc == 1 and "CI_GATE_REFUSED" in out, (rc, out))
+    commit("deploy/ci-pass/%s.txt" % t_code, "LIQUIDGOV_LOCAL_CI PASS\ntree %s\n" % t_code, "the pass record")
+    rc, out = gate("go", ["FAIL"])
+    check("a committed local pass record for HEAD's tree -> CI_GATE_OK without GitHub",
+          rc == 0 and out.startswith("CI_GATE_OK") and "local CI record" in out, (rc, out))
+    with open(os.path.join(repo, "deploy", "ci-pass", t_code + ".txt"), "w", encoding="utf-8", newline="\n") as f:
+        f.write("LIQUIDGOV_LOCAL_CI PASS\n")
+    sh(repo, "git", "rm", "-q", "--cached", "deploy/ci-pass/%s.txt" % t_code)
+    sh(repo, "git", "commit", "-q", "-m", "record only on disk")
+    rc, out = gate("go", [])
+    check("a pass record on disk but not committed -> refused", rc == 1 and "CI_GATE_REFUSED" in out, (rc, out))
+    sh(repo, "git", "rm", "-q", "-r", "--cached", "--ignore-unmatch", "deploy/ci-pass")
+    shutil.rmtree(os.path.join(repo, "deploy", "ci-pass"))
+    sh(repo, "git", "commit", "-q", "--allow-empty", "-m", "no records")
+
     with open(os.path.join(repo, "liquidgov-platform", "a.cpp"), "a", encoding="utf-8", newline="\n") as f:
         f.write("// not committed\n")
     rc, out = gate("go", ["20 %s completed success" % code])

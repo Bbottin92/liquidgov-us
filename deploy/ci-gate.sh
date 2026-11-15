@@ -25,7 +25,7 @@ decide() { # $1 = OK|REFUSED, $2 = why
     if [ "$1" = OK ]; then echo "CI_GATE_OK $2"; exit 0; fi
     if [ "$MODE" = dry ]; then echo "CI_GATE_WOULD_REFUSE $2"; exit 0; fi
     echo "CI_GATE_REFUSED $2"
-    echo "Push the branch, wait for the platform run to pass (gh run list --workflow platform.yml), then run go again."
+    echo "Run python3 scripts/local_ci.py, commit and push its deploy/ci-pass record (or let a GitHub platform run pass), then run go again."
     exit 1
 }
 
@@ -42,6 +42,12 @@ TREE="$(git_in_repo rev-parse "HEAD:liquidgov-platform")" || decide REFUSED "(ca
 [ -n "$TREE" ] || decide REFUSED "(empty liquidgov-platform tree hash for HEAD)"
 DIRTY="$(git_in_repo status --porcelain -- liquidgov-platform)" || decide REFUSED "(cannot read git status in $REPO)"
 [ -z "$DIRTY" ] || decide REFUSED "(uncommitted changes under liquidgov-platform/: CI never saw them)"
+
+# A local CI record (Brandon 2026-11-15: "can we skip github if it costs money now?"): scripts/local_ci.py runs the
+# same workflows here and, when everything that gates passes, writes deploy/ci-pass/<this tree>.txt. A committed record
+# for exactly this liquidgov-platform tree counts as the platform run passing; otherwise GitHub is asked, as before.
+REC="$(git_in_repo show "HEAD:deploy/ci-pass/$TREE.txt" 2>/dev/null | head -1 | tr -d '\r')"
+if [ "$REC" = "LIQUIDGOV_LOCAL_CI PASS" ]; then decide OK "(local CI record deploy/ci-pass/$TREE.txt)"; fi
 
 if [ -n "${LIQUIDGOV_GH:-}" ]; then GH="$LIQUIDGOV_GH"
 elif command -v gh >/dev/null 2>&1; then GH=gh

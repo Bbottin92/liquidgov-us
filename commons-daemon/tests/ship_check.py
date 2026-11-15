@@ -132,6 +132,31 @@ try:
                                        "log": LOG_OK, "pngs": True}, wait="0")
     check("still running past --wait: not ready", rc == 1 and "still running" in out, out)
 
+    # ---- a local CI record (scripts/local_ci.py, 2026-11-15) stands in for GitHub: no gh run, gh even failing
+    def with_record(name, path, first_line, verdict):
+        sh(work, "git", "checkout", "-q", "-b", name, "master")
+        full = os.path.join(work, path)
+        os.makedirs(os.path.dirname(full), exist_ok=True)
+        open(full, "w", encoding="utf-8").write(name + "\n")
+        sh(work, "git", "add", "."); sh(work, "git", "commit", "-q", "-m", name)
+        tree = sh(work, "git", "rev-parse", "HEAD:liquidgov-platform")
+        rec = os.path.join(work, "deploy", "ci-pass", tree + ".txt")
+        os.makedirs(os.path.dirname(rec), exist_ok=True)
+        open(rec, "w", encoding="utf-8").write(first_line + "\ntree " + tree + "\nwhen 2026-11-15T00:00:00Z\n" + verdict + "\n")
+        sh(work, "git", "add", "."); sh(work, "git", "commit", "-q", "-m", name + " record")
+        sh(work, "git", "push", "-q", "origin", name)
+        sh(work, "git", "checkout", "-q", "master")
+    with_record("wip/5-localci", "liquidgov-platform/src/c.cpp", "LIQUIDGOV_LOCAL_CI PASS", "VERDICT ci: ALL-PASS  (9 checks)")
+    with_record("wip/6-localbad", "liquidgov-platform/src/d.cpp", "LIQUIDGOV_LOCAL_CI PASS", "VERDICT ci: FAILS: 4c tap")
+    with_record("wip/7-notpass", "liquidgov-platform/src/e.cpp", "LIQUIDGOV_LOCAL_CI FAIL", "VERDICT ci: ALL-PASS")
+    sh(work, "git", "fetch", "-q", "origin")
+    rc, out = ship(tmp, "wip/5-localci", dict(ok_state, broken=True))
+    check("local pass record with ALL-PASS: SHIP_READY with GitHub down", rc == 0 and "local record" in out and "SHIP_READY wip/5-localci" in out, out)
+    rc, out = ship(tmp, "wip/6-localbad", dict(ok_state, broken=True))
+    check("local record whose phone VERDICT is not ALL-PASS: not ready", rc == 1 and "phone VERDICT not ALL-PASS" in out, out)
+    rc, out = ship(tmp, "wip/7-notpass", {"runs": [None], "log": "", "pngs": False})
+    check("a record that does not say PASS is ignored: GitHub is asked (no run: not ready)", rc == 1 and "no CI run" in out, out)
+
     # ---- merge: only a READY branch moves origin/master, and only by fast-forward
     def merge(branch, state):
         sp = os.path.join(tmp, "gh_state.json")

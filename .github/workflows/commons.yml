@@ -3,20 +3,12 @@ name: commons
 # Only when the game's own files change (2026-11-10, Brandon: CI "as long as it doesnt cost money"): the Commons is
 # paused, yet this job ran on every master push and used 222 of the month's first 242 Actions minutes. Every step
 # below reads only these paths (the civic+client gate needs a commons/ file to fire at all).
+# Manual only (Brandon 2026-11-15: "can we skip github if it costs money now?"): the repo is private and Actions
+# minutes cost money, so pushes no longer start this. scripts/local_ci.py runs these same steps instead, and
+# deploy/ci-gate.sh and scripts/ship.py accept its deploy/ci-pass record. Run it here by hand (Actions tab, Run
+# workflow) only if Actions is paid for again; the push/pull_request triggers it had are in git history.
 on:
-  push:
-    branches: [master]
-    paths:
-      - "commons/**"
-      - "commons-daemon/**"
-      - "Persistence/TheCommons/**"
-      - ".github/workflows/commons.yml"
-  pull_request:
-    paths:
-      - "commons/**"
-      - "commons-daemon/**"
-      - "Persistence/TheCommons/**"
-      - ".github/workflows/commons.yml"
+  workflow_dispatch:
 
 permissions:
   contents: read

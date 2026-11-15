@@ -10,12 +10,14 @@ When everything that gates passes, it writes deploy/ci-pass/<liquidgov-platform 
 (it touches only deploy/, so the platform tree, and the record's name, stay the same) and push; deploy/ci-gate.sh and
 scripts/ship.py accept it in place of a GitHub run for exactly that tree.
 
+Runs each workflow on the branches it used to start on (commons: master only; --only forces one).
 Usage: python3 scripts/local_ci.py [--build DIR] [--only platform|hook-checks|commons] [--no-record]
   --build DIR: the build folder to use (and reuse between runs); default ~/.cache/liquidgov-local-ci/lg
 Refuses to run with uncommitted changes (the record must describe a commit). Prints LOCAL_CI_PASS or LOCAL_CI_FAIL
 last; exit 0 / 1. Steps that only set up a GitHub runner (checkout, caches, installing tools, uploads) are skipped:
 the machine running this needs cmake, a compiler, python3, node and the pre-installed Chromium (LG_BROWSER)."""
 import datetime
+import fnmatch
 import os
 import re
 import subprocess
@@ -29,6 +31,10 @@ WORKFLOWS = ["platform", "hook-checks", "commons"]
 # setup steps a GitHub runner needs and this machine does not (by step name, start of the name)
 SKIP_NAMES = ("tools the build", "did the platform change", "git identity")
 COMMONS_PATHS = ("commons/", "commons-daemon/", "Persistence/TheCommons/", ".github/workflows/commons.yml")
+# The branches each workflow started on before it was made manual-only (2026-11-15; see git history): platform and
+# hook-checks on master and wip/**, commons on master only. A run here follows the same triggers, so the pass record
+# means what a green GitHub run used to mean; `--only <name>` runs one whatever the branch.
+TRIGGER_BRANCHES = {"platform": ("master", "wip/*"), "hook-checks": ("master", "wip/*"), "commons": ("master",)}
 
 
 def git(*args):
@@ -69,6 +75,7 @@ def main():
         subprocess.run(["git", "-C", REPO, "fetch", "-q", "--unshallow"], check=False)   # some hook checks read history
     subprocess.run(["git", "-C", REPO, "fetch", "-q", "origin", "master"], check=False)
     head = git("rev-parse", "HEAD")
+    branch = git("rev-parse", "--abbrev-ref", "HEAD")
     tree = git("rev-parse", "HEAD:liquidgov-platform")
     changed = [f for f in git("diff", "--name-only", "origin/master...HEAD").splitlines() if f]
     runner = tempfile.mkdtemp(prefix="lg-local-ci-")
@@ -86,7 +93,10 @@ def main():
     for wf in WORKFLOWS:
         if only and wf != only:
             continue
-        if wf == "commons" and not any(f.startswith(COMMONS_PATHS) for f in changed):
+        if not only and not any(fnmatch.fnmatch(branch, g) for g in TRIGGER_BRANCHES[wf]):
+            results.append("skip  %s (it started only on %s, not on %s)" % (wf, " and ".join(TRIGGER_BRANCHES[wf]), branch))
+            continue
+        if wf == "commons" and not only and not any(f.startswith(COMMONS_PATHS) for f in changed):
             results.append("skip  commons (no commons files changed, as its paths filter)")
             continue
         spec = yaml.safe_load(open(os.path.join(REPO, ".github", "workflows", wf + ".yml")))

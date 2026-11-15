@@ -14,6 +14,9 @@
    camera (toggle on/off), and a drip speed adjustment slider"): menu(el) makes a drop open it. Microphone, Camera and
    Hear myself are on every page and stay as you set them (CONTROLS.media); the speed is remembered on this device. */
 (function () {
+  // A page shown inside a portal's peek window (lgmap_walk.js adds lg_peek=1 to its address) is only looked at: no
+  // drop, no presence, no camera or microphone there (here.js and here_media.js need LG_WALKER, so they stop too).
+  if (window.parent !== window && /[?&]lg_peek=1(&|$)/.test(location.search)) return;
   var CONTROLS = {
     dirs: ['up', 'left', 'right', 'down'],
     // The walker's top speed: a dot walks maxSpeed px per 40 ms tick with a key held or the touchpad pulled all the way.

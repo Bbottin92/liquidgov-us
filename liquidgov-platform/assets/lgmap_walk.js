@@ -319,6 +319,7 @@
     walker.setAttribute('data-y', String(Math.round(me.y * 10) / 10));
     herePlace();
     presence();
+    peekTick();
   }
 
   var walker = document.createElement('div');
@@ -352,6 +353,88 @@
     });
     return best;
   }
+  // ---- the portal (Brandon 2026-11-14: "walk up to the portal of whatever page youre curious about. maybe youd see a
+  // small semi-translucent window blow up from the center of the portal when you get within entry range. if you click A
+  // within that range, youd see that window expand to fill the screen while simultaneously becoming opaque until it
+  // effectively becomes the page youre occupying"; the side panel is abandoned). Standing in or next to a box with a
+  // page for dwellMs, its page (live, only looked at: lg_peek=1, walker.js) grows out of the box's middle in a
+  // see-through window; walking away shrinks it back. A there, or opening the box (a double tap, a hold, Enter), grows
+  // it over the whole screen as it turns solid, and then you are on that page.
+  var PEEK = { dwellMs: 250, w: 520, h: 380, alpha: 0.6, ms: 320, growMs: 420, cls: 'lgm-peek' };
+  var peekEl = null, peekFrame = null, peekFor = '', peekPage = '', peekSince = 0, peekOpen = false, entering = false;
+  function peekUrl(page) { return page + (page.indexOf('?') < 0 ? '?' : '&') + 'lg_peek=1'; }
+  function peekBuild() {
+    peekEl = document.createElement('div');
+    peekEl.className = PEEK.cls;
+    peekEl.setAttribute('aria-hidden', 'true');
+    peekFrame = document.createElement('iframe');
+    peekFrame.setAttribute('tabindex', '-1');
+    peekFrame.title = 'Peek';
+    peekEl.appendChild(peekFrame);
+    peekEl.hidden = true;
+    document.body.appendChild(peekEl);
+  }
+  // the window's place: above the box when there is room, else below, inside the screen; it grows from the box's middle
+  function peekPlace(el, page) {
+    var b = el.getBoundingClientRect(), vw = window.innerWidth, vh = window.innerHeight;
+    var w = Math.min(PEEK.w, vw - 24), h = Math.min(PEEK.h, Math.round(vh * 0.45));
+    var cx = (b.left + b.right) / 2, top = b.top - h - 12 >= 8 ? b.top - h - 12 : Math.min(vh - h - 8, b.bottom + 12);
+    var left = Math.max(12, Math.min(vw - w - 12, cx - w / 2));
+    top = Math.max(8, top);
+    peekEl.style.left = left + 'px'; peekEl.style.top = top + 'px';
+    peekEl.style.width = w + 'px'; peekEl.style.height = h + 'px';
+    peekEl.style.transformOrigin = (cx - left) + 'px ' + ((b.top + b.bottom) / 2 - top) + 'px';
+    // the page drawn at the screen's size, shrunk into the window, so the peek looks like the page itself
+    var k = w / vw;
+    peekFrame.style.width = vw + 'px'; peekFrame.style.height = Math.round(h / k) + 'px';
+    peekFrame.style.transform = 'scale(' + k + ')';
+    if (peekPage !== page) { peekPage = page; peekFrame.src = peekUrl(page); }
+  }
+  function peekShow(id, el, page) {
+    if (!peekEl) peekBuild();
+    peekFor = id;
+    peekPlace(el, page);
+    peekEl.hidden = false;
+    peekEl.classList.remove('lgm-peek-full');
+    void peekEl.offsetWidth;   // start the grow from the small state
+    peekEl.classList.add('lgm-peek-on');
+    peekOpen = true;
+    walker.setAttribute('data-peek', id);
+  }
+  function peekHide() {
+    if (!peekEl || !peekOpen || entering) return;
+    peekOpen = false;
+    peekFor = '';
+    walker.removeAttribute('data-peek');
+    peekEl.classList.remove('lgm-peek-on');
+    setTimeout(function () { if (!peekOpen && !entering) peekEl.hidden = true; }, PEEK.ms);
+  }
+  // A: the window fills the screen and turns solid, then you are on the page
+  function enter(id, page) {
+    if (entering || !page) return false;
+    var el = box(id);
+    if (!peekOpen || peekFor !== id) { if (!el) return false; peekShow(id, el, page); }
+    entering = true;
+    walker.setAttribute('data-entering', id);
+    var go = function () { location.assign(page); };
+    if (W.reducedMotion()) { go(); return true; }
+    requestAnimationFrame(function () { peekEl.classList.add('lgm-peek-full'); });
+    setTimeout(go, PEEK.growMs);
+    return true;
+  }
+  MAP.onOpen = function (id, page) { return enter(id, page); };
+  // each tick: the box you are at (in it, or right next to it) and its page
+  function peekTick() {
+    if (entering) return;
+    var t = me ? target() : null, id = t ? t.getAttribute('data-id') : '', rec = id ? MAP.instance(id) : null;
+    var page = rec && rec.page ? rec.page : '';
+    if (!page) { peekSince = 0; peekHide(); return; }
+    if (peekOpen && peekFor === id) { peekPlace(t, page); return; }
+    if (!peekSince || walker.getAttribute('data-peek-wait') !== id) { peekSince = Date.now(); walker.setAttribute('data-peek-wait', id); return; }
+    if (Date.now() - peekSince >= PEEK.dwellMs) peekShow(id, t, page);
+  }
+  window.addEventListener('pageshow', function (e) { if (e.persisted && entering) { entering = false; peekHide(); } });   // Back to the map
+
   var want = '', ready = false;
   var arrival = W.takeHandoff();   // came through the portal: you start at that page's box
   W.mount({
@@ -361,6 +444,9 @@
     select: function () {
       var el = me ? target() : null;
       if (!el) { W.hop(dropPortrait); return true; }
+      // the box you are at has a page: go in through its portal
+      var rec = MAP.instance(el.getAttribute('data-id'));
+      if (rec && rec.page && enter(rec.id, rec.page)) return true;
       el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
       return true;
     },

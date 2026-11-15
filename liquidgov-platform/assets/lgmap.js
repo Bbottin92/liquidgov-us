@@ -725,8 +725,7 @@
     trail(n);
     for (var k in edges) if (edges[k].a === n.id || edges[k].b === n.id) sizeEdge(edges[k]);
     light(n.id);
-    if (n.page && open) openPanel(n);
-    else if (!n.page || !narrow()) closePanel();
+    if (n.page && open) openPage(n);
     // After the field opens (the map narrows), glide to the box and what grew out of it.
     // Phone, a tap that did not open: wait before gliding, so a second tap (double-tap to open) lands on the same box
     // instead of wherever the glide moved it.
@@ -739,27 +738,11 @@
     });
   }
 
-  function openPanel(n) {
-    panel.hidden = false;
-    root.classList.add('lgm-has-panel');
-    ptitle.textContent = n.label;
-    openLink.href = n.page;
-    // Same page, framed: the server drops its header for framed loads.
-    // location.replace: a new page in the panel is not a history entry, so Back steps through the map (live look #5)
-    if (frame.getAttribute('data-page') !== n.page) {
-      frame.setAttribute('data-page', n.page);
-      editing = false;
-      if (editBtn) { editBtn.hidden = true; editBtn.textContent = 'Edit'; }
-      try { frame.contentWindow.location.replace(n.page); } catch (e) { frame.setAttribute('src', n.page); } // err-ok: a frame showing another site can't be replaced; src still loads it
-    }
-    // Phone: the page is a full-screen sheet over the map (CSS); the page behind must not scroll, and the close
-    // button says where it goes back to (Brandon 2026-11-07: "full-screen sheet over the map").
-    if (narrow()) {
-      document.documentElement.classList.add('lgm-sheet-open');
-      closeBtn.textContent = '‹ MAINstream';
-    } else {
-      closeBtn.innerHTML = '&times;';
-    }
+  // a box's page opens as the page itself (through the walker's portal when it is on the map), not in a side panel
+  function openPage(n) {
+    var M = window.LG_MAP;
+    if (M && typeof M.onOpen === 'function' && M.onOpen(n.id, n.page)) return;
+    location.assign(n.page);
   }
   function closePanel() {
     panel.hidden = true;
@@ -957,7 +940,11 @@
   // map's ZOOM.max), gliding; fit() is the normal view again. The zoom is walker.js's (LG_WALKER.CONTROLS.mapZoom).
   window.LG_MAP = {
     // spatial step 8: a box is an instance; this is its record (region and valve, as built), or null if it is not on the map
-    instance: function (id) { var n = nodes[id]; return n ? { id: n.id, region: n.region, valve: n.valve, css: n.css } : null; },
+    instance: function (id) { var n = nodes[id]; return n ? { id: n.id, region: n.region, valve: n.valve, css: n.css, page: n.page || '' } : null; },
+    // The portal (2026-11-15, Brandon: the side panel is abandoned; a page is entered through its portal): opening a
+    // box's page calls onOpen(id, page) when the map walker set it (it grows the peek into the page); with no walker
+    // (the droplet hidden in Settings) the page simply opens.
+    onOpen: null,
     focus: function (id, zoom) {
       var n = nodes[id], b = svg.getBoundingClientRect();
       if (!n || !b.width) return false;

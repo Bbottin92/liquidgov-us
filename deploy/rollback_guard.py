@@ -19,7 +19,7 @@ Static, so it can miss a format change that keeps the same field count (a reorde
 
 Usage: python3 deploy/rollback_guard.py <live commit> [repo root]   -> ROLLBACK_GUARD_OK / _OVERRIDE (exit 0),
        ROLLBACK_GUARD_REFUSED (exit 1), usage/git errors (exit 2, which callers treat as a refusal).
-Tests: commons-daemon/tests/rollback_guard_check.py."""
+Tests: tests/repo/rollback_guard_check.py."""
 import os
 import re
 import shutil

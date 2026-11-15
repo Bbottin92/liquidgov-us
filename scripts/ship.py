@@ -12,7 +12,7 @@ Usage: python scripts/ship.py check <branch> [--wait MIN] [--out DIR]
 Last line: SHIP_READY <branch> or SHIP_NOT_READY <branch>: <reasons>; exit 0 when ready, 1 when not, 2 on bad usage.
 Nothing here merges, pushes or deploys. A gh or git error counts as not ready (fails closed).
 Test seams: SHIP_GH (JSON list, the gh command), SHIP_REPO (repo root), SHIP_NO_FETCH=1, SHIP_POLL_SECONDS.
-Tests: commons-daemon/tests/ship_check.py"""
+Tests: tests/repo/ship_check.py"""
 import datetime
 import json
 import os
@@ -181,7 +181,7 @@ def check(branch, wait_min, out_dir):
             if site_changed and not pngs:
                 reasons.append("no phone screenshots")
     # Every other workflow on this commit counts too (2026-11-11: a red commons run was invisible to ship).
-    # commons-daemon/tests/ship_workflows_check.py
+    # tests/repo/ship_workflows_check.py
     out = run(GH + ["run", "list"] + GH_REPO + ["--commit", sha, "--limit", "50",
                                                 "--json", "workflowName,status,conclusion"], "gh run list (all)")
     try:
@@ -262,7 +262,7 @@ MAIN = os.environ.get("SHIP_MAIN") or ""
 SH = json.loads(os.environ["SHIP_SH"]) if os.environ.get("SHIP_SH") else ["wsl.exe", "bash", "-lc"]
 # Claude's own key (CLAUDE.md: the server logs must name who connected). These go INSIDE the command text: wsl.exe does
 # not pass Windows environment variables through (WSLENV is empty here), so the first real dry run used the shared
-# deploy key (Grok Bot's review B3, 2026-11-11). commons-daemon/tests/ship_fixes_check.py
+# deploy key (Grok Bot's review B3, 2026-11-11). tests/repo/ship_fixes_check.py
 DEPLOY_KEY = "C:/Users/Brandon/.ssh/id_ed25519_claude"
 DEPLOY_SSH = "/mnt/c/Windows/System32/OpenSSH/ssh.exe -i %s -o IdentitiesOnly=yes" % DEPLOY_KEY
 # `export ...;` (not a `NAME=value cmd` prefix): it covers every command in the line, including shell builtins; a

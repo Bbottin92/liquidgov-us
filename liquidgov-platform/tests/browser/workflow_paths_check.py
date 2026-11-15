@@ -4,7 +4,7 @@ Brief 5 item 4. Static: reads .github/workflows/*.yml as text, no browser.
 
   P0  the workflows are there
   P1  each path in a workflow (run lines and comments) that starts at a top-level folder of the repo
-      (liquidgov-platform/, commons-daemon/, scripts/, deploy/, ...) and ends in a file name with an extension exists,
+      (liquidgov-platform/, tests/, scripts/, deploy/, ...) and ends in a file name with an extension exists,
       so a reader or a step never follows a pointer to nothing. Globs, $VARIABLES and ${{ }} paths are not repo paths.
 
 Usage: python3 workflow_paths_check.py [<repo root>]

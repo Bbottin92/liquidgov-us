@@ -18,8 +18,8 @@ import os
 import subprocess
 import sys
 
-# lives in scripts/ (naming.toml: commons-daemon/tests holds only *_check.py); the checks are in commons-daemon/tests
-HERE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "commons-daemon", "tests")
+# lives in scripts/ (naming.toml: tests/repo holds only *_check.py); the checks are in tests/repo
+HERE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tests", "repo")
 ZERO = "0" * 40
 SRC, ASSETS = "liquidgov-platform/src/*", "liquidgov-platform/assets/*"
 DEPLOY = ["deploy/*", "naming.toml"]
@@ -28,8 +28,8 @@ CHECKS = {
     "lgp1_consistency.py": ["liquidgov-platform/libs/*", SRC, ASSETS, "deploy/city-undo.py",
                             "liquidgov-platform/tests/e2e/city_undo.sh", "deploy/*-undo.py"],
     "one_app_check.py": [SRC, ASSETS],
-    "pwa_files_check.py": ["commons/*", "commons-daemon/deploy/*", "Persistence/TheCommons/art/*", SRC],
-    "naming_check.py": ["naming.toml", "liquidgov-platform/tests/*", "commons-daemon/*", SRC, "deploy/*"],
+    "pwa_files_check.py": [SRC],
+    "naming_check.py": ["naming.toml", "liquidgov-platform/tests/*", "tests/repo/*", SRC, "deploy/*"],
     "restart_bypass_check.py": DEPLOY + ["liquidgov-platform/tests/e2e/*"],
     "make_go_check.py": DEPLOY,
     "tidy_worktrees_check.py": ["scripts/*"],
@@ -55,8 +55,8 @@ CHECKS = {
     "ship_recheck_check.py": ["scripts/ship.py"],
     "affected_checks_check.py": [],
     "affected_checks_master_check.py": [],
-    "ci_runs_checks_check.py": [".github/workflows/*", "scripts/run_hook_checks.py", "commons-daemon/tests/*"],
-    "ci_skip_list_check.py": ["scripts/run_hook_checks.py", "commons-daemon/tests/*"],
+    "ci_runs_checks_check.py": [".github/workflows/*", "scripts/run_hook_checks.py", "tests/repo/*"],
+    "ci_skip_list_check.py": ["scripts/run_hook_checks.py", "tests/repo/*"],
     "hook_windows_skip_check.py": [".githooks/*", "scripts/affected_checks.py", "scripts/run_hook_checks.py"],
     "hook_git_env_check.py": [".githooks/*", "scripts/affected_checks.py", "scripts/run_hook_checks.py"],
     "hook_linux_only_skip_check.py": [".githooks/*", "scripts/affected_checks.py", "scripts/run_hook_checks.py"],
@@ -88,7 +88,7 @@ def select(changed, added, on_disk):
         return run_order(on_disk), "hook or selector changed (%s): every check" % ", ".join(hit)
     pick = set(n for n in on_disk if n not in CHECKS)  # unmapped: always
     for c in changed:
-        if c.startswith("commons-daemon/tests/") and os.path.basename(c) in on_disk:
+        if c.startswith("tests/repo/") and os.path.basename(c) in on_disk:
             pick.add(os.path.basename(c))
         for name, pats in CHECKS.items():
             if any(fnmatch.fnmatch(c, p) for p in pats):

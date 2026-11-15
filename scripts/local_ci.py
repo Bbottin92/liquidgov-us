@@ -1,7 +1,7 @@
 """local_ci: run the repo's GitHub workflows here instead of on GitHub, and write a pass record the deploy gate accepts.
 Brandon 2026-11-15: "can we skip github if it costs money now?" (the repo is private; GitHub Actions minutes ran out
 and runs were blocked by billing). Keeping the code on GitHub is free; only the Actions runs cost. This runs every
-`run:` step of .github/workflows/platform.yml, hook-checks.yml and (when its files changed) commons.yml, in order,
+`run:` step of .github/workflows/platform.yml and hook-checks.yml, in order,
 the way GitHub would on a push, with the same rules: a step marked continue-on-error (the report-only browser checks)
 is reported but never fails the run; any other failing step does.
 
@@ -10,8 +10,8 @@ When everything that gates passes, it writes deploy/ci-pass/<liquidgov-platform 
 (it touches only deploy/, so the platform tree, and the record's name, stay the same) and push; deploy/ci-gate.sh and
 scripts/ship.py accept it in place of a GitHub run for exactly that tree.
 
-Runs each workflow on the branches it used to start on (commons: master only; --only forces one).
-Usage: python3 scripts/local_ci.py [--build DIR] [--only platform|hook-checks|commons] [--no-record]
+Runs each workflow on the branches it used to start on (--only forces one).
+Usage: python3 scripts/local_ci.py [--build DIR] [--only platform|hook-checks] [--no-record]
   --build DIR: the build folder to use (and reuse between runs); default ~/.cache/liquidgov-local-ci/lg
 Refuses to run with uncommitted changes (the record must describe a commit). Prints LOCAL_CI_PASS or LOCAL_CI_FAIL
 last; exit 0 / 1. Steps that only set up a GitHub runner (checkout, caches, installing tools, uploads) are skipped:
@@ -27,14 +27,14 @@ import tempfile
 import yaml
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-WORKFLOWS = ["platform", "hook-checks", "commons"]
+WORKFLOWS = ["platform", "hook-checks"]
 # setup steps a GitHub runner needs and this machine does not (by step name, start of the name)
 SKIP_NAMES = ("tools the build", "did the platform change", "git identity")
-COMMONS_PATHS = ("commons/", "commons-daemon/", "Persistence/TheCommons/", ".github/workflows/commons.yml")
 # The branches each workflow started on before it was made manual-only (2026-11-15; see git history): platform and
-# hook-checks on master and wip/**, commons on master only. A run here follows the same triggers, so the pass record
+# hook-checks on master and wip/** (a third, commons, on master only, was removed with the Commons 2026-11-15). A run
+# here follows the same triggers, so the pass record
 # means what a green GitHub run used to mean; `--only <name>` runs one whatever the branch.
-TRIGGER_BRANCHES = {"platform": ("master", "wip/*"), "hook-checks": ("master", "wip/*"), "commons": ("master",)}
+TRIGGER_BRANCHES = {"platform": ("master", "wip/*"), "hook-checks": ("master", "wip/*")}
 
 
 def git(*args):
@@ -77,7 +77,6 @@ def main():
     head = git("rev-parse", "HEAD")
     branch = git("rev-parse", "--abbrev-ref", "HEAD")
     tree = git("rev-parse", "HEAD:liquidgov-platform")
-    changed = [f for f in git("diff", "--name-only", "origin/master...HEAD").splitlines() if f]
     runner = tempfile.mkdtemp(prefix="lg-local-ci-")
     os.makedirs(os.path.dirname(build), exist_ok=True)
     os.symlink(build, os.path.join(runner, "lg"))   # $RUNNER_TEMP/lg is the build, kept between runs
@@ -95,9 +94,6 @@ def main():
             continue
         if not only and not any(fnmatch.fnmatch(branch, g) for g in TRIGGER_BRANCHES[wf]):
             results.append("skip  %s (it started only on %s, not on %s)" % (wf, " and ".join(TRIGGER_BRANCHES[wf]), branch))
-            continue
-        if wf == "commons" and not only and not any(f.startswith(COMMONS_PATHS) for f in changed):
-            results.append("skip  commons (no commons files changed, as its paths filter)")
             continue
         spec = yaml.safe_load(open(os.path.join(REPO, ".github", "workflows", wf + ".yml")))
         for jname, job in spec["jobs"].items():

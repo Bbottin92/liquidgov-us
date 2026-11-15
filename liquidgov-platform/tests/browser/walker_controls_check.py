@@ -35,11 +35,15 @@ are the cases this file runs now.
   SC1 scrolling by hand works as always: the page stays where you scrolled it and the dot where it stood
   CE2 the next move brings the dot back to the middle, and every move after keeps it there
   MN1 no microphone or camera buttons on the screen; a tap on your drop opens its menu next to it, on the screen, at
-      1.0x, with no switches where the page has no microphone or camera
+      1.0x, with the Microphone, Camera and Hear myself switches, all off
   MN2 a tap elsewhere closes it, and so does B (Esc)
   MN3 the drip speed at 2.0x walks about twice as far as 1x in the same hold
   MN4 the drip speed is remembered on the device
-  MN5 where the page has a microphone and camera (window.LG_MEDIA), both switches show, off; a tap flips one
+  MN5 Camera on: your camera is a mirrored bubble on your own drop (taps reach the drop), and the choice is kept
+  MN6 on the next page the camera is on again by itself
+  MN7 Microphone on, then Hear myself: your own sound plays back; Hear myself off: it stops
+  MN8 Camera and Microphone off: the bubble goes, nothing stays open, the next page keeps them off; a refused camera
+      turns its switch back off
   Desktop 1280x800:
   D2  each movement key (W/A/S/D and the arrows) moves your dot its way
   D3  select (Enter) uses the button you stand next to (positive control: nothing was used before)
@@ -388,7 +392,7 @@ class Run(m.Run):
                    " and names the drop menu (microphone, camera, a drip speed range around 1x)",
                    bool(C) and set(C.get("dirs", [])) == set(WAY) and set(WAY) | {"select", "back"} <= acts
                    and all(a in C.get("buttons", {}) for a in ["select", "back"]) and "center" not in C.get("buttons", {})
-                   and set((C.get("menu") or {}).get("toggles") or {}) == {"mic", "cam"}
+                   and set((C.get("menu") or {}).get("toggles") or {}) == {"mic", "cam", "hear"}
                    and 0 < S.get("min", 0) < 1 < S.get("max", 0) and S.get("store")
                    and (C.get("maxSpeed") or 0) > 0 and all((C.get("touchpad") or {}).get(k, 0) > 0
                                                             for k in ("reach", "width", "height", "alpha", "lift", "margin"))
@@ -483,12 +487,13 @@ class Run(m.Run):
         m1 = self.j(self.MENU) or {}
         mb, db = m1.get("menu") or {}, m1.get("drop") or {}
         self.check("MN1 no microphone or camera buttons on the screen; tap your drop and its menu opens next to it, on the"
-                   " screen, with the drip speed at 1.0x (and no switches where the page has no microphone or camera)",
+                   " screen, with the drip speed at 1.0x and the Microphone, Camera and Hear myself switches, all off",
                    not m0.get("open") and not m1.get("onScreenMedia") and m1.get("open") and m1.get("expanded") == "true"
                    and m1.get("role") == "button" and m1.get("speed") == 1 and (m1.get("out") or "").startswith("1.0")
                    and bool(mb) and mb["l"] >= 0 and mb["r"] <= m1.get("vw", 0) and mb["t"] >= 0 and mb["b"] <= m1.get("vh", 0)
                    and (mb["b"] <= db.get("t", 0) or mb["t"] >= db.get("b", 0))
-                   and len(m1.get("toggles") or []) == 2 and not any(t["shown"] for t in m1["toggles"]), {"before": m0, "open": m1})
+                   and [t["kind"] for t in m1.get("toggles") or [] if t["shown"]] == ["mic", "cam", "hear"]
+                   and all(t["pressed"] == "false" for t in m1["toggles"]), {"before": m0, "open": m1})
         self.shot("drop-menu-phone", {"x": 0, "y": self.j("JSON.stringify(scrollY)") or 0, "width": 390, "height": 844})
         # the drip speed: 2x walks about twice as far in the same hold, and it is remembered on the device
         self.tap("body > footer.site")   # a tap elsewhere closes it
@@ -529,26 +534,86 @@ class Run(m.Run):
         self.check("MN4 the drip speed is remembered on this device (2.0x after a reload)",
                    m4.get("speed") == 2 and (self.j(self.CENTER) or {}).get("stored") == "2", m4)
         self.key("escape")
-        # where the page has a microphone and camera (here_media.js sets window.LG_MEDIA), the menu shows them and a
-        # tap on one flips it through LG_MEDIA (here_media_check.py does the same with the real one on the real server)
-        self.j("(() => { localStorage.removeItem(LG_WALKER.CONTROLS.menu.speed.store); const st = {mic: false, cam: false}; window.__flips = [];"
-               " window.LG_MEDIA = {state: () => ({mic: st.mic, cam: st.cam}), toggle: k => { st[k] = !st[k]; window.__flips.push(k);"
-               " document.dispatchEvent(new CustomEvent('lg-media-change')); }}; return '1'; })()")
+        self.media_cases()
+
+    # A stand-in camera and microphone (a canvas and a tone), put in before the page's own scripts: this headless browser
+    # has neither. getUserMedia calls are counted; window.__deny makes the next one refuse, as a person can.
+    FAKE_MEDIA = r"""(() => { if (!navigator.mediaDevices) return; window.__gum = []; navigator.mediaDevices.getUserMedia = c => {
+      window.__gum.push(JSON.stringify({a: !!c.audio, v: !!c.video}));
+      if (window.__deny) { window.__deny = false; return Promise.reject(new DOMException('no', 'NotAllowedError')); }
+      const out = new MediaStream();
+      if (c.video) { const cv = document.createElement('canvas'); cv.width = 64; cv.height = 48; const g = cv.getContext('2d');
+        setInterval(() => { g.fillStyle = '#' + Math.floor(Math.random() * 4095).toString(16).padStart(3, '0'); g.fillRect(0, 0, 64, 48); }, 100);
+        cv.captureStream(10).getVideoTracks().forEach(t => out.addTrack(t)); }
+      if (c.audio) { const ac = new AudioContext(), o = ac.createOscillator(), d = ac.createMediaStreamDestination(); o.connect(d); o.start();
+        d.stream.getAudioTracks().forEach(t => out.addTrack(t)); }
+      return Promise.resolve(out); }; })()"""
+    SELF = ("(() => { const M = LG_WALKER.media, st = M.state(), s = M.stream(), b = document.querySelector('.' + LG_WALKER.CONTROLS.media.selfCls),"
+            " d = document.querySelector('#lg-here .lg-here-dot.me'), v = b && b.querySelector('video');"
+            " return JSON.stringify({st: st, tracks: s ? s.getTracks().map(t => t.kind + ':' + t.readyState) : [], bubble: !!b, inMyDot: !!(b && d && d.contains(b)),"
+            " playing: !!(v && v.srcObject && !v.paused), mirrored: v ? getComputedStyle(v).transform : null, tapsThrough: b ? getComputedStyle(b).pointerEvents : null,"
+            " hearing: M.hearing(), gum: window.__gum || null,"
+            " stored: localStorage.getItem(LG_WALKER.CONTROLS.media.store)}); })()")
+
+    def media_tap(self, kind):
         self.tap_drop()
         time.sleep(0.3)
-        m5 = self.j(self.MENU) or {}
-        self.tap("#" + (self.j("JSON.stringify(LG_WALKER.CONTROLS.menu.id)") or "none") + " [data-kind=mic]")
-        time.sleep(0.2)
-        m6 = self.j(self.MENU) or {}
-        flips = self.j("JSON.stringify(window.__flips)")
-        self.contrast("phone")
+        self.tap("#" + (self.j("JSON.stringify(LG_WALKER.CONTROLS.menu.id)") or "none") + " [data-kind=%s]" % kind)
+        time.sleep(0.5)
         self.key("escape")
-        self.check("MN5 with a microphone and camera on the page, the menu shows both switches (off); a tap on Microphone"
-                   " turns it on through LG_MEDIA and the switch says so; Camera is untouched",
-                   [t["kind"] for t in m5.get("toggles") or [] if t["shown"]] == ["mic", "cam"]
-                   and all(t["pressed"] == "false" for t in m5["toggles"]) and flips == ["mic"]
-                   and [(t["kind"], t["pressed"]) for t in m6.get("toggles") or []] == [("mic", "true"), ("cam", "false")],
-                   {"before": m5.get("toggles"), "after": m6.get("toggles"), "flips": flips})
+        time.sleep(0.2)
+
+    def media_cases(self):
+        """MN5-MN8: your camera and microphone (Brandon 2026-11-15): on every page, kept on until you turn them off; your
+        own camera on your drop; hear yourself on its own switch."""
+        self.ws.call("Page.addScriptToEvaluateOnNewDocument", source=self.FAKE_MEDIA)
+        self.goto("/walk")
+        self.j("(() => { localStorage.removeItem(LG_WALKER.CONTROLS.media.store); return '1'; })()")
+        self.goto("/walk")
+        self.drop()
+        time.sleep(0.3)
+        self.media_tap("cam")
+        a = self.j(self.SELF) or {}
+        self.contrast("phone")
+        self.check("MN5 Camera on: your camera shows as a mirrored bubble on your own drop (taps still reach the drop), and the"
+                   " choice is kept on this device",
+                   (a.get("st") or {}).get("cam") is True and a.get("bubble") and a.get("inMyDot") and a.get("playing")
+                   and "matrix(-1" in (a.get("mirrored") or "") and a.get("tapsThrough") == "none"
+                   and any(t.startswith("video:live") for t in a.get("tracks") or []) and '"cam":true' in (a.get("stored") or ""), a)
+        self.shot("self-camera-phone", {"x": 0, "y": self.j("JSON.stringify(scrollY)") or 0, "width": 390, "height": 844})
+        self.goto("/start")   # another page: still on, with no tap
+        self.drop()
+        time.sleep(1.0)
+        b = self.j(self.SELF) or {}
+        self.check("MN6 on the next page the camera is on again by itself, bubble and all (no tap)",
+                   (b.get("st") or {}).get("cam") is True and b.get("bubble") and b.get("playing") and b.get("gum") == ['{"a":false,"v":true}'], b)
+        self.media_tap("mic")
+        self.media_tap("hear")
+        c = self.j(self.SELF) or {}
+        self.media_tap("hear")
+        c2 = self.j(self.SELF) or {}
+        self.check("MN7 Microphone on, then Hear myself: your own sound plays back to you; Hear myself off: it stops",
+                   (c.get("st") or {}).get("mic") is True and (c.get("st") or {}).get("hear") is True and c.get("hearing") is True
+                   and any(t.startswith("audio:live") for t in c.get("tracks") or []) and c2.get("hearing") is False
+                   and (c2.get("st") or {}).get("mic") is True, {"on": c, "off": c2})
+        self.media_tap("cam")
+        self.media_tap("mic")
+        d = self.j(self.SELF) or {}
+        self.goto("/walk")
+        self.drop()
+        time.sleep(0.8)
+        e = self.j(self.SELF) or {}
+        self.j("(() => { window.__deny = true; return '1'; })()")
+        self.media_tap("cam")
+        f = self.j(self.SELF) or {}
+        self.check("MN8 Camera and Microphone off: the bubble goes, nothing is open, and the next page keeps them off; a"
+                   " refused camera turns its switch back off",
+                   not d.get("bubble") and d.get("tracks") == [] and (e.get("st") or {}).get("cam") is False
+                   and (e.get("st") or {}).get("mic") is False and e.get("gum") == [] and (f.get("st") or {}).get("cam") is False
+                   and not f.get("bubble"), {"off": d, "next page": e, "refused": f})
+        # leave no choices behind for the cases after this (the drip speed from MN3/MN4, the media switches)
+        self.j("(() => { localStorage.removeItem(LG_WALKER.CONTROLS.media.store); localStorage.removeItem(LG_WALKER.CONTROLS.menu.speed.store);"
+               " return '1'; })()")
 
     def pull(self, tp, dx, dy, hold_s, shot=None):
         """Touch the touchpad left of its middle (the pull counts from there, not the middle), drag by (dx, dy) px, hold, let go; returns how far your dot went (x, y)."""

@@ -1,0 +1,58 @@
+# Credibility: earned agency, fair consequences, no sabotage (questions before building)
+
+Asked by Claude, 2026-11-15. Brandon: "I want to figure out a good, fair way to allow people to earn more credibility to
+access more agency or face bad credibility if you do things that people disapprove of. but i want to make sure that one
+person cant sabotage anothers credibility". Nothing is built.
+
+## What exists today
+
+- Profiles show "Standing: Associate · good": fixed text, nothing computes it.
+- The site's own pages say a platform account is "not a citizen identity, not a vote, and not standing", and that
+  voting weight, offices, land and judgments live in a separate governance kernel.
+- Accounts are bound to a phone at signup (one person, one account, roughly). Friends are mutual. Blocking hides
+  people from each other.
+
+## The core idea: credibility is something many independent people give you, never one
+
+1. **Many voices, each capped.** Whatever one person does can only move your credibility a little, once per period,
+   with diminishing returns: the second and third marks from the same person count less than the first. Nobody can
+   push you up or down alone, however hard they try.
+2. **Independent agreement counts more than a crowd.** People who are closely linked (friends, the same small group,
+   accounts that always act together, all new) count partly as one voice. A brigade of ten friends counts nearer to
+   two people than to ten. Agreement from people who do not know each other counts most.
+3. **Disapproval is about a specific act, with a reason, and is judged, not tallied.** A report on something you did
+   (a post, a message, a page) does nothing by itself. Enough independent reports send it to a small jury: people
+   picked at random, not connected to either side, with decent credibility of their own. Only the jury's finding moves
+   your credibility, and by an amount that fits the act.
+4. **False reporting costs the reporter.** If juries keep disagreeing with someone's reports, their reports weigh less,
+   and repeated bad-faith reports cost their own credibility. Reporting someone right after a dispute with them (they
+   reported you, rejected your proposal, unfriended you) is discounted.
+5. **Nothing is permanent.** Bad marks fade over months; good standing is earned slowly and kept by being active. You
+   can see why your credibility changed (which act, what the jury found), and appeal once to a fresh jury. Reporters
+   stay anonymous to you, so reporting is safe.
+6. **New accounts start in the middle and weigh little.** What a new account gives or takes counts for little until it
+   has some history, so making accounts to attack someone does not work (the phone binding already makes that costly).
+7. **A floor nobody can lose.** Some things credibility never takes away: talking to friends, reading, your own page,
+   blocking, reporting, appealing. Credibility only unlocks more on top.
+
+## What credibility could unlock (agency)
+
+A ladder, for example: posting where strangers see it → starting a group → making the 3 blank pages → starting
+proposals → wider reach in feeds and on the map → being picked for juries → moderating a group. Each step needs a
+level and a little time on the site.
+
+## Questions for Brandon
+
+1. **Civic power or only the platform?** Should credibility ever touch votes, proposals or anything civic, or only
+   platform features (reach, pages, groups, juries)? Claude's recommendation: never vote weight, ever (one person, one
+   vote; a credibility-weighted vote lets the popular silence the unpopular). At most, starting a proposal needs a
+   modest level, so spam stays out.
+2. **What earns it?** Options: (A) endorsements people give on purpose ("this person is credible about X"); (B) earned
+   from what others do with your work (proposals that pass, posts people keep, groups people stay in); (C) both.
+   Claude: C, with B weighted more, since it is harder to fake.
+3. **One number or many?** (A) one site-wide credibility; (B) credibility per group or topic (trusted in the gardening
+   group says nothing about politics); (C) both, site-wide being a blend. Claude: C.
+4. **Who sees it?** (A) everyone sees everyone's level; (B) you see your own, others see only what it unlocked;
+   (C) public level, private details. Claude: C.
+5. **Juries**: is a small random jury (say 5 people) the right shape for judging disapproved acts, or do you picture
+   something else?

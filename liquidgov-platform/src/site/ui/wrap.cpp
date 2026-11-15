@@ -11,10 +11,11 @@ namespace liquidgov::site {
 // Your droplet on every page (Brandon 2026-11-15: "every page should just include the droplet that way we keep things
 // universal and standardized and consolidated"). A page that already has a walker (a profile page, with other people's
 // dots: here_page_bits; the map; the home page) keeps its own; every other page gets yours on its own (here.js with no
-// room: nothing is sent anywhere). Not when this browser hid it (Settings > Your droplet, the lg_drop=off cookie).
+// room: nothing is sent anywhere). Not when this browser hid it (Settings > Your droplet, the lg_drop=off cookie), and
+// not on a page that asks not to (<!--lg:no-drop-->: the drawing tool, where the pad would sit on the canvas).
 // Before </body>, outside <main>, so it is never inside what a page swaps out.
 static void add_drop(std::string& page, const std::string& user) {
-    if (g_drop_off || page.find("/walker.js") != std::string::npos) return;
+    if (g_drop_off || page.find("/walker.js") != std::string::npos || page.find("<!--lg:no-drop-->") != std::string::npos) return;
     auto pos = page.rfind("</body>");
     if (pos == std::string::npos) return;
     // usernames are [A-Za-z0-9._-] only, so JSON-escaped text cannot end the script

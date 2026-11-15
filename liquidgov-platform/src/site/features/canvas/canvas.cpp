@@ -477,6 +477,9 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
     html += "<script>window.LG_CANVAS={\"px\":" + std::to_string(px) + ",\"frames\":" + std::to_string(existing_frames) +
             ",\"user\":\"" + json_escape(username) + "\",\"mode\":\"" + (portrait ? "portrait" : (post_mode ? "post" : "frames")) +
             "\",\"postTarget\":\"" + json_escape(post_target) + "\"};</script><script src=\"" + asset_url("canvas.js") + "\"></script>";
+    // No droplet on the drawing tool (2026-11-15): the canvas fills a phone's screen and the touchpad would sit on it,
+    // taking the strokes. wrap() leaves out the drop on a page that carries this marker.
+    html += "<!--lg:no-drop-->";
     return html;
 }
 

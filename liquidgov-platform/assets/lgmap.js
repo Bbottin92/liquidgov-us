@@ -169,6 +169,7 @@
   // touch screen): the one place its limits live. min/max: the scale the map may reach (and never below the scale that
   // keeps names MIN_PX, floorScale); wheel: one notch's factor. The walker's camera stays under max too.
   var ZOOM = { min: 0.3, max: 2.5, wheel: 1.1 };
+  if (POOLS) ZOOM.min = 0.12;   // pools are big: the whole ring round you needs a smaller scale to fit a phone
   function floorFor(list) {
     var f = 0;
     // pools: their names are big, and the whole ring round you must fit a phone when you zoom out, so 8 px is the floor there

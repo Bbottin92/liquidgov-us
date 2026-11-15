@@ -828,19 +828,56 @@ class Run(m.Run):
         walker is in it (data-at) or the time is up. Returns the last state."""
         keys = keys or {"up": "w", "down": "s", "left": "a", "right": "d"}
         end = time.time() + limit_s
+
+        def hold(dx, dy):
+            # one key, or two at once for a slanted channel (pools, 2026-11-15: dry land stops the drop, so a walk has to
+            # follow the channel; a person holds two keys for a diagonal)
+            n = max(abs(dx), abs(dy)) or 1
+            ks = []
+            if abs(dx) > 0.4 * n:
+                ks.append(keys["right" if dx > 0 else "left"])
+            if abs(dy) > 0.4 * n:
+                ks.append(keys["down" if dy > 0 else "up"])
+            for k in ks:
+                self.ws.call("Input.dispatchKeyEvent", type="keyDown", key=k, windowsVirtualKeyCode=VK.get(k, ord(k.upper())))
+            time.sleep(max(0.05, min(0.35, n / 175.0)))
+            for k in ks:
+                self.ws.call("Input.dispatchKeyEvent", type="keyUp", key=k, windowsVirtualKeyCode=VK.get(k, ord(k.upper())))
+            time.sleep(0.06)
+
         st = self.j(self.WALK) or {}
+        here = st.get("at")
+        if here and here != target:   # first to the middle of the pool you are in: you leave by a channel's mouth
+            for _ in range(25):
+                st = self.j(self.WALK) or {}
+                mid, spot = (st.get("mids") or {}).get(here), st.get("spot")
+                if not mid or not spot or max(abs(mid[0] - spot[0]), abs(mid[1] - spot[1])) < 8:
+                    break
+                hold(mid[0] - spot[0], mid[1] - spot[1])
         while time.time() < end:
             st = self.j(self.WALK) or {}
             to, spot = (st.get("mids") or {}).get(target), st.get("spot")
             if st.get("at") == target or not to or not spot:
                 return st
-            dx, dy = to[0] - spot[0], to[1] - spot[1]
-            if abs(dx) >= abs(dy):
-                self.key(keys["right" if dx > 0 else "left"], max(0.05, min(0.4, abs(dx) / 175.0)))
-            else:
-                self.key(keys["down" if dy > 0 else "up"], max(0.05, min(0.4, abs(dy) / 175.0)))
-            time.sleep(0.08)
+            hold(to[0] - spot[0], to[1] - spot[1])
         return self.j(self.WALK) or {}
+
+    def map_go_pad(self, target, tp, reach):
+        """map_pull_to, from the middle of the pool you are in first (you leave by a channel's mouth)."""
+        st = self.j(self.WALK) or {}
+        here = st.get("at")
+        if here and here != target and tp:
+            for _ in range(25):
+                st = self.j(self.WALK) or {}
+                mid, spot = (st.get("mids") or {}).get(here), st.get("spot")
+                if not mid or not spot:
+                    break
+                dx, dy = mid[0] - spot[0], mid[1] - spot[1]
+                n = (dx * dx + dy * dy) ** 0.5
+                if n < 8:
+                    break
+                self.pull(tp, dx / n * reach, dy / n * reach, max(0.05, min(0.3, n / 175.0)))
+        return self.map_pull_to(target, tp, reach)
 
     def map_pull_to(self, target, tp, reach, limit_s=14):
         """The same with the touchpad: pulls straight toward the box."""
@@ -856,17 +893,31 @@ class Run(m.Run):
             self.pull(tp, dx / n * reach, dy / n * reach, max(0.08, min(0.4, n / 175.0)))
         return self.j(self.WALK) or {}
 
+    def faint(self):
+        """The boxes drawn faint (a layer further out), as {id: opacity}."""
+        return self.j("Object.fromEntries([...document.querySelectorAll('#lgm-nodes .lgn')].filter(b => b.style.opacity && b.style.opacity !== '1'"
+                      " && b.style.visibility !== 'hidden').map(b => [b.getAttribute('data-id'), b.style.opacity]))") or {}
+
+    def pool_zoom(self, box="you"):
+        """The walking zoom lgmap_walk.js should be at: the pool `box` fills the width of the part of the map you can see,
+        or its height when that is the smaller (walkScale)."""
+        return self.j("(() => { const r = LG_MAP.instance(%s).region, s = document.getElementById('lgm-svg').getBoundingClientRect();"
+                      " const k = document.querySelector('#lg-here-pad .lg-here-keys'), pt = k && k.getBoundingClientRect().height ? k.getBoundingClientRect().top : Infinity;"
+                      " const top = Math.max(s.top, 0), bot = Math.min(s.bottom, innerHeight, pt - 8 > top + 80 ? pt - 8 : Infinity);"
+                      " const w = Math.min(s.right, innerWidth) - Math.max(s.left, 0);"
+                      " return Math.max(LG_MAP.ZOOM.min, Math.min(LG_MAP.ZOOM.max, w / (2 * r.hw * 1.04), (bot - top) / (2 * r.hh * 1.12))); })()"
+                      % json.dumps(box)) or 0
+
     def map_desktop(self):
         self.size(1280, 800, False)
         ok = self.map_load()
         st = self.map_walking()
-        zoom = (self.j("JSON.stringify((window.LG_WALKER && LG_WALKER.CONTROLS.mapZoom) || null)") or 0)
-        want = min(st.get("zmax") or 0, (st.get("fit") or 0) * zoom)
+        want = self.pool_zoom()
         self.check("M0 desktop: the map is drawn and the walker stands on you, with no switch to tap", ok and st.get("at") == "you", st.get("at"))
         sp, sn = st.get("spot") or [-9999, -9999], st.get("seen") or [0, 0]
-        self.check("M4 desktop: the map starts zoomed in around the walker (%sx the fitted view; the walker in the middle of "
-                   "the part of the map you can see)" % zoom,
-                   bool(zoom) and abs((st.get("scale") or 0) - want) <= 0.03 * want and want > (st.get("fit") or 9) * 1.2
+        self.check("M4 desktop: the map starts zoomed in around the walker (pools, Brandon's drawing 2026-11-15: the pool you"
+                   " are in fills the part of the map you can see; the walker in its middle)",
+                   bool(want) and abs((st.get("scale") or 0) - want) <= 0.03 * want and want > (st.get("fit") or 9) * 1.2
                    and abs(sp[0] - sn[0]) <= 12 and abs(sp[1] - sn[1]) <= 12,
                    {"scale": st.get("scale"), "fit": st.get("fit"), "want": want, "walker": sp, "middle": sn})
         self.nav_row("map desktop")
@@ -913,14 +964,17 @@ class Run(m.Run):
         # the near filter (zoomed in) and your own zoom out (the wheel)
         sx, sy = (home.get("frame") or [640, 400])[0], (home.get("frame") or [640, 400])[1]
         hid = self.j(self.WALK) or {}
-        self.check("M5 desktop: zoomed in, only the box you are at and the boxes connected to it are shown",
-                   hid.get("near") == "on" and set(hid.get("shown") or []) == {"you"} | {i for i in (hid.get("mids") or {}) if self.linked(hid, "you", i)},
-                   {"near": hid.get("near"), "shown": hid.get("shown")})
+        self.check("M5 desktop: zoomed in at you, you and the boxes connected to it are shown in full",
+                   hid.get("near") == "on" and set(hid.get("shown") or []) >= {"you"} | {i for i in (hid.get("mids") or {}) if self.linked(hid, "you", i)}
+                   and not ({"you"} | {i for i in (hid.get("mids") or {}) if self.linked(hid, "you", i)}) & set(self.faint()),
+                   {"near": hid.get("near"), "shown": hid.get("shown"), "faint": self.faint()})
         to = self.map_go(ring[0]) if ring else {}
-        nb = {ring[0]} | {i for i in (to.get("mids") or {}) if self.linked(to, ring[0], i)} if ring else set()
-        self.check("M5 desktop: standing in %s, boxes not connected to it are hidden (positive control: some are)" % (ring[0] if ring else "?"),
-                   bool(ring) and set(to.get("shown") or []) == nb and len(to.get("shown") or []) < (to.get("all") or 0),
-                   {"shown": to.get("shown"), "all": to.get("all")})
+        two = sorted(set(ring[1:]))
+        faint = self.faint()
+        self.check("M5 desktop: standing in %s, the boxes two channels away (the other kinds) are faint, not gone (layers,"
+                   " Brandon 2026-11-15)" % (ring[0] if ring else "?"),
+                   bool(ring) and to.get("at") == ring[0] and two and all(faint.get(i) == "0.5" for i in two),
+                   {"at": to.get("at"), "faint": faint})
         for _ in range(8):
             self.ws.call("Input.dispatchMouseEvent", type="mouseWheel", x=sx, y=sy, deltaX=0, deltaY=100)
             time.sleep(0.05)
@@ -929,8 +983,9 @@ class Run(m.Run):
         self.key("d", 0.4)
         time.sleep(1.4)   # longer than the walker waits before it zooms back in by itself
         still = self.j(self.WALK) or {}
-        self.check("M5 desktop: the wheel zooms out, then every box is shown, and walking on does not zoom back in",
-                   out.get("near") == "off" and len(out.get("shown") or []) == out.get("all") and (out.get("scale") or 9) < 0.8 * want
+        self.check("M5 desktop: the wheel zooms out, then every box is shown in full, and walking on does not zoom back in",
+                   out.get("near") == "off" and len(out.get("shown") or []) == out.get("all") and not self.faint()
+                   and (out.get("scale") or 9) < 0.8 * self.pool_zoom(ring[0] if ring else "you")
                    and still.get("near") == "off" and abs((still.get("scale") or 0) - (out.get("scale") or -1)) < 1e-6,
                    {"zoomed out": [out.get("scale"), out.get("near"), len(out.get("shown") or []), out.get("all")],
                     "after walking": [still.get("scale"), still.get("near")]})
@@ -939,8 +994,8 @@ class Run(m.Run):
             time.sleep(0.05)
         time.sleep(0.4)
         back_in = self.j(self.WALK) or {}
-        self.check("M5 desktop: the wheel zooms back in, and the far boxes are hidden again",
-                   back_in.get("near") == "on" and len(back_in.get("shown") or []) < (back_in.get("all") or 0), {"near": back_in.get("near"), "shown": back_in.get("shown")})
+        self.check("M5 desktop: the wheel zooms back in, and the far boxes are faint again",
+                   back_in.get("near") == "on" and bool(self.faint()), {"near": back_in.get("near"), "faint": self.faint()})
         sel = sorted(kk for kk, a in C.get("keys", {}).items() if a == "select")
         bk = sorted(kk for kk, a in C.get("keys", {}).items() if a == "back")
         # stand on a box that has a page (Events has none yet)
@@ -951,25 +1006,22 @@ class Run(m.Run):
         target = paged[0] if paged else None
         page = (m2.NODES.get(target) or {}).get("page")
         st = self.map_go(target) if target else st
-        self.check("M2 desktop: positive control, you stand in a box that has a page and the side panel is closed",
-                   bool(page) and st.get("at") == target and not st.get("panel"), {"at": st.get("at"), "want": target, "page": page, "panel": st.get("panel")})
+        self.check("M2 desktop: positive control, you stand in a box that has a page",
+                   bool(page) and st.get("at") == target, {"at": st.get("at"), "want": target, "page": page})
+        # the portal (Brandon 2026-11-14; the side panel is gone): select goes into the page itself
         for kk in sel[:1]:
             self.key(kk)
-        self.wait("!document.getElementById('lgm-panel').hidden", 5)
-        time.sleep(0.4)
-        st = self.j(self.WALK) or {}
-        self.check("M2 desktop: select (%s) opens the box you stand in" % "/".join(sel[:1]),
-                   bool(sel) and st.get("panel") and st.get("page") == page, {"want": page, "got": st.get("page"), "panel": st.get("panel")})
-        for kk in bk[:1]:
-            self.key(kk)
-        self.wait("document.getElementById('lgm-panel').hidden", 3)
-        st = self.j(self.WALK) or {}
-        self.check("M2 desktop: back (%s) closes it" % "/".join(bk[:1]), bool(bk) and not st.get("panel"), st.get("panel"))
-        time.sleep(2.2)   # opening a box makes the map fit itself again (zoomed out); the walker's zoom comes back by itself
+        self.wait("location.pathname === %s" % json.dumps(page), 6)
+        got = cdp.js(self.ws, "location.pathname")
+        self.check("M2 desktop: select (%s) goes into the page of the box you stand in, through its portal" % "/".join(sel[:1]),
+                   bool(sel) and got == page, {"want": page, "got": got})
+        self.ws.call("Page.navigate", url=self.base + "/map")   # the browser's Back is the phone check's (B5c)
+        self.map_load()
+        time.sleep(1.2)
         again = self.j(self.WALK) or {}
-        self.check("M6 desktop: when the map zooms out by itself (a box was opened), the walking zoom comes back",
-                   again.get("near") == "on" and (again.get("scale") or 0) >= 0.8 * min(again.get("zmax") or 0, (again.get("fit") or 0) * zoom),
-                   {"scale": again.get("scale"), "fit": again.get("fit"), "near": again.get("near")})
+        self.check("M6 desktop: back on the map, the walking zoom is there again (the pool you are in fills the view)",
+                   again.get("near") == "on" and abs((again.get("scale") or 0) - self.pool_zoom()) <= 0.05 * self.pool_zoom(),
+                   {"scale": again.get("scale"), "want": self.pool_zoom(), "near": again.get("near")})
 
     def tap(self, selector):
         b = self.j("(() => { const e = document.querySelector(%s); if (!e) return 'null'; const r = e.getBoundingClientRect();"
@@ -1016,16 +1068,15 @@ class Run(m.Run):
         ring = [i for i in (first.get("shown") or []) if i != "you" and self.linked(first, "you", i)
                 and (m2.NODES.get(i) or {}).get("label")]
         target = ring[0] if ring else None
-        st = self.map_pull_to(target, tp, reach) if target else first
+        st = self.map_go_pad(target, tp, reach) if target else first
         self.check("M3 phone: the touchpad walks the walker onto a connected box", bool(target) and st.get("at") == target,
                    {"want": target, "at": st.get("at")})
         self.shot("map-phone", {"x": 0, "y": 0, "width": 390, "height": 844})
-        self.tap("#lg-here-pad ." + (B.get("select") or {}).get("cls", "none"))
         label = (m2.NODES.get(target) or {}).get("label", "?")
         self.wait("(document.querySelector('.lgm-trail-step.here') || {}).textContent === %s" % json.dumps(label[:21]), 4)
         time.sleep(0.3)
         st = self.j(self.WALK) or {}
-        self.check("M3 phone: A does what a tap does (the box you stand in becomes the center)",
+        self.check("M3 phone: staying in the pool you swam into opens it (it becomes the center; A is the portal now)",
                    bool(target) and (st.get("trail") or "").startswith(label[:15]), {"want": label, "trail": st.get("trail")})
         self.tap("#lg-here-pad ." + (B.get("back") or {}).get("cls", "none"))
         self.wait("(document.querySelector('.lgm-trail-step.here') || {}).textContent === 'You'", 4)
@@ -1244,7 +1295,7 @@ def _map_zoom_back(self):
     # Z3: go into a ring box, then back by its trail step
     self.map_load()
     self.j("(() => { const g = [...document.querySelectorAll('#lgm-nodes .lgn')].find(e => !e.classList.contains('lgn-you') && e.getAttribute('data-id') !== 'you' && !e.classList.contains('lgn-root'));"
-           " g.dispatchEvent(new MouseEvent('click', {bubbles: true})); return '1'; })()")
+           " LG_MAP.goTo(g.getAttribute('data-id')); return '1'; })()")   # a click on a desktop goes into the page now (the portal)
     self.wait("document.querySelectorAll('#lgm-trail .lgm-trail-step').length >= 2", 5)
     time.sleep(0.6)
     a = self.j(MAPZ) or {}
@@ -1284,7 +1335,10 @@ def _map_zoom_back(self):
         want = min((self.j(MAPZ) or {}).get("Z", {}).get("max", 9), (s0 or 0) * 3)
         self.check("Z2 phone: a two-finger pinch spreads the map (about the fingers' spread, 3x here)",
                    bool(s0) and s1 is not None and abs(s1 - want) <= 0.15 * want, {"before": s0, "pinched": s1, "want": want})
-        # one finger on the empty map: a pan, no zoom
+        # one finger on the empty map: a pan, no zoom. From the walking zoom again: pinched to the most, one pool fills
+        # the whole screen (pools, 2026-11-15), and there is no empty map left to touch.
+        self.map_load()
+        time.sleep(0.8)
         e = self.j("(() => { const s = document.getElementById('lgm-svg').getBoundingClientRect(); for (let y = s.top + 12; y < s.bottom; y += 9) for (let x = s.left + 12; x < s.right; x += 9) {"
                    " const free = (a, b) => { const h = document.elementFromPoint(a, b); return !!(h && !h.closest('.lgn') && h.closest('#lgm-svg')); };"
                    " if (free(x, y) && free(x - 8, y) && free(x + 8, y) && free(x, y - 8) && free(x, y + 8)) return JSON.stringify([x, y]); } return 'null'; })()")

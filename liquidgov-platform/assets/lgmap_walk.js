@@ -521,14 +521,14 @@
   // Swimming into a pool opens it (Brandon 2026-11-15, pools and gates): stay in a box that is not the middle of the map
   // for openMs and its connections spread around it, as a tap on it does (this replaces A making a box the center; A is
   // now the portal). B / Esc, or the trail, goes back.
-  var OPEN_MS = 700, inSince = 0, inFor = '';
+  var OPEN_MS = 700, inSince = 0, inFor = '', poolOpened = '';
   function poolTick() {
     if (entering || !at || !MAP.center || at === MAP.center()) { inFor = ''; return; }
     if (inFor !== at) { inFor = at; inSince = Date.now(); return; }
     if (Date.now() - inSince < OPEN_MS) return;
     inFor = '';
-    var b = box(at);
-    if (b) b.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+    // opened without its page (a click on a desktop goes into the page: swimming in must not leave the map)
+    if (box(at) && MAP.goTo) { poolOpened = at; MAP.goTo(at); }
   }
   // Pools (Brandon 2026-11-15, "you pick something"): the pool you are in fills the screen, so the peek waits until your
   // drop has been still for stillMs, is smaller, and sits at the top of the map on the side away from your drop; moving
@@ -615,6 +615,8 @@
   MAP.onFocus = function (id) {
     var r = region(id);
     if (!r || !me) return false;
+    // a pool that opened because you swam into it: you may have swum on by now, and must not be pulled back to it
+    if (poolOpened === id) { poolOpened = ''; return true; }
     if (at !== id) { me = { x: r.cx, y: r.cy }; anchor = null; }
     centerView(MAP.view().scale, true);
     return true;

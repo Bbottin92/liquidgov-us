@@ -365,6 +365,7 @@
     var all = boxes(), v = W.velocity(held, pull), moved = false;
     W.shape(dropPortrait, v.x, v.y);
     if (v.x || v.y) moved = move(all, v);
+    if (moved) lastMove = Date.now();
     var now = insideOf(all, me);
     if (now !== at) {
       at = now; anchor = null; carry();
@@ -529,7 +530,11 @@
     var b = box(at);
     if (b) b.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
   }
-  var PEEK = { dwellMs: 250, w: 520, h: 380, alpha: 0.6, ms: 320, growMs: 420, cls: 'lgm-peek' };
+  // Pools (Brandon 2026-11-15, "you pick something"): the pool you are in fills the screen, so the peek waits until your
+  // drop has been still for stillMs, is smaller, and sits at the top of the map on the side away from your drop; moving
+  // hides it at once. The box map keeps its own place for it (over or under the box).
+  var PEEK = { dwellMs: 250, stillMs: 550, w: 520, h: 380, poolW: 0.46, poolH: 0.24, alpha: 0.6, ms: 320, growMs: 420, cls: 'lgm-peek' };
+  var lastMove = 0;
   var peekEl = null, peekFrame = null, peekFor = '', peekPage = '', peekSince = 0, peekOpen = false, entering = false;
   function peekUrl(page) { return page + (page.indexOf('?') < 0 ? '?' : '&') + 'lg_peek=1'; }
   function peekBuild() {
@@ -550,6 +555,12 @@
     var cx = (b.left + b.right) / 2, top = b.top - h - 12 >= 8 ? b.top - h - 12 : Math.min(vh - h - 8, b.bottom + 12);
     var left = Math.max(12, Math.min(vw - w - 12, cx - w / 2));
     top = Math.max(8, top);
+    if (POOLS) {
+      var s = seen(), f = MAP.frame();
+      w = Math.min(PEEK.w, Math.round(vw * PEEK.poolW)); h = Math.min(PEEK.h, Math.round(vh * PEEK.poolH));
+      top = Math.max(8, Math.round(f.top + s.y0 + 10));
+      left = spot.x < vw / 2 ? vw - w - 12 : 12;   // the side away from your drop
+    }
     peekEl.style.left = left + 'px'; peekEl.style.top = top + 'px';
     peekEl.style.width = w + 'px'; peekEl.style.height = h + 'px';
     peekEl.style.transformOrigin = (cx - left) + 'px ' + ((b.top + b.bottom) / 2 - top) + 'px';
@@ -603,6 +614,7 @@
   // each tick: the box you are at (in it, or right next to it) and its page
   function peekTick() {
     if (entering) return;
+    if (POOLS && Date.now() - lastMove < PEEK.stillMs) { peekSince = 0; peekHide(); return; }   // swimming: no peek
     var t = me ? target() : null, id = t ? t.getAttribute('data-id') : '', rec = id ? MAP.instance(id) : null;
     var page = rec && rec.page ? rec.page : '';
     if (!page) { peekSince = 0; peekHide(); return; }

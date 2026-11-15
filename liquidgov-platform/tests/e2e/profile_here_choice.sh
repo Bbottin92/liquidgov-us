@@ -47,10 +47,10 @@ check "precondition: no here rows in the seed store" '! grep -q "^here	" $W/stor
 page $PAL /u/stranger u1.html >/dev/null
 check "not chosen: a profile page asks (the here-ask card)" 'grep -q "id=\"here-ask\"" $W/u1.html' "no card"
 check "...with a Yes and a No form, neither pre-selected" '[ "$(grep -o "action=\"/here/choice\"" $W/u1.html | wc -l)" = 2 ]' "$(grep -o 'action="/here/choice"' $W/u1.html | wc -l)"
-check "not chosen: no dots script" '! grep -q "LG_HERE" $W/u1.html' "script present"
+check "not chosen: no dots (no page room)" '! grep -q "\"page\":\"/u/" $W/u1.html' "room present"
 page "" /u/stranger anon.html >/dev/null
 check "signed out: no card" '! grep -q "here-ask" $W/anon.html' "card for signed out"
-check "signed out: no dots script" '! grep -q "LG_HERE" $W/anon.html' "script for signed out"
+check "signed out: no dots (no page room)" '! grep -q "\"page\":\"/u/" $W/anon.html' "room for signed out"
 
 # --- choose Yes from the card
 r=$(post "" /here/choice -d "choice=1" -d "back=/u/stranger")
@@ -67,14 +67,14 @@ check "Yes: no card any more" '! grep -q "id=\"here-ask\"" $W/u2.html' "card sti
 check "Yes: the dots settings object names pal and the page" 'grep -q "LG_HERE" $W/u2.html && grep -o "LG_HERE=[^<]*" $W/u2.html | grep -q "\"me\":\"pal\"" && grep -o "LG_HERE=[^<]*" $W/u2.html | grep -q "\"page\":\"/u/stranger\""' "$(grep -o 'LG_HERE=[^<]*' $W/u2.html)"
 check "Yes: the dots script is linked" 'grep -q "src=\"/assets/here.js" $W/u2.html' "no script"
 page $PAL /feed feed.html >/dev/null
-check "only profile pages: no dots on /feed" '! grep -q "LG_HERE" $W/feed.html' "script on feed"
+check "only profile pages: no dots on /feed (only your own droplet: no page room)" '! grep -q "\"page\":\"/[^\"]" $W/feed.html' "room on feed"
 
 # --- choose No
 post $STRANGER /here/choice -d "choice=0" -d "back=/u/pal" >/dev/null
 check "the store holds stranger's No" 'grep -qP "^here\tstranger\t0$" $W/store.lgp' "$(grep '^here' $W/store.lgp)"
 page $STRANGER /u/pal u3.html >/dev/null
 check "No: no card" '! grep -q "id=\"here-ask\"" $W/u3.html' "card"
-check "No: no dots script" '! grep -q "LG_HERE" $W/u3.html' "script"
+check "No: no dots (no page room)" '! grep -q "\"page\":\"/u/" $W/u3.html' "room"
 
 # --- settings
 page $ADMIN /settings set-unset.html >/dev/null
@@ -104,7 +104,7 @@ check "signup with No stores the No" 'grep -qP "^here\tnewbie3\t0$" $W/store.lgp
 # --- survives a restart
 stop; start
 page $PAL /u/stranger u4.html >/dev/null
-check "after a restart pal's Yes still holds" 'grep -q "LG_HERE" $W/u4.html' "lost"
+check "after a restart pal's Yes still holds" 'grep -q "\"page\":\"/u/" $W/u4.html' "lost"
 page $ADMIN /u/pal u5.html >/dev/null
 check "control: Bbottin (never chose) is still asked" 'grep -q "id=\"here-ask\"" $W/u5.html' "not asked"
 

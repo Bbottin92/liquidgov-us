@@ -1263,6 +1263,33 @@
       return st === YT.PlayerState.PLAYING || st === YT.PlayerState.BUFFERING;
     } catch (e) { return false; } // err-ok: an unreadable player counts as not playing, so links load normally
   }
+  // Juketube ripples (Brandon 2026-11-15: "the juketube should make ripples too when its playing and not muted"): while
+  // a track is playing and the sound is on, rings pulse off the Juketube button, stronger at a higher volume. YouTube's
+  // player does not let a page read its sound, so the rings follow the volume slider, not the music itself. The same
+  // look as the sound ripples off your drop (walker.js, .lg-ripple). Not with reduced motion.
+  var JB_RIPPLE = { everyMs: 640, ms: 1100, reach: 1.25, spread: 1.0 };
+  function jbRipple() {
+    if (!toggle || !toggle.animate || document.hidden) return;
+    if (window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    var on = false;
+    try { on = playerReady && ytPlayer && ytPlayer.getPlayerState() === YT.PlayerState.PLAYING; } catch (e) { on = false; } // err-ok: an unreadable player makes no ripple
+    var level = Math.max(0, Math.min(100, Number(vol.value) || 0)) / 100;
+    if (!on || muted || level === 0) return;
+    var b = toggle.getBoundingClientRect();
+    if (!b.width) return;
+    var r = document.createElement("span");
+    r.className = "lg-ripple lg-ripple-jb";
+    r.setAttribute("aria-hidden", "true");
+    r.style.cssText = "position:fixed;z-index:9;left:" + (b.left + b.width / 2) + "px;top:" + (b.top + b.height / 2) + "px;width:" +
+      b.width + "px;height:" + b.height + "px";
+    document.body.appendChild(r);
+    var a = r.animate([
+      { transform: "translate(-50%,-50%) scale(1)", opacity: Math.min(0.85, 0.2 + level * 0.6), borderWidth: (1 + level * 2.5).toFixed(1) + "px" },
+      { transform: "translate(-50%,-50%) scale(" + (JB_RIPPLE.reach + level * JB_RIPPLE.spread).toFixed(2) + ")", opacity: 0, borderWidth: "0.5px" }
+    ], { duration: JB_RIPPLE.ms, easing: "cubic-bezier(.2,.6,.35,1)" });
+    a.onfinish = function () { r.remove(); };
+  }
+  setInterval(jbRipple, JB_RIPPLE.everyMs);
   function shellLeave(href, why) {
     lgBeacon("shell-exit", why);
     location.href = href;

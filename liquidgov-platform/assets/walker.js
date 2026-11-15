@@ -11,8 +11,8 @@
    The screen keeps your drop in its middle as you walk, always (Brandon 2026-11-14: "keep the screen tracking logic the
    way it is when center is selected, but like thats it, no other options"; the Center button is gone).
    Your drop's menu (same day: "if you click on or tap your droplet it should expand a menu with things like microphone,
-   camera (toggle on/off), and a drip speed adjustment slider"): menu(el) makes a drop open it. Microphone and Camera
-   show where the page has them (here_media.js sets window.LG_MEDIA); the speed is remembered on this device. */
+   camera (toggle on/off), and a drip speed adjustment slider"): menu(el) makes a drop open it. Microphone, Camera and
+   Hear myself are on every page and stay as you set them (CONTROLS.media); the speed is remembered on this device. */
 (function () {
   var CONTROLS = {
     dirs: ['up', 'left', 'right', 'down'],
@@ -65,8 +65,22 @@
   // Your drop's menu: id and look of the popup, the accessible name of your drop, the toggles' names, and the drip speed
   // slider (a multiple of maxSpeed, from min to max in steps; store: its localStorage key).
   CONTROLS.menu = { id: 'lg-drop-menu', label: 'Your drop: microphone, camera and speed',
-    toggles: { mic: 'Microphone', cam: 'Camera' },
+    toggles: { mic: 'Microphone', cam: 'Camera', hear: 'Hear myself (headphones)' },
     speed: { label: 'Drip speed', min: 0.5, max: 2, step: 0.1, store: 'lg-walker-speed' } };
+  // Your camera and microphone (Brandon 2026-11-15: "if you turn on camera and/or microphone, they should stay on
+  // everywhere until you make a clear decision to turn them off"; "you should be allowed to see your own camera and hear
+  // your own microphone"). The switches are in your drop's menu on every page; the choice is kept on this device
+  // (store) and every page with your drop turns them back on as it loads. Your camera shows as a bubble on your own
+  // drop; "Hear myself" plays your microphone back to you (off by default: a page cannot tell whether headphones are
+  // plugged in, and on speakers it howls). Calls (here_media.js) use this stream through LG_WALKER.media.
+  CONTROLS.media = { store: 'lg-media-on', selfCls: 'lg-media-self',
+    // Sound ripples (Brandon 2026-11-15: "audiowaves that ripple off of your droplet when you make noises according to
+    // the intensity of the noises you make ... roughly anatomically correct"): rings spread from a drop the way sound
+    // does. The sound's level (RMS, 0..1) is read about 60 times a second; above floor a ring starts, at most one every
+    // minMs (louder: down to fastMs apart), lives ms, and spreads to reach (1 + level * spread) times the drop's size;
+    // its strength fades as it spreads (as sound does), starting from the level. Kept close (Brandon: "the ripples
+    // shouldnt spread too far"): at most 2.5 times the drop's size. Not with reduced motion.
+    ripple: { cls: 'lg-ripple', floor: 0.02, gain: 6, minMs: 260, fastMs: 110, ms: 900, reach: 1.3, spread: 1.2 } };
   var B = CONTROLS.buttons, M = CONTROLS.menu;
   var speedMul = 1;
   try { var sv = parseFloat(localStorage.getItem(M.speed.store)); if (sv >= M.speed.min && sv <= M.speed.max) speedMul = sv; } catch (e) {} // err-ok: no storage: 1x
@@ -209,8 +223,8 @@
   }
 
   // ---- your drop's menu (Brandon 2026-11-14). One popup for the page, next to the drop that opened it; it closes on a
-  // tap or click anywhere else, on B / Esc, or on the drop again. Toggles come from window.LG_MEDIA (here_media.js):
-  // {state() -> {mic, cam}, toggle(kind)}; it fires 'lg-media-change' on document when they change.
+  // tap or click anywhere else, on B / Esc, or on the drop again. The switches are this file's own (CONTROLS.media below);
+  // 'lg-media-change' fires on document when they change.
   var menuEl = null, menuFor = null;
   function menuOpenNow() { return !!menuEl && !menuEl.hidden; }
   function menuClose(refocus) {
@@ -220,7 +234,7 @@
   }
   function menuPaint() {
     if (!menuEl) return;
-    var media = window.LG_MEDIA, st = media ? media.state() : null;
+    var st = mediaOk ? mwant : null;
     Array.prototype.forEach.call(menuEl.querySelectorAll('[data-kind]'), function (b) {
       var k = b.getAttribute('data-kind'), on = !!(st && st[k]);
       b.hidden = !st;
@@ -244,7 +258,7 @@
     menuEl.innerHTML = h;
     document.body.appendChild(menuEl);
     Array.prototype.forEach.call(menuEl.querySelectorAll('[data-kind]'), function (b) {
-      b.addEventListener('click', function () { if (window.LG_MEDIA) window.LG_MEDIA.toggle(b.getAttribute('data-kind')); menuPaint(); });
+      b.addEventListener('click', function () { mediaToggle(b.getAttribute('data-kind')); menuPaint(); });
     });
     var range = menuEl.querySelector('input'), out = menuEl.querySelector('output');
     range.addEventListener('input', function () {
@@ -282,6 +296,8 @@
   function menu(el) {
     if (!el || el.getAttribute('data-menu')) return;
     el.setAttribute('data-menu', '1');
+    myDrop = el;
+    selfPaint();
     el.setAttribute('role', 'button');
     el.setAttribute('tabindex', '0');
     el.setAttribute('aria-label', M.label);
@@ -330,6 +346,141 @@
     if (t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT') el.focus();
     else el.click();
   }
+  // ---- your camera and microphone (CONTROLS.media)
+  var mediaOk = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  var mwant = { mic: false, cam: false, hear: false }, mstream = null, mfns = [], mtoken = 0, myDrop = null, selfWrap = null, hearEl = null;
+  try {
+    var mv = JSON.parse(localStorage.getItem(CONTROLS.media.store) || '{}') || {};
+    ['mic', 'cam', 'hear'].forEach(function (k) { mwant[k] = mv[k] === true; });
+  } catch (e) {} // err-ok: no storage: everything starts off
+  function mediaSave() { try { localStorage.setItem(CONTROLS.media.store, JSON.stringify(mwant)); } catch (e) {} } // err-ok: it lasts this page view
+  function mediaStop() { if (mstream) mstream.getTracks().forEach(function (t) { t.stop(); }); mstream = null; }
+  function mediaChanged() {
+    selfPaint();
+    menuPaint();
+    mfns.forEach(function (fn) { try { fn(mstream); } catch (e) { /* a listener's own fault */ } });
+    document.dispatchEvent(new CustomEvent('lg-media-change', { detail: { mic: mwant.mic, cam: mwant.cam, hear: mwant.hear } }));
+  }
+  // (re)open the camera and microphone for what is switched on. by: the switch you just flipped (a refusal turns it
+  // back off: that is a decision too), or '' when a page turns them back on as it loads (a refusal then leaves your
+  // choice as it was, so the next page tries again).
+  function mediaApply(by) {
+    var token = ++mtoken;
+    if (!mediaOk || (!mwant.mic && !mwant.cam)) { mediaStop(); mediaChanged(); return; }
+    navigator.mediaDevices.getUserMedia({ audio: mwant.mic ? { echoCancellation: true, noiseSuppression: true } : false,
+      video: mwant.cam ? { facingMode: 'user' } : false }).then(function (s) {
+      if (token !== mtoken) { s.getTracks().forEach(function (t) { t.stop(); }); return; }
+      mediaStop(); mstream = s; mediaChanged();
+    }, function () {
+      if (token !== mtoken) return;
+      if (by) { mwant[by] = false; mediaSave(); }
+      mediaStop(); mediaChanged();
+    });
+  }
+  function mediaToggle(kind) {
+    if (!mediaOk || !(kind in mwant)) return;
+    mwant[kind] = !mwant[kind];
+    mediaSave();
+    if (kind === 'hear') { mediaChanged(); return; }
+    mediaApply(kind);
+  }
+  // ---- sound ripples (CONTROLS.media.ripple). ripples(el, stream): rings spread from el's drop while stream's sound
+  // is loud enough; one watcher per element (a new stream replaces the old; no stream stops it). Your own drop gets yours
+  // (selfPaint); here_media.js gives each person in a call theirs.
+  var rctx = null, rwatch = [];
+  function audioCtx() {
+    if (!rctx) {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      rctx = new AC();
+      // a browser starts sound only after a tap or a key: the first one wakes it
+      var wake = function () { if (rctx.state === 'suspended') rctx.resume(); };
+      ['pointerdown', 'keydown'].forEach(function (t) { document.addEventListener(t, wake, true); });
+    }
+    if (rctx.state === 'suspended') rctx.resume().catch(function () { /* waits for a tap */ });
+    return rctx;
+  }
+  function ripples(el, stream) {
+    for (var i = rwatch.length - 1; i >= 0; i--) if (rwatch[i].el === el) { rwatch[i].stop(); rwatch.splice(i, 1); }
+    if (!el || !stream || !stream.getAudioTracks().length || reducedMotion()) return;
+    var ctx = audioCtx();
+    if (!ctx) return;
+    var R = CONTROLS.media.ripple, src = ctx.createMediaStreamSource(stream), an = ctx.createAnalyser();
+    an.fftSize = 512;
+    src.connect(an);   // read only: never connected to the speakers
+    var buf = new Float32Array(an.fftSize), last = 0, raf = 0, w = { el: el };
+    w.level = 0;
+    function frame(now) {
+      an.getFloatTimeDomainData(buf);
+      var sum = 0;
+      for (var k = 0; k < buf.length; k++) sum += buf[k] * buf[k];
+      var level = Math.min(1, Math.sqrt(sum / buf.length) * R.gain);
+      w.level = level;
+      el.setAttribute('data-level', level.toFixed(2));
+      var gap = R.minMs - (R.minMs - R.fastMs) * level;
+      if (level > R.floor && now - last >= gap && el.isConnected) { last = now; ring(el, level); }
+      raf = requestAnimationFrame(frame);
+    }
+    raf = requestAnimationFrame(frame);
+    w.stop = function () { cancelAnimationFrame(raf); try { src.disconnect(); } catch (e) { /* gone */ } el.removeAttribute('data-level'); };
+    rwatch.push(w);
+  }
+  function ring(el, level) {
+    var R = CONTROLS.media.ripple, host = el.parentNode;
+    if (!host || !el.animate) return;
+    var r = document.createElement('span'), size = el.offsetWidth || 38;
+    r.className = R.cls;
+    r.setAttribute('aria-hidden', 'true');
+    r.style.width = r.style.height = size + 'px';
+    r.style.left = (el.offsetLeft + el.offsetWidth / 2) + 'px';
+    r.style.top = (el.offsetTop + el.offsetHeight / 2) + 'px';
+    host.appendChild(r);
+    var to = R.reach + level * R.spread, a = Math.min(0.9, 0.25 + level);
+    var anim = r.animate([
+      { transform: 'translate(-50%,-50%) scale(1)', opacity: a, borderWidth: (1 + level * 3).toFixed(1) + 'px' },
+      { transform: 'translate(-50%,-50%) scale(' + to.toFixed(2) + ')', opacity: 0, borderWidth: '0.5px' }
+    ], { duration: R.ms, easing: 'cubic-bezier(.2,.6,.35,1)' });
+    anim.onfinish = function () { r.remove(); };
+  }
+
+  // your own camera as a mirrored bubble on your drop (taps go through to the drop: its menu), and your own sound when
+  // "Hear myself" is on
+  function selfPaint() {
+    var vids = mstream ? mstream.getVideoTracks() : [];
+    if (myDrop && vids.length && mwant.cam) {
+      if (!selfWrap) {
+        selfWrap = document.createElement('div');
+        selfWrap.className = 'lg-media-bubble ' + CONTROLS.media.selfCls;
+        selfWrap.setAttribute('aria-hidden', 'true');
+        var v = document.createElement('video');
+        v.muted = true; v.autoplay = true; v.playsInline = true;
+        selfWrap.appendChild(v);
+      }
+      var vid = selfWrap.firstChild;
+      if (vid.srcObject !== mstream) vid.srcObject = mstream;
+      if (selfWrap.parentNode !== myDrop.parentNode && myDrop.parentNode) myDrop.parentNode.appendChild(selfWrap);
+      var pl = vid.play(); if (pl && pl.catch) pl.catch(function () { /* the browser will not autoplay yet */ });
+    } else if (selfWrap && selfWrap.parentNode) {
+      selfWrap.firstChild.srcObject = null;
+      selfWrap.parentNode.removeChild(selfWrap);
+    }
+    var auds = mstream ? mstream.getAudioTracks() : [];
+    // your sound ripples off your drop while the microphone is on (only for you to see unless you are in a call)
+    var rippling = rwatch.filter(function (x) { return x.el === myDrop; })[0];
+    if (myDrop && mwant.mic && auds.length) { if (!rippling || rippling.stream !== mstream) { ripples(myDrop, mstream); var nw = rwatch[rwatch.length - 1]; if (nw && nw.el === myDrop) nw.stream = mstream; } }
+    else if (rippling) ripples(myDrop, null);
+    if (mwant.hear && mwant.mic && auds.length) {
+      if (!hearEl) { hearEl = document.createElement('audio'); hearEl.autoplay = true; }
+      if (!hearEl.srcObject || hearEl.srcObject.getAudioTracks()[0] !== auds[0]) hearEl.srcObject = new MediaStream(auds);
+      var ph = hearEl.play(); if (ph && ph.catch) ph.catch(function () { /* the browser will not autoplay yet */ });
+    } else if (hearEl) {
+      hearEl.pause();
+      hearEl.srcObject = null;
+    }
+  }
+  if (mediaOk && (mwant.mic || mwant.cam)) setTimeout(function () { mediaApply(''); }, 0);   // on as you left them
+  window.addEventListener('pagehide', mediaStop);   // the camera light goes out with the page; the next page turns it back on
+
   // velocity(held, pull): keys walk at full speed; else the touchpad at its pull (0..1 of full speed); both times the
   // drip speed from your drop's menu (1x unless you changed it)
   function velocity(held, pull) {
@@ -407,5 +558,9 @@
   window.LG_WALKER = { CONTROLS: CONTROLS, portrait: portrait, shape: shape, hop: hop, keyAction: keyAction, isDir: isDir, editing: editing,
     pullVector: pullVector, mount: mount, takeHandoff: takeHandoff, nearest: nearest, use: use, velocity: velocity, centerOn: centerOn,
     menu: menu, menuClose: menuClose,
+    media: { state: function () { return { mic: mwant.mic, cam: mwant.cam, hear: mwant.hear }; },
+      stream: function () { return mstream; }, onChange: function (fn) { mfns.push(fn); }, toggle: mediaToggle,
+      hearing: function () { return !!(hearEl && hearEl.srcObject && !hearEl.paused); } },
+    ripples: ripples,
     reducedMotion: reducedMotion };
 })();

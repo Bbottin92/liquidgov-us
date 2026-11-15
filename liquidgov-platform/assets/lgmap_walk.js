@@ -394,7 +394,28 @@
   walker.setAttribute('data-at', '');
   walker.setAttribute('data-instance', MAINSTREAM);
   document.body.appendChild(walker);
-  root.classList.add('lgm-dropping');   // the boxes' depth (lgmap.css): they read as solid things you walk between
+  root.classList.add('lgm-dropping');   // water (lgmap.css): the boxes are pools, the connections streams
+  // the water's colours (lgmap.css fills pools with #lgm-water): deeper in the middle,
+  // lighter at the shore; and a slow shimmer along each stream (.lge-flow), drawn over it, that never takes a tap
+  (function () {
+    var NS = 'http://www.w3.org/2000/svg', defs = document.createElementNS(NS, 'defs');
+    defs.innerHTML = '<radialGradient id="lgm-water" cx="50%" cy="45%" r="65%"><stop offset="0" stop-color="#1b5d80"/>' +
+      '<stop offset=".7" stop-color="#2a7ea6"/><stop offset="1" stop-color="#5fb4d6"/></radialGradient>';
+    svg.insertBefore(defs, svg.firstChild);
+    function flows() {
+      var have = {};
+      Array.prototype.forEach.call(edgeLayer.querySelectorAll('.lge-flow'), function (f) { have[f.getAttribute('data-for')] = f; });
+      Array.prototype.forEach.call(edgeLayer.querySelectorAll('.lge'), function (e) {
+        var key = e.getAttribute('data-a') + '|' + e.getAttribute('data-b'), f = have[key];
+        if (!f) { f = document.createElementNS(NS, 'path'); f.setAttribute('class', 'lge-flow'); f.setAttribute('data-for', key); edgeLayer.appendChild(f); }
+        delete have[key];
+        if (f.getAttribute('d') !== e.getAttribute('d')) f.setAttribute('d', e.getAttribute('d'));
+        f.style.visibility = e.style.visibility; f.style.opacity = e.style.opacity;
+      });
+      Object.keys(have).forEach(function (k) { have[k].remove(); });
+    }
+    setInterval(flows, 400);
+  })();
 
   // the box A acts on: the one you are in, else one whose edge is within CONTROLS.near px of your drop
   function target() {

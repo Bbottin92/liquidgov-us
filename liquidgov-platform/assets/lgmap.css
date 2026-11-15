@@ -184,10 +184,15 @@ html.lgm-sheet-open,html.lgm-sheet-open body{overflow:hidden}
 /* Pools and gates (Brandon 2026-11-15): with the walker on the map, every box is a pool of water and every connection
    that shows is a channel wide enough to swim (lgmap_walk.js CHANNEL: 17 map units either side, so 34 wide); the land
    around them is dry and stops your drop. */
-#lgmap.lgm-dropping .lge{stroke:rgba(72,150,190,.45)!important;stroke-width:34px!important;stroke-dasharray:none!important;opacity:1}
-#lgmap.lgm-dropping .lgn .lgs{fill:rgba(34,98,132,.88)!important;stroke:#8fd3ee;stroke-width:3;filter:drop-shadow(0 0 12px rgba(110,200,235,.3))}
-#lgmap.lgm-dropping .lgn text{fill:#eef9ff}
-#lgmap.lgm-dropping .lgn.lgn-walk .lgs{stroke:#f3d48f;filter:drop-shadow(0 0 14px rgba(243,212,143,.55))}
+#lgmap.lgm-dropping .lge{stroke:rgba(61,147,187,.5)!important;stroke-width:34px!important;stroke-dasharray:none!important;stroke-linecap:round;opacity:.75}
+#lgmap.lgm-dropping .lge-flow{fill:none;stroke:rgba(215,245,255,.38);stroke-width:5px;stroke-linecap:round;stroke-dasharray:0.1 47 0.1 71;
+  animation:lgm-flow 7s linear infinite;pointer-events:none;filter:blur(1px)}
+@keyframes lgm-flow{to{stroke-dashoffset:-118}}
+#lgmap.lgm-dropping .lgn .lgs{fill:url(#lgm-water)!important;stroke:rgba(170,225,245,.55);stroke-width:1.5;rx:20px;ry:20px;
+  filter:drop-shadow(0 0 10px rgba(100,190,230,.22))}
+#lgmap.lgm-dropping .lgn text{fill:#eef9ff;paint-order:stroke;stroke:rgba(8,30,45,.55);stroke-width:3px}
+#lgmap.lgm-dropping .lgn.lgn-walk .lgs{stroke:rgba(243,212,143,.85);stroke-width:2;filter:drop-shadow(0 0 16px rgba(243,212,143,.45))}
+@media(prefers-reduced-motion:reduce){#lgmap.lgm-dropping .lge-flow{animation:none}}
 /* The map fills the screen (Brandon 2026-11-15: "the mainstream map should be like fullscreen besides the liquidgov
    title and notifications and mail and profile pic and juketube"). This file is only on the map page, so these rules
    only touch it: the site header stays, the map takes everything under it, and the page itself does not scroll.
@@ -210,8 +215,8 @@ main.wrap>.lgmap .lgmap-body{flex:1;min-height:0;height:auto;margin:0}
 main.wrap>.lgmap .lgmap-canvas{flex:1;min-height:0;height:auto;border-radius:0}
 /* The portal's peek (lgmap_walk.js, Brandon 2026-11-14): a see-through window of the box's page grows from the box's
    middle while you stand at it; A grows it over the whole screen as it turns solid, and then the page opens. */
-.lgm-peek{position:fixed;z-index:13;overflow:hidden;box-sizing:border-box;border-radius:14px;border:2px solid var(--accent,#8a6620);
-  background:var(--paper,#f7f1e4);box-shadow:0 10px 30px rgba(0,0,0,.45);pointer-events:none;opacity:0;transform:scale(.06);
+.lgm-peek{position:fixed;z-index:13;overflow:hidden;box-sizing:border-box;border-radius:22px;border:1px solid rgba(170,225,245,.6);
+  background:var(--paper,#f7f1e4);box-shadow:0 0 0 6px rgba(120,200,235,.12),0 14px 36px rgba(0,0,0,.45);pointer-events:none;opacity:0;transform:scale(.06);
   transition:transform .32s ease,opacity .32s ease,left .42s ease,top .42s ease,width .42s ease,height .42s ease,border-radius .42s ease}
 .lgm-peek[hidden]{display:none}
 .lgm-peek.lgm-peek-on{opacity:.6;transform:scale(1)}

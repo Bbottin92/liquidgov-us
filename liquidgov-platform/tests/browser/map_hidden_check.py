@@ -1,7 +1,6 @@
 """The map's Hidden mode (Brandon 2026-11-11: "there should be a 'hidden' toggle that reveals all of the boxes that you
 have hidden as translucent boxes that you can select to unhide or select a non-hidden box in that mode to hide it").
-Same browser, phone and sample data as map_bar_check.py (reuses its BarRun helpers). New file: map_bar_check.py and
-phone_check.py are committed tests and are not edited.
+Same browser, phone and sample data as map_bar_check.py (reuses its BarRun helpers).
 
 Cases (Bbottin signed in, phone_serve.sh sample data):
   H1 a Hidden button on the bar; tapping it turns Hidden mode on (pressed, says Done) and the note says what to tap
@@ -35,6 +34,13 @@ class HiddenRun(map_bar_check.BarRun):
 
     def note(self):
         return self.j("(() => { const n = document.getElementById('lgm-filter-note'); return JSON.stringify(n && !n.hidden ? n.textContent : ''); })()")
+
+    def goto(self, path, settle=1.5):
+        """The map starts zoomed in around your drop now (2026-11-15, Brandon: "keep it zoomed in"), with the far boxes
+        off the frame; this check taps boxes by their place, so on the map it zooms out first (phone_check's)."""
+        super().goto(path, settle)
+        if path == "/map":
+            self.map_zoom_out()
 
     def cases(self):
         self.goto("/map", settle=3)

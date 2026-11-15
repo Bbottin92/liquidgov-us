@@ -8,7 +8,9 @@ scratch/2026-11-09-claude-site-sweep/browser_check.py (side-agent note: CI can't
 Cases (logged in as the operator Bbottin, sample data from phone_serve.sh):
   0  precondition: the server serves the very lgmap.js under test (byte-equal), so a stale server can't pass
   1  /admin/departments scrolled to the end: the footer's text ends above the Juketube button
-  2  /map first view: the connections column is inside the frame and starts within 80 px of its top
+  2  /map first view: zoomed in around you (you whole and in the middle of the frame, no boxes overlapping)
+  2b zoomed out by you (the wheel; a pinch does the same): the whole ring fits the frame, you in the middle
+     (cases 3, 4c and 4d zoom out first, then tap a box as before)
   3  quick tap (Chromium's own tap gesture, checked < 200 ms in page time): connections grow, no page sheet
   4  press and hold 750 ms: the box grows on top of its neighbours (4b), then the page sheet opens
   4c double tap, two taps stamped 150 ms apart: the page sheet opens. Each DevTools call waits for the page, which
@@ -69,6 +71,21 @@ class Run:
         return self.j("JSON.stringify({sheet: document.documentElement.classList.contains('lgm-sheet-open'),"
                       " panel: !document.getElementById('lgm-panel').hidden})")
 
+    def map_zoom_out(self):
+        """Zoom the map out to the whole ring, the way a person does (2026-11-15, Brandon: "yes update the phone check,
+        keep it zoomed in"): the map now starts zoomed in around your drop, with the far boxes off the frame, so the
+        cases that tap a box by its place zoom out first. The wheel over the top of the map; a pinch does the same
+        (walker_controls_check Z2). Returns the scale before and after."""
+        f = self.j("(() => { const b = document.getElementById('lgm-svg').getBoundingClientRect();"
+                   " return JSON.stringify({x: (b.left + b.right) / 2, y: Math.max(b.top, 0) + 40, s: window.LG_MAP ? LG_MAP.scale() : null}); })()")
+        if not isinstance(f, dict):
+            return None
+        for _ in range(12):
+            self.ws.call("Input.dispatchMouseEvent", type="mouseWheel", x=f["x"], y=f["y"], deltaX=0, deltaY=100)
+            time.sleep(0.05)
+        time.sleep(0.8)
+        return [f.get("s"), self.j("JSON.stringify(window.LG_MAP ? LG_MAP.scale() : null)")]
+
     def box(self, index, skip_root=False):
         """Centre of the index-th map box fully inside the map frame."""
         root = " && !/lgn-root/.test(o.g.getAttribute('class'))" if skip_root else ""
@@ -121,27 +138,42 @@ class Run:
         # Edited 2026-11-11 with Brandon's OK ("yes"): the first view is a ring around you (M1.1 look), not a column
         # starting at the frame top. Every box fully inside the frame, you in the middle third, and no two boxes
         # overlapping (the 2026-11-11 screenshots showed side boxes covering you; nothing here caught it).
-        r = self.j("(() => { const fb = document.getElementById('lgm-svg').getBoundingClientRect();"
-                   " const els = [...document.querySelectorAll('#lgm-nodes > g.lgn')];"
-                   " const bx = g => g.querySelector('.lgs').getBoundingClientRect();"
-                   " const boxes = els.map(bx).filter(b => b.width > 0);"
-                   " const you = document.querySelector('#lgm-nodes > g.lgn-you'); const yb = you && bx(you);"
-                   " let overlaps = 0; for (let i = 0; i < boxes.length; i++) for (let k = i + 1; k < boxes.length; k++) {"
-                   "  const a = boxes[i], b = boxes[k]; if (a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1) overlaps++; }"
-                   " return JSON.stringify({frame: [fb.left, fb.top, fb.right, fb.bottom], n: boxes.length, overlaps: overlaps,"
-                   "  left: Math.min(...boxes.map(b => b.left)), right: Math.max(...boxes.map(b => b.right)),"
-                   "  top: Math.min(...boxes.map(b => b.top)), bottom: Math.max(...boxes.map(b => b.bottom)),"
-                   "  youMid: yb ? (yb.left + yb.right) / 2 : null}); })()")
+        # Edited 2026-11-15 with Brandon's OK ("yes update the phone check, keep it zoomed in"): walking is always on,
+        # so the first view is zoomed in around you (the ring's far side is off the frame); zoomed out by you, the
+        # whole ring fits the frame as before. Both are checked: 2 (first view) and 2b (zoomed out).
+        look = ("(() => { const fb = document.getElementById('lgm-svg').getBoundingClientRect();"
+                " const els = [...document.querySelectorAll('#lgm-nodes > g.lgn')].filter(g => getComputedStyle(g).visibility !== 'hidden');"
+                " const bx = g => g.querySelector('.lgs').getBoundingClientRect();"
+                " const boxes = els.map(bx).filter(b => b.width > 0);"
+                " const you = document.querySelector('#lgm-nodes > g.lgn-you'); const yb = you && bx(you);"
+                " let overlaps = 0; for (let i = 0; i < boxes.length; i++) for (let k = i + 1; k < boxes.length; k++) {"
+                "  const a = boxes[i], b = boxes[k]; if (a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1) overlaps++; }"
+                " return JSON.stringify({frame: [fb.left, fb.top, fb.right, fb.bottom], n: boxes.length, overlaps: overlaps,"
+                "  left: Math.min(...boxes.map(b => b.left)), right: Math.max(...boxes.map(b => b.right)),"
+                "  top: Math.min(...boxes.map(b => b.top)), bottom: Math.max(...boxes.map(b => b.bottom)),"
+                "  youMid: yb ? (yb.left + yb.right) / 2 : null, youTop: yb ? yb.top : null, youBottom: yb ? yb.bottom : null,"
+                "  scale: window.LG_MAP ? LG_MAP.scale() : null, fit: window.LG_MAP && LG_MAP.fitScale ? LG_MAP.fitScale() : null}); })()")
+        r = self.j(look)
         self.shot("map-first-view")
+        third = lambda q: q["frame"][0] + (q["frame"][2] - q["frame"][0]) / 3 <= q["youMid"] <= q["frame"][2] - (q["frame"][2] - q["frame"][0]) / 3
+        ok = (isinstance(r, dict) and r.get("n", 0) >= 3 and r["overlaps"] == 0 and r["youMid"] is not None and third(r)
+              and r["youTop"] >= r["frame"][1] - 0.5 and r["youBottom"] <= min(r["frame"][3], 844) + 0.5
+              and bool(r.get("fit")) and r["scale"] > r["fit"] * 1.2)
+        self.check("2 map: the first view is zoomed in around you (you whole and in the middle, no boxes overlapping)", ok, r)
+        z = self.map_zoom_out()
+        r = self.j(look)
+        self.shot("map-zoomed-out")
         ok = (isinstance(r, dict) and r.get("n", 0) >= 3 and r["overlaps"] == 0
               and r["left"] >= r["frame"][0] - 0.5 and r["right"] <= r["frame"][2] + 0.5
               and r["top"] >= r["frame"][1] - 0.5 and r["bottom"] <= r["frame"][3] + 0.5
-              and r["youMid"] is not None
-              and r["frame"][0] + (r["frame"][2] - r["frame"][0]) / 3 <= r["youMid"] <= r["frame"][2] - (r["frame"][2] - r["frame"][0]) / 3)
-        self.check("2 map: the ring around you fits the frame, you in the middle, no boxes overlapping", ok, r)
+              and r["youMid"] is not None and third(r))
+        self.check("2b map, zoomed out by you: the ring around you fits the frame, you in the middle, no boxes overlapping", ok,
+                   {"scales": z, "view": r})
 
     def case3_quick_tap(self):
         name = "3 quick tap: connections grow, no page sheet"
+        self.goto("/map", settle=3)
+        self.map_zoom_out()
         target = self.j("(() => { const fb = document.getElementById('lgm-svg').getBoundingClientRect();"
                         " const vis = [...document.querySelectorAll('#lgm-nodes .lgn')].filter(g => !g.classList.contains('lgn-open'))"
                         "  .map(g => ({g: g, b: g.getBoundingClientRect()}))"
@@ -190,6 +222,7 @@ class Run:
         for case, gap_s, lo, hi, want_open in (("4c", 0.15, 100, 250, True), ("4d", 0.6, 500, 10 ** 6, False)):
             name = ("4c double tap: the page sheet opens" if want_open else "4d slow second tap: no page sheet")
             self.goto("/map", settle=3)
+            self.map_zoom_out()
             target = self.box(1)
             if not (isinstance(target, dict) and "x" in target):
                 self.check(name, False, {"target": target})

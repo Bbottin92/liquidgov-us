@@ -80,3 +80,19 @@ How Judgment works, so nobody can game it or be framed by it:
 - It only changes how much your opinions of others count. It never lowers your own Contribution or Conduct, and never
   touches the floor.
 - Juries are picked with Judgment in mind, so the people judging are the ones whose calls tend to hold up.
+
+## Round 3: decided, never vote weight; shown beside what you contribute (Brandon, 2026-11-15)
+
+Brandon: "it shouldnt effect the weight of your votes but perhaps it could be shown in your comments or proposals to give
+people an idea of how seriously they should consider what you contribute". So question 1 is answered: one person, one
+vote, always; credibility is information shown beside comments and proposals.
+
+Claude's proposal for how it shows, so it informs without becoming a way to dismiss people:
+- Beside a comment or proposal, a small mark for the aspect that matters there: Topic standing in that group or subject
+  if there is one, else Contribution. Tap it to see what it rests on ("12 proposals, 9 passed; trusted in Fresno
+  Neighbors").
+- New accounts show "New", not a low score: no history is not bad history.
+- Conduct shows only when a jury has found against someone recently, as a plain note ("a recent post was found
+  misleading"), fading when the mark fades. It is never a permanent badge.
+- Judgment is never shown on posts (it is about how you judge others, not about what you wrote); you see your own.
+- Sorting stays yours: comments are not hidden or ranked down for low credibility unless a reader chooses that.

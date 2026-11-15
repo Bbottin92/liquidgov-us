@@ -13,6 +13,21 @@ namespace liquidgov::site {
 
 std::optional<std::string> feed_routes(Route& r) {
     LG_ROUTE_LOCALS(r)
+    // Share to LiquidGov (2026-11-15): the installed app is a share target (manifest.webmanifest share_target), so a
+    // phone's Share menu offers it from TikTok, X, YouTube and the rest; what was shared opens in the feed's post box,
+    // ready to post or change. Title, text and link go in as one text (a link already in the text is not repeated).
+    if(method=="GET"&&path=="/share") {
+        if(!acc) return need_login();
+        const std::string title = qs.count("title") ? qs.at("title") : "", text = qs.count("text") ? qs.at("text") : "",
+                          url = qs.count("url") ? qs.at("url") : "";
+        std::string out;
+        auto add = [&](const std::string& part) { if (part.empty()) return; if (!out.empty()) out += "\n"; out += part; };
+        if (text.find(title) == std::string::npos) add(title);
+        add(text);
+        if (url.empty() || text.find(url) == std::string::npos) add(url);
+        if (out.size() > 2000) out.resize(2000);
+        return http_redir("/feed#share=" + url_encode(out));
+    }
     if(method=="GET"&&path=="/feed") {
         if(!acc) return need_login();
         std::string filter_key = qs.count("filter") ? qs.at("filter") : "all";

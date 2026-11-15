@@ -24,6 +24,8 @@ std::optional<std::string> assets_routes(Route& r) {
             "\"display\":\"standalone\","
             "\"background_color\":\"#f7f1e4\","
             "\"theme_color\":\"#8a6620\","
+            // an installed app is offered in the phone's Share menu (feed_routes.cpp /share fills the post box)
+            "\"share_target\":{\"action\":\"/share\",\"method\":\"GET\",\"params\":{\"title\":\"title\",\"text\":\"text\",\"url\":\"url\"}},"
             "\"icons\":[{\"src\":\"/icon-192.png\",\"sizes\":\"192x192\",\"type\":\"image/png\",\"purpose\":\"any\"},{\"src\":\"/icon-512.png\",\"sizes\":\"512x512\",\"type\":\"image/png\",\"purpose\":\"any maskable\"},{\"src\":\"/favicon.svg\",\"sizes\":\"any\",\"type\":\"image/svg+xml\",\"purpose\":\"any\"}]"
             "}");
     }

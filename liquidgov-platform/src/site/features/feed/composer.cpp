@@ -194,6 +194,11 @@ std::string feed_composer_card(const std::string& user) {
         "<input type=\"hidden\" name=\"groups\" id=\"groupsfield\" value=\"0\">"
         "<textarea name=\"text\" maxlength=\"2000\" placeholder=\"Plain text.\" "
         "oninput=\"document.getElementById('feedchars').textContent=(2000-this.value.length)+' left'\"></textarea>"
+        // Share to LiquidGov (/share, 2026-11-15): what was shared arrives as #share=... and fills the box
+        "<script>document.addEventListener('DOMContentLoaded',function(){var m=/^#share=(.*)$/.exec(location.hash);if(!m)return;var t=document.querySelector('form textarea[name=text]');"
+        "if(!t)return;try{t.value=decodeURIComponent(m[1]).slice(0,2000);}catch(e){return;}"
+        "t.dispatchEvent(new Event('input'));t.focus();t.scrollIntoView({block:'center'});"
+        "history.replaceState(null,'',location.pathname+location.search);});</script>"
         "<p class=\"muted\" id=\"feedchars\" style=\"margin:.2rem 0 0;text-align:right\">2000 left</p>"
         "<div class=\"row\" style=\"justify-content:space-between;align-items:center;margin-top:.4rem\">"
         "<button type=\"button\" class=\"attachbtn\" id=\"feedattachbtn\" aria-label=\"Attach a photo or video\" "

@@ -9,7 +9,10 @@
    walks the dot. */
 (function () {
   var cfg = window.LG_HERE;
-  if (!cfg || !cfg.me || !cfg.page || !window.WebSocket || !window.LG_WALKER) return;
+  // Your droplet on every page (Brandon 2026-11-15): with no page (no room) this file walks your drop on its own and
+  // nothing is sent anywhere (cfg.me may be empty: no account, a plain drop). With a page it is a profile page's room.
+  var solo = !!cfg && !cfg.page;
+  if (!cfg || !window.LG_WALKER || (!solo && (!cfg.me || !window.WebSocket))) return;
   var W = LG_WALKER, MAX_SPEED = W.CONTROLS.maxSpeed, SEND_MS = 110;   // px per 40 ms tick at full speed
 
   var layer = document.createElement('div');
@@ -52,7 +55,8 @@
     label.className = 'lg-here-name';
     label.textContent = u;
     d.appendChild(u === cfg.me ? LG_WALKER.portrait(u) : img);
-    if (u === cfg.me) LG_WALKER.menu(d.firstChild);   // tap or click your drop: microphone, camera, drip speed
+    if (u === cfg.me) LG_WALKER.menu(d.firstChild);
+    if (u === cfg.me && !u) label.remove();   // no account: no handle under the drop   // tap or click your drop: microphone, camera, drip speed
     d.appendChild(label);
     d.setAttribute('data-u', u);
     layer.appendChild(d);
@@ -82,6 +86,7 @@
   }
 
   function connect() {
+    if (solo) return;   // on your own: no room to join
     var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
     ws = new WebSocket(proto + '//' + location.host + '/here/ws?page=' + encodeURIComponent(cfg.page));
     ws.onopen = function () { tries = 0; dirty = true; };
@@ -147,5 +152,6 @@
   });
   sizeLayer();
   setTimeout(sizeLayer, 1500);
+  if (solo) { me.known = true; dots[cfg.me] = makeDot(cfg.me); place(dots[cfg.me], me.x, me.y); }   // yours, at once
   connect();
 })();

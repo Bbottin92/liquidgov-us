@@ -61,6 +61,15 @@ std::optional<std::string> settings_routes(Route& r) {
         html += "<form method=\"POST\" action=\"/settings/logout-all\" style=\"margin-top:1rem\">"
                 "<button class=\"danger\" type=\"submit\">Log out other devices</button></form></div>";
 
+        // Your droplet (Brandon 2026-11-15: on every page, "and you can choose to hide it if you want ... in settings").
+        // Kept in this browser (a cookie, like the theme), so another phone or computer has its own choice.
+        html += std::string("<div class=\"card\" id=\"drop\"><h2>Your droplet</h2>"
+                "<p class=\"muted\">Your droplet is on every page: walk it with the touchpad or the keys, press A to use what "
+                "it stands next to, tap it for its menu. Hidden, you get no droplet, no touchpad and no dots on profile pages, "
+                "and on the map you tap and drag instead of walking. This choice is kept in this browser only.</p>")
+                + (g_drop_off ? "<p><strong>Hidden in this browser.</strong></p><p><a class=\"btn\" href=\"/drop/on\">Show my droplet</a></p>"
+                              : "<p><strong>Shown in this browser.</strong></p><p><a class=\"btn ghost\" href=\"/drop/off\">Hide my droplet</a></p>")
+                + "</div>";
         html += here_settings_card(user);
         {
             // Map and connections (slice 6): what /map may show about you.

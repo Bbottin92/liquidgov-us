@@ -3,9 +3,25 @@
 #include "site/ui/assets.hpp"
 #include "site/ui/favicon_cookies.hpp"
 #include "site/ui/shell.hpp"
+#include "site/core/text.hpp"
 
 namespace liquidgov::site {
  // defined below, needed here for wrap()
+
+// Your droplet on every page (Brandon 2026-11-15: "every page should just include the droplet that way we keep things
+// universal and standardized and consolidated"). A page that already has a walker (a profile page, with other people's
+// dots: here_page_bits; the map; the home page) keeps its own; every other page gets yours on its own (here.js with no
+// room: nothing is sent anywhere). Not when this browser hid it (Settings > Your droplet, the lg_drop=off cookie).
+// Before </body>, outside <main>, so it is never inside what a page swaps out.
+static void add_drop(std::string& page, const std::string& user) {
+    if (g_drop_off || page.find("/walker.js") != std::string::npos) return;
+    auto pos = page.rfind("</body>");
+    if (pos == std::string::npos) return;
+    // usernames are [A-Za-z0-9._-] only, so JSON-escaped text cannot end the script
+    page.insert(pos, "<script>window.LG_HERE={\"me\":\"" + json_escape(user) + "\",\"page\":\"\",\"box\":\"\"};</script>"
+                     "<script src=\"" + asset_url("walker.js") + "\" defer></script>"
+                     "<script src=\"" + asset_url("here.js") + "\" defer></script>");
+}
 
 std::string wrap(const std::string& title, const std::string& user, int unread, const std::string& body, bool show_intro) {
     // Anonymous visitors have no prefs to consult -- they always get the
@@ -33,6 +49,7 @@ std::string wrap(const std::string& title, const std::string& user, int unread, 
             "main.wrap{padding-top:.75rem;padding-bottom:1.5rem}</style>";
         auto head = page.find("</head>");
         if (head != std::string::npos) page.insert(head, fit);
+        add_drop(page, user);
         return page;
     }
     std::string page = page_wrap(title, nav(user, unread), care + body, show_intro, intro_always_play);
@@ -48,6 +65,7 @@ std::string wrap(const std::string& title, const std::string& user, int unread, 
         auto pos = page.find("</main>");
         if (pos != std::string::npos) page.insert(pos + 7, widget);
     }
+    add_drop(page, user);
     return page;
 }
 

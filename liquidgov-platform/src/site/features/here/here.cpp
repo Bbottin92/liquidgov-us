@@ -6,6 +6,7 @@
 #include "site/core/text.hpp"
 #include "site/core/ws_limits.hpp"
 #include "site/ui/assets.hpp"
+#include "site/ui/favicon_cookies.hpp"
 
 namespace liquidgov::site {
 
@@ -354,7 +355,7 @@ static std::string here_box_id(const std::string& page) {
 }
 
 std::string here_page_bits(const std::string& viewer, const std::string& page) {
-    if (viewer.empty() || here_room_for(page).empty()) return "";
+    if (viewer.empty() || here_room_for(page).empty() || g_drop_off) return "";   // droplet hidden: not here either
     auto choice = g_store.here_choice(viewer);
     if (!choice) {
         auto btn = [&](const char* v, const char* label, const char* cls) {

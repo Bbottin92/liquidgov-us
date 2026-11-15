@@ -1,6 +1,7 @@
 #include "site/features/map/map_page.hpp"
 #include "site/core/html.hpp"
 #include "site/ui/assets.hpp"
+#include "site/ui/favicon_cookies.hpp"
 #include "site/features/map/map_svg.hpp"
 #include "site/features/people/people.hpp"
 
@@ -64,9 +65,10 @@ std::string map_page_body(const std::string& user, const std::string& focus) {
             // People you may know, under the map: a signed-in person lands on this page, also right after signup
             + people_suggestions_html(user, 3, "/") +
             "<script src=\""+asset_url("lgmap.js")+"\" defer></script>"
-            // walking on the map (Brandon 2026-11-13): the shared controls, then the map walker (assets/lgmap_walk.js)
-            "<script src=\""+asset_url("walker.js")+"\" defer></script>"
-            "<script src=\""+asset_url("lgmap_walk.js")+"\" defer></script>";
+            // walking on the map (Brandon 2026-11-13): the shared controls, then the map walker (assets/lgmap_walk.js);
+            // not when this browser hid its droplet (Settings, 2026-11-15): then the map is a map you tap and drag
+            + (g_drop_off ? std::string() : "<script src=\""+asset_url("walker.js")+"\" defer></script>"
+                                           "<script src=\""+asset_url("lgmap_walk.js")+"\" defer></script>");
 }
 
 }  // namespace liquidgov::site

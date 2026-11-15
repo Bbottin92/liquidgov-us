@@ -237,6 +237,16 @@ std::optional<std::string> assets_routes(Route& r) {
         extra += "\r\n";
         return http_redir(back, extra);
     }
+    // Settings > Your droplet: hide or show your droplet in this browser (a cookie, like the theme), then back.
+    if(method=="GET"&&(path=="/drop/off"||path=="/drop/on")) {
+        std::string back = header_value(req, "Referer");
+        if (back.empty() || back.rfind("http",0)!=0) back = "/settings#drop";
+        std::string extra = path=="/drop/off" ? "Set-Cookie: lg_drop=off; Path=/; SameSite=Lax; Max-Age=31536000"
+                                              : "Set-Cookie: lg_drop=; Path=/; SameSite=Lax; Max-Age=0";
+        if (g_https) extra += "; Secure";
+        extra += "\r\n";
+        return http_redir(back, extra);
+    }
     if(method=="GET"&&(path=="/install"||path=="/apps")) {
         std::ifstream in("assets/apps.html"); std::ostringstream body; if(in) body<<in.rdbuf();
         return pg("Get the app", body.str());

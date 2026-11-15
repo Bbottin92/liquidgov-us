@@ -54,6 +54,7 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
     }
     const std::string ip = forwarded_ip(req, peer_ip);
     g_theme_mode = theme_of(req);
+    g_drop_off = drop_off_of(req);
     auto acc = account_from_req(req);
     std::string user = acc ? acc->username : "";
     const std::string sid = cookie_of(req);

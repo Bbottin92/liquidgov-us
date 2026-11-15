@@ -47,6 +47,10 @@ const char* groups_svg() {
 // threaded synchronous entry point), read here at render time.
 thread_local std::string g_theme_mode;
 thread_local bool g_https = false;
+// Your droplet is on every page (Brandon 2026-11-15: "every page should just include the droplet ... and you can
+// choose to hide it if you want ... in settings"). Hidden in this browser by the lg_drop=off cookie (/drop/off), set
+// once per request in handle() like g_theme_mode.
+thread_local bool g_drop_off = false;
 // True when this page is loading inside the map's right-hand field (the
 // browser sends Sec-Fetch-Dest: iframe, also on redirects and clicks inside
 // it; ?embed=1 forces it for tests). wrap() then drops the site header,

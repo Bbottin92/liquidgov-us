@@ -14,6 +14,7 @@ std::map<std::string,std::string> parse_form(const std::string& body);
 std::map<std::string,std::string> parse_qs(const std::string& path);
 std::string cookie_of(const std::string& headers);
 std::string theme_of(const std::string& headers);
+bool drop_off_of(const std::string& headers);   // the lg_drop=off cookie: this browser hid its droplet
 std::string header_value(const std::string& headers, const std::string& name);
 std::string forwarded_ip(const std::string& req, const std::string& peer);
 std::string device_label_from(const std::string& headers, const std::string& ip);

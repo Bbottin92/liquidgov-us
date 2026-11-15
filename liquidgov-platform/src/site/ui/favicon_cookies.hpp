@@ -12,6 +12,8 @@ const char* groups_svg();
 extern thread_local std::string g_theme_mode;
 extern thread_local bool g_https;
 extern thread_local bool g_embed;
+// True when this browser hid its droplet (Settings > Your droplet: the lg_drop=off cookie, Brandon 2026-11-15)
+extern thread_local bool g_drop_off;
 extern std::set<std::string> g_care_notice;
 std::string set_cookie(const std::string& sid);
 std::string clear_cookie();

@@ -92,3 +92,50 @@ will need care), and the microphone and camera then also work on the map itself,
 
 1. Slice B: portal peek and the call carrying over (5), since it replaces the side panel and is mostly page code.
 2. Slice C: the water and the bigger places (1, 2), then the four lakes (3), then the populating streams (4).
+
+## Round 2 (Brandon's answers, 2026-11-14, and Claude's synthesis)
+
+Answers: 1 yes, currents if they fit coherently; 2 some places bigger than others, by something to be decided;
+3 open, with two ideas: pools are nouns and streams are verbs, and "digital quantum entangled russian dolls";
+4 the requirement below; 5 = 5A.
+
+### A grammar for the map
+- **Pools are nouns**: a person, a place (city), a group, a proposal, an idea, a post.
+- **Streams are verbs**: the relation between two nouns, named on the stream: *lives in*, *is a member of*,
+  *voted on*, *wrote*, *cares about*, *is friends with*. A stream only exists where the site already records that
+  relation, so every path means something.
+- **Russian dolls**: a pool holds smaller pools (a city holds its groups, a group its proposals and posts). Entering a
+  pool is opening the doll; its inside is its own little waterway.
+- **Entangled**: one noun lives in many dolls. The proposal pool inside Fresno Neighbors and the same proposal inside
+  Politics are the same pool, one instance: whoever reaches it by any route is in the same room with you.
+- **The top level** is then the four biggest dolls, by kind of noun: People, Places, Things, Ideas.
+
+### Currents
+Streams flow toward where people are right now. Drifting with the current carries you to live places, which serves
+discovery; swimming against it takes you somewhere quiet. Nobody has to steer the current: it follows presence.
+
+### Size (2)
+Proposed: a pool's size follows how many people belong to or take part in it (members, voters, attendees), on a
+log scale, so a city is a lake and a two-person group is a pond; your own pool is always a comfortable size. To decide:
+"how many belong" (steady) or "how alive it is lately" (changes from week to week).
+
+### Privacy, connection and discovery without splitting friends up (4)
+Each noun's owner chooses one of three levels:
+- **Open**: everyone sees the stream and the pool and can swim in.
+- **Visible but closed**: everyone sees the stream and that a pool is there, but not its name or contents; the
+  mouth has a valve (knock, request, invite: the valve types that already exist). Your friend can follow you to the
+  edge, knock, or wait for you there. Nobody vanishes; the privacy is in what is behind the valve.
+- **Hidden**: the stream does not exist for people who are not allowed. To keep the group together, **while you are
+  traveling with someone, hidden streams are hidden for the whole party**: you see what the least-allowed member of the
+  group may see of hidden places. Alone, you see everything you are allowed.
+
+So a group sees one shared map. You can only walk off where your friends can at least see you go, and they arrive at
+a door, not at nothing. Discovery comes from the open and visible streams, which are most of them.
+
+"Traveling with someone" needs one definition: proposed, people in the same pool who have both turned on a
+"together" switch in the drop menu (or, simpler, friends within a short distance of each other).
+
+### Still to decide
+- Size by membership or by recent activity.
+- What counts as traveling together.
+- Whether privacy is set per noun (each group or proposal) or per kind of relation (all "member of" streams).

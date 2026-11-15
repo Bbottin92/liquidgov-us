@@ -56,3 +56,27 @@ level and a little time on the site.
    (C) public level, private details. Claude: C.
 5. **Juries**: is a small random jury (say 5 people) the right shape for judging disapproved acts, or do you picture
    something else?
+
+## Round 2: different aspects of credibility (Brandon, 2026-11-15)
+
+Brandon: "also if we had like different aspects of credibility that are accounted for, so if you get a reputation for
+being hyper judgemental, then maybe your judgements regarding other's credibility would have less weight accordingly".
+
+Proposed aspects, each its own number:
+- **Contribution**: what others do with your work (proposals that pass, posts people keep, groups people stay in).
+- **Conduct**: the outcome of juries about things you did.
+- **Judgment**: how well your reports, endorsements and jury votes match what independent juries and the wider community
+  end up finding. It sets how much weight your opinions of others carry.
+- **Topic standing** (optional): contribution within a group or a subject.
+
+How Judgment works, so nobody can game it or be framed by it:
+- It is measured, not voted on: nobody rates you as "judgmental". It comes from comparing your calls with independent
+  outcomes over many cases. So a rival cannot lower it.
+- It catches both directions: someone much harsher than independent juries (reports everything, rates everyone low) and
+  someone much softer (endorses all their friends, never reports) both drift toward less weight. Being fair, agreeing
+  with independent outcomes most of the time, keeps full weight.
+- Disagreeing is not punished: being in the minority now and then is normal. Only a steady pattern over many cases
+  moves it, and a one-off is invisible.
+- It only changes how much your opinions of others count. It never lowers your own Contribution or Conduct, and never
+  touches the floor.
+- Juries are picked with Judgment in mind, so the people judging are the ones whose calls tend to hold up.

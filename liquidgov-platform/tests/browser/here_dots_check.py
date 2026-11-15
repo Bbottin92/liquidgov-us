@@ -85,13 +85,11 @@ class DotsRun(phone_check.Run):
             self.check("D1 %s: the middle of the site header still hits the header" % tag,
                        (self.hit("header.top") or {}).get("ok"), self.hit("header.top"))
             self.check("D3 %s: positive control, nothing is marked before walking" % tag, not st.get("near"), st)
-            self.j("(() => { document.querySelector('#lg-here-pad .lg-here-walk').click(); return JSON.stringify(1); })()")
-            time.sleep(0.3)
-            before = (self.state() or {}).get("dot")
+            before = (self.state() or {}).get("dot")   # walking is always on (2026-11-15): nothing to click first
             self.key("ArrowRight", 0.4)
             time.sleep(0.2)
             after = (self.state() or {}).get("dot")
-            self.check("D2 %s: Walk shows the D-pad" % tag, (self.state() or {}).get("pad"), self.state())
+            self.check("D2 %s: the pad is on the page (walking is always on)" % tag, (self.state() or {}).get("pad"), self.state())
             self.check("D2 %s: an arrow key moves the dot right" % tag,
                        bool(before and after and after[0] > before[0] + 20), (before, after))
             self.shot(tag + "-walk")

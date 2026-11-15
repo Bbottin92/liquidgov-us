@@ -1,14 +1,15 @@
-"""The dots' Walk button and D-pad never leave page content stuck underneath them (Brandon 2026-11-12, "do the dpad
-fix": on a phone the fixed D-pad sat over whatever was bottom-left, e.g. "Play in Juketube" and the footer). While the
-pad is on screen the page gets that much room at its end, so scrolled to the bottom every bit of content clears it.
-New file: no committed check is edited.
+"""The dots' pad never leaves page content stuck underneath it (Brandon 2026-11-12, "do the dpad fix": on a phone the
+fixed D-pad sat over whatever was bottom-left, e.g. "Play in Juketube" and the footer). The page gets the pad's height
+as room at its end, so scrolled to the bottom every bit of content clears it.
+Updated 2026-11-15 with Brandon's OK: walking is always on (no Drop/Scroll switch), so the pad is always there; the
+old "not walking" / "stop walking" cases (R1, R3) became R1 and R3 below.
 
 Cases (Bbottin signed in and chose Yes, phone_serve.sh sample data, /u/stranger), at phone (390) and desktop (1280):
-  R0 precondition: the Walk button is on the page, fixed at the bottom-left (positive control: it really sits over the
-     page area, so a pass below is not a pad that simply is not there)
-  R1 not walking: scrolled to the end, the footer's last line of text ends above the Walk button
-  R2 walking (D-pad open): scrolled to the end, the footer's last line of text ends above the D-pad
-  R3 stop walking: the extra room shrinks back to the Walk button's size (no leftover gap the size of the D-pad)
+  R0 precondition: the pad is on the page, fixed at the bottom (positive control: it really sits over the page area,
+     so a pass below is not a pad that simply is not there)
+  R1 scrolled to the end, the footer's last line of text ends above the pad
+  R2 after walking, scrolled to the end, it still does
+  R3 the room is the pad's size, not more (no leftover gap: at most the pad's height + 40 px)
 Writes <out>/phone-herepad-<label>.json and <out>/phone-herepad-<label>-*.png (look at them).
 """
 import json
@@ -27,7 +28,7 @@ MEASURE = ("(() => { window.scrollTo(0, document.documentElement.scrollHeight); 
            " const rs = [...range.getClientRects()].filter(x => x.height > 0);"
            " const pr = pad.getBoundingClientRect();"
            " res(JSON.stringify({textBottom: rs.length ? Math.max(...rs.map(x => x.bottom)) : null, padTop: pr.top, padBottom: pr.bottom,"
-           " padLeft: pr.left, vh: innerHeight, docH: document.documentElement.scrollHeight,"
+           " padLeft: pr.left, padH: pr.height, vh: innerHeight, docH: document.documentElement.scrollHeight,"
            " room: parseFloat(getComputedStyle(document.body).paddingBottom) || 0}));"
            " }, 500)); })()")
 
@@ -43,8 +44,11 @@ class PadRun(phone_check.Run):
         self.ws.call("Emulation.setDeviceMetricsOverride", width=w, height=h, deviceScaleFactor=2 if mobile else 1, mobile=mobile)
 
     def walk(self):
-        self.j("(() => { document.querySelector('#lg-here-pad .lg-here-walk').click(); return JSON.stringify(1); })()")
-        time.sleep(0.4)
+        for k in ("ArrowRight", "ArrowDown"):
+            self.ws.call("Input.dispatchKeyEvent", type="keyDown", key=k, code=k, windowsVirtualKeyCode={"ArrowRight": 39, "ArrowDown": 40}[k])
+            time.sleep(0.3)
+            self.ws.call("Input.dispatchKeyEvent", type="keyUp", key=k, code=k, windowsVirtualKeyCode={"ArrowRight": 39, "ArrowDown": 40}[k])
+        time.sleep(0.3)
 
     def cases(self):
         self.goto("/settings", settle=0.5)
@@ -53,22 +57,19 @@ class PadRun(phone_check.Run):
             self.width(w, h, mobile)
             self.goto("/u/stranger", settle=2)
             m = self.j(MEASURE) or {}
-            self.check("R0 %s: the Walk button is fixed at the bottom-left over the page" % tag,
-                       isinstance(m, dict) and m.get("padBottom") and m["padBottom"] >= m["vh"] - 40 and m.get("padLeft", 99) < 40, m)
-            self.check("R1 %s: not walking, the page's end clears the Walk button" % tag,
+            self.check("R0 %s: the pad is fixed at the bottom over the page" % tag,
+                       isinstance(m, dict) and m.get("padBottom") and m["padBottom"] >= m["vh"] - 40 and m.get("padH", 0) > 44, m)
+            self.check("R1 %s: the page's end clears the pad" % tag,
                        m.get("textBottom") is not None and m.get("padTop") is not None and m["textBottom"] <= m["padTop"], m)
-            closed_room = m.get("room", 0)
             self.shot(tag + "-end")
             self.walk()
             m2 = self.j(MEASURE) or {}
-            self.check("R2 %s: walking, the page's end clears the D-pad" % tag,
+            self.check("R2 %s: after walking, the page's end still clears the pad" % tag,
                        m2.get("textBottom") is not None and m2.get("padTop") is not None and m2["textBottom"] <= m2["padTop"], m2)
             self.shot(tag + "-walking-end")
-            self.walk()   # stop walking
-            m3 = self.j(MEASURE) or {}
-            self.check("R3 %s: stop walking, the room shrinks back to the Walk button's size" % tag,
-                       isinstance(m3, dict) and abs(m3.get("room", -1) - closed_room) <= 2 and m3.get("room", 0) < m2.get("room", 0),
-                       (closed_room, m2.get("room"), m3.get("room")))
+            self.check("R3 %s: the room is the pad's size, not more" % tag,
+                       isinstance(m2, dict) and m2.get("padH", 0) <= m2.get("room", 0) <= m2.get("padH", 0) + 40,
+                       (m2.get("padH"), m2.get("room")))
 
 
 def run(base, session, expected_js, label, out):

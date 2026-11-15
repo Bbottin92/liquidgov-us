@@ -1,26 +1,42 @@
-/* Walking on the map (Brandon 2026-11-13, 12:36 AM): the walker stands on a box. The touchpad or WASD/arrows picks the
-   connector (the line to a neighboring box) that points most that way and walks along it to the next box; A or Enter
-   opens the box you stand on (the same as tapping it), B or Esc goes back (closes the open page, else the map's Back).
-   Uses lgmap.js's own drawing as it is: the boxes (#lgm-nodes .lgn[data-id]) and connectors (#lgm-edges .lge[data-a]
-   [data-b]) on the screen, wherever its ring layout put them; this file lays nothing out. The Drop button, pad and keys are
-   walker.js's (window.LG_WALKER, loaded before this file). Dropped in, the camera (lgmap.js's window.LG_MAP) zooms
-   to LG_WALKER.CONTROLS.mapZoom and follows the walker; the boxes get depth (lgmap.css .lgm-dropping). */
+/* Walking on the map (Brandon 2026-11-13; free walking 2026-11-14: "it should behave just like any where else as far
+   as the droplet movement goes"). Your drop moves freely over the map, the way a dot moves over a profile page: the
+   touchpad or WASD/arrows walk it at walker.js's speed. A box is an area: step onto it and you are in it (its
+   instance); A or Enter opens the box you stand on, or the one right next to you (the same as tapping it); B or Esc
+   goes back (closes the open page, else the map's Back).
+   Walking is always on: there is no Drop/Scroll switch. The view starts zoomed in around your drop
+   (LG_WALKER.CONTROLS.mapZoom times the fitted view) and, zoomed in, only the box you are at and the boxes connected to
+   it are shown. Zoom out yourself (a pinch on the map, the wheel, a trackpad pinch) and the whole map is shown; zoom
+   back in and it narrows again. With Center armed the camera keeps your drop in the middle; disarmed it only moves to
+   keep the drop in view.
+   Uses lgmap.js's own drawing as it is: the boxes (#lgm-nodes .lgn[data-id]), their regions (LG_MAP.instance(id)
+   .region, map units), the connectors (#lgm-edges .lge[data-a][data-b]) and the camera (LG_MAP.view / setView /
+   toScreen); this file lays nothing out. The pad, keys and Center button are walker.js's (window.LG_WALKER). */
 (function () {
   'use strict';
   var root = document.getElementById('lgmap');
-  if (!root || !window.LG_WALKER) return;
+  if (!root || !window.LG_WALKER || !window.LG_MAP || !LG_MAP.setView) return;
+  var W = LG_WALKER, C = W.CONTROLS, MAP = LG_MAP;
   var nodeLayer = document.getElementById('lgm-nodes'), edgeLayer = document.getElementById('lgm-edges');
-  var at = null, walker = null, follow = 0, dropping = false, later = [], settle = 0, dropPortrait;
-  var ZOOM = LG_WALKER.CONTROLS.mapZoom;
-  var MIN_COS = 0.2;   // a connector counts for a direction when it points within ~78 degrees of it
+  var svg = document.getElementById('lgm-svg');
+  var MAINSTREAM = 'mainstream', EDGE = 70;   // EDGE: disarmed, the camera moves when the drop is this near the frame's edge (px)
+  var me = null;                              // where the drop is, in map units; null until the map has drawn
+  var at = '', last = '', instanceId = MAINSTREAM;   // the box you are in ('' = none), the last one you were in, the instance
+  var held = {}, pull = { x: 0, y: 0 }, ctl = null, anchor = null, asked = '';
+  var myName = root.getAttribute('data-me') || '';
+  var userZoom = 0, userOut = false, rezoom = 0;
 
   function box(id) { return id ? nodeLayer.querySelector('.lgn[data-id="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]') : null; }
-  function middle(el) { var r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; }
   function shown(el) { return el.style.display !== 'none' && !el.classList.contains('lge-hiddenbox'); }
-  // where to stand when nothing is chosen yet: the box last tapped, else the center of the map (you at the start)
-  function startBox() {
-    var sel = nodeLayer.querySelector('.lgn.lgn-sel') || box('you') || nodeLayer.querySelector('.lgn');
-    return sel ? sel.getAttribute('data-id') : null;
+  function region(id) { var r = MAP.instance(id); return r && r.region ? r.region : null; }
+  // every box drawn on the map, with its region
+  function boxes() {
+    var out = [];
+    Array.prototype.forEach.call(nodeLayer.querySelectorAll('.lgn[data-id]'), function (el) {
+      if (el.style.display === 'none') return;
+      var id = el.getAttribute('data-id'), r = region(id);
+      if (r) out.push({ id: id, el: el, r: r });
+    });
+    return out;
   }
   // the boxes a connector from `id` leads to
   function neighbors(id) {
@@ -32,25 +48,48 @@
     });
     return out;
   }
-  var WAY = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
-  // the neighbor whose connector points most along the unit vector w (ties: the nearer one)
-  function pick(w) {
-    var here = box(at);
-    if (!here) return null;
-    var p = middle(here), best = null, bestScore = -Infinity;
-    neighbors(at).forEach(function (id) {
-      var q = middle(box(id)), dx = q.x - p.x, dy = q.y - p.y, len = Math.sqrt(dx * dx + dy * dy) || 1;
-      var cos = (dx * w[0] + dy * w[1]) / len;
-      if (cos < MIN_COS) return;
-      var score = cos - len / 100000;
-      if (score > bestScore) { bestScore = score; best = id; }
-    });
-    return best;
+  // spatial steps 6-7: the entry path. A box is entered only through its valve (data-valve, -owner, -invite on the box):
+  //   open: anyone; closed: no one; private: only its owner; invite: only people on its list;
+  //   request: turned away at its edge, and a request is recorded for the owner (data-requested-by, and an
+  //   'lg-valve-request' event), once per approach; conduit: you walk across it but are never in it.
+  // Returns 'in', 'through' or 'no'.
+  function entry(id, record) {
+    var el = box(id);
+    if (!el) return 'no';
+    var type = el.getAttribute('data-valve') || 'open';
+    if (type === 'open') return 'in';
+    if (type === 'conduit') return 'through';
+    if (type === 'private') return myName && el.getAttribute('data-valve-owner') === myName ? 'in' : 'no';
+    if (type === 'invite') return myName && (el.getAttribute('data-valve-invite') || '').split(',').indexOf(myName) >= 0 ? 'in' : 'no';
+    if (type === 'request' && record && asked !== id) {
+      asked = id;
+      el.setAttribute('data-requested-by', myName);
+      document.dispatchEvent(new CustomEvent('lg-valve-request', { detail: { box: id, by: myName } }));
+    }
+    return 'no';   // closed, request, and any type this file does not know
   }
-  // spatial step 3: the instance the walker is in. Standing on a box (always inside its region: the walker only
-  // stands on boxes) it is that box's id; at the you box, or in Scroll mode, it is the parent, mainstream.
-  var MAINSTREAM = 'mainstream', instanceId = MAINSTREAM;
-  var me = root.getAttribute('data-me') || '';
+  // is the point in the region? The same rule as assets/spatial.js isInside (spatial step 2, the edge counts as
+  // inside); that file is not served to pages, so the one line is repeated here.
+  function isInside(p, r) { return Math.abs(p.x - r.cx) <= r.hw && Math.abs(p.y - r.cy) <= r.hh; }
+  function holding(all, p) { return all.filter(function (b) { return isInside(p, b.r); }); }
+  // the box you are in: the smallest enterable box whose region holds the point
+  function insideOf(all, p) {
+    var best = null;
+    holding(all, p).forEach(function (b) {
+      if (entry(b.id, false) !== 'in') return;
+      if (!best || b.r.hw * b.r.hh < best.r.hw * best.r.hh) best = b;
+    });
+    return best ? best.id : '';
+  }
+  function nearestBox(all, p) {
+    var best = null, bestD = Infinity;
+    all.forEach(function (b) {
+      var d = Math.hypot(b.r.cx - p.x, b.r.cy - p.y);
+      if (d < bestD) { bestD = d; best = b; }
+    });
+    return best ? best.id : '';
+  }
+
   // spatial step 10: an admin's CSS for the instance you are Inside, as text in one <style> (never markup), nested under
   // #lgm-panel so it styles only what is inside the side panel, with the panel itself held in a paint-contained box.
   // The server only delivers CSS that passed sanitize_author_css. Gone again when you leave the instance.
@@ -58,23 +97,27 @@
   function scopeCss() {
     if (cssFor === instanceId) return;
     cssFor = instanceId;
-    var rec = instanceId !== MAINSTREAM && window.LG_MAP && LG_MAP.instance ? LG_MAP.instance(instanceId) : null;
+    var rec = instanceId !== MAINSTREAM ? MAP.instance(instanceId) : null;
     var panel = document.getElementById('lgm-panel'), st = document.getElementById('lgm-instance-css');
     if (!rec || !rec.css || !panel) { if (st) st.parentNode.removeChild(st); if (panel) panel.removeAttribute('data-instance'); return; }
     if (!st) { st = document.createElement('style'); st.id = 'lgm-instance-css'; document.head.appendChild(st); }
     st.textContent = '#lgm-panel *{' + rec.css + '}#lgm-panel[data-instance]{contain:paint;isolation:isolate}';
     panel.setAttribute('data-instance', instanceId);
   }
-  function instance() {
-    instanceId = dropping && at && at !== 'you' && box(at) ? at : MAINSTREAM;
-    walker.setAttribute('data-instance', instanceId);
-    scopeCss();
+
+  // The zoom you walk at, and the scale under which you count as zoomed out (halfway back to the fitted view).
+  function walkScale() { return Math.min(MAP.ZOOM.max, MAP.fitScale() * C.mapZoom); }
+  function zoomedIn() {
+    var fit = MAP.fitScale(), walk = walkScale();
+    return MAP.view().scale >= fit + (walk - fit) / 2 - 0.001;
   }
-  // spatial step 4: while Drop is on, only the box you stand on (Inside) and the boxes connected to it (Near) are
-  // shown; the rest (Far) and their connectors are hidden. Scroll mode shows everything again.
-  function proximity() {
-    var keep = null;
-    if (dropping && box(at)) { keep = neighbors(at); keep.push(at); }
+  // spatial step 4: zoomed in, only the box you are at (the one you are in, else the one you were last in, else the
+  // nearest) and the boxes connected to it are shown; the rest and their connectors are hidden. Zoomed out, everything
+  // is shown.
+  function proximity(all) {
+    var keep = null, ref = at || (box(last) ? last : nearestBox(all, me));
+    if (zoomedIn() && ref) { keep = neighbors(ref); keep.push(ref); }
+    walker.setAttribute('data-near', keep ? 'on' : 'off');
     Array.prototype.forEach.call(nodeLayer.querySelectorAll('.lgn'), function (o) {
       o.style.visibility = !keep || keep.indexOf(o.getAttribute('data-id')) >= 0 ? '' : 'hidden';
     });
@@ -82,17 +125,17 @@
       e.style.visibility = !keep || (keep.indexOf(e.getAttribute('data-a')) >= 0 && keep.indexOf(e.getAttribute('data-b')) >= 0) ? '' : 'hidden';
     });
   }
-  // Presence (2026-11-14): while Drop is on, the walker is in the presence server's map room (/here/ws?page=/map, the
-  // socket and message shape of the dots on profile pages, here.js): every position update sends {x, y, instanceId}.
-  // The server's snapshot then holds only the walkers in the same instance (spatial step 5); who that is right now
-  // is kept on #lgm-walker[data-here] (handles, comma separated) and drawn as small round portraits around the walker
-  // (hereDraw). Scroll mode closes the socket and removes them.
+
+  // Presence (2026-11-14): the walker is in the presence server's map room (/here/ws?page=/map, the socket and message
+  // shape of the dots on profile pages, here.js): every position update sends {x, y, instanceId}. The server's
+  // snapshot then holds only the walkers in the same instance (spatial step 5); who that is right now is kept on
+  // #lgm-walker[data-here] (handles, comma separated) and drawn as small round portraits around the walker (hereDraw).
   // x, y: where the walker is on the screen, as fractions of it (the map has no page coordinates of its own).
-  var hws = null, hsent = '';
+  var hws = null, hsent = '', spot = { x: 0, y: 0 };
   // The other droplets in your instance: one small circle each (#lgm-here .lgm-here-dot[data-u], lgmap.css), on a ring
   // around the walker, in handle order so they keep their places. Their portrait, else their first letter. Not
-  // tappable. At most HERE_MAX are drawn. Gone when they leave the snapshot (another instance, Scroll, left the map).
-  var hereLayer = null, hereDots = {}, HERE_MAX = 12, HERE_R = 30;
+  // tappable. At most HERE_MAX are drawn. Gone when they leave the snapshot (another instance, left the map).
+  var hereLayer = null, hereDots = {}, HERE_MAX = 12, HERE_R = 34;
   function hereDot(u) {
     var d = document.createElement('div'), img = document.createElement('img');
     d.className = 'lgm-here-dot';
@@ -107,11 +150,10 @@
   }
   function herePlace() {
     var names = Object.keys(hereDots).sort(), n = Math.max(names.length, 6);
-    var cx = parseFloat(walker.style.left) || 0, cy = (parseFloat(walker.style.top) || 0) - 15;   // the walker's own circle sits just above the box
     names.forEach(function (u, i) {
       var a = -Math.PI / 2 + (i + 1) * 2 * Math.PI / (n + 1);
-      hereDots[u].style.left = Math.round(cx + HERE_R * Math.cos(a)) + 'px';
-      hereDots[u].style.top = Math.round(cy + HERE_R * Math.sin(a)) + 'px';
+      hereDots[u].style.left = Math.round(spot.x + HERE_R * Math.cos(a)) + 'px';
+      hereDots[u].style.top = Math.round(spot.y + HERE_R * Math.sin(a)) + 'px';
     });
     if (hereLayer) hereLayer.hidden = walker.hidden;
   }
@@ -133,15 +175,14 @@
   }
   function unit(v) { return Math.round(Math.max(0, Math.min(1, v)) * 1000) / 1000; }
   function presence() {
-    if (!hws || hws.readyState !== 1 || !box(at)) return;
-    var p = middle(box(at));
-    var msg = JSON.stringify({ x: unit(p.x / (window.innerWidth || 1)), y: unit(p.y / (window.innerHeight || 1)), instanceId: instanceId });
+    if (!hws || hws.readyState !== 1 || !me) return;
+    var msg = JSON.stringify({ x: unit(spot.x / (window.innerWidth || 1)), y: unit(spot.y / (window.innerHeight || 1)), instanceId: instanceId });
     if (msg === hsent) return;
     hsent = msg;
     hws.send(msg);
   }
   function presenceOn() {
-    if (hws || !me || !window.WebSocket) return;
+    if (hws || !myName || !window.WebSocket) return;
     var s;
     try { s = new WebSocket((location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + location.host + '/here/ws?page=%2Fmap'); }
     catch (e) { return; }
@@ -153,159 +194,178 @@
       try {
         var d = JSON.parse(ev.data);
         if (!d.people) return;
-        hereDraw(d.people.map(function (q) { return String(q.u); }).filter(function (u) { return u && u !== me; }));
+        hereDraw(d.people.map(function (q) { return String(q.u); }).filter(function (u) { return u && u !== myName; }));
       } catch (e) { /* a bad frame is skipped */ }
     };
-    s.onclose = function () { if (s === hws) { hws = null; hereDraw([]); } };   // refused (chose No) or dropped: not retried until the next Drop
-  }
-  function presenceOff() {
-    var s = hws;
-    hws = null;
-    hereDraw([]);
-    if (s) s.close();
-  }
-  function show() {
-    instance();
-    proximity();
-    presence();
-    var el = box(at);
-    Array.prototype.forEach.call(nodeLayer.querySelectorAll('.lgn.lgn-walk'), function (o) { if (o !== el) o.classList.remove('lgn-walk'); });
-    if (!el) { walker.hidden = true; herePlace(); return; }
-    el.classList.add('lgn-walk');
-    var r = el.getBoundingClientRect();
-    walker.hidden = false;
-    walker.style.left = Math.round(r.left + r.width / 2) + 'px';
-    walker.style.top = Math.round(r.top) + 'px';
-    walker.setAttribute('data-at', at);
-    herePlace();
-  }
-  // the camera on the box you stand on; again a little later after the map moves by itself (a box opened, Back: the
-  // map recenters and fits itself once its connections load)
-  function camera() { if (dropping && window.LG_MAP && box(at)) LG_MAP.focus(at, ZOOM); }
-  function cameraSoon() {
-    later.forEach(clearTimeout);
-    later = [350, 900, 1700].map(function (ms) { return setTimeout(camera, ms); });
-  }
-  // spatial steps 6-7: the entry path. A box is entered only through its valve (data-valve, -owner, -invite on the box):
-  //   open: anyone; closed: no one; private: only its owner; invite: only people on its list;
-  //   request: turned away at the door, and a request is recorded for the owner (data-requested-by, and an
-  //   'lg-valve-request' event); conduit: passed through to the next box in the same direction, never stood on.
-  // Returns 'in', 'through' or 'no'.
-  function entry(id, record) {
-    var el = box(id);
-    if (!el) return 'no';
-    var type = el.getAttribute('data-valve') || 'open';
-    if (type === 'open') return 'in';
-    if (type === 'conduit') return 'through';
-    if (type === 'private') return me && el.getAttribute('data-valve-owner') === me ? 'in' : 'no';
-    if (type === 'invite') return me && (el.getAttribute('data-valve-invite') || '').split(',').indexOf(me) >= 0 ? 'in' : 'no';
-    if (type === 'request' && record) {
-      el.setAttribute('data-requested-by', me);
-      document.dispatchEvent(new CustomEvent('lg-valve-request', { detail: { box: id, by: me } }));
-    }
-    return 'no';   // closed, request, and any type this file does not know
-  }
-  // where a push in direction w ends: the box it picks if that is enterable; through a conduit on to the next box
-  function target(w) {
-    var from = at, next = pick(w), guard = 0;
-    while (next && entry(next, false) === 'through' && guard++ < 8) {
-      at = next;
-      next = pick(w);
-      if (next === from) next = null;
-    }
-    at = from;
-    return next && entry(next, true) === 'in' ? next : null;
-  }
-  function step(w, speed) {
-    if (!box(at)) at = startBox();
-    var next = target(w);
-    if (next) at = next;
-    show();
-    if (next) {
-      camera();
-      LG_WALKER.shape(dropPortrait, w[0] * (speed || 1), w[1] * (speed || 1));
-      clearTimeout(settle);
-      settle = setTimeout(function () { LG_WALKER.shape(dropPortrait, 0, 0); }, LG_WALKER.CONTROLS.shape.mapMoveMs);
-    }
+    s.onclose = function () { if (s === hws) { hws = null; hereDraw([]); } };   // refused (chose No) or dropped: not retried on this page view
   }
 
-  walker = document.createElement('div');
+  // ---- the camera
+  // The part of the map's frame you can see: on the screen, and above the pad (on a phone the frame runs under the
+  // touchpad and past the bottom of the screen). In frame px.
+  function seen() {
+    var f = MAP.frame(), top = Math.max(f.top, 0), bottom = Math.min(f.bottom, window.innerHeight);
+    var left = Math.max(f.left, 0), right = Math.min(f.right, window.innerWidth);
+    var c = document.querySelector('#lg-here-pad .' + C.buttons.center.cls), k = document.querySelector('#lg-here-pad .lg-here-keys');
+    var padTop = k && k.getBoundingClientRect().height && c ? c.getBoundingClientRect().top : Infinity;
+    if (padTop - 8 > top + 80) bottom = Math.min(bottom, padTop - 8);
+    if (bottom <= top || right <= left) return { x0: 0, y0: 0, x1: f.width, y1: f.height };
+    return { x0: left - f.left, y0: top - f.top, x1: right - f.left, y1: bottom - f.top };
+  }
+  function centerView(k, glide) {
+    var r = seen();
+    MAP.setView(Math.round((r.x0 + r.x1) / 2 - me.x * k), Math.round((r.y0 + r.y1) / 2 - me.y * k), k, glide);
+  }
+  // the walking zoom, around your drop
+  function zoomIn() {
+    rezoom = 0;
+    if (me && !userOut && !zoomedIn()) centerView(walkScale(), true);
+  }
+  // after a move: armed, the drop in the middle; disarmed, the camera moves only to keep the drop EDGE px inside the frame
+  function follow() {
+    var r = seen(), v = MAP.view();
+    if (ctl && ctl.centered()) { centerView(v.scale, false); return; }
+    var mx = Math.min(EDGE, (r.x1 - r.x0) / 4), my = Math.min(EDGE, (r.y1 - r.y0) / 4);
+    var sx = v.tx + me.x * v.scale, sy = v.ty + me.y * v.scale, tx = v.tx, ty = v.ty;
+    if (sx < r.x0 + mx) tx += r.x0 + mx - sx; else if (sx > r.x1 - mx) tx -= sx - (r.x1 - mx);
+    if (sy < r.y0 + my) ty += r.y0 + my - sy; else if (sy > r.y1 - my) ty -= sy - (r.y1 - my);
+    if (tx !== v.tx || ty !== v.ty) MAP.setView(tx, ty, v.scale, false);
+  }
+  // You zoomed (the wheel, a pinch): remembered for a moment, so a view that ends up zoomed out is known to be yours.
+  svg.addEventListener('wheel', function () { userZoom = Date.now(); }, { passive: true });
+  var touches = {};
+  svg.addEventListener('pointerdown', function (e) { if (e.pointerType === 'touch') { touches[e.pointerId] = 1; if (Object.keys(touches).length > 1) userZoom = Date.now(); } }, true);
+  svg.addEventListener('pointermove', function (e) { if (touches[e.pointerId] && Object.keys(touches).length > 1) userZoom = Date.now(); }, true);
+  ['pointerup', 'pointercancel'].forEach(function (t) { svg.addEventListener(t, function (e) { delete touches[e.pointerId]; }, true); });
+  // Zoomed out by you: left alone (the whole map shows). Zoomed out by the map itself (a box opened, Back, a resize:
+  // lgmap.js fits the whole map again): back to the walking zoom shortly after.
+  function watchZoom() {
+    if (zoomedIn()) { userOut = false; return; }
+    if (Date.now() - userZoom < 1500) userOut = true;
+    if (!userOut && !rezoom) rezoom = setTimeout(zoomIn, 400);
+  }
+
+  // ---- walking
+  // may the drop stand at p? Not inside a box it may not enter (unless it is already inside it: a box that moved onto
+  // you never traps you), and not off the map (150 map units past its outermost boxes).
+  function allowed(all, p) {
+    var e = MAP.extent();
+    if (e && (p.x < e.x0 - 150 || p.x > e.x1 + 150 || p.y < e.y0 - 150 || p.y > e.y1 + 150)) return false;
+    var was = holding(all, me).map(function (b) { return b.id; }), ok = true;
+    holding(all, p).forEach(function (b) {
+      if (was.indexOf(b.id) < 0 && entry(b.id, true) === 'no') ok = false;
+    });
+    return ok;
+  }
+  function move(all, v) {
+    var step = C.maxSpeed / MAP.view().scale;   // the same speed on the screen at any zoom
+    var nx = me.x + v.x * step, ny = me.y + v.y * step;
+    var tries = [{ x: nx, y: ny }, { x: nx, y: me.y }, { x: me.x, y: ny }];   // blocked: slide along the edge
+    for (var i = 0; i < tries.length; i++) {
+      if ((tries[i].x !== me.x || tries[i].y !== me.y) && allowed(all, tries[i])) {
+        me = tries[i];
+        if (i === 0) asked = '';   // walking freely again: the next time a request box turns you away, it is asked again
+        return true;
+      }
+    }
+    return false;
+  }
+  // the map moved the box you stand in (a box opened, the ring was laid out again): you go with it
+  function carry() {
+    var r = at ? region(at) : null;
+    if (r && anchor && anchor.id === at && (anchor.cx !== r.cx || anchor.cy !== r.cy)) {
+      me = { x: me.x + r.cx - anchor.cx, y: me.y + r.cy - anchor.cy };
+    }
+    anchor = r ? { id: at, cx: r.cx, cy: r.cy } : null;
+  }
+  function start() {
+    var id = box(want) ? want : (box('you') ? 'you' : ''), r = id ? region(id) : null;
+    if (!r) { var first = boxes()[0]; r = first ? first.r : null; }
+    if (!r) return false;
+    me = { x: r.cx, y: r.cy };
+    return true;
+  }
+  function tick() {
+    if (!me) {
+      if (!ready || !start()) return;
+      userOut = false;
+      centerView(walkScale(), false);
+    }
+    carry();
+    var all = boxes(), v = W.velocity(held, pull), moved = false;
+    W.shape(dropPortrait, v.x, v.y);
+    if (v.x || v.y) moved = move(all, v);
+    var now = insideOf(all, me);
+    if (now !== at) { at = now; anchor = null; carry(); }
+    if (at) last = at;
+    instanceId = at && at !== 'you' ? at : MAINSTREAM;
+    Array.prototype.forEach.call(nodeLayer.querySelectorAll('.lgn.lgn-walk'), function (o) { if (o.getAttribute('data-id') !== at) o.classList.remove('lgn-walk'); });
+    if (at && box(at)) box(at).classList.add('lgn-walk');
+    scopeCss();
+    if (moved) follow();
+    watchZoom();
+    proximity(all);
+    var p = MAP.toScreen(me.x, me.y);
+    spot = { x: Math.round(p.x), y: Math.round(p.y) };
+    walker.hidden = false;
+    walker.style.left = spot.x + 'px';
+    walker.style.top = spot.y + 'px';
+    walker.setAttribute('data-at', at);
+    walker.setAttribute('data-instance', instanceId);
+    walker.setAttribute('data-x', String(Math.round(me.x * 10) / 10));
+    walker.setAttribute('data-y', String(Math.round(me.y * 10) / 10));
+    herePlace();
+    presence();
+  }
+
+  var walker = document.createElement('div');
   walker.id = 'lgm-walker';
-  dropPortrait = LG_WALKER.portrait(root.getAttribute('data-me'));
+  var dropPortrait = W.portrait(myName);
   walker.appendChild(dropPortrait);
   walker.hidden = true;
   walker.setAttribute('aria-hidden', 'true');
-  walker.setAttribute('data-instance', 'mainstream');
+  walker.setAttribute('data-at', '');
+  walker.setAttribute('data-instance', MAINSTREAM);
   document.body.appendChild(walker);
+  root.classList.add('lgm-dropping');   // the boxes' depth (lgmap.css): they read as solid things you walk between
 
-  window.addEventListener('resize', function () { if (dropping) cameraSoon(); });   // lgmap.js fits on a resize
-
-  // The touchpad: a push past the dead zone walks one connector its way; held, it walks on, sooner the harder it is
-  // pulled (every CONTROLS.touchpad.mapRepeatMs at full pull).
-  var pullNow = null, again = 0;
-  function padWalk() {
-    clearTimeout(again);
-    if (!pullNow || !dropping) return;
-    var len = Math.sqrt(pullNow.x * pullNow.x + pullNow.y * pullNow.y);
-    step([pullNow.x / len, pullNow.y / len], len);
-    again = setTimeout(padWalk, LG_WALKER.CONTROLS.touchpad.mapRepeatMs / len);
+  // the box A acts on: the one you are in, else one whose edge is within CONTROLS.near px of your drop
+  function target() {
+    if (at && box(at)) return box(at);
+    var best = null, bestD = C.near;
+    boxes().forEach(function (b) {
+      if (b.el.style.visibility === 'hidden') return;
+      var r = b.el.getBoundingClientRect();
+      var dx = Math.max(r.left - spot.x, 0, spot.x - r.right), dy = Math.max(r.top - spot.y, 0, spot.y - r.bottom);
+      var d = Math.hypot(dx, dy);
+      if (d <= bestD) { bestD = d; best = b.el; }
+    });
+    return best;
   }
-  function pullTo(x, y) {
-    var was = pullNow;
-    pullNow = x || y ? { x: x, y: y } : null;
-    if (!pullNow) clearTimeout(again);
-    else if (!was) padWalk();
-  }
-
-  var arrival = LG_WALKER.takeHandoff();   // came through the portal: Drop is on, standing at that page's box
-  var drop = LG_WALKER.mount({
-    // the switch sits in the map's own row, after the trail, so the map keeps its place on the page
-    dropIn: document.querySelector('.lgm-navrow'),
-    dir: function (dir, down) { if (down) step(WAY[dir]); },
-    pull: pullTo,
-    // A / Enter: the same as tapping the box you stand on
+  var want = '', ready = false;
+  var arrival = W.takeHandoff();   // came through the portal: you start at that page's box
+  ctl = W.mount({
+    dir: function (dir, down) { held[dir] = down; },
+    pull: function (x, y) { pull = { x: x, y: y }; },
+    // A / Enter: the same as tapping the box you stand on (or right next to); nothing there: squish and bounce
     select: function () {
-      var el = box(at);
-      if (!el) return false;
+      var el = me ? target() : null;
+      if (!el) { W.hop(dropPortrait); return true; }
       el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
-      cameraSoon();
       return true;
     },
     // B / Esc: close the open page, else one step back (LG_MAP.back, as the phone's back gesture)
     back: function () {
       var panel = document.getElementById('lgm-panel'), close = document.getElementById('lgm-close');
       if (panel && !panel.hidden && close) close.click();
-      else if (window.LG_MAP && LG_MAP.back) LG_MAP.back();
-      cameraSoon();
+      else if (MAP.back) MAP.back();
     },
-    dropping: function (on) {
-      dropping = on;
-      root.classList.toggle('lgm-dropping', on);
-      clearInterval(follow);
-      pullTo(0, 0);
-      clearTimeout(settle);
-      LG_WALKER.shape(dropPortrait, 0, 0);
-      later.forEach(clearTimeout);
-      if (on) {
-        if (!box(at)) at = startBox();
-        presenceOn();
-        show();
-        camera();
-        follow = setInterval(function () { if (!box(at)) at = startBox(); show(); }, 120);   // the map glides and recenters
-      } else {
-        walker.hidden = true;
-        if (window.LG_MAP) LG_MAP.fit();
-        Array.prototype.forEach.call(nodeLayer.querySelectorAll('.lgn.lgn-walk'), function (o) { o.classList.remove('lgn-walk'); });
-        instance();
-        proximity();
-        presenceOff();
-      }
-    }
+    center: function (on) { if (on && me) centerView(MAP.view().scale, true); }
   });
-  if (arrival && window.LG_MAP && LG_MAP.ready) {
-    LG_MAP.ready.then(function () { return arrival.box ? LG_MAP.goTo(arrival.box) : null; })
-      .then(function () { if (arrival.box && box(arrival.box)) at = arrival.box; },
-            function () { /* that box is not on your map (privacy): arrive at you */ })
-      .then(function () { drop.start(); cameraSoon(); });
-  }
+  (MAP.ready || Promise.resolve())
+    .then(function () { return arrival && arrival.box ? MAP.goTo(arrival.box) : null; })
+    .then(function () { if (arrival && arrival.box) want = arrival.box; },
+          function () { /* that box is not on your map (privacy): start at you */ })
+    .then(function () { ready = true; presenceOn(); });
+  setInterval(tick, 40);
 })();

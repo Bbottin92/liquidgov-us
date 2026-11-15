@@ -1,9 +1,16 @@
-/* The walker's controls, shared by every page you can walk on (Brandon 2026-11-13): the dots on profile pages (here.js)
-   and the map (lgmap_walk.js). ONE map names every key binding and on-screen button; the pages and
-   tests/browser/walker_controls_check.py read it from here (window.LG_WALKER.CONTROLS), so no one keeps a copy.
-   Phone: a see-through touchpad with A and B stacked on its right side, one unit at the bottom center, in thumb reach; the Drop button (Brandon's name; it turns walking on) sits at the top of the screen.
-   Desktop: WASD or the arrows move, Enter = A (select), Esc = B (back). Keys only count while Drop is on, and never while
-   you type in a field (there B/Esc just leaves the field). */
+/* The walker's controls, shared by every page you can walk on (Brandon 2026-11-13): the dots on profile pages (here.js),
+   the home page (home_drop.js) and the map (lgmap_walk.js). ONE map names every key binding and on-screen button; the
+   pages and the checks read it from here (window.LG_WALKER.CONTROLS), so no one keeps a copy.
+   Walking is always on (Brandon 2026-11-14: "we gotta get rid of the drop/scroll switch... just leave it on drop mode
+   and if you wanna scroll you can just do that instead of using the joystick"): there is no switch. You scroll the
+   page, or pinch and wheel the map, the way you always do; the touchpad and the keys walk your drop.
+   Phone: a see-through touchpad with A and B stacked on its right side, one unit at the bottom center, in thumb reach,
+   and the Center button above it. With a mouse (a screen that can hover) the touchpad and A/B are not shown.
+   Desktop: WASD or the arrows move, Enter = A (select), Esc = B (back); never while you type in a field (there B/Esc
+   just leaves the field).
+   Center (his words: "an active droplet centering button that you can arm or disarm"): armed, every move slides the
+   screen so your drop sits in its middle; disarmed, the screen only moves to keep the drop in view. It starts
+   disarmed and the choice is remembered on this device. */
 (function () {
   var CONTROLS = {
     dirs: ['up', 'left', 'right', 'down'],
@@ -23,8 +30,8 @@
     // less 2 x margin.
     touchpad: { cls: 'lg-here-touchpad', knob: 'lg-here-knob', label: 'Walk: touch and drag', reach: 48, deadZone: 0.2,
       mapRepeatMs: 600, width: 220, height: 132, alpha: 0.62, lift: 28, margin: 16 },
-    // Dropped in on the map, the camera shows the boxes this many times bigger than the fitted view and follows the
-    // walker box to box (Brandon 2026-11-13 12:55 AM: "it should look bigger"); off again, the normal view.
+    // On the map the camera shows the boxes this many times bigger than the fitted view, around your drop (Brandon
+    // 2026-11-13 12:55 AM: "it should look bigger"), until you zoom out yourself (pinch, wheel).
     mapZoom: 1.8,
     // The portal (Brandon 2026-11-13 1:02 AM): the site's MAINstream link (the brand in the header, to /) drawn as a
     // round ring. Dropped in, using it (A / Enter next to it) takes you to the map at the box of the page you were on:
@@ -37,11 +44,11 @@
     // and settles, all in ms. Individual CSS scale (not transform), so it adds to the teardrop's shape. Reduced motion:
     // none.
     hop: { ms: 560, crouch: [1.14, 0.8], splat: [1.32, 0.66], grow: 1.24, splatCls: 'lg-walker-splat' },
-    // The home page's hook (Brandon 4:03 AM): the page starts as usual (Scroll); the switch pulses (invite) and the
-    // first-time note guides you to it. Dropped in, your drop starts under the switch and a guide points you down
-    // the page (guide.text); past the scrolling-words section (belt.after) the floor is a moving sidewalk flowing
-    // belt.dir: walking with it is (1 + boost) x as fast, against it (1 - boost) x; standing, it leaves you be.
-    home: { invite: 'lg-here-invite', startGap: 56, guide: { cls: 'lg-home-guide', text: 'Walk down' },
+    // The home page's hook (Brandon 4:03 AM): your drop starts near the top of the page (startTop px under the header)
+    // and a guide points you down the page (guide.text); past the scrolling-words section (belt.after) the floor is a
+    // moving sidewalk flowing belt.dir: walking with it is (1 + boost) x as fast, against it (1 - boost) x; standing,
+    // it leaves you be.
+    home: { startTop: 56, guide: { cls: 'lg-home-guide', text: 'Walk down' },
       belt: { after: '.solution-row', cls: 'lg-home-belt', dir: { x: 0, y: 1 }, boost: 0.6 } },
     // KeyboardEvent.key, lowercased -> action
     keys: {
@@ -50,16 +57,9 @@
     },
     // action -> the button's class, accessible name and face
     buttons: {
-      // legacy: the class it had before Brandon named it Drop; only the committed dots/herepad checks still look for it
-      // bar: its own strip across the top of the screen (Brandon 1:59 AM: it covered the MAINstream button); the page and
-      // its sticky header move down by the strip's height, so the button covers nothing; gap px above and below it.
-      // It is a Drop/Scroll switch (Brandon 2:05 AM): states.on = walking, states.off = browsing as usual; the switch
-      // shows both and marks the one you are in. tip: the first-time note under it (tip.js, the same mechanism and look
-      // as Juketube's first-time tip; its seen-flag is LG_TIP's 'lg-<name>-hint'), shown once, until closed.
-      drop: { cls: 'lg-here-drop', legacy: 'lg-here-walk', label: 'Drop', states: { on: 'Drop', off: 'Scroll' },
-        stateCls: 'lg-here-state', bar: 'lg-here-dropbar', gap: 6,
-        tip: { name: 'drop', cls: 'lg-here-tip', maxViews: 1,
-          text: 'Stop, Drop & Scroll: Drop to drip around or click and scroll like you normally would' } },
+      // The centering button: aria-pressed says whether it is armed; store is its localStorage key ('1' armed).
+      center: { cls: 'lg-here-center', label: 'Keep my drop in the middle of the screen', text: 'Center',
+        store: 'lg-walker-center' },
       select: { cls: 'lg-here-a', label: 'Use what you are next to', text: 'A' },
       back: { cls: 'lg-here-b', label: 'Go back', text: 'B' }
     }
@@ -89,62 +89,40 @@
     return { x: dx * k, y: dy * k };
   }
 
-  // mount(page): puts the Drop button and the pad on the page (once) and wires keys, the touchpad and buttons to the
-  // page's walker. page: {dir(dir, down) (keys), pull(x, y) (the touchpad's vector; 0, 0 = let go), select() -> true when it used something, back(), dropping(on), box: this page's map box id
-  // (optional; the portal takes you there), invite: true to pulse the switch until its first tap (the home page), dropIn: a row of the page's own controls (optional; the
-  // map's nav row): the switch then sits at that row's end instead of in a strip at the top, and the
-  // page keeps its height (no strip, no first-time note there)}. Returns {dropping(), start(), stop()}.
+  // mount(page): puts the pad and the Center button on the page (once) and wires keys, the touchpad and buttons to
+  // the page's walker. page: {dir(dir, down) (keys), pull(x, y) (the touchpad's vector; 0, 0 = let go), select() ->
+  // true when it used something, back(), center(on) (optional: the Center button was armed or disarmed), resized()
+  // (optional), box: this page's map box id (optional; the portal takes you there)}.
+  // Returns {centered()}: whether Center is armed.
   function mount(page) {
     var T = CONTROLS.touchpad;
     var pad = document.createElement('div');
     pad.id = 'lg-here-pad';
     pad.innerHTML =
-      '<div class="' + B.drop.bar + '" aria-hidden="true"></div><button type="button" class="' + B.drop.cls + ' ' + B.drop.legacy + '" aria-pressed="false" aria-label="' + B.drop.label + '">' +
-      ['on', 'off'].map(function (k) { return '<span class="' + B.drop.stateCls + '" data-state="' + k + '">' + B.drop.states[k] + '</span>'; }).join('') +
-      '</button>' +
-      '<div class="lg-here-keys" hidden><div class="' + T.cls + '" role="application" aria-label="' + T.label +
+      '<button type="button" class="' + B.center.cls + '" aria-pressed="false" aria-label="' + B.center.label + '">' + B.center.text + '</button>' +
+      '<div class="lg-here-keys"><div class="' + T.cls + '" role="application" aria-label="' + T.label +
       '"><span class="' + T.knob + '"></span></div><div class="lg-here-ab">' + keyButton('select') + keyButton('back') + '</div></div>';
     [['--lgw-w', T.width + 'px'], ['--lgw-h', T.height + 'px'], ['--lgw-alpha', String(T.alpha)], ['--lgw-lift', T.lift + 'px'],
-      ['--lgw-margin', T.margin + 'px'], ['--lgw-dropgap', B.drop.gap + 'px']].forEach(function (v) { pad.style.setProperty(v[0], v[1]); });
+      ['--lgw-margin', T.margin + 'px']].forEach(function (v) { pad.style.setProperty(v[0], v[1]); });
     document.body.appendChild(pad);
-    var dropBtn = pad.querySelector('.' + B.drop.cls), keys = pad.querySelector('.lg-here-keys');
-    var dropping = false, held = {};
+    var centerBtn = pad.querySelector('.' + B.center.cls), keys = pad.querySelector('.lg-here-keys');
+    var held = {}, centered = false;
     var touchpad = pad.querySelector('.' + T.cls), knob = touchpad.firstChild, grip = null, from = null;
+    try { centered = localStorage.getItem(B.center.store) === '1'; } catch (e) { centered = false; } // err-ok: no storage: disarmed
 
-    // The Drop button sits at the top of the screen in its own strip (B.drop.bar, above the safe area's top): the page
-    // gets the strip's height as room at its top and the sticky site header sticks just under it, so the button covers
-    // nothing (not the header's links, not the map's MAINstream button).
-    var bar = pad.querySelector('.' + B.drop.bar), header = document.querySelector('header.top');
-    var baseTop = parseFloat(getComputedStyle(document.body).paddingTop) || 0;
-    var tip = null;   // the first-time note: in the strip, under the switch (the strip grows by it while it shows)
-    if (page.dropIn) {
-      page.dropIn.appendChild(dropBtn);
-      bar.hidden = true;
-    }
-    function placeDrop() {
-      if (page.dropIn) return;
-      var h = Math.round(dropBtn.getBoundingClientRect().bottom + B.drop.gap);
-      if (tip && tip.shown) {
-        tip.el.style.top = h + 'px';
-        h = Math.round(tip.el.getBoundingClientRect().bottom + B.drop.gap);
-      }
-      bar.style.height = h + 'px';
-      document.body.style.paddingTop = (baseTop + h) + 'px';
-      if (header && getComputedStyle(header).position === 'sticky') header.style.top = h + 'px';
-    }
     // The unit stays clear of the Juketube button (fixed at the right edge just above the bottom): if they meet, the
     // unit rises above it.
     function clearJuketube() {
       keys.style.marginBottom = '';
       var jb = document.getElementById('jbtoggle');
-      if (!jb || keys.hidden) return;
+      if (!jb) return;
       var j = jb.getBoundingClientRect(), a = keys.getBoundingClientRect();
-      if (!j.width || !j.height) return;
+      if (!j.width || !j.height || !a.width) return;
       if (a.left < j.right && a.right > j.left && a.top < j.bottom && a.bottom > j.top) keys.style.marginBottom = Math.round(a.bottom - j.top + 8) + 'px';
     }
     // Room at the page's end for the pad (Brandon 2026-11-12 "do the dpad fix"): the page already keeps some room at the
     // bottom (for the Juketube button); while the pad is taller than that, the page gets the pad's height plus a margin,
-    // so scrolled to the end nothing stays under it. Given back when Drop goes off.
+    // so scrolled to the end nothing stays under it.
     var baseRoom = parseFloat(getComputedStyle(document.body).paddingBottom) || 0;
     function fitRoom() {
       var need = pad.getBoundingClientRect().height + 24;
@@ -174,28 +152,19 @@
       page.pull(0, 0);
     }
     function letGo() { Object.keys(held).forEach(function (d) { hold(d, false); }); release(); }
-    function showState() {
-      Array.prototype.forEach.call(dropBtn.querySelectorAll('.' + B.drop.stateCls), function (s) {
-        s.classList.toggle('on', s.getAttribute('data-state') === (dropping ? 'on' : 'off'));
-      });
-    }
-    function setDropping(on) {
-      letGo();
-      dropping = on;
-      dropBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
-      showState();
-      keys.hidden = !on;
-      clearJuketube();
-      fitRoom();
-      page.dropping(on);
-    }
     function back() {
       if (editing()) document.activeElement.blur();   // B in a field: back to walking
       else page.back();
     }
-    // blur: Enter (select) must never land on the focused Drop button and switch it off
-    if (page.invite) dropBtn.classList.add(CONTROLS.home.invite);   // pulses until it is first tapped
-    dropBtn.addEventListener('click', function () { dropBtn.classList.remove(CONTROLS.home.invite); setDropping(!dropping); dropBtn.blur(); });
+    function showCenter() { centerBtn.setAttribute('aria-pressed', centered ? 'true' : 'false'); }
+    // blur: Enter (select) must never land on the focused Center button and flip it
+    centerBtn.addEventListener('click', function () {
+      centered = !centered;
+      try { localStorage.setItem(B.center.store, centered ? '1' : '0'); } catch (e) {} // err-ok: no storage: it lasts this page view
+      showCenter();
+      centerBtn.blur();
+      if (page.center) page.center(centered);
+    });
     touchpad.addEventListener('pointerdown', function (e) {
       e.preventDefault();
       grip = e.pointerId;
@@ -212,7 +181,7 @@
     pad.querySelector('.' + B.back.cls).addEventListener('click', back);
 
     document.addEventListener('keydown', function (e) {
-      if (!dropping || e.defaultPrevented) return;   // defaultPrevented: the focused element already took the key
+      if (e.defaultPrevented) return;   // the focused element already took the key
       var act = keyAction(e);
       if (editing()) {
         if (act === 'back') back();
@@ -231,33 +200,15 @@
     if (portal) {
       portal.classList.add(CONTROLS.portal.cls);
       portal.addEventListener('click', function () {
-        if (!dropping) return;
         try { sessionStorage.setItem(CONTROLS.portal.handoff, JSON.stringify({ box: page.box || '', t: Date.now() })); } catch (e) {} // err-ok: private mode: the map just starts at you
       });
     }
     window.addEventListener('blur', letGo);   // a key let go in another window never sticks
-    window.addEventListener('resize', function () { placeDrop(); clearJuketube(); fitRoom(); });
-    showState();
-    placeDrop();
-    // The first-time note, once tip.js is there (it loads with Juketube, after the page's own scripts)
-    function addTip() {
-      var P = B.drop.tip;
-      if (!window.LG_TIP || tip || page.dropIn) return;
-      var el = document.createElement('div');
-      el.className = 'lg-tip ' + P.cls;
-      el.setAttribute('role', 'note');
-      el.innerHTML = '<span></span><button type="button" class="lg-tip-close" aria-label="Hide this tip">&times;</button>';
-      el.firstChild.textContent = P.text;
-      document.body.appendChild(el);
-      tip = { el: el, shown: false };
-      var t = LG_TIP.wire(el, el.lastChild, P.name, { maxViews: P.maxViews, onHide: function () { tip.shown = false; placeDrop(); } });
-      tip.shown = t.shown;
-      placeDrop();
-    }
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', addTip);
-    else addTip();
-    return { dropping: function () { return dropping; }, start: function () { if (!dropping) setDropping(true); },
-      stop: function () { if (dropping) setDropping(false); } };
+    window.addEventListener('resize', function () { clearJuketube(); fitRoom(); });
+    showCenter();
+    clearJuketube();
+    fitRoom();
+    return { centered: function () { return centered; } };
   }
 
   // The portal's arrival: {box} once (it is removed as it is read), or null (none, or older than handoffMs).
@@ -298,6 +249,11 @@
   function velocity(held, pull) {
     var x = (held.right ? 1 : 0) - (held.left ? 1 : 0), y = (held.down ? 1 : 0) - (held.up ? 1 : 0);
     return x || y ? { x: x, y: y } : { x: pull.x, y: pull.y };
+  }
+  // centerOn(left, top): scrolls so the page point (px from the page's left and top) is in the middle of the screen,
+  // as far as the page's ends allow (Center armed)
+  function centerOn(left, top) {
+    window.scrollTo(Math.round(left - window.innerWidth / 2), Math.round(top - window.innerHeight / 2));
   }
   // follow(top): scrolls so the page point top (px from the page's top) stays in view
   function follow(top) {
@@ -369,6 +325,6 @@
   }
 
   window.LG_WALKER = { CONTROLS: CONTROLS, portrait: portrait, shape: shape, hop: hop, keyAction: keyAction, isDir: isDir, editing: editing,
-    pullVector: pullVector, mount: mount, takeHandoff: takeHandoff, nearest: nearest, use: use, velocity: velocity, follow: follow,
+    pullVector: pullVector, mount: mount, takeHandoff: takeHandoff, nearest: nearest, use: use, velocity: velocity, follow: follow, centerOn: centerOn,
     reducedMotion: reducedMotion };
 })();

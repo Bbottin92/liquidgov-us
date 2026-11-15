@@ -243,41 +243,34 @@ BOXES = r"""(() => { const C = window.LG_WALKER && LG_WALKER.CONTROLS, q = s => 
   const box = e => { if (!e) return null; const r = e.getBoundingClientRect(); return {l: r.left, t: r.top, r: r.right, b: r.bottom, w: r.width, h: r.height}; };
   const T = C.touchpad || {}; out.touchpad = box(q('#lg-here-pad .' + T.cls)); out.unit = box(q('#lg-here-pad .lg-here-keys'));
   out.alpha = ['.' + T.cls, '.' + C.buttons.select.cls, '.' + C.buttons.back.cls].map(s => { const e = q('#lg-here-pad ' + s); return e ? parseFloat(getComputedStyle(e).opacity) : null; }); out.dirButtons = document.querySelectorAll('#lg-here-pad [data-dir]').length;
-  out.buttons = {}; Object.keys(C.buttons).forEach(k => { const e = q((k === 'drop' ? '.' : '#lg-here-pad .') + C.buttons[k].cls); out.buttons[k] = box(e); if (out.buttons[k]) out.buttons[k].text = e.textContent; });
+  out.buttons = {}; Object.keys(C.buttons).forEach(k => { const e = q('#lg-here-pad .' + C.buttons[k].cls); out.buttons[k] = box(e); if (out.buttons[k]) out.buttons[k].text = e.textContent; });
   out.jb = box(q('#jbtoggle'));
   const h = q('header.top').getBoundingClientRect(), hit = document.elementFromPoint(h.left + h.width / 2, h.top + h.height / 2);
   out.headerHit = !!hit && q('header.top').contains(hit);
   return JSON.stringify(out); })()"""
-# The Drop button against the portal, the map's MAINstream button and every other control it could cover.
-# The switch's labels against their backgrounds (WCAG relative luminance); the site's switch colors.
-CONTRAST = r"""(() => { const D = LG_WALKER.CONTROLS.buttons.drop, b = document.querySelector('.' + D.cls);
+# The Center button's label against its background (WCAG relative luminance), disarmed and armed; the site's colors.
+CONTRAST = r"""(() => { const D = LG_WALKER.CONTROLS.buttons.center, b = document.querySelector('#lg-here-pad .' + D.cls);
   const lum = c => { const [r, g, bb] = c.match(/[\d.]+/g).map(Number).slice(0, 3).map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }); return 0.2126 * r + 0.7152 * g + 0.0722 * bb; };
   const ratio = (a, c) => { const x = lum(a), y = lum(c); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
-  const bg = getComputedStyle(b).backgroundColor, out = {opacity: getComputedStyle(b).opacity, states: {},
+  const out = {opacity: getComputedStyle(b).opacity, states: {},
     vars: ['--lg-switch-bg', '--lg-switch-ink', '--lg-switch-on-bg', '--lg-switch-on-ink'].map(v => getComputedStyle(document.documentElement).getPropertyValue(v).trim())};
-  b.querySelectorAll('.' + D.stateCls).forEach(s => { const c = getComputedStyle(s), on = s.classList.contains('on'), back = on ? c.backgroundColor : bg;
-    out.states[s.textContent] = {on: on, color: c.color, back: back, ratio: Math.round(ratio(c.color, back) * 100) / 100}; });
+  const was = b.getAttribute('aria-pressed');
+  ['false', 'true'].forEach(v => { b.setAttribute('aria-pressed', v); const c = getComputedStyle(b);
+    out.states[v] = {color: c.color, back: c.backgroundColor, ratio: Math.round(ratio(c.color, c.backgroundColor) * 100) / 100}; });
+  b.setAttribute('aria-pressed', was);
   return JSON.stringify(out); })()"""
 # A tip's close button against its text (sel: the tip).
 TIPCLEAR = r"""((sel) => { const t = document.querySelector(sel); if (!t || getComputedStyle(t).display === 'none') return JSON.stringify(null);
   const x = t.querySelector('.lg-tip-close'), txt = t.firstElementChild, box = e => { const r = e.getBoundingClientRect(); return {l: r.left, t: r.top, r: r.right, b: r.bottom}; };
   const a = box(txt), c = box(x), T = box(t);
   return JSON.stringify({text: a, close: c, tip: T, overlap: a.l < c.r && c.l < a.r && a.t < c.b && c.t < a.b, inside: c.l >= T.l && c.r <= T.r && c.t >= T.t && c.b <= T.b}); })"""
-# The map's nav row: Back, the trail, the switch, Zoom out.
+# The map's nav row: the trail (no Back, Zoom out or switch).
 NAVROW = r"""(() => { const q = s => document.querySelector(s), box = e => { if (!e) return null; const r = e.getBoundingClientRect(); return {l: r.left, t: r.top, r: r.right, b: r.bottom}; };
-  const meets = (a, b) => !!a && !!b && a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b;
-  const d = box(q('.' + LG_WALKER.CONTROLS.buttons.drop.cls)), tr = q('#lgm-trail'), row = q('.lgm-navrow');
-  const others = {trail: box(tr)};
-  return JSON.stringify({drop: d, others: others, hits: Object.keys(others).filter(k => meets(d, others[k])), row: box(row), sy: scrollY,
-    gone: !q('#lgm-back') && !q('#lgm-zoomout'),
+  const tr = q('#lgm-trail'), row = q('.lgm-navrow');
+  return JSON.stringify({trail: box(tr), row: box(row), sy: scrollY,
+    gone: !q('#lgm-back') && !q('#lgm-zoomout') && !q('.lg-here-drop') && !q('.lg-here-walk') && !q('.lg-here-dropbar'),
+    children: row ? row.children.length : null,
     trailText: tr ? tr.textContent : null, trailFits: !!tr && tr.scrollWidth <= tr.clientWidth + 1}); })()"""
-COVER = r"""(() => { const C = LG_WALKER.CONTROLS, d = document.querySelector('.' + C.buttons.drop.cls);
-  const box = e => { if (!e) return null; const r = e.getBoundingClientRect(); return r.width && r.height ? {l: r.left, t: r.top, r: r.right, b: r.bottom} : null; };
-  const meets = (a, b) => !!a && !!b && a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b;
-  const D = box(d), P = box(document.querySelector(C.portal.selector)), M = box(document.getElementById('lgm-main'));
-  const covered = [...document.querySelectorAll('a[href],button,input:not([type=hidden]),select,textarea,summary,[role=button]')]
-    .filter(e => e !== d && !e.closest('#lg-here-pad') && meets(D, box(e))).map(e => e.id || e.className || e.tagName);
-  return JSON.stringify({drop: D, portal: P, main: M, portalHit: meets(D, P), mainHit: meets(D, M), covered: covered}); })()"""
 DOT = ("(() => { const d = document.querySelector('#lg-here .lg-here-dot.me'); if (!d) return JSON.stringify(null);"
        " const r = d.getBoundingClientRect(); return JSON.stringify([r.left + scrollX, r.top + scrollY]); })()")
 WAY = {"up": (0, -1), "down": (0, 1), "left": (-1, 0), "right": (1, 0)}
@@ -337,59 +330,18 @@ class Run(m.Run):
         self.ws.call("Input.dispatchKeyEvent", type="keyUp", key=dom, windowsVirtualKeyCode=vk)
 
     def drop(self):
-        self.j("(() => { document.querySelector('.' + LG_WALKER.CONTROLS.buttons.drop.cls).click(); return '1'; })()")
-        self.wait("!document.querySelector('#lg-here-pad .lg-here-keys').hidden", 3)
+        """Walking is always on (2026-11-15): nothing to tap. Kept for the checks that call it: waits for the pad."""
+        self.wait("!!document.querySelector('#lg-here-pad .lg-here-keys')", 3)
 
-    def switch_state(self, tag, C, want):
-        D = (C.get("buttons") or {}).get("drop") or {}
-        st = self.j("(() => { const D = LG_WALKER.CONTROLS.buttons.drop, b = document.querySelector('.' + D.cls);"
-                    " const s = b ? [...b.querySelectorAll('.' + D.stateCls)] : [];"
-                    " return JSON.stringify({names: s.map(e => e.textContent), on: s.filter(e => e.classList.contains('on')).map(e => e.textContent),"
-                    " pressed: b && b.getAttribute('aria-pressed')}); })()") or {}
-        names = D.get("states") or {}
-        self.check("%s the switch shows %r and %r (the map's names) and marks %r" % (tag, names.get("on"), names.get("off"), names.get(want)),
-                   bool(names) and st.get("names") == [names.get("on"), names.get("off")] and st.get("on") == [names.get(want)]
-                   and st.get("pressed") == ("true" if want == "on" else "false"), st)
-
-    TIP = r"""(() => { const P = LG_WALKER.CONTROLS.buttons.drop.tip, t = document.querySelector('.' + P.cls);
-  const box = e => { if (!e) return null; const r = e.getBoundingClientRect(); return r.width && r.height ? {l: r.left, t: r.top, r: r.right, b: r.bottom} : null; };
-  const meets = (a, b) => !!a && !!b && a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b;
-  const look = e => { const c = getComputedStyle(e); return [c.backgroundColor, c.borderTopColor, c.borderTopWidth, c.borderRadius, c.boxShadow, c.fontSize, c.display]; };
-  const ref = document.createElement('div'); ref.id = 'jbhint'; ref.className = 'lg-tip'; ref.style.visibility = 'hidden'; document.body.appendChild(ref);
-  const want = look(ref); ref.remove();
-  const T = t && t.style.display !== 'none' ? box(t) : null, bar = box(document.querySelector('#lg-here-pad .' + LG_WALKER.CONTROLS.buttons.drop.bar));
-  const covered = T ? [...document.querySelectorAll('a[href],button,input:not([type=hidden]),select,textarea,summary,[role=button]')]
-    .filter(e => !t.contains(e) && meets(T, box(e))).map(e => e.id || e.className || e.tagName) : null;
-  return JSON.stringify({shown: !!T, text: t ? t.firstChild.textContent : null, want: P.text, look: t ? look(t) : null, jbLook: want,
-    box: T, bar: bar, covered: covered, flag: window.LG_TIP ? localStorage.getItem(LG_TIP.flag(P.name)) : 'no LG_TIP'}); })()"""
-
-    def first_tip(self):
-        self.wait("!!document.querySelector('.lg-here-tip')", 3)
-        t = self.j(self.TIP) or {}
-        self.check("T1 phone: a first visit shows the note with the map's text", t.get("shown") and t.get("text") == t.get("want"),
-                   {"text": t.get("text"), "want": t.get("want")})
-        self.check("T1 phone: the note looks like Juketube's first-time tip (.lg-tip)", bool(t.get("look")) and t.get("look") == t.get("jbLook"),
-                   {"note": t.get("look"), "juketube tip": t.get("jbLook")})
-        bx, bar = t.get("box"), t.get("bar")
-        self.check("T2 phone: the note sits in the Drop strip and covers nothing",
-                   bool(bx and bar) and bx["b"] <= bar["b"] and t.get("covered") == [], {"note": bx, "strip": bar, "covered": t.get("covered")})
-        self.tip_clear("phone, the walker's note", "." + ((self.j("JSON.stringify(LG_WALKER.CONTROLS.buttons.drop.tip.cls)")) or "lg-here-tip"))
-        jb = self.j("(() => { const d = document.createElement('div'); d.id = 'jbhint'; d.className = 'lg-tip';"
-                    " d.innerHTML = '<span>Juketube \u2014 search, stations, history. Tap a track and everyone on that station hears it.</span>"
-                    "<button type=\"button\" id=\"jbhintclose\" class=\"lg-tip-close\" aria-label=\"Hide this tip\">\u00d7</button>';"
-                    " document.body.appendChild(d); return '1'; })()")
+    def tips(self):
+        """T4/T5: tip.js on a page with the walker (the walker has no note of its own any more)."""
+        self.wait("!!window.LG_TIP", 3)
+        self.j("(() => { const d = document.createElement('div'); d.id = 'jbhint'; d.className = 'lg-tip';"
+               " d.innerHTML = '<span>Juketube — search, stations, history. Tap a track and everyone on that station hears it.</span>"
+               "<button type=\"button\" id=\"jbhintclose\" class=\"lg-tip-close\" aria-label=\"Hide this tip\">×</button>';"
+               " document.body.appendChild(d); return '1'; })()")
         self.tip_clear("phone, Juketube's tip", "#jbhint")
         self.j("(() => { document.getElementById('jbhint').remove(); return '1'; })()")
-        if bar:
-            self.shot("drop-tip-phone", {"x": 0, "y": 0, "width": 390, "height": bar["b"] + 70})
-        self.j("(() => { document.querySelector('.' + LG_WALKER.CONTROLS.buttons.drop.tip.cls + ' .lg-tip-close').click(); return '1'; })()")
-        time.sleep(0.2)
-        t2 = self.j(self.TIP) or {}
-        self.check("T3 phone: closing hides the note and saves its seen-flag", not t2.get("shown") and t2.get("flag") == "1", t2)
-        self.goto("/walk")
-        time.sleep(0.5)
-        t3 = self.j(self.TIP) or {}
-        self.check("T3 phone: the next page view shows no note", not t3.get("shown"), t3)
         two = self.j("(() => { const mk = () => { const d = document.createElement('div'); d.innerHTML = '<span></span><button></button>'; document.body.appendChild(d); return d; };"
                      " ['t4a', 't4b'].forEach(n => { localStorage.removeItem(LG_TIP.flag(n)); localStorage.removeItem(LG_TIP.flag(n) + '-views'); });"
                      " const a = mk(), b = mk(), ta = LG_TIP.wire(a, a.lastChild, 't4a', {}), tb = LG_TIP.wire(b, b.lastChild, 't4b', {});"
@@ -400,13 +352,9 @@ class Run(m.Run):
 
     def nav_row(self, tag, shot=None):
         n = self.j(NAVROW) or {}
-        # one line (the map below keeps its place): the trail and the switch share a row (their middles level)
-        d, t = n.get("drop"), (n.get("others") or {}).get("trail")
-        oneline = bool(d and t) and abs((d["t"] + d["b"]) / 2 - (t["t"] + t["b"]) / 2) <= 8
-        self.check("C3 %s: no Back / Zoom out buttons; the switch has its own room in the nav row (does not meet the trail) "
-                   "and the trail shows its whole first step, all on one line" % tag,
-                   n.get("gone") is True and bool(n.get("drop")) and all(n.get("others", {}).values()) and n.get("hits") == [] and n.get("trailFits") is True
-                   and oneline, dict(n, oneLine=oneline))
+        self.check("C3 %s: no Back, Zoom out or Drop/Scroll switch; the map's nav row is the trail alone and it shows its "
+                   "whole first step" % tag,
+                   n.get("gone") is True and bool(n.get("trail")) and n.get("children") == 1 and n.get("trailFits") is True, n)
         if shot and n.get("row"):
             r = n["row"]
             self.shot(shot, {"x": 0, "y": n.get("sy", 0) + max(0, r["t"] - 8), "width": self.j("JSON.stringify(innerWidth)") or 390,
@@ -416,7 +364,7 @@ class Run(m.Run):
     def contrast(self, tag):
         c = self.j(CONTRAST) or {}
         st = c.get("states") or {}
-        self.check("A1 %s: both switch labels meet WCAG AA 4.5:1 (site colors --lg-switch-*)" % tag,
+        self.check("A1 %s: the Center button's label meets WCAG AA 4.5:1, disarmed and armed (site colors --lg-switch-*)" % tag,
                    len(st) == 2 and all(v.get("ratio", 0) >= 4.5 for v in st.values()) and c.get("opacity") == "1" and all(c.get("vars") or [""]),
                    c)
 
@@ -425,32 +373,24 @@ class Run(m.Run):
         self.check("T5 %s: the tip's close button does not cover its text" % tag, bool(t) and t.get("overlap") is False and t.get("inside") is True, t)
         return t
 
-    def covers_nothing(self, tag, need_main=False):
-        c = self.j(COVER) or {}
-        self.check("C1 %s: the Drop button covers nothing (not the portal%s, no other control)" % (tag, ", not MAINstream" if need_main else ""),
-                   bool(c.get("drop")) and bool(c.get("portal")) and (bool(c.get("main")) or not need_main)
-                   and not c.get("portalHit") and not c.get("mainHit") and not c.get("covered"), c)
-        return c
-
-    def drop_at_top(self, tag, b):
-        t = (b.get("buttons") or {}).get("drop")
-        self.check("%s the Drop button is in the top 15%% of the screen and the header's middle is uncovered" % tag,
-                   bool(t) and t["b"] <= 0.15 * b["vh"] and t["t"] >= 0 and b.get("headerHit"), {"drop": t, "vh": b.get("vh"),
-                                                                                                   "headerHit": b.get("headerHit")})
-
     def phone(self):
         self.size(390, 844, True)
         self.goto("/walk")
-        self.first_tip()
-        self.switch_state("P6 phone: before walking,", self.j("JSON.stringify(LG_WALKER.CONTROLS)") or {}, "off")
+        self.j("(() => { localStorage.removeItem(LG_WALKER.CONTROLS.buttons.center.store); return '1'; })()")
+        self.goto("/walk")
         self.drop()
         time.sleep(0.3)
+        none = self.j("JSON.stringify({sw: !!document.querySelector('.lg-here-drop,.lg-here-walk,.lg-here-state,.lg-here-dropbar,.lg-here-tip'),"
+                      " padTop: document.body.style.paddingTop, keysHidden: document.querySelector('#lg-here-pad .lg-here-keys').hidden,"
+                      " drop: !!(LG_WALKER.CONTROLS.buttons || {}).drop})") or {}
+        self.check("N1 phone: there is no Drop/Scroll switch, strip or note; the pad is on the page from the start",
+                   none.get("sw") is False and none.get("drop") is False and none.get("padTop") in ("", None) and none.get("keysHidden") is False, none)
         b = self.j(BOXES) or {}
         C = self.j("JSON.stringify((window.LG_WALKER && LG_WALKER.CONTROLS) || null)") or {}
         acts = set((C.get("keys") or {}).values())
-        self.check("K0 the controls map binds every direction, select and back to keys and buttons",
+        self.check("K0 the controls map binds every direction, select and back to keys and buttons, and names Center",
                    bool(C) and set(C.get("dirs", [])) == set(WAY) and set(WAY) | {"select", "back"} <= acts
-                   and all(a in C.get("buttons", {}) for a in ["select", "back", "drop"])
+                   and all(a in C.get("buttons", {}) for a in ["select", "back", "center"])
                    and (C.get("maxSpeed") or 0) > 0 and all((C.get("touchpad") or {}).get(k, 0) > 0
                                                             for k in ("reach", "width", "height", "alpha", "lift", "margin"))
                    and 0 < (C.get("touchpad") or {}).get("deadZone", 0) < 1, C)
@@ -470,22 +410,79 @@ class Run(m.Run):
         self.check("U1 phone: the touchpad, A and B are equally see-through (opacity %s)" % T.get("alpha"),
                    len(al) == 3 and all(x is not None and abs(x - T.get("alpha", 9)) < 0.01 for x in al) and al[0] < 1, al)
         self.check("J1 phone: the touchpad replaced the D-pad (no direction buttons on the pad)", b.get("dirButtons") == 0, b.get("dirButtons"))
-        parts = {"touchpad": dp, "select": btn.get("select"), "back": btn.get("back"), "drop": btn.get("drop"), "juketube": b.get("jb")}
+        parts = {"touchpad": dp, "select": btn.get("select"), "back": btn.get("back"), "center": btn.get("center"), "juketube": b.get("jb")}
         names = list(parts)
         clash = [(x, y) for i, x in enumerate(names) for y in names[i + 1:] if overlaps(parts[x], parts[y])]
-        self.check("P3 phone: no two controls overlap (touchpad, A, B, Drop button, Juketube button)",
+        self.check("P3 phone: no two controls overlap (touchpad, A, B, Center button, Juketube button)",
                    all(parts.values()) and not clash, {"overlaps": clash, "boxes": parts})
         ctl = dict(btn, touchpad=dp)
         small = {k: (r["w"], r["h"]) for k, r in ctl.items() if r and (r["w"] < 44 or r["h"] < 44)}
         self.check("P4 phone: every control is at least 44x44 px", len(ctl) >= 4 and all(ctl.values()) and not small,
                    {"small": small, "count": len(ctl)})
-        self.drop_at_top("P5 phone:", b)
-        self.covers_nothing("phone")
         self.contrast("phone")
-        self.switch_state("P6 phone: walking,", C, "on")
+        self.tips()
         self.shot("phone", {"x": 0, "y": 0, "width": vw, "height": vh})
         self.touchpad_pull(C, dp, vw, vh)
         self.drop_shape(C)
+
+    CENTER = ("(() => { const b = document.querySelector('#lg-here-pad .' + LG_WALKER.CONTROLS.buttons.center.cls),"
+              " d = document.querySelector('#lg-here .lg-here-dot.me .' + LG_WALKER.CONTROLS.shape.cls), r = d.getBoundingClientRect();"
+              " return JSON.stringify({pressed: b.getAttribute('aria-pressed'), stored: localStorage.getItem(LG_WALKER.CONTROLS.buttons.center.store),"
+              " y: r.top + r.height / 2, x: r.left + r.width / 2, vh: innerHeight, vw: innerWidth, sy: scrollY,"
+              " pageY: r.top + r.height / 2 + scrollY, maxSy: document.documentElement.scrollHeight - innerHeight}); })()")
+
+    def center_cases(self):
+        """CE0-CE4 and SC1: the Center button and plain scrolling, on the profile-like page (phone 390x844)."""
+        self.size(390, 844, True)
+        self.goto("/walk")
+        self.j("(() => { localStorage.removeItem(LG_WALKER.CONTROLS.buttons.center.store); return '1'; })()")
+        self.goto("/walk")
+        self.drop()
+        time.sleep(0.4)
+        c0 = self.j(self.CENTER) or {}
+        self.check("CE0 a first visit: the Center button is disarmed", c0.get("pressed") == "false" and c0.get("stored") in (None, "0"), c0)
+        self.key("s", 2.0)
+        time.sleep(0.3)
+        c1 = self.j(self.CENTER) or {}
+        self.check("CE1 disarmed: walking down scrolls the page only to keep the dot in view (it is on the screen, not in the middle)",
+                   c1.get("sy", 0) > 0 and 0 < c1.get("y", -1) < c1.get("vh", 0) and abs(c1["y"] - c1["vh"] / 2) > 80, c1)
+        self.j("(() => { window.scrollBy(0, -260); return '1'; })()")
+        time.sleep(0.8)
+        c2 = self.j(self.CENTER) or {}
+        self.check("SC1 scrolling by hand works as always: the page stays where you scrolled it and your dot stays where it stood",
+                   abs(c2.get("sy", 0) - (c1.get("sy", 0) - 260)) <= 2 and abs(c2.get("pageY", 0) - c1.get("pageY", -99)) <= 2,
+                   {"before": c1, "after": c2})
+        self.tap("#lg-here-pad ." + (self.j("JSON.stringify(LG_WALKER.CONTROLS.buttons.center.cls)") or "none"))
+        time.sleep(0.5)
+        c3 = self.j(self.CENTER) or {}
+        self.check("CE2 armed: the screen slides at once so the dot is in its middle (top to bottom)",
+                   c3.get("pressed") == "true" and c3.get("stored") == "1" and abs(c3.get("y", 0) - c3.get("vh", 0) / 2) <= 12, c3)
+        self.key("s", 0.6)
+        time.sleep(0.3)
+        c4 = self.j(self.CENTER) or {}
+        self.key("w", 0.3)
+        time.sleep(0.3)
+        c5 = self.j(self.CENTER) or {}
+        self.check("CE2 armed: after every move the dot is in the middle again (down, then up)",
+                   c4.get("pageY", 0) > c3.get("pageY", 0) + 40 and abs(c4["y"] - c4["vh"] / 2) <= 12
+                   and c5.get("pageY", 0) < c4.get("pageY", 0) - 20 and abs(c5["y"] - c5["vh"] / 2) <= 12, {"down": c4, "up": c5})
+        self.shot("center-armed-phone", {"x": 0, "y": 0, "width": 390, "height": 844})
+        self.goto("/walk")
+        self.drop()
+        time.sleep(0.3)
+        c6 = self.j(self.CENTER) or {}
+        self.check("CE3 the choice is remembered on this device: armed after a reload", c6.get("pressed") == "true", c6)
+        self.tap("#lg-here-pad ." + (self.j("JSON.stringify(LG_WALKER.CONTROLS.buttons.center.cls)") or "none"))
+        time.sleep(0.3)
+        self.key("s", 2.0)
+        time.sleep(0.3)
+        c7 = self.j(self.CENTER) or {}
+        self.goto("/walk")
+        self.drop()
+        c8 = self.j(self.CENTER) or {}
+        self.check("CE4 disarmed again: walking is as before (not held in the middle), and that is remembered too",
+                   c7.get("pressed") == "false" and abs(c7.get("y", 0) - c7.get("vh", 0) / 2) > 80 and c8.get("pressed") == "false",
+                   {"walked": c7, "reloaded": c8})
 
     def pull(self, tp, dx, dy, hold_s, shot=None):
         """Touch the touchpad left of its middle (the pull counts from there, not the middle), drag by (dx, dy) px, hold, let go; returns how far your dot went (x, y)."""
@@ -569,9 +566,6 @@ class Run(m.Run):
         time.sleep(0.3)
         self.wait("location.pathname === '/walk' && document.readyState === 'complete' && !!document.querySelector('#lg-here .lg-here-dot.me')")
         self.drop()
-        b = self.j(BOXES) or {}
-        self.drop_at_top("D1 desktop:", b)
-        self.covers_nothing("desktop")
         C = self.j("JSON.stringify((window.LG_WALKER && LG_WALKER.CONTROLS) || null)") or {}
         for k, act in sorted((C.get("keys") or {}).items()):
             if act not in WAY:
@@ -630,30 +624,41 @@ class Run(m.Run):
         path1 = self.j("JSON.stringify(location.pathname)")
         self.check("D5 desktop: back (%s) goes back a page" % "/".join(back[:1]), path0 == "/walk" and path1 == "/start", (path0, path1))
 
-
     # ---- the map
     WALK = ("(() => { const w = document.getElementById('lgm-walker'), t = document.querySelector('.lgm-trail-step.here'),"
             " p = document.getElementById('lgm-panel'), f = document.getElementById('lgm-frame');"
             " const edges = [...document.querySelectorAll('#lgm-edges .lge')].map(e => [e.getAttribute('data-a'), e.getAttribute('data-b')]);"
             " const mid = id => { const b = id && document.querySelector('#lgm-nodes .lgn[data-id=\"' + id + '\"]');"
             " if (!b) return null; const r = b.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; };"
-            " const at = w && !w.hidden ? w.getAttribute('data-at') : null;"
-            " return JSON.stringify({at: at, mid: mid(at), you: mid('you'), trail: t ? t.textContent : null, edges: edges,"
+            " const at = w && !w.hidden ? w.getAttribute('data-at') : null, wr = w ? w.getBoundingClientRect() : null;"
+            " const mids = {}; document.querySelectorAll('#lgm-nodes .lgn').forEach(b => { mids[b.getAttribute('data-id')] = mid(b.getAttribute('data-id')); });"
+            " const s = document.getElementById('lgm-svg').getBoundingClientRect();"
+            " const c = document.querySelector('#lg-here-pad .' + LG_WALKER.CONTROLS.buttons.center.cls), k = document.querySelector('#lg-here-pad .lg-here-keys');"
+            " const padTop = k && k.getBoundingClientRect().height && c ? c.getBoundingClientRect().top : Infinity;"
+            " const top = Math.max(s.top, 0), bot = Math.min(s.bottom, innerHeight, padTop - 8 > top + 80 ? padTop - 8 : Infinity);"
+            " return JSON.stringify({at: at, mid: mid(at), you: mid('you'), mids: mids, trail: t ? t.textContent : null, edges: edges,"
             " panel: !!p && !p.hidden, page: f ? f.getAttribute('data-page') : null,"
+            " pos: w && !w.hidden ? [+w.getAttribute('data-x'), +w.getAttribute('data-y')] : null,"
+            " spot: wr && !w.hidden ? [wr.left + wr.width / 2, wr.top + wr.height / 2] : null,"
+            " near: w ? w.getAttribute('data-near') : null, scale: LG_MAP.scale(), fit: LG_MAP.fitScale ? LG_MAP.fitScale() : null, zmax: LG_MAP.ZOOM.max,"
+            " shown: [...document.querySelectorAll('#lgm-nodes .lgn')].filter(b => b.style.visibility !== 'hidden' && b.style.display !== 'none').map(b => b.getAttribute('data-id')),"
+            " all: document.querySelectorAll('#lgm-nodes .lgn').length,"
+            " seen: [(Math.max(s.left, 0) + Math.min(s.right, innerWidth)) / 2, (top + bot) / 2],"
             " w: (b => b ? b.getBoundingClientRect().width : null)(document.querySelector('#lgm-nodes .lgn[data-id=\"you\"]')),"
-            " frame: (r => [r.left + r.width / 2, r.top + r.height / 2, r.width, r.height])(document.getElementById('lgm-svg').getBoundingClientRect())}); })()")
+            " frame: [s.left + s.width / 2, s.top + s.height / 2, s.width, s.height]}); })()")
 
     def map_load(self):
         self.ws.call("Page.navigate", url=self.base + "/map")
         ok = self.wait("document.readyState === 'complete' && !!window.LG_WALKER"
                        " && document.querySelectorAll('#lgm-nodes .lgn').length >= 8"
                        " && !!document.querySelector('.lgm-trail-step.here')", 10)
-        time.sleep(0.8)   # the first view fits itself into the frame
+        self.wait("!!document.getElementById('lgm-walker') && !document.getElementById('lgm-walker').hidden", 5)
+        time.sleep(1.2)   # the first view fits itself into the frame, then the walker's zoom glides in
         return ok
 
     def map_walking(self):
-        self.drop()
-        self.wait("!!document.getElementById('lgm-walker') && !document.getElementById('lgm-walker').hidden", 3)
+        """Walking is always on (2026-11-15): the map's state once the walker stands on it."""
+        self.wait("!!document.getElementById('lgm-walker') && !document.getElementById('lgm-walker').hidden", 5)
         time.sleep(0.2)
         return self.j(self.WALK) or {}
 
@@ -661,96 +666,153 @@ class Run(m.Run):
     def linked(st, a, b):
         return any(set(e) == {a, b} for e in st.get("edges", []))
 
+    def map_go(self, target, limit_s=14, keys=None):
+        """Walk the map's walker to box `target` with the keys (free walking): short holds toward its middle until the
+        walker is in it (data-at) or the time is up. Returns the last state."""
+        keys = keys or {"up": "w", "down": "s", "left": "a", "right": "d"}
+        end = time.time() + limit_s
+        st = self.j(self.WALK) or {}
+        while time.time() < end:
+            st = self.j(self.WALK) or {}
+            to, spot = (st.get("mids") or {}).get(target), st.get("spot")
+            if st.get("at") == target or not to or not spot:
+                return st
+            dx, dy = to[0] - spot[0], to[1] - spot[1]
+            if abs(dx) >= abs(dy):
+                self.key(keys["right" if dx > 0 else "left"], max(0.05, min(0.4, abs(dx) / 175.0)))
+            else:
+                self.key(keys["down" if dy > 0 else "up"], max(0.05, min(0.4, abs(dy) / 175.0)))
+            time.sleep(0.08)
+        return self.j(self.WALK) or {}
+
+    def map_pull_to(self, target, tp, reach, limit_s=14):
+        """The same with the touchpad: pulls straight toward the box."""
+        end = time.time() + limit_s
+        st = self.j(self.WALK) or {}
+        while time.time() < end:
+            st = self.j(self.WALK) or {}
+            to, spot = (st.get("mids") or {}).get(target), st.get("spot")
+            if st.get("at") == target or not to or not spot or not tp:
+                return st
+            dx, dy = to[0] - spot[0], to[1] - spot[1]
+            n = (dx * dx + dy * dy) ** 0.5 or 1
+            self.pull(tp, dx / n * reach, dy / n * reach, max(0.08, min(0.4, n / 175.0)))
+        return self.j(self.WALK) or {}
+
     def map_desktop(self):
         self.size(1280, 800, False)
         ok = self.map_load()
-        plain = self.j(self.WALK) or {}
         st = self.map_walking()
-        time.sleep(0.6)   # the camera glides in
-        st = self.j(self.WALK) or {}
         zoom = (self.j("JSON.stringify((window.LG_WALKER && LG_WALKER.CONTROLS.mapZoom) || null)") or 0)
-        grow = (st.get("w") or 0) / (plain.get("w") or 1)
-        self.check("M4 desktop: Drop zooms toward the walker (you grows about %sx)" % zoom,
-                   bool(zoom) and 1.25 <= grow <= zoom * 1.05, {"plain w": plain.get("w"), "drop w": st.get("w"), "grow": grow})
-        self.check("M0 desktop: the map is drawn and the walker stands on you", ok and st.get("at") == "you", st)
-        self.covers_nothing("map desktop", need_main=True)
+        want = min(st.get("zmax") or 0, (st.get("fit") or 0) * zoom)
+        self.check("M0 desktop: the map is drawn and the walker stands on you, with no switch to tap", ok and st.get("at") == "you", st.get("at"))
+        sp, sn = st.get("spot") or [-9999, -9999], st.get("seen") or [0, 0]
+        self.check("M4 desktop: the map starts zoomed in around the walker (%sx the fitted view; the walker in the middle of "
+                   "the part of the map you can see)" % zoom,
+                   bool(zoom) and abs((st.get("scale") or 0) - want) <= 0.03 * want and want > (st.get("fit") or 9) * 1.2
+                   and abs(sp[0] - sn[0]) <= 12 and abs(sp[1] - sn[1]) <= 12,
+                   {"scale": st.get("scale"), "fit": st.get("fit"), "want": want, "walker": sp, "middle": sn})
         self.nav_row("map desktop")
         m_expr = "(() => { const e=document.querySelector('#lgm-walker .' + LG_WALKER.CONTROLS.shape.cls); return JSON.stringify(e ? {speed:+e.dataset.speed, img:!!e.querySelector('img[src^=\"/portrait/\"],.lg-here-ph')} : null); })()"
-        self.key("d", 0.02)
-        time.sleep(0.05)
+        self.ws.call("Input.dispatchKeyEvent", type="keyDown", key="d", windowsVirtualKeyCode=68)
+        time.sleep(0.15)
         mm = self.j(m_expr) or {}
+        self.ws.call("Input.dispatchKeyEvent", type="keyUp", key="d", windowsVirtualKeyCode=68)
         time.sleep(0.45)
         ms = self.j(m_expr) or {}
-        self.check("S4 map: the walker is your portrait drop, teardrop on a step and circle after", mm.get("img") and mm.get("speed") == 1 and ms.get("speed") == 0, {"moving": mm, "stopped": ms})
-        self.key("a", 0.02)
-        time.sleep(0.45)
+        self.check("S4 map: the walker is your portrait drop, teardrop while it walks and a circle after", mm.get("img") and mm.get("speed") == 1 and ms.get("speed") == 0, {"moving": mm, "stopped": ms})
+        self.key("a", 0.15)
+        time.sleep(0.2)
         C = self.j("JSON.stringify((window.LG_WALKER && LG_WALKER.CONTROLS) || null)") or {}
         letters = {a: k for k, a in (C.get("keys") or {}).items() if len(k) == 1 and a in WAY}
         opposite = {"up": "down", "down": "up", "left": "right", "right": "left"}
+        top = C.get("maxSpeed") or 0
         for act in ("right", "left", "up", "down"):
             k = letters.get(act)
             before = self.j(self.WALK) or {}
-            self.key(k or "?")
-            time.sleep(0.35)
+            t0 = time.time()
+            self.key(k or "?", 0.3)
+            ticks = (time.time() - t0) / 0.04
+            time.sleep(0.12)
             after = self.j(self.WALK) or {}
             dx, dy = WAY[act]
-            # measured from you in the same snapshot: the camera moves the whole map while it follows the walker
-            way = bool(after.get("you") and after.get("mid")) and \
-                ((after["mid"][0] - after["you"][0]) * dx + (after["mid"][1] - after["you"][1]) * dy) > 0
-            self.check("M1 desktop: %r walks from you along a connector to a box %s of it" % (k, act),
-                       bool(k) and before.get("at") == "you" and after.get("at") not in (None, "you")
-                       and self.linked(after, "you", after["at"]) and way, {"before": before.get("at"), "after": after.get("at"),
-                                                                            "mids": (after.get("you"), after.get("mid"))})
-            if act == "right":
-                time.sleep(0.5)   # the camera glides after the walker
-                fol = self.j(self.WALK) or {}
-                fr, mid = fol.get("frame") or [0, 0, 1, 1], fol.get("mid") or [-9999, -9999]
-                self.check("M4 desktop: the camera follows the walker to the next box (it is near the frame's middle)",
-                           abs(mid[0] - fr[0]) <= 0.12 * fr[2] and abs(mid[1] - fr[1]) <= 0.12 * fr[3], {"mid": mid, "frame": fr})
-                self.shot("map-desktop", {"x": 0, "y": 0, "width": 1280, "height": 800})
-            self.key(letters.get(opposite[act]) or "?")
-            time.sleep(0.35)
-            back = self.j(self.WALK) or {}
-            self.check("M1 desktop: %r walks back to you" % letters.get(opposite[act]), back.get("at") == "you", back.get("at"))
+            b0, a0 = before.get("pos") or [0, 0], after.get("pos") or [0, 0]
+            along = ((a0[0] - b0[0]) * dx + (a0[1] - b0[1]) * dy) * (after.get("scale") or 1)   # screen px
+            across = abs((a0[0] - b0[0]) * dy) + abs((a0[1] - b0[1]) * dx)
+            self.check("M1 desktop: %r walks the walker %s freely, at about maxSpeed (%s px a tick), not from box to box" % (k, act, top),
+                       bool(k) and 0.5 * top * ticks <= along <= 1.4 * top * (ticks + 3) and across < 1,
+                       {"before": b0, "after": a0, "px": along, "ticks": ticks})
+            self.key(letters.get(opposite[act]) or "?", 0.3)
+            time.sleep(0.12)
+        # onto a connected box and back: stepping onto a box puts you in it
+        first = self.j(self.WALK) or {}
+        ring = [i for i in (first.get("shown") or []) if i != "you" and self.linked(first, "you", i)]
+        to = self.map_go(ring[0]) if ring else {}
+        self.check("M1 desktop: walking onto a connected box puts you in it (the walker stands in %s)" % (ring[0] if ring else "?"),
+                   bool(ring) and to.get("at") == ring[0], {"ring": ring, "at": to.get("at")})
+        self.shot("map-desktop", {"x": 0, "y": 0, "width": 1280, "height": 800})
+        home = self.map_go("you")
+        self.check("M1 desktop: and walking back puts you in you again", home.get("at") == "you", home.get("at"))
+        # the near filter (zoomed in) and your own zoom out (the wheel)
+        sx, sy = (home.get("frame") or [640, 400])[0], (home.get("frame") or [640, 400])[1]
+        hid = self.j(self.WALK) or {}
+        self.check("M5 desktop: zoomed in, only the box you are at and the boxes connected to it are shown",
+                   hid.get("near") == "on" and set(hid.get("shown") or []) == {"you"} | {i for i in (hid.get("mids") or {}) if self.linked(hid, "you", i)},
+                   {"near": hid.get("near"), "shown": hid.get("shown")})
+        to = self.map_go(ring[0]) if ring else {}
+        nb = {ring[0]} | {i for i in (to.get("mids") or {}) if self.linked(to, ring[0], i)} if ring else set()
+        self.check("M5 desktop: standing in %s, boxes not connected to it are hidden (positive control: some are)" % (ring[0] if ring else "?"),
+                   bool(ring) and set(to.get("shown") or []) == nb and len(to.get("shown") or []) < (to.get("all") or 0),
+                   {"shown": to.get("shown"), "all": to.get("all")})
+        for _ in range(8):
+            self.ws.call("Input.dispatchMouseEvent", type="mouseWheel", x=sx, y=sy, deltaX=0, deltaY=100)
+            time.sleep(0.05)
+        time.sleep(0.4)
+        out = self.j(self.WALK) or {}
+        self.key("d", 0.4)
+        time.sleep(1.4)   # longer than the walker waits before it zooms back in by itself
+        still = self.j(self.WALK) or {}
+        self.check("M5 desktop: the wheel zooms out, then every box is shown, and walking on does not zoom back in",
+                   out.get("near") == "off" and len(out.get("shown") or []) == out.get("all") and (out.get("scale") or 9) < 0.8 * want
+                   and still.get("near") == "off" and abs((still.get("scale") or 0) - (out.get("scale") or -1)) < 1e-6,
+                   {"zoomed out": [out.get("scale"), out.get("near"), len(out.get("shown") or []), out.get("all")],
+                    "after walking": [still.get("scale"), still.get("near")]})
+        for _ in range(12):
+            self.ws.call("Input.dispatchMouseEvent", type="mouseWheel", x=sx, y=sy, deltaX=0, deltaY=-100)
+            time.sleep(0.05)
+        time.sleep(0.4)
+        back_in = self.j(self.WALK) or {}
+        self.check("M5 desktop: the wheel zooms back in, and the far boxes are hidden again",
+                   back_in.get("near") == "on" and len(back_in.get("shown") or []) < (back_in.get("all") or 0), {"near": back_in.get("near"), "shown": back_in.get("shown")})
         sel = sorted(kk for kk, a in C.get("keys", {}).items() if a == "select")
         bk = sorted(kk for kk, a in C.get("keys", {}).items() if a == "back")
-        # stand on a box that has a page (Events has none yet): try each way from you, walking back after a miss
-        target, page, st = None, None, {}
-        for act in ("right", "left", "up", "down"):
-            self.key(letters.get(act) or "?")
-            time.sleep(0.35)
-            st = self.j(self.WALK) or {}
-            target = st.get("at")
-            page = (m2.NODES.get(target) or {}).get("page")
-            if page:
-                break
-            self.key(letters.get(opposite[act]) or "?")
-            time.sleep(0.35)
-        self.check("M2 desktop: positive control, the side panel is closed and the box has a page", not st.get("panel") and bool(page),
-                   {"at": target, "page": page, "panel": st.get("panel")})
-        for kk in sel:
+        # stand on a box that has a page (Events has none yet)
+        self.ws.call("Page.navigate", url=self.base + "/map")
+        self.map_load()
+        st = self.j(self.WALK) or {}
+        paged = [i for i in (st.get("shown") or []) if i != "you" and (m2.NODES.get(i) or {}).get("page")]
+        target = paged[0] if paged else None
+        page = (m2.NODES.get(target) or {}).get("page")
+        st = self.map_go(target) if target else st
+        self.check("M2 desktop: positive control, you stand in a box that has a page and the side panel is closed",
+                   bool(page) and st.get("at") == target and not st.get("panel"), {"at": st.get("at"), "want": target, "page": page, "panel": st.get("panel")})
+        for kk in sel[:1]:
             self.key(kk)
         self.wait("!document.getElementById('lgm-panel').hidden", 5)
         time.sleep(0.4)
         st = self.j(self.WALK) or {}
-        self.check("M2 desktop: select (%s) opens the box you stand on" % "/".join(sel),
+        self.check("M2 desktop: select (%s) opens the box you stand in" % "/".join(sel[:1]),
                    bool(sel) and st.get("panel") and st.get("page") == page, {"want": page, "got": st.get("page"), "panel": st.get("panel")})
-        for kk in bk:
+        for kk in bk[:1]:
             self.key(kk)
         self.wait("document.getElementById('lgm-panel').hidden", 3)
         st = self.j(self.WALK) or {}
-        self.check("M2 desktop: back (%s) closes it" % "/".join(bk), bool(bk) and not st.get("panel"), st.get("panel"))
-        self.drop()   # Drop off
-        time.sleep(0.8)
-        self.ws.call("Page.navigate", url=self.base + "/map")   # the same first view, to compare the zoom with
-        self.map_load()
-        self.drop()
-        time.sleep(0.6)
-        self.drop()   # and off again
-        time.sleep(0.6)
-        off = self.j(self.WALK) or {}
-        self.check("M4 desktop: leaving Drop restores the normal zoom", plain.get("w") and off.get("w")
-                   and abs(off["w"] - plain["w"]) <= 0.03 * plain["w"] and not off.get("at"), {"plain w": plain.get("w"), "after w": off.get("w")})
+        self.check("M2 desktop: back (%s) closes it" % "/".join(bk[:1]), bool(bk) and not st.get("panel"), st.get("panel"))
+        time.sleep(2.2)   # opening a box makes the map fit itself again (zoomed out); the walker's zoom comes back by itself
+        again = self.j(self.WALK) or {}
+        self.check("M6 desktop: when the map zooms out by itself (a box was opened), the walking zoom comes back",
+                   again.get("near") == "on" and (again.get("scale") or 0) >= 0.8 * min(again.get("zmax") or 0, (again.get("fit") or 0) * zoom),
+                   {"scale": again.get("scale"), "fit": again.get("fit"), "near": again.get("near")})
 
     def tap(self, selector):
         b = self.j("(() => { const e = document.querySelector(%s); if (!e) return 'null'; const r = e.getBoundingClientRect();"
@@ -766,42 +828,51 @@ class Run(m.Run):
         self.size(390, 844, True)
         ok = self.map_load()
         st = self.map_walking()
-        self.check("M0 phone: the map is drawn and the walker stands on you", ok and st.get("at") == "you", st)
-        c = self.covers_nothing("map phone", need_main=True)
+        self.check("M0 phone: the map is drawn and the walker stands on you, with no switch to tap", ok and st.get("at") == "you", st.get("at"))
         self.nav_row("map phone", shot="map-navrow-phone")
-        self.contrast("map phone")
-        row = self.j("(() => { const d = document.querySelector('.' + LG_WALKER.CONTROLS.buttons.drop.cls), r = document.querySelector('.lgm-navrow'),"
-                     " bar = document.querySelector('.' + LG_WALKER.CONTROLS.buttons.drop.bar);"
-                     " return JSON.stringify({inRow: !!d && !!r && d.parentNode === r && r.lastElementChild === d,"
-                     " strip: !!bar && !bar.hidden && bar.getBoundingClientRect().height > 0, padTop: document.body.style.paddingTop}); })()") or {}
-        self.check("C2 map phone: the switch sits at the end of the map's own row; no strip, the page keeps its place",
-                   row.get("inRow") and not row.get("strip") and row.get("padTop") in ("", None), row)
-        if c.get("main"):   # the map's top: the Drop strip, the header with the portal, MAINstream
-            self.shot("map-top-phone", {"x": 0, "y": 0, "width": 390, "height": min(844, c["main"]["b"] + 24)})
         C = self.j("JSON.stringify((window.LG_WALKER && LG_WALKER.CONTROLS) || null)") or {}
         B = C.get("buttons") or {}
-        moved = None
         tp = (self.j(BOXES) or {}).get("touchpad")
         reach = (C.get("touchpad") or {}).get("reach", 0)
-        for act in ("down", "right", "left", "up"):
-            if not tp:
-                break
-            self.pull(tp, WAY[act][0] * reach, WAY[act][1] * reach, 0.25)   # one push: under mapRepeatMs, one connector
-            time.sleep(0.2)
-            st = self.j(self.WALK) or {}
-            if st.get("at") not in (None, "you"):
-                moved = (act, st)
-                break
-        self.check("M3 phone: a push on the touchpad walks from you along a connector to a connected box",
-                   bool(moved) and self.linked(moved[1], "you", moved[1]["at"]), moved)
-        target = moved[1]["at"] if moved else None
+        # Center disarmed (the default): a short walk moves the walker over a map that stays where it is
+        a0 = self.j(self.WALK) or {}
+        if tp:
+            self.pull(tp, reach, 0, 0.3)
+        time.sleep(0.2)
+        a1 = self.j(self.WALK) or {}
+        s0, s1, y0, y1 = a0.get("spot") or [0, 0], a1.get("spot") or [0, 0], a0.get("you") or [0, 0], a1.get("you") or [9, 9]
+        self.check("MC1 phone, Center disarmed: the touchpad walks the walker across the map; the map itself stays put",
+                   bool(tp) and s1[0] - s0[0] > 20 and abs(y1[0] - y0[0]) <= 2 and abs(y1[1] - y0[1]) <= 2, {"walker": [s0, s1], "you box": [y0, y1]})
+        self.tap("#lg-here-pad ." + (B.get("center") or {}).get("cls", "none"))
+        time.sleep(0.7)
+        c0 = self.j(self.WALK) or {}
+        if tp:
+            self.pull(tp, 0, -reach, 0.4)
+        time.sleep(0.3)
+        c1 = self.j(self.WALK) or {}
+        sp, sn = c1.get("spot") or [-999, -999], c1.get("seen") or [0, 0]
+        p0, p1 = c0.get("pos") or [0, 0], c1.get("pos") or [0, 0]
+        self.check("MC2 phone, Center armed: the walker walks on and the map slides so it stays in the middle of the part "
+                   "of the map you can see (above the pad)",
+                   p0[1] - p1[1] > 10 and abs(sp[0] - sn[0]) <= 12 and abs(sp[1] - sn[1]) <= 12
+                   and abs(((c0.get("spot") or [0, 0])[1]) - sn[1]) <= 12, {"walked": [p0, p1], "walker": sp, "middle": sn})
+        self.shot("map-center-phone", {"x": 0, "y": 0, "width": 390, "height": 844})
+        self.tap("#lg-here-pad ." + (B.get("center") or {}).get("cls", "none"))   # disarmed again (it is remembered)
+        time.sleep(0.2)
+        first = self.j(self.WALK) or {}
+        ring = [i for i in (first.get("shown") or []) if i != "you" and self.linked(first, "you", i)
+                and (m2.NODES.get(i) or {}).get("label")]
+        target = ring[0] if ring else None
+        st = self.map_pull_to(target, tp, reach) if target else first
+        self.check("M3 phone: the touchpad walks the walker onto a connected box", bool(target) and st.get("at") == target,
+                   {"want": target, "at": st.get("at")})
         self.shot("map-phone", {"x": 0, "y": 0, "width": 390, "height": 844})
         self.tap("#lg-here-pad ." + (B.get("select") or {}).get("cls", "none"))
         label = (m2.NODES.get(target) or {}).get("label", "?")
         self.wait("(document.querySelector('.lgm-trail-step.here') || {}).textContent === %s" % json.dumps(label[:21]), 4)
         time.sleep(0.3)
         st = self.j(self.WALK) or {}
-        self.check("M3 phone: A does what a tap does (the box you stand on becomes the center)",
+        self.check("M3 phone: A does what a tap does (the box you stand in becomes the center)",
                    bool(target) and (st.get("trail") or "").startswith(label[:15]), {"want": label, "trail": st.get("trail")})
         self.tap("#lg-here-pad ." + (B.get("back") or {}).get("cls", "none"))
         self.wait("(document.querySelector('.lgm-trail-step.here') || {}).textContent === 'You'", 4)
@@ -816,6 +887,9 @@ class Run(m.Run):
         self.wait("document.readyState === 'complete' && !!document.querySelector('#lg-here .lg-here-dot.me')")
         self.drop()
         time.sleep(0.4)
+        self.key("d", 0.05)   # what you stand next to is marked once you move
+        self.key("a", 0.05)
+        time.sleep(0.2)
         q = self.j("(() => { const P = LG_WALKER.CONTROLS.portal, e = document.querySelector(P.selector), m = e && e.querySelector('.mark');"
                    " return JSON.stringify({cls: !!e && e.classList.contains(P.cls), near: !!e && e.classList.contains('lg-here-near'),"
                    " round: m ? getComputedStyle(m).borderRadius : null, r: e ? (r => [r.left, r.top, r.right, r.bottom])(e.getBoundingClientRect()) : null}); })()") or {}
@@ -829,63 +903,45 @@ class Run(m.Run):
         self.wait("location.pathname === '/map' && !!document.getElementById('lgm-walker')"
                   " && document.getElementById('lgm-walker').getAttribute('data-at') === 'user:pal'", 10)
         time.sleep(0.5)
-        st = self.j("(() => { const w = document.getElementById('lgm-walker'), d = document.querySelector('.' + LG_WALKER.CONTROLS.buttons.drop.cls);"
-                    " return JSON.stringify({path: location.pathname, at: w && !w.hidden ? w.getAttribute('data-at') : null,"
-                    " dropping: d ? d.getAttribute('aria-pressed') : null}); })()") or {}
-        self.check("Q2 select by the portal: the map, dropped in, at this page's box (user:pal)",
-                   st.get("path") == "/map" and st.get("at") == "user:pal" and st.get("dropping") == "true", st)
+        st = self.j("(() => { const w = document.getElementById('lgm-walker');"
+                    " return JSON.stringify({path: location.pathname, at: w && !w.hidden ? w.getAttribute('data-at') : null}); })()") or {}
+        self.check("Q2 select by the portal: the map, with your walker standing in this page's box (user:pal)",
+                   st.get("path") == "/map" and st.get("at") == "user:pal", st)
 
-HOME = r"""(() => { const C = LG_WALKER.CONTROLS, H = C.home, D = C.buttons.drop, sw = document.querySelector('.' + D.cls);
+HOME = r"""(() => { const C = LG_WALKER.CONTROLS, H = C.home;
   const box = e => { if (!e || e.hidden) return null; const r = e.getBoundingClientRect(); return r.width && r.height ? {l: r.left, t: r.top, r: r.right, b: r.bottom} : null; };
   const layer = document.getElementById('lg-here'), dot = layer && layer.querySelector('.lg-here-dot.me'), drop = dot && dot.querySelector('.' + C.shape.cls);
   const g = document.querySelector('.' + H.guide.cls), belt = document.querySelector('.' + H.belt.cls), after = document.querySelector(H.belt.after);
-  const tip = document.querySelector('.' + D.tip.cls), anim = (e, p) => e ? getComputedStyle(e, p).animationName : null;
-  return JSON.stringify({pressed: sw && sw.getAttribute('aria-pressed'), invite: !!sw && sw.classList.contains(H.invite), pulse: anim(sw, '::after'),
+  const anim = (e, p) => e ? getComputedStyle(e, p).animationName : null;
+  return JSON.stringify({noSwitch: !document.querySelector('.lg-here-drop,.lg-here-walk,.lg-here-dropbar,.lg-here-tip'),
     layerShown: !!layer && !layer.hidden, dot: dot && !layer.hidden ? box(dot) : null, at: dot ? [parseFloat(dot.style.left), parseFloat(dot.style.top)] : null,
-    sw: box(sw), guide: g && !layer.hidden ? box(g) : null, guideText: g ? g.textContent : null, guideAnim: anim(g), want: H.guide.text,
+    guide: g && !layer.hidden ? box(g) : null, guideText: g ? g.textContent : null, guideAnim: anim(g), want: H.guide.text,
     belt: belt && !layer.hidden ? {top: parseFloat(belt.style.top), h: parseFloat(belt.style.height)} : null, beltAnim: anim(belt, '::before'),
     afterBottom: after ? after.getBoundingClientRect().bottom + scrollY : null, boost: H.belt.boost, dir: H.belt.dir,
-    tip: tip && tip.style.display !== 'none' ? box(tip) : null, tipText: tip ? tip.firstChild.textContent : null,
     hops: drop ? +(drop.getAttribute('data-hops') || 0) : null, anims: drop ? drop.getAnimations().length : null,
     splat: drop ? !!drop.querySelector('.' + C.hop.splatCls) : null, speed: drop ? drop.getAttribute('data-speed') : null,
     // the dots' layer takes no pointer (elementFromPoint skips it): the drop is in view when it is below the sticky header
     dotSeen: !!dot && !layer.hidden && (() => { const r = dot.querySelector('.' + C.shape.cls).getBoundingClientRect(); return r.top >= document.querySelector('header.top').getBoundingClientRect().bottom && r.bottom <= innerHeight; })(),
-    headerB: document.querySelector('header.top').getBoundingClientRect().bottom, sy: scrollY,
+    headerB: document.querySelector('header.top').getBoundingClientRect().bottom, sy: scrollY, vw: innerWidth,
     near: !!document.querySelector('.lg-here-near'), clicks: window.LG_CLICKS, path: location.pathname}); })()"""
 
 
 def _home(self):
-    """The home page's hook (H0-H6), phone 390x844."""
+    """The home page's hook (H0-H6), phone 390x844. Walking is always on (2026-11-15)."""
     self.size(390, 844, True)
     self.ws.call("Page.navigate", url=self.base + "/home")
-    self.wait("document.readyState === 'complete' && !!window.LG_TIP && !!document.querySelector('.' + LG_WALKER.CONTROLS.buttons.drop.cls)")
-    self.j("(() => { localStorage.removeItem(LG_TIP.flag('drop')); localStorage.removeItem(LG_TIP.flag('drop') + '-views'); return '1'; })()")
-    self.ws.call("Page.reload")
-    time.sleep(0.3)
-    self.wait("document.readyState === 'complete' && !!document.querySelector('.lg-here-tip')")
-    time.sleep(0.3)
+    self.wait("document.readyState === 'complete' && !!document.querySelector('#lg-here .lg-here-dot.me')")
+    time.sleep(0.4)
     C = self.j("JSON.stringify(LG_WALKER.CONTROLS)") or {}
     h = self.j(HOME) or {}
-    self.check("H0 home: starts as usual (Scroll, no drop on the page) and the switch pulses to invite a tap",
-               h.get("pressed") == "false" and not h.get("layerShown") and h.get("invite") and h.get("pulse") not in (None, "none"),
-               {k: h.get(k) for k in ("pressed", "layerShown", "invite", "pulse")})
-    tipb, swb = h.get("tip"), h.get("sw")
-    self.check("H0 home: the note \"Stop, Drop & Scroll\" shows just under the switch",
-               bool(tipb and swb) and (h.get("tipText") or "").startswith("Stop, Drop & Scroll") and 0 <= tipb["t"] - swb["b"] <= 40,
-               {"tip": tipb, "switch": swb, "text": h.get("tipText")})
-    self.tip_clear("home", "." + C["buttons"]["drop"]["tip"]["cls"])
-    if tipb:
-        self.shot("home-invite-phone", {"x": 0, "y": 0, "width": 390, "height": tipb["b"] + 120})
-    self.j("(() => { document.querySelector('.' + LG_WALKER.CONTROLS.buttons.drop.tip.cls + ' .lg-tip-close').click(); return '1'; })()")
-    self.drop()
-    time.sleep(0.3)
-    h = self.j(HOME) or {}
-    d, g, swb = h.get("dot"), h.get("guide"), h.get("sw")
-    self.check("H1 home: tapped, the pulse stops, the switch marks Drop, your drop appears just under it with a guide pointing down",
-               h.get("pressed") == "true" and not h.get("invite") and bool(d and g and swb) and 0 < d["t"] - swb["b"] <= 220
-               and h.get("dotSeen")
-               and g["t"] >= d["t"] + 0.5 * (d["b"] - d["t"]) and h.get("guideText") == h.get("want"),
-               {k: h.get(k) for k in ("pressed", "invite", "dot", "dotSeen", "headerB", "sy", "guide", "sw", "guideText", "want")})
+    d, g = h.get("dot"), h.get("guide")
+    self.check("H0 home: no switch, strip or note: your drop is on the page from the start, under the header, in view",
+               h.get("noSwitch") is True and h.get("layerShown") and bool(d) and h.get("dotSeen")
+               and 0 < d["t"] - h.get("headerB", 0) <= 220 and abs((d["l"] + d["r"]) / 2 - h.get("vw", 0) / 2) <= 30,
+               {k: h.get(k) for k in ("noSwitch", "layerShown", "dot", "dotSeen", "headerB", "vw")})
+    self.check("H1 home: a guide points down, under the drop",
+               bool(d and g) and g["t"] >= d["t"] + 0.5 * (d["b"] - d["t"]) and h.get("guideText") == h.get("want"),
+               {k: h.get(k) for k in ("dot", "guide", "guideText", "want")})
     self.shot("home-dropped-phone", {"x": 0, "y": 0, "width": 390, "height": 420})
     # walk down until past the scrolling words (the guide comes along until then)
     plain, guided = None, True
@@ -962,10 +1018,8 @@ def _home(self):
     self.ws.call("Emulation.setEmulatedMedia", features=[{"name": "prefers-reduced-motion", "value": "reduce"}])
     try:
         self.ws.call("Page.navigate", url=self.base + "/home")
-        self.wait("document.readyState === 'complete' && !!document.querySelector('.' + LG_WALKER.CONTROLS.buttons.drop.cls)")
+        self.wait("document.readyState === 'complete' && !!document.querySelector('#lg-here .lg-here-dot.me')")
         time.sleep(0.2)
-        r0 = self.j(HOME) or {}
-        self.drop()
         self.key("s", 0.5)
         rw = self.j(HOME) or {}
         for _ in range(10):
@@ -980,10 +1034,10 @@ def _home(self):
         self.key("enter")
         time.sleep(0.05)
         rh = self.j(HOME) or {}
-        self.check("H6 home, reduced motion: no pulse, guide, sidewalk or hop animation; the drop stays round walking; A still counts",
-                   r0.get("pulse") in ("none", None) and rw.get("guideAnim") in ("none", None) and rw.get("beltAnim") in ("none", None)
+        self.check("H6 home, reduced motion: no guide, sidewalk or hop animation; the drop stays round walking; A still counts",
+                   rw.get("guideAnim") in ("none", None) and rw.get("beltAnim") in ("none", None)
                    and mv.get("speed") == "0.00" and rh.get("hops") == (rw.get("hops") or 0) + 1 and rh.get("anims") == 0,
-                   {"pulse": r0.get("pulse"), "guide": rw.get("guideAnim"), "belt": rw.get("beltAnim"), "speed": mv.get("speed"),
+                   {"guide": rw.get("guideAnim"), "belt": rw.get("beltAnim"), "speed": mv.get("speed"),
                     "hops": [rw.get("hops"), rh.get("hops")], "anims": rh.get("anims")})
     finally:
         self.ws.call("Emulation.setEmulatedMedia", features=[])
@@ -1002,7 +1056,7 @@ MAPZ = r"""(() => { const svg = document.getElementById('lgm-svg'), b = svg.getB
 
 
 def _map_zoom_back(self):
-    """Z1-Z3: the map's zoom and back without buttons (Scroll mode)."""
+    """Z1-Z3: the map's zoom and back without buttons. Yours at any time now (walking is always on, 2026-11-15)."""
     self.size(1280, 800, False)
     ok = self.map_load()
     z0 = self.j(MAPZ) or {}
@@ -1019,8 +1073,8 @@ def _map_zoom_back(self):
         self.ws.call("Input.dispatchMouseEvent", type="mouseWheel", x=x, y=y, deltaX=0, deltaY=100)
         time.sleep(0.08)
     z2 = self.j(MAPZ) or {}
-    self.check("Z1 desktop, Scroll mode: the wheel over the map zooms in toward the pointer and back out; the page does not scroll",
-               ok and not z0.get("dropping") and z1.get("scale", 0) > z0.get("scale", 0) * 1.2 and stay <= 6
+    self.check("Z1 desktop: the wheel over the map zooms in toward the pointer and back out; the page does not scroll",
+               ok and z1.get("scale", 0) > z0.get("scale", 0) * 1.2 and stay <= 6
                and abs(z2.get("scale", 0) - z0.get("scale", 0)) <= 0.02 * z0.get("scale", 1) and z1.get("sy") == sy0 and z2.get("sy") == sy0,
                {"scales": [z0.get("scale"), z1.get("scale"), z2.get("scale")], "box moved px": stay, "scrollY": [sy0, z1.get("sy"), z2.get("sy")]})
     for _ in range(40):
@@ -1066,7 +1120,7 @@ def _map_zoom_back(self):
         self.ws.call("Input.dispatchTouchEvent", type="touchEnd", touchPoints=[])
         time.sleep(0.3)
         want = min((self.j(MAPZ) or {}).get("Z", {}).get("max", 9), (s0 or 0) * 3)
-        self.check("Z2 phone, Scroll mode: a two-finger pinch spreads the map (about the fingers' spread, 3x here)",
+        self.check("Z2 phone: a two-finger pinch spreads the map (about the fingers' spread, 3x here)",
                    bool(s0) and s1 is not None and abs(s1 - want) <= 0.15 * want, {"before": s0, "pinched": s1, "want": want})
         # one finger on the empty map: a pan, no zoom
         e = self.j("(() => { const s = document.getElementById('lgm-svg').getBoundingClientRect(); for (let y = s.top + 12; y < s.bottom; y += 9) for (let x = s.left + 12; x < s.right; x += 9) {"
@@ -1105,6 +1159,7 @@ def main(argv):
         for d in ("Page.enable", "Runtime.enable"):
             r.ws.call(d)
         r.phone()
+        r.center_cases()
         r.desktop()
         r.map_desktop()
         r.map_phone()

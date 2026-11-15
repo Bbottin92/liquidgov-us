@@ -1,10 +1,12 @@
 /* Dots on profile pages (Brandon 2026-11-12): everyone on this profile page who chose Yes shows as a small round
    portrait with their handle, moving around the page. Settings come from window.LG_HERE = {me, page}, set just before
    this file loads (only for someone who chose Yes). Positions are fractions of the page (0..1) so a phone and a
-   desktop see roughly the same place. Tapping and clicking work as always; "Drop" turns on a touchpad that works like a
+   desktop see roughly the same place. Tapping, clicking and scrolling work as always; the touchpad works like a
    joystick (WASD or the arrow keys on a keyboard): walk your dot up to a button or field and press A (or Enter) to use it, B (or Esc) to go back.
-   The Drop button, the pad and the keys are walker.js's (window.LG_WALKER, loaded just before this file); this file walks
-   the dot. */
+   Walking is always on (no Drop/Scroll switch, Brandon 2026-11-14). With Center armed every move puts your dot in the
+   middle of the screen; disarmed, the page only scrolls to keep it in view.
+   The pad, the Center button and the keys are walker.js's (window.LG_WALKER, loaded just before this file); this file
+   walks the dot. */
 (function () {
   var cfg = window.LG_HERE;
   if (!cfg || !cfg.me || !cfg.page || !window.WebSocket || !window.LG_WALKER) return;
@@ -15,7 +17,7 @@
   layer.setAttribute('aria-hidden', 'true');
   document.body.appendChild(layer);
 
-  var dots = {}, me = { x: 0.5, y: 0.08, known: false }, dropping = false, held = {}, pull = { x: 0, y: 0 }, lastSent = 0, dirty = false;
+  var dots = {}, me = { x: 0.5, y: 0.08, known: false }, held = {}, pull = { x: 0, y: 0 }, lastSent = 0, dirty = false, ctl = null;
   var near = null, ws = null, tries = 0;
   var peopleFns = [], sigFns = [];
   // spatial step 11: what assets/here_media.js needs from this file (proximity voice and video): who is here, a way to
@@ -108,7 +110,8 @@
       me.known = true;
       dirty = true;
       if (dots[cfg.me]) place(dots[cfg.me], me.x, me.y);
-      W.follow(me.y * pageH());
+      if (ctl && ctl.centered()) W.centerOn(me.x * pageW(), me.y * pageH());
+      else W.follow(me.y * pageH());
       findNear();
     }
     var now = Date.now();
@@ -120,19 +123,13 @@
   }
   setInterval(step, 40);
 
-  // ---- the Drop button, the touchpad, A and B (walker.js)
-  LG_WALKER.mount({
+  // ---- the touchpad, the Center button, A and B (walker.js)
+  ctl = LG_WALKER.mount({
     dir: function (dir, down) { held[dir] = down; },
     pull: function (x, y) { pull = { x: x, y: y }; },
     select: function () { if (!near) return false; press(); return true; },
     back: function () { if (history.length > 1) history.back(); },
-    dropping: function (on) {
-      dropping = on;
-      held = {};
-      pull = { x: 0, y: 0 };
-      if (on) findNear();
-      else if (near) { near.classList.remove('lg-here-near'); near = null; }
-    },
+    center: function (on) { if (on && me.known) W.centerOn(me.x * pageW(), me.y * pageH()); },
     resized: sizeLayer,
     box: cfg.box || ''
   });

@@ -935,7 +935,9 @@
     ty = py - (py - ty) * next / scale;
     scale = next;
   }
-  function scrollMode() { return !root.classList.contains('lgm-dropping'); }   // Drop/Scroll: lgmap_walk.js sets the class
+  // Walking is always on now (no Drop/Scroll switch, Brandon 2026-11-14), and zooming is yours everywhere: a pinch on
+  // the map, the wheel, a trackpad pinch. (It used to be Scroll mode only.)
+  function scrollMode() { return true; }
   // Pinch (Scroll mode, touch): two fingers on the map zoom it around their middle and pan with it; one finger works
   // as before (drag the empty map, tap or hold a box).
   var fingers = {}, pinch = null;
@@ -1040,12 +1042,19 @@
     }
     return { x0: x0, y0: y0, x1: x1, y1: y1 };
   }
+  // the scale at which the whole map fits the frame (fitAll's; the map walker's zoom is a multiple of it)
+  function fitScale() {
+    var b = svg.getBoundingClientRect(), e = extent();
+    if (!b.width || !e) return scale;
+    var m = fitMargin();
+    return Math.max(floorScale(), Math.min(1, (b.width - m) / (e.x1 - e.x0), (b.height - m) / (e.y1 - e.y0)));
+  }
   function fitAll(top) {
     var b = svg.getBoundingClientRect(), e = extent();
     if (!b.width || !e) return;
     var x0 = e.x0, y0 = e.y0, x1 = e.x1, y1 = e.y1;
     var m = fitMargin();
-    scale = Math.max(floorScale(), Math.min(1, (b.width - m) / (x1 - x0), (b.height - m) / (y1 - y0)));
+    scale = fitScale();
     tx = Math.round((b.width - (x1 - x0) * scale) / 2 - x0 * scale);
     ty = top ? Math.round(m / 2 - y0 * scale) : Math.round((b.height - (y1 - y0) * scale) / 2 - y0 * scale);
     apply(false); // placed, not glided in
@@ -1080,7 +1089,24 @@
     fit: function () { fitAll(narrow()); },
     back: goBack,       // one step back, as the phone's back gesture (the walker's B / Esc); false at the start
     ZOOM: ZOOM,
-    scale: function () { return scale; }
+    scale: function () { return scale; },
+    // The free-walking map walker (2026-11-14) works in map units and moves the camera itself:
+    // view(): where the camera is going (map point p is at frame point tx + p.x * scale); setView puts it there
+    // (glide: eased); fitScale(): the scale that shows the whole map; frame(): the map's frame on the screen;
+    // toScreen(x, y): where a map point is on the screen right now, mid-glide included; extent(): the map's bounds.
+    view: function () { return { tx: tx, ty: ty, scale: scale }; },
+    setView: function (x, y, k, glide) {
+      scale = Math.min(ZOOM.max, Math.max(ZOOM.min, k));
+      tx = x; ty = y;
+      apply(!!glide);
+    },
+    fitScale: fitScale,
+    frame: function () { return svg.getBoundingClientRect(); },
+    toScreen: function (x, y) {
+      var b = svg.getBoundingClientRect(), t = getComputedStyle(view).transform, m = t && t !== 'none' ? new DOMMatrix(t) : null;
+      return m ? { x: b.left + m.e + x * m.a, y: b.top + m.f + y * m.d } : { x: b.left + tx + x * scale, y: b.top + ty + y * scale };
+    },
+    extent: extent
   };
   // M1.1 (Brandon 2026-11-10): the map starts at you, with your kinds of connection (Friends, Groups, Places,
   // Politics, Problems) as the first ring. The whole site (MAINstream) is under Places, and its button still works.

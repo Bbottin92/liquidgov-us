@@ -1,10 +1,10 @@
-/* Drop on the home page (Brandon 2026-11-13 4:03 AM): the hook. The page starts as usual (Scroll); the Drop/Scroll
-   switch pulses and the first-time note ("Stop, Drop & Scroll", tip.js) points at it. Dropped in, your drop (a plain
-   one: no account here) starts just under the switch and a guide points you down the page; past the scrolling-words
-   section the floor is a moving sidewalk (with it you go faster, against it slower). A next to a link or button uses
-   it; A with nothing next to you is a squish-and-bounce. Every number and name is walker.js's CONTROLS (home, hop,
-   near, maxSpeed, shape); the switch, touchpad, keys, note, shape and hop are walker.js's too: this file only walks
-   the drop on this page. Positions are page px (one visitor, nothing is sent anywhere). */
+/* The home page's walker (Brandon 2026-11-13 4:03 AM): the hook. Your drop (a plain one: no account here) starts near
+   the top of the page and a guide points you down; past the scrolling-words section the floor is a moving sidewalk
+   (with it you go faster, against it slower). A next to a link or button uses it; A with nothing next to you is a
+   squish-and-bounce. Walking is always on (no Drop/Scroll switch, Brandon 2026-11-14); scrolling works as always.
+   Every number and name is walker.js's CONTROLS (home, hop, near, maxSpeed, shape); the touchpad, keys, Center button,
+   shape and hop are walker.js's too: this file only walks the drop on this page. Positions are page px (one visitor,
+   nothing is sent anywhere). */
 (function () {
   var W = window.LG_WALKER;
   if (!W) return;
@@ -13,7 +13,6 @@
   var layer = document.createElement('div');
   layer.id = 'lg-here';
   layer.setAttribute('aria-hidden', 'true');
-  layer.hidden = true;
   var dot = document.createElement('div');
   dot.className = 'lg-here-dot me';
   var drop = W.portrait('');
@@ -29,11 +28,10 @@
   layer.appendChild(guide);
   layer.appendChild(dot);
   // the sidewalk is the floor: behind the page's own content (its cards cover it), not in the drops' layer above it
-  belt.hidden = true;
   document.body.appendChild(belt);
   document.body.appendChild(layer);
 
-  var me = { x: 0, y: 0 }, held = {}, pull = { x: 0, y: 0 }, near = null, dropping = false, beltTop = Infinity;
+  var me = { x: 0, y: 0 }, held = {}, pull = { x: 0, y: 0 }, near = null, beltTop = Infinity, ctl = null;
 
   function pageW() { return Math.max(document.documentElement.scrollWidth, document.body.scrollWidth); }
   function pageH() { return Math.max(document.documentElement.scrollHeight, document.body.scrollHeight); }
@@ -60,42 +58,33 @@
     return { x: v.x + d.x * H.belt.boost * len, y: v.y + d.y * H.belt.boost * len };
   }
   function step() {
-    if (!dropping) return;
     var v = onBelt(W.velocity(held, pull));
     W.shape(drop, v.x, v.y);
     if (!v.x && !v.y) return;
     me.x = Math.max(0, Math.min(pageW(), me.x + v.x * MAX_SPEED));
     me.y = Math.max(0, Math.min(pageH(), me.y + v.y * MAX_SPEED));
     place();
-    W.follow(me.y);
+    if (ctl && ctl.centered()) W.centerOn(me.x, me.y);
+    else W.follow(me.y);
     findNear();
   }
   setInterval(step, 40);
 
-  W.mount({
-    invite: true,
+  ctl = W.mount({
     dir: function (dir, down) { held[dir] = down; },
     pull: function (x, y) { pull = { x: x, y: y }; },
     // A: use what you stand next to; nothing there: squish and bounce (A was still yours, so the key is taken)
     select: function () { if (near) W.use(near); else W.hop(drop); return true; },
     back: function () { if (history.length > 1) history.back(); },
-    dropping: function (on) {
-      dropping = on;
-      held = {};
-      pull = { x: 0, y: 0 };
-      layer.hidden = belt.hidden = !on;
-      if (on) {
-        measure();
-        // just under the switch and the sticky header (the drop walks under the header, so it starts below it)
-        var sw = document.querySelector('.' + C.buttons.drop.cls).getBoundingClientRect(), hd = document.querySelector('header.top');
-        var below = Math.max(sw.bottom, hd ? hd.getBoundingClientRect().bottom : 0);
-        me = { x: Math.round(sw.left + sw.width / 2 + window.scrollX), y: Math.round(below + H.startGap + window.scrollY) };
-        place();
-        findNear();
-      } else if (near) { near.classList.remove('lg-here-near'); near = null; }
-    },
+    center: function (on) { if (on) W.centerOn(me.x, me.y); },
     resized: measure,
     box: ''
   });
+  // the start: the middle of the page's width, under the sticky header (the drop walks under the header)
+  measure();
+  var hd = document.querySelector('header.top');
+  me = { x: Math.round(pageW() / 2), y: Math.round((hd ? hd.getBoundingClientRect().bottom : 0) + H.startTop + window.scrollY) };
+  place();
+  findNear();
   window.addEventListener('resize', measure);
 })();

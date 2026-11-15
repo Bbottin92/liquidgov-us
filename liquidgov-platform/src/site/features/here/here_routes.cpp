@@ -1,6 +1,7 @@
 #include "site/features/here/here_routes.hpp"
 #include "site/core/adapters_store.hpp"
 #include "site/core/http.hpp"
+#include "site/features/here/here.hpp"
 
 namespace liquidgov::site {
 
@@ -23,6 +24,14 @@ std::optional<std::string> here_routes(Route& r) {
         const std::string c = f.count("choice") ? f["choice"] : f["here"];
         if (c == "1" || c == "0") g_store.set_here_choice(user, c == "1");
         return http_redir(back);
+    }
+    // the browser extension's one-time socket ticket (here.hpp here_ticket_for). No CORS headers: only the extension
+    // (which has this site's permission) can read it, never another website.
+    if (method == "GET" && path == "/here/ticket") {
+        if (!acc) return http_raw("401 Unauthorized", "application/json", "{\"error\":\"signed out\"}", "Cache-Control: no-store\r\n");
+        const std::string t = here_ticket_for(user);
+        if (t.empty()) return http_raw("503 Service Unavailable", "application/json", "{\"error\":\"busy\"}", "Cache-Control: no-store\r\n");
+        return http_raw("200 OK", "application/json", "{\"ticket\":\"" + t + "\"}", "Cache-Control: no-store\r\n");
     }
     return std::nullopt;
 }

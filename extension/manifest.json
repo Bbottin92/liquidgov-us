@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "LiquidGov Drops",
+  "version": "0.1.0",
+  "description": "Hang out as drops with LiquidGov people on other websites, and share pages to your LiquidGov feed.",
+  "minimum_chrome_version": "116",
+  "permissions": ["storage", "activeTab", "scripting"],
+  "host_permissions": ["https://liquidgov.us/*"],
+  "optional_host_permissions": ["https://*/*"],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_popup": "popup.html", "default_title": "LiquidGov Drops" }
+}

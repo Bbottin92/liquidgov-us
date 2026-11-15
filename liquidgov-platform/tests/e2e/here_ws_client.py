@@ -51,7 +51,7 @@ def main():
     pos = (float(sys.argv[5]), float(sys.argv[6])) if len(sys.argv) > 6 else None
     s = socket.create_connection(("127.0.0.1", int(port)), timeout=5)
     key = base64.b64encode(os.urandom(16)).decode()
-    path = "/here/ws?page=" + urllib.parse.quote(page, safe="/")
+    path = "/here/ws?page=" + urllib.parse.quote(page, safe="/&=")
     cookie = "Cookie: lg_session=%s\r\n" % session if session != "-" else ""
     s.sendall(("GET %s HTTP/1.1\r\nHost: 127.0.0.1:%s\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
                "Sec-WebSocket-Key: %s\r\nSec-WebSocket-Version: 13\r\n%s\r\n" % (path, port, key, cookie)).encode())

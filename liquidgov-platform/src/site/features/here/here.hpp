@@ -15,6 +15,10 @@ bool here_may_join(const std::string& viewer, const std::string& room);
 // it, or it was answered and closed); false when the request is not this route. Called from main()'s accept loop.
 bool here_ws_upgrade(int fd, const std::string& req, const std::string& method, const std::string& rawpath,
                      const std::string& peer);
+// A one-time ticket for /here/ws?ticket=<t> (the browser extension, 2026-11-15): browsers send no cookie on an
+// extension's WebSocket, so the extension first fetches GET /here/ticket (which does carry the cookie; other websites
+// cannot read the answer) and opens the socket with it. Good for one socket, within 30 seconds.
+std::string here_ticket_for(const std::string& user);
 // What a profile page adds for the viewer: the one-time choice card (not chosen yet), the dots script (Yes), or "".
 std::string here_page_bits(const std::string& viewer, const std::string& page);
 // The Settings card with the Yes/No choice (nothing checked while not chosen).

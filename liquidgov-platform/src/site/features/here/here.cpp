@@ -7,6 +7,7 @@
 #include "site/core/ws_limits.hpp"
 #include "site/ui/assets.hpp"
 #include "site/ui/favicon_cookies.hpp"
+#include "liquidgov/platform/session.hpp"
 
 namespace liquidgov::site {
 
@@ -248,7 +249,7 @@ void run_here_session(int fd, std::string me, std::string room) {
         for (const auto& m : setup) wrote = wrote && ws_write_frame(fd, WsOpcode::Text, m);
         if (!wrote) break;
         std::ostringstream os;
-        os << "{\"people\":[";
+        os << "{\"you\":\"" << json_escape(me) << "\",\"people\":[";   // "you": which dot is yours (the extension)
         bool first = true;
         for (const auto& d : dots) {
             os << (first ? "" : ",") << "{\"u\":\"" << json_escape(d.username) << "\",\"x\":" << d.x << ",\"y\":" << d.y
@@ -277,6 +278,18 @@ void run_here_session(int fd, std::string me, std::string room) {
 // here_page_bits do not know it.
 static const char* const kHereMapRoom = "/map";
 
+// Rooms for pages on other websites (the browser extension, 2026-11-15): "/x/" + 64 lowercase hex, a SHA-256 the
+// extension makes from the page's address. The server never sees the address, only the hash, so it cannot list where
+// people are on the web. Anyone who chose Yes may join; blocks filter each snapshot, as on the map.
+static bool here_web_room(const std::string& page) {
+    if (page.size() != 67 || page.rfind("/x/", 0) != 0) return false;
+    for (size_t i = 3; i < page.size(); ++i) {
+        const char c = page[i];
+        if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))) return false;
+    }
+    return true;
+}
+
 std::string here_room_for(const std::string& page) {
     if (page.rfind("/u/", 0) != 0) return "";
     const std::string who = page.substr(3);
@@ -289,6 +302,7 @@ bool here_may_join(const std::string& viewer, const std::string& room) {
     auto choice = g_store.here_choice(viewer);
     if (!choice || !*choice) return false;
     if (room == kHereMapRoom) return true;   // the map's one room: anyone who chose Yes (blocks filter each snapshot)
+    if (here_web_room(room)) return true;    // a page on another website (the extension): the same rule
     if (room.rfind("/u/", 0) != 0) return false;
     const std::string owner = room.substr(3);
     auto found = g_store.find_by_username(owner);
@@ -297,6 +311,34 @@ bool here_may_join(const std::string& viewer, const std::string& room) {
     const bool is_owner = viewer == owner;
     const bool is_friend = !is_owner && g_store.are_friends(viewer, owner);
     return visible_to(g_store.prefs_of(owner).profile_visibility, is_owner, true, is_friend);
+}
+
+namespace {
+struct HereTicket { std::string user; std::chrono::steady_clock::time_point until; };
+std::mutex& ticket_mu() { static std::mutex m; return m; }
+std::map<std::string, HereTicket>& tickets() { static std::map<std::string, HereTicket> t; return t; }
+// the ticket's user, or "" (unknown, used, or expired); a ticket works once
+std::string take_ticket(const std::string& t) {
+    if (t.size() < 32 || t.size() > 128) return "";
+    std::lock_guard<std::mutex> lock(ticket_mu());
+    auto it = tickets().find(t);
+    if (it == tickets().end()) return "";
+    const HereTicket k = it->second;
+    tickets().erase(it);
+    return k.until > std::chrono::steady_clock::now() ? k.user : "";
+}
+}  // namespace
+
+std::string here_ticket_for(const std::string& user) {
+    const auto now = std::chrono::steady_clock::now();
+    const std::string t = liquidgov::platform::generate_session_id();
+    std::lock_guard<std::mutex> lock(ticket_mu());
+    auto& all = tickets();
+    if (all.size() > 5000)
+        for (auto it = all.begin(); it != all.end();) it = it->second.until <= now ? all.erase(it) : std::next(it);
+    if (all.size() > 20000) return "";   // never grows without bound
+    all[t] = HereTicket{user, now + std::chrono::seconds(30)};
+    return t;
 }
 
 bool here_ws_upgrade(int fd, const std::string& req, const std::string& method, const std::string& rawpath,
@@ -308,10 +350,16 @@ bool here_ws_upgrade(int fd, const std::string& req, const std::string& method, 
     {
         std::lock_guard<std::mutex> lock(g_mu);
         auto acc = account_from_req(req);
-        if (acc) {
-            const std::string page = query_param(rawpath, "page");
-            room = page == kHereMapRoom ? page : here_room_for(page);   // the map walker's room (lgmap_walk.js), else a profile page
-            if (!room.empty() && here_may_join(acc->username, room)) me = acc->username;
+        std::string who = acc ? acc->username : "";
+        const std::string page = query_param(rawpath, "page");
+        // the extension's socket carries a one-time ticket instead of the cookie; only for web-page rooms
+        if (who.empty() && here_web_room(page)) {
+            const std::string t = query_param(rawpath, "ticket");
+            if (!t.empty()) who = take_ticket(t);
+        }
+        if (!who.empty()) {
+            room = page == kHereMapRoom || here_web_room(page) ? page : here_room_for(page);   // the map walker's room (lgmap_walk.js), else a profile page
+            if (!room.empty() && here_may_join(who, room)) me = who;
         }
     }
     auto key = header_value(req, "Sec-WebSocket-Key");

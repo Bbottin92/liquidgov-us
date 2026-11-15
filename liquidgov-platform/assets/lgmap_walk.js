@@ -38,16 +38,7 @@
     });
     return out;
   }
-  // the boxes a connector from `id` leads to
-  function neighbors(id) {
-    var out = [];
-    Array.prototype.forEach.call(edgeLayer.querySelectorAll('.lge'), function (e) {
-      if (!shown(e)) return;
-      var a = e.getAttribute('data-a'), b = e.getAttribute('data-b'), o = a === id ? b : (b === id ? a : null);
-      if (o && box(o) && out.indexOf(o) < 0) out.push(o);
-    });
-    return out;
-  }
+
   // spatial steps 6-7: the entry path. A box is entered only through its valve (data-valve, -owner, -invite on the box):
   //   open: anyone; closed: no one; private: only its owner; invite: only people on its list;
   //   request: turned away at its edge, and a request is recorded for the owner (data-requested-by, and an
@@ -111,18 +102,40 @@
     var fit = MAP.fitScale(), walk = walkScale();
     return MAP.view().scale >= fit + (walk - fit) / 2 - 0.001;
   }
-  // spatial step 4: zoomed in, only the box you are at (the one you are in, else the one you were last in, else the
-  // nearest) and the boxes connected to it are shown; the rest and their connectors are hidden. Zoomed out, everything
-  // is shown.
+  // Layers (Brandon 2026-11-15: "3 or 4 layers of pools and streams"; rings outward from wherever you are): zoomed in,
+  // the box you are at (the one you are in, else the one you were last in, else the nearest) and the boxes one channel
+  // away are clear, two away faint, three away barely there, and anything further is mist (not shown); a channel shows
+  // as faint as its fainter end. They re-form around you as you swim. Zoomed out, everything shows.
+  var LAYER_ALPHA = [1, 1, 0.5, 0.22];
+  function layersFrom(ref) {
+    var adj = {}, dist = {};
+    Array.prototype.forEach.call(edgeLayer.querySelectorAll('.lge'), function (e) {
+      var a = e.getAttribute('data-a'), b = e.getAttribute('data-b');
+      (adj[a] = adj[a] || []).push(b); (adj[b] = adj[b] || []).push(a);
+    });
+    dist[ref] = 0;
+    var q = [ref];
+    while (q.length) {
+      var id = q.shift();
+      if (dist[id] >= LAYER_ALPHA.length - 1) continue;
+      (adj[id] || []).forEach(function (o) { if (!(o in dist)) { dist[o] = dist[id] + 1; q.push(o); } });
+    }
+    return dist;
+  }
+  function alphaOf(dist, id) { return id in dist ? LAYER_ALPHA[dist[id]] : 0; }
   function proximity(all) {
-    var keep = null, ref = at || (box(last) ? last : nearestBox(all, me));
-    if (zoomedIn() && ref) { keep = neighbors(ref); keep.push(ref); }
-    walker.setAttribute('data-near', keep ? 'on' : 'off');
+    var ref = at || (box(last) ? last : nearestBox(all, me)), dist = zoomedIn() && ref ? layersFrom(ref) : null;
+    walker.setAttribute('data-near', dist ? 'on' : 'off');
     Array.prototype.forEach.call(nodeLayer.querySelectorAll('.lgn'), function (o) {
-      o.style.visibility = !keep || keep.indexOf(o.getAttribute('data-id')) >= 0 ? '' : 'hidden';
+      var a = dist ? alphaOf(dist, o.getAttribute('data-id')) : 1;
+      o.style.visibility = a ? '' : 'hidden';
+      o.style.opacity = a && a < 1 ? String(a) : '';
+      o.setAttribute('data-layer', dist && a ? String(dist[o.getAttribute('data-id')]) : '');
     });
     Array.prototype.forEach.call(edgeLayer.querySelectorAll('.lge'), function (e) {
-      e.style.visibility = !keep || (keep.indexOf(e.getAttribute('data-a')) >= 0 && keep.indexOf(e.getAttribute('data-b')) >= 0) ? '' : 'hidden';
+      var a = dist ? Math.min(alphaOf(dist, e.getAttribute('data-a')), alphaOf(dist, e.getAttribute('data-b'))) : 1;
+      e.style.visibility = a ? '' : 'hidden';
+      e.style.opacity = a && a < 1 ? String(a) : '';
     });
   }
 
@@ -255,7 +268,7 @@
   // units either side of the line between their middles. First version: a connection is relevant when it is yours, and
   // every connection on your map is, so every showing channel is open; a box you may not enter still stops you at its
   // edge (its valve). If a new layout ever leaves you on dry land you may still move (never trapped).
-  var CHANNEL = 26;
+  var CHANNEL = 17;
   function nearSeg(p, a, b, w) {
     var dx = b.cx - a.cx, dy = b.cy - a.cy, L = dx * dx + dy * dy, t = L ? ((p.x - a.cx) * dx + (p.y - a.cy) * dy) / L : 0;
     t = Math.max(0, Math.min(1, t));
@@ -294,6 +307,21 @@
         if (i === 0) asked = '';   // walking freely again: the next time a request box turns you away, it is asked again
         return true;
       }
+    }
+    // the banks guide you: in a channel, a push that is blocked slides you along the channel the way you pushed (keys only
+    // go straight across or up and down; channels run any way)
+    var best = null;
+    Array.prototype.forEach.call(edgeLayer.querySelectorAll('.lge'), function (e) {
+      if (e.style.visibility === 'hidden' || !shown(e)) return;
+      var a = region(e.getAttribute('data-a')), b = region(e.getAttribute('data-b'));
+      if (!a || !b || !nearSeg(me, a, b, CHANNEL + 4)) return;
+      var dx = b.cx - a.cx, dy = b.cy - a.cy, L = Math.sqrt(dx * dx + dy * dy) || 1, ux = dx / L, uy = dy / L;
+      var along = v.x * ux + v.y * uy;
+      if (Math.abs(along) > 0.15 && (!best || Math.abs(along) > Math.abs(best.along))) best = { ux: ux, uy: uy, along: along };
+    });
+    if (best) {
+      var sl = { x: me.x + best.ux * best.along * step, y: me.y + best.uy * best.along * step };
+      if (allowed(all, sl)) { me = sl; return true; }
     }
     return false;
   }
@@ -463,6 +491,14 @@
     return true;
   }
   MAP.onOpen = function (id, page) { return enter(id, page); };
+  // a box tapped (or reached by the trail or Back) somewhere else on the map: your drop goes to it, the screen follows
+  MAP.onFocus = function (id) {
+    var r = region(id);
+    if (!r || !me) return false;
+    if (at !== id) { me = { x: r.cx, y: r.cy }; anchor = null; }
+    centerView(MAP.view().scale, true);
+    return true;
+  };
   // each tick: the box you are at (in it, or right next to it) and its page
   function peekTick() {
     if (entering) return;

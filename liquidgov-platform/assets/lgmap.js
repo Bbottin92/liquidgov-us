@@ -202,12 +202,6 @@
     var A = nodes[e.a], B = nodes[e.b];
     if (B.id === centerId()) { var t0 = A; A = B; B = t0; }
     var ca = centerOf(A), cb = centerOf(B);
-    if (narrow() && Math.abs(cb.x - ca.x) > 1 && Math.abs(cb.y - ca.y) > 1) {
-      var sx = cb.x > ca.x ? 1 : -1, sy = cb.y > ca.y ? 1 : -1, s = sizeOf(A), lane = ca.x + sx * 6;
-      var vy = A.kind === 'you' ? Math.sqrt(Math.max(0, YOU_R * s * YOU_R * s - 36)) : (A.kind === 'mine' ? H + 10 : H) / 2 * s;
-      var inner = cb.x - sx * (B.w || W) / 2 * sizeOf(B) - sx * 4;
-      return 'M' + lane.toFixed(1) + ' ' + (ca.y + sy * (vy + 4)).toFixed(1) + ' V' + cb.y.toFixed(1) + ' H' + inner.toFixed(1);
-    }
     var p = edgeEnd(A, cb.x, cb.y), q = edgeEnd(B, ca.x, ca.y);
     return 'M' + p.x.toFixed(1) + ' ' + p.y.toFixed(1) + ' L' + q.x.toFixed(1) + ' ' + q.y.toFixed(1);
   }
@@ -294,7 +288,7 @@
     shade(n);
     return n;
   }
-  // The elements that sit beside a box at its position; recenter() calls this again after moving a box to the middle.
+  // The elements that sit beside a box at its position.
   function addExtras(n) {
     // Screen readers (Brandon 2026-11-09): VoiceOver and TalkBack turn a double tap into a plain click, which on a
     // phone only grows connections, and they cannot press and hold. So a box with a page gets an "Open <name>" button
@@ -461,7 +455,7 @@
   // mainstream map, that was a bad idea and its causing clutter"): nothing on the map is hidden by hand. What the map
   // shows is the walker's job (lgmap_walk.js: zoomed in, only the box you are at and its connections). #lgm-filter and
   // its note stay in the page's markup, empty and not shown (lgmap.css), until the page itself is next changed.
-  // Back: history entries made by recenter(); popstate returns to that center without pushing again.
+  // Back: history entries made by focusOn(); popstate returns to that box without pushing again.
   // Live look #5 (Brandon 2026-11-11): the first click was sometimes ignored, the second skipped a level, and Back was
   // enabled at You. Now:
   // - each entry holds its place (i: 0 is the start view) and the whole trail (path), so going back draws exactly that
@@ -495,11 +489,8 @@
     histAt = typeof st.i === 'number' ? st.i : Math.max(0, histAt - 1);
     restoring = true;
     try {
-      var keep = nodes[d.id];
-      if (st.path && st.path.length) centerPath = st.path.slice(0, -1); // recenter() adds d back as the last step
-      else centerPath = centerPath.filter(function (c) { return c.id !== d.id; });
       selected = null; // a phone tap still waiting (GLIDE_WAIT) must not move the map after this
-      select(recenter(keep || d), 'now');
+      select(focusOn(nodes[d.id] || d), 'now');
     } finally { restoring = false; }
     updateBack();
     if (backWant >= 0) { if (histAt > backWant) { backTries = 0; backStep(); } else { clearTimeout(backTimer); backWant = -1; } }
@@ -514,60 +505,69 @@
     status('Loading…');
     load('root').then(function (data) { go(data.node); }).catch(function (err) { status(err.message); });
   }
-  // a "+N more" box keeps its rest, so Back and the trail can draw it again
-  function dataOf(n) { return { id: n.id, label: n.label, kind: n.kind, page: n.page, rel: n.rel, sub: n.sub, more: n.more }; }
-  // m: the tapped box (its own element is kept and moved to the middle: a replaced element broke anything holding it,
-  // CI phone_check 3, 2026-11-11), or a trail entry's data when that box is no longer drawn.
-  function recenter(m) {
-    var keep = m.el && nodes[m.id] === m ? m : null;
-    for (var k in edges) if (edges[k].el.parentNode) edges[k].el.parentNode.removeChild(edges[k].el);
-    [].slice.call(nodeLayer.childNodes).forEach(function (c) { if (!keep || c !== keep.el) nodeLayer.removeChild(c); });
-    var oldRing = document.getElementById('lgm-ring');
-    if (oldRing && oldRing.parentNode) oldRing.parentNode.removeChild(oldRing);
-    nodes = {};
-    edges = {};
-    var d = dataOf(m), at = -1;
-    for (var i = 0; i < centerPath.length; i++) if (centerPath[i].id === d.id) at = i;
-    if (at >= 0) centerPath = centerPath.slice(0, at + 1); else centerPath.push(d);
-    // Back (map SPEC phase 1): each new center is a history entry, so the phone's back gesture steps back out of it.
-    // A center reached BY going back (popstate) is not pushed again.
+  // ---- one world of pools (Brandon 2026-11-15: pools and gates, "lets just get it all built now"; rings outward from
+  // wherever you are, each thing once). Opening a box no longer clears the map and lays it out again around that box:
+  // the box stays where it is, its connections are added around it in free space on its far side (away from the box it
+  // was opened from), and a connection to a box already on the map is drawn as one more channel to it. The trail is
+  // the path from you to the box. What shows near you is the map walker's (lgmap_walk.js: fading layers).
+  function pathTo(n) {
+    var out = [], seen = {};
+    for (var c = n; c && !seen[c.id] && out.length < 40; c = c.from ? nodes[c.from] : null) { seen[c.id] = 1; out.unshift(dataOf(c)); }
+    if (!out.length || out[0].id !== 'you') { if (nodes.you) out.unshift(dataOf(nodes.you)); }
+    return out;
+  }
+  function focusOn(m) {
+    var n = nodes[m.id];
+    if (!n) {   // not drawn yet (a trail step, Back, the MAINstream): put it next to the box you are at
+      var near = selected && nodes[selected.id] ? selected : nodes.you;
+      var at = near ? worldPlace(near, [m])[0] : { x: 0, y: 0 };
+      n = addNode(dataOf(m), at.x, at.y, near);
+      if (near) { n.from = near.id; addEdge(near.id, n.id, 'in'); }
+    }
+    centerPath = pathTo(n);
     if (!restoring) {
-      try { history.pushState({ lgc: d.id, d: d, path: centerPath.slice(), i: histAt + 1 }, ''); histAt++; } catch (e) {} // err-ok: no history API (old browser): Back stays disabled, the trail still works
+      try { history.pushState({ lgc: n.id, d: dataOf(n), path: centerPath.slice(), i: histAt + 1 }, ''); histAt++; } catch (e) {} // err-ok: no history API: Back stays disabled
     }
     updateBack();
-    if (!keep) return addNode(d, 0, 0);
-    keep.x = 0; keep.y = 0; keep.expanded = false; delete keep.from;
-    keep.el.classList.remove('lgn-open');
-    keep.el.setAttribute('transform', boxTransform(keep, 1));
-    nodes[keep.id] = keep;
-    addExtras(keep);
-    return keep;
+    return n;
   }
-  function collapseTo(n) {
-    var keep = {}, cid = centerId();
-    keep[cid] = 1;
-    for (var id in nodes) if (nodes[id].from === cid) keep[id] = 1;
-    for (var c = n, guard = 0; c && guard < 50; c = c.from ? nodes[c.from] : null, guard++) keep[c.id] = 1;
-    for (var id2 in nodes) if (nodes[id2].from === n.id) keep[id2] = 1;
-    var gone = {};
-    for (var id3 in nodes) {
-      if (keep[id3]) continue;
-      var x = nodes[id3];
-      if (x.el && x.el.parentNode) x.el.parentNode.removeChild(x.el);
-      if (x.sr && x.sr.parentNode) x.sr.parentNode.removeChild(x.sr);
-      gone[id3] = 1;
-      delete nodes[id3];
-    }
-    for (var k in edges) {
-      var e = edges[k];
-      if (gone[e.a] || gone[e.b]) { if (e.el.parentNode) e.el.parentNode.removeChild(e.el); delete edges[k]; }
-    }
-    for (var id4 in nodes) { // a box whose children were closed can open again
-      var m = nodes[id4], kids = false;
-      for (var j in nodes) if (nodes[j].from === id4) { kids = true; break; }
-      if (m.expanded && !kids && id4 !== n.id && id4 !== cid) { m.expanded = false; m.el.classList.remove('lgn-open'); }
-    }
+  // the camera to box n at the zoom it has now (no walker: the map walker moves the camera itself)
+  function lookAt(n) {
+    var b = svg.getBoundingClientRect(), c = centerOf(n);
+    if (!b.width) return;
+    tx = Math.round(b.width / 2 - c.x * scale);
+    ty = Math.round(b.height / 2 - c.y * scale);
+    apply(true);
   }
+  // places for new boxes around box c: on its far side from the box it was opened from (all round for you), at the
+  // first spot on growing circles where a box would not overlap any box already on the map (GAP apart). Map units.
+  var GAP = 34;
+  function halfOf(d) { var k = sizeOf(d); return { w: (widthOf(d) * k) / 2, h: ((d.kind === 'mine' ? H + 10 : H) * k) / 2 }; }
+  function worldPlace(c, items) {
+    var cc = centerOf(c), p = c.from && nodes[c.from] ? centerOf(nodes[c.from]) : null;
+    var out0 = p ? Math.atan2(cc.y - p.y, cc.x - p.x) : -Math.PI / 2, all = !p;
+    var taken = Object.keys(nodes).map(function (id) { var r = nodes[id].region; return { x: r.cx, y: r.cy, w: r.hw, h: r.hh }; });
+    var hc = c.kind === 'you' ? { w: YOU_R * sizeOf(c), h: YOU_R * sizeOf(c) } : halfOf(c);
+    var placed = [];
+    items.forEach(function (d) {
+      var h = halfOf(d), R = Math.max(hc.w, hc.h) + Math.max(h.w, h.h) + 120, spot = null;
+      for (var ring = 0; ring < 30 && !spot; ring++, R += 90) {
+        var steps = all ? 16 : 11, span = all ? Math.PI : Math.PI * 0.6;
+        for (var j = 0; j <= steps * 2 && !spot; j++) {
+          var off = (j % 2 ? 1 : -1) * Math.ceil(j / 2) * span / steps, a = out0 + off;
+          var x = cc.x + R * Math.cos(a), y = cc.y + R * Math.sin(a);
+          var free = taken.every(function (t) { return Math.abs(t.x - x) >= t.w + h.w + GAP || Math.abs(t.y - y) >= t.h + h.h + GAP; });
+          if (free) spot = { x: x, y: y };
+        }
+      }
+      if (!spot) spot = { x: cc.x + R * Math.cos(out0), y: cc.y + R * Math.sin(out0) };
+      taken.push({ x: spot.x, y: spot.y, w: h.w, h: h.h });
+      placed.push({ x: Math.round(spot.x - W / 2), y: Math.round(spot.y - H / 2) });
+    });
+    return placed;
+  }
+  // a "+N more" box keeps its rest, so Back and the trail can draw it again
+  function dataOf(n) { return { id: n.id, label: n.label, kind: n.kind, page: n.page, rel: n.rel, sub: n.sub, more: n.more }; }
   function expand(n) {
     if (n.expanded) return Promise.resolve(n);
     status('Loading…');
@@ -577,19 +577,18 @@
     return got.then(function (data) {
       // the center moved on while this loaded (a quick second tap, Back): drawing it now would mix two levels
       if (nodes[n.id] !== n || n.id !== centerId()) return n;
-      // the boxes on the trail (You > Groups > ...) are the way back, not items around this center (live look #2: around
-      // The Gov, Groups came back as one of its boxes)
-      var onTrail = {};
-      centerPath.forEach(function (c) { if (c.id !== n.id) onTrail[c.id] = 1; });
-      var links = data.links.filter(function (l) { return !onTrail[l.node.id]; });
+      // one world: every link is drawn, to a new box or as one more channel to a box already on the map
+      var links = data.links;
       var fresh = links.filter(function (l) { return !nodes[l.node.id]; });
-      // M1.1 look (Grok Bot's mockup 1): the center's connections on a ring, the faint dotted ring behind them
-      var lay = capRing(n, fresh.map(function (l) { return l.node; })), rr = lay.r;
-      if (!document.getElementById('lgm-ring')) {
-        var ring = el('ellipse', { id: 'lgm-ring', 'class': 'lgm-ring', cx: n.x + W / 2, cy: n.y + H / 2, rx: rr.rx, ry: rr.ry });
-        edgeLayer.insertBefore(ring, edgeLayer.firstChild);
+      var lay = capRing(n, fresh.map(function (l) { return l.node; }));
+      if (n.kind === 'you' && !n.from) {
+        // your own kinds round you: the first ring keeps its even look (M1.1, Grok Bot's mockup 1)
+        var rr = lay.r;
+        lay.items.forEach(function (d, i) { var p = ringPlace(n, i, lay.items.length, rr); addNode(d, p.x, p.y, n).from = n.id; });
+      } else {
+        var spots = worldPlace(n, lay.items);
+        lay.items.forEach(function (d, i) { addNode(d, spots[i].x, spots[i].y, n).from = n.id; });
       }
-      lay.items.forEach(function (d, i) { var p = ringPlace(n, i, lay.items.length, rr); addNode(d, p.x, p.y, n).from = n.id; });
       links.forEach(function (l) { addEdge(n.id, l.node.id, l.edge); }); // the rest (behind "+N more") are not drawn: skipped
       lay.items.forEach(function (d) { if (d.kind === 'more') addEdge(n.id, d.id, 'more'); });
       n.expanded = true;
@@ -709,7 +708,7 @@
         setTimeout(function () { if (selected === n && centerId() !== n.id) select(n, 'now'); }, GLIDE_WAIT_MS);
         return;
       }
-      n = recenter(n);
+      n = focusOn(n);
     }
     var prev = selected;
     if (selected) selected.el.classList.remove('lgn-sel');
@@ -720,7 +719,6 @@
              : (n.from && edges[edgeKey(n.from, n.id)] ? n.from : null);
     if (from) { var ek = 'e:' + edgeKey(from, n.id); visits[ek] = (visits[ek] || 0) + 1; }
     saveVisits();
-    collapseTo(n);
     shade(n);
     trail(n);
     for (var k in edges) if (edges[k].a === n.id || edges[k].b === n.id) sizeEdge(edges[k]);
@@ -732,9 +730,14 @@
     var wait = narrow() && !open ? GLIDE_WAIT_MS : 0;
     expand(n).then(function () {
       light(n.id);
-      // on the ring (you or one of your kinds) keep the whole open map in view instead of sliding the tapped box to the
-      // edge (2026-11-11 CI screenshot: tapping Friends cut the cards off at the left)
-      setTimeout(function () { if (selected === n) fitAll(narrow()); }, wait);
+      // one world (2026-11-15): the camera goes to the box (the map walker carries your drop there and follows it);
+      // nothing else moves
+      setTimeout(function () {
+        if (selected !== n) return;
+        var M = window.LG_MAP;
+        if (M && typeof M.onFocus === 'function' && M.onFocus(n.id)) return;
+        lookAt(n);
+      }, wait);
     });
   }
 
@@ -987,7 +990,7 @@
   function focusBox(id, open) {
     if (nodes[id]) { select(nodes[id], open); return Promise.resolve(nodes[id]); }
     return load(id).then(function (data) {
-      var n = addNode(data.node, 0, 0);
+      var n = focusOn(data.node);   // one world: placed next to the box you are at, never on top of another
       data.links.forEach(function (l) { if (nodes[l.node.id]) addEdge(n.id, l.node.id, l.edge); });
       select(n, open);
       return n;

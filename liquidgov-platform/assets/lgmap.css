@@ -182,9 +182,9 @@ html.lgm-sheet-open,html.lgm-sheet-open body{overflow:hidden}
 /* Dropped in (Drop on): the camera zooms toward the walker (LG_MAP.focus) and the boxes cast a shadow, so they read
    as solid objects you walk between. */
 /* Pools and gates (Brandon 2026-11-15): with the walker on the map, every box is a pool of water and every connection
-   that shows is a channel wide enough to swim (lgmap_walk.js CHANNEL: 26 map units either side, so 52 wide); the land
+   that shows is a channel wide enough to swim (lgmap_walk.js CHANNEL: 17 map units either side, so 34 wide); the land
    around them is dry and stops your drop. */
-#lgmap.lgm-dropping .lge{stroke:rgba(72,150,190,.45)!important;stroke-width:52px!important;stroke-dasharray:none!important;opacity:1}
+#lgmap.lgm-dropping .lge{stroke:rgba(72,150,190,.45)!important;stroke-width:34px!important;stroke-dasharray:none!important;opacity:1}
 #lgmap.lgm-dropping .lgn .lgs{fill:rgba(34,98,132,.88)!important;stroke:#8fd3ee;stroke-width:3;filter:drop-shadow(0 0 12px rgba(110,200,235,.3))}
 #lgmap.lgm-dropping .lgn text{fill:#eef9ff}
 #lgmap.lgm-dropping .lgn.lgn-walk .lgs{stroke:#f3d48f;filter:drop-shadow(0 0 14px rgba(243,212,143,.55))}

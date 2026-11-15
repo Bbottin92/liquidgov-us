@@ -200,7 +200,10 @@ class Run:
     def case4_hold(self):
         name = "4 press and hold: the box grows, then the page sheet opens"
         self.goto("/map", settle=3)
-        target = self.box(0, skip_root=True)
+        # Zoomed out like 3, 4c and 4d, and a box your drop is not standing on (2026-11-14: your drop takes taps now,
+        # for its menu, so a hold at the middle of the box under it reaches the drop, not the box)
+        self.map_zoom_out()
+        target = self.box(1)
         if not (isinstance(target, dict) and "x" in target):
             return self.check(name, False, {"target": target})
         self.ws.call("Input.dispatchTouchEvent", type="touchStart", touchPoints=[{"x": target["x"], "y": target["y"], "id": 1}])

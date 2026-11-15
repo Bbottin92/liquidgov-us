@@ -37,11 +37,33 @@ class BarRun(phone_check.Run):
         return self.j("JSON.stringify([...document.querySelectorAll('#lgm-filter .lgm-chip')].map(b => ({key: b.getAttribute('data-key'),"
                       " label: b.textContent.trim(), on: b.getAttribute('aria-pressed') === 'true'})))")
 
+    def goto(self, path, settle=1.5):
+        """The map starts zoomed in around your drop now (2026-11-15, Brandon: "keep it zoomed in"), with the far boxes
+        off the frame; this check taps boxes by their place, so on the map it zooms out first (phone_check's)."""
+        super().goto(path, settle)
+        if path == "/map":
+            self.map_zoom_out()
+
     def tap_sel(self, selector):
+        """On a phone the walker's pad is always over the bottom of the screen now, and the map's frame runs under it:
+        a box down there is scrolled up the page first, as a person would, then tapped; and one that the scrolling put
+        under the map's sticky bars is scrolled back down; anything else off the screen (the MAINstream pill above the map,
+        after such a scroll) is scrolled into view (2026-11-15)."""
+        self.j("(() => { const e = document.querySelector(%s); if (!e) return '0'; const b = e.getBoundingClientRect(),"
+               " y = (b.top + b.bottom) / 2; if (e.closest('#lgm-nodes') && (y > 560 || y < 160)) window.scrollBy(0, y - 450);"
+               " else if (!e.closest('#lgm-nodes') && (b.top < 0 || b.bottom > innerHeight)) e.scrollIntoView({block: 'center'}); return '1'; })()" % json.dumps(selector))
+        time.sleep(0.2)
+        return self._tap_sel(selector)
+
+    def _tap_sel(self, selector):
         """A real tap on the element's center. Records (rep["taps"]) what was under that point and whether a click
         reached the element, so a tap that does nothing says why (2026-11-11: chip and Zoom out taps did nothing)."""
         r = self.j("(() => { const e = document.querySelector(%s); if (!e) return JSON.stringify({none: true});"
-                   " const b = e.getBoundingClientRect(), x = (b.left + b.right) / 2, y = (b.top + b.bottom) / 2;"
+                   " const b = e.getBoundingClientRect(); let x = (b.left + b.right) / 2, y = (b.top + b.bottom) / 2;"
+                   # your drop takes taps (its menu, 2026-11-14): a box under it is tapped where the drop is not
+                   " const free = (px, py) => { const h = document.elementFromPoint(px, py); return !(h && h.closest('#lgm-walker')); };"
+                   " if (!free(x, y)) for (const [fx, fy] of [[0.2, 0.5], [0.8, 0.5], [0.5, 0.2], [0.5, 0.8]]) {"
+                   "  const px = b.left + fx * b.width, py = b.top + fy * b.height; if (free(px, py)) { x = px; y = py; break; } }"
                    " const top = document.elementFromPoint(x, y);"
                    " window.__clicked = false; e.addEventListener('click', () => { window.__clicked = true; }, {once: true, capture: true});"
                    " return JSON.stringify({x: x, y: y, under: top ? (top.id || top.tagName + '.' + (top.getAttribute('class') || '')) : null,"

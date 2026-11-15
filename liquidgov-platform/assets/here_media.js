@@ -14,7 +14,7 @@
 (function () {
   var cfg = window.LG_HERE, api = window.LG_HERE_API, media = window.LG_WALKER && LG_WALKER.media;
   if (!cfg || !cfg.me || !api || !media || !window.RTCPeerConnection || !navigator.mediaDevices) return;
-  var RANGE = { near: 0.15, aware: 0.5 };
+  var RANGE = { near: 0.15, aware: 0.5 }, RETRY_MS = 4000;
   var stream = media.stream(), peers = {}, pendingOffer = {}, pendingIce = {}, last = [];
 
   var held = document.createElement('div');
@@ -39,6 +39,7 @@
     var p = peers[u];
     if (!p) return;
     try { p.pc.close(); } catch (e) { /* already closed */ }
+    if (p.rippleOn) { LG_WALKER.ripples(p.rippleOn, null); p.rippleOn = null; }
     if (p.el) { p.el.srcObject = null; if (p.wrap.parentNode) p.wrap.parentNode.removeChild(p.wrap); }
     delete peers[u];
   }
@@ -48,6 +49,13 @@
     if (!p.wrap) return;
     var dot = document.querySelector('#lg-here .lg-here-dot[data-u="' + (window.CSS && CSS.escape ? CSS.escape(p.u) : p.u) + '"]');
     var to = dot || held;
+    // their sound ripples off their dot (walker.js ripples), like yours off your drop
+    var face = dot && dot.firstElementChild;
+    if (face && p.rippleOn !== face && p.el && p.el.srcObject && p.el.srcObject.getAudioTracks().length) {
+      if (p.rippleOn) LG_WALKER.ripples(p.rippleOn, null);
+      LG_WALKER.ripples(face, p.el.srcObject);
+      p.rippleOn = face;
+    }
     if (p.wrap.parentNode === to) return;
     to.appendChild(p.wrap);
     var play = p.el.play();   // a moved video element pauses
@@ -78,7 +86,7 @@
   }
   function makePeer(u) {
     var pc = new RTCPeerConnection({ iceServers: [] });
-    var p = { pc: pc, u: u, el: null, wrap: null, vol: 0, remoteSet: false };
+    var p = { pc: pc, u: u, el: null, wrap: null, vol: 0, remoteSet: false, t: Date.now() };
     peers[u] = p;
     stream.getTracks().forEach(function (t) { pc.addTrack(t, stream); });
     pc.onicecandidate = function (e) { if (e.candidate) sendSig(u, { k: 'ice', c: e.candidate }); };
@@ -140,6 +148,10 @@
       var d = Math.hypot(p.x - self.x, p.y - self.y);
       if (d > RANGE.aware) return;
       live[p.u] = true;
+      // an offer that got no answer (a setup message lost on the way, or wiped by the other side starting over) is made
+      // again, rather than waiting for ever (2026-11-15: here_media M1 hung that way on a busy machine)
+      var q = peers[p.u];
+      if (q && !q.remoteSet && cfg.me < p.u && Date.now() - q.t > RETRY_MS) close(p.u);
       if (!peers[p.u]) {
         if (pendingOffer[p.u]) { var o = pendingOffer[p.u]; delete pendingOffer[p.u]; answer(p.u, o); }
         else if (cfg.me < p.u) offerTo(p.u);   // the lower name makes the offer

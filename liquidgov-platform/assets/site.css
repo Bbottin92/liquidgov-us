@@ -8,6 +8,7 @@
 #lg-media-held .lg-media-bubble{position:relative;left:auto;top:auto;transform:none}
 #lg-here-pad{position:fixed;left:0;right:0;bottom:0;z-index:11;pointer-events:none;padding:0 max(var(--lgw-margin),env(safe-area-inset-right,0px)) calc(env(safe-area-inset-bottom,0px) + var(--lgw-lift)) max(var(--lgw-margin),env(safe-area-inset-left,0px))}#lg-here-pad button{pointer-events:auto;min-height:44px;min-width:44px;padding:0 .7rem}.lg-tip{position:relative;padding:.55rem calc(32px + .55rem) .55rem .7rem;background:var(--parchment);border:1px solid var(--rule);border-radius:var(--rmd);font-size:.8rem;color:var(--ink);box-shadow:0 4px 16px rgba(0,0,0,.2)}.lg-tip .lg-tip-close{position:absolute;top:.2rem;right:.2rem;width:32px;height:32px;min-width:32px;min-height:32px;margin:0;padding:0;border:0;border-radius:var(--rsm);background:none;color:var(--stone);font-size:1.1rem;line-height:1;cursor:pointer}/* the Center button (walker.js): above the touchpad unit; armed = filled */
 .msg .bubble a{color:inherit;text-decoration:underline;overflow-wrap:anywhere}
+.lg-ripple{position:absolute;box-sizing:border-box;border:2px solid var(--accent);border-radius:50%;pointer-events:none;z-index:1;opacity:0}
 .lg-media-bubble.lg-media-self{pointer-events:none;cursor:default}
 .lg-media-self video{transform:scaleX(-1)}
 .lg-vcard{display:block;margin:.5rem 0;max-width:min(100%,480px)}

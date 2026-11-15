@@ -44,6 +44,7 @@ are the cases this file runs now.
   MN7 Microphone on, then Hear myself: your own sound plays back; Hear myself off: it stops
   MN8 Camera and Microphone off: the bubble goes, nothing stays open, the next page keeps them off; a refused camera
       turns its switch back off
+  MN9 with the microphone on, sound ripples off your drop: its level follows how loud it is; silence makes no rings
   Desktop 1280x800:
   D2  each movement key (W/A/S/D and the arrows) moves your dot its way
   D3  select (Enter) uses the button you stand next to (positive control: nothing was used before)
@@ -545,7 +546,8 @@ class Run(m.Run):
       if (c.video) { const cv = document.createElement('canvas'); cv.width = 64; cv.height = 48; const g = cv.getContext('2d');
         setInterval(() => { g.fillStyle = '#' + Math.floor(Math.random() * 4095).toString(16).padStart(3, '0'); g.fillRect(0, 0, 64, 48); }, 100);
         cv.captureStream(10).getVideoTracks().forEach(t => out.addTrack(t)); }
-      if (c.audio) { const ac = new AudioContext(), o = ac.createOscillator(), d = ac.createMediaStreamDestination(); o.connect(d); o.start();
+      if (c.audio) { const ac = new AudioContext(), o = ac.createOscillator(), g = ac.createGain(), d = ac.createMediaStreamDestination();
+        g.gain.value = window.__quiet ? 0 : 0.5; window.__micGain = g; o.connect(g); g.connect(d); o.start();
         d.stream.getAudioTracks().forEach(t => out.addTrack(t)); }
       return Promise.resolve(out); }; })()"""
     SELF = ("(() => { const M = LG_WALKER.media, st = M.state(), s = M.stream(), b = document.querySelector('.' + LG_WALKER.CONTROLS.media.selfCls),"
@@ -596,6 +598,23 @@ class Run(m.Run):
                    (c.get("st") or {}).get("mic") is True and (c.get("st") or {}).get("hear") is True and c.get("hearing") is True
                    and any(t.startswith("audio:live") for t in c.get("tracks") or []) and c2.get("hearing") is False
                    and (c2.get("st") or {}).get("mic") is True, {"on": c, "off": c2})
+        # MN9: sound ripples off your drop with the microphone on, stronger when louder; none in silence
+        RING = ("(() => { const r = [...document.querySelectorAll('#lg-here .lg-here-dot.me .' + LG_WALKER.CONTROLS.media.ripple.cls)],"
+                " d = document.querySelector('#lg-here .lg-here-dot.me .' + LG_WALKER.CONTROLS.shape.cls);"
+                " return JSON.stringify({rings: r.length, level: d ? d.getAttribute('data-level') : null}); })()")
+        time.sleep(1.2)
+        loud = self.j(RING) or {}
+        self.j("(() => { window.__micGain.gain.value = 0.04; return '1'; })()")
+        time.sleep(1.5)
+        soft = self.j(RING) or {}
+        self.j("(() => { window.__micGain.gain.value = 0; return '1'; })()")
+        time.sleep(1.6)
+        hush = self.j(RING) or {}
+        self.check("MN9 the microphone's sound ripples off your drop, its level following how loud it is; silence: no rings",
+                   loud.get("rings", 0) >= 1 and float(loud.get("level") or 0) > 0.5
+                   and 0 < float(soft.get("level") or 0) < float(loud.get("level") or 0)
+                   and hush.get("rings") == 0 and float(hush.get("level") or 1) <= 0.02, {"loud": loud, "soft": soft, "silent": hush})
+        self.shot("ripples-phone", {"x": 0, "y": self.j("JSON.stringify(scrollY)") or 0, "width": 390, "height": 844})
         self.media_tap("cam")
         self.media_tap("mic")
         d = self.j(self.SELF) or {}

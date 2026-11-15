@@ -73,7 +73,14 @@
   // (store) and every page with your drop turns them back on as it loads. Your camera shows as a bubble on your own
   // drop; "Hear myself" plays your microphone back to you (off by default: a page cannot tell whether headphones are
   // plugged in, and on speakers it howls). Calls (here_media.js) use this stream through LG_WALKER.media.
-  CONTROLS.media = { store: 'lg-media-on', selfCls: 'lg-media-self' };
+  CONTROLS.media = { store: 'lg-media-on', selfCls: 'lg-media-self',
+    // Sound ripples (Brandon 2026-11-15: "audiowaves that ripple off of your droplet when you make noises according to
+    // the intensity of the noises you make ... roughly anatomically correct"): rings spread from a drop the way sound
+    // does. The sound's level (RMS, 0..1) is read about 60 times a second; above floor a ring starts, at most one every
+    // minMs (louder: down to fastMs apart), lives ms, and spreads to reach (1 + level * spread) times the drop's size;
+    // its strength fades as it spreads (as sound does), starting from the level. Kept close (Brandon: "the ripples
+    // shouldnt spread too far"): at most 2.5 times the drop's size. Not with reduced motion.
+    ripple: { cls: 'lg-ripple', floor: 0.02, gain: 6, minMs: 260, fastMs: 110, ms: 900, reach: 1.3, spread: 1.2 } };
   var B = CONTROLS.buttons, M = CONTROLS.menu;
   var speedMul = 1;
   try { var sv = parseFloat(localStorage.getItem(M.speed.store)); if (sv >= M.speed.min && sv <= M.speed.max) speedMul = sv; } catch (e) {} // err-ok: no storage: 1x
@@ -377,6 +384,65 @@
     if (kind === 'hear') { mediaChanged(); return; }
     mediaApply(kind);
   }
+  // ---- sound ripples (CONTROLS.media.ripple). ripples(el, stream): rings spread from el's drop while stream's sound
+  // is loud enough; one watcher per element (a new stream replaces the old; no stream stops it). Your own drop gets yours
+  // (selfPaint); here_media.js gives each person in a call theirs.
+  var rctx = null, rwatch = [];
+  function audioCtx() {
+    if (!rctx) {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      rctx = new AC();
+      // a browser starts sound only after a tap or a key: the first one wakes it
+      var wake = function () { if (rctx.state === 'suspended') rctx.resume(); };
+      ['pointerdown', 'keydown'].forEach(function (t) { document.addEventListener(t, wake, true); });
+    }
+    if (rctx.state === 'suspended') rctx.resume().catch(function () { /* waits for a tap */ });
+    return rctx;
+  }
+  function ripples(el, stream) {
+    for (var i = rwatch.length - 1; i >= 0; i--) if (rwatch[i].el === el) { rwatch[i].stop(); rwatch.splice(i, 1); }
+    if (!el || !stream || !stream.getAudioTracks().length || reducedMotion()) return;
+    var ctx = audioCtx();
+    if (!ctx) return;
+    var R = CONTROLS.media.ripple, src = ctx.createMediaStreamSource(stream), an = ctx.createAnalyser();
+    an.fftSize = 512;
+    src.connect(an);   // read only: never connected to the speakers
+    var buf = new Float32Array(an.fftSize), last = 0, raf = 0, w = { el: el };
+    w.level = 0;
+    function frame(now) {
+      an.getFloatTimeDomainData(buf);
+      var sum = 0;
+      for (var k = 0; k < buf.length; k++) sum += buf[k] * buf[k];
+      var level = Math.min(1, Math.sqrt(sum / buf.length) * R.gain);
+      w.level = level;
+      el.setAttribute('data-level', level.toFixed(2));
+      var gap = R.minMs - (R.minMs - R.fastMs) * level;
+      if (level > R.floor && now - last >= gap && el.isConnected) { last = now; ring(el, level); }
+      raf = requestAnimationFrame(frame);
+    }
+    raf = requestAnimationFrame(frame);
+    w.stop = function () { cancelAnimationFrame(raf); try { src.disconnect(); } catch (e) { /* gone */ } el.removeAttribute('data-level'); };
+    rwatch.push(w);
+  }
+  function ring(el, level) {
+    var R = CONTROLS.media.ripple, host = el.parentNode;
+    if (!host || !el.animate) return;
+    var r = document.createElement('span'), size = el.offsetWidth || 38;
+    r.className = R.cls;
+    r.setAttribute('aria-hidden', 'true');
+    r.style.width = r.style.height = size + 'px';
+    r.style.left = (el.offsetLeft + el.offsetWidth / 2) + 'px';
+    r.style.top = (el.offsetTop + el.offsetHeight / 2) + 'px';
+    host.appendChild(r);
+    var to = R.reach + level * R.spread, a = Math.min(0.9, 0.25 + level);
+    var anim = r.animate([
+      { transform: 'translate(-50%,-50%) scale(1)', opacity: a, borderWidth: (1 + level * 3).toFixed(1) + 'px' },
+      { transform: 'translate(-50%,-50%) scale(' + to.toFixed(2) + ')', opacity: 0, borderWidth: '0.5px' }
+    ], { duration: R.ms, easing: 'cubic-bezier(.2,.6,.35,1)' });
+    anim.onfinish = function () { r.remove(); };
+  }
+
   // your own camera as a mirrored bubble on your drop (taps go through to the drop: its menu), and your own sound when
   // "Hear myself" is on
   function selfPaint() {
@@ -399,6 +465,10 @@
       selfWrap.parentNode.removeChild(selfWrap);
     }
     var auds = mstream ? mstream.getAudioTracks() : [];
+    // your sound ripples off your drop while the microphone is on (only for you to see unless you are in a call)
+    var rippling = rwatch.filter(function (x) { return x.el === myDrop; })[0];
+    if (myDrop && mwant.mic && auds.length) { if (!rippling || rippling.stream !== mstream) { ripples(myDrop, mstream); var nw = rwatch[rwatch.length - 1]; if (nw && nw.el === myDrop) nw.stream = mstream; } }
+    else if (rippling) ripples(myDrop, null);
     if (mwant.hear && mwant.mic && auds.length) {
       if (!hearEl) { hearEl = document.createElement('audio'); hearEl.autoplay = true; }
       if (!hearEl.srcObject || hearEl.srcObject.getAudioTracks()[0] !== auds[0]) hearEl.srcObject = new MediaStream(auds);
@@ -491,5 +561,6 @@
     media: { state: function () { return { mic: mwant.mic, cam: mwant.cam, hear: mwant.hear }; },
       stream: function () { return mstream; }, onChange: function (fn) { mfns.push(fn); }, toggle: mediaToggle,
       hearing: function () { return !!(hearEl && hearEl.srcObject && !hearEl.paused); } },
+    ripples: ripples,
     reducedMotion: reducedMotion };
 })();

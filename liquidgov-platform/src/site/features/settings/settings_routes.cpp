@@ -70,6 +70,15 @@ std::optional<std::string> settings_routes(Route& r) {
                 + (g_drop_off ? "<p><strong>Hidden in this browser.</strong></p><p><a class=\"btn\" href=\"/drop/on\">Show my droplet</a></p>"
                               : "<p><strong>Shown in this browser.</strong></p><p><a class=\"btn ghost\" href=\"/drop/off\">Hide my droplet</a></p>")
                 + "</div>";
+        // Adult videos (Brandon 2026-11-15: "you should be able to turn of NSFW limitations though ... in settings"):
+        // a shared link to an adult video site shows a "tap to show" cover first, unless this browser turned it off.
+        html += std::string("<div class=\"card\" id=\"nsfw\"><h2>Adult videos</h2>"
+                "<p class=\"muted\">A link to a video on an adult site shows a \"tap to show\" cover first. Turn the cover off "
+                "and those videos get a plain Play button like any other. Nothing plays until you tap it either way. This "
+                "choice is kept in this browser only.</p>")
+                + (g_nsfw_on ? "<p><strong>Cover off in this browser.</strong></p><p><a class=\"btn\" href=\"/nsfw/off\">Cover adult videos</a></p>"
+                             : "<p><strong>Cover on in this browser.</strong></p><p><a class=\"btn ghost\" href=\"/nsfw/on\">Show adult videos without a cover</a></p>")
+                + "</div>";
         html += here_settings_card(user);
         {
             // Map and connections (slice 6): what /map may show about you.

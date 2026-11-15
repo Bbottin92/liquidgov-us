@@ -14,6 +14,12 @@ namespace liquidgov::site {
 // room: nothing is sent anywhere). Not when this browser hid it (Settings > Your droplet, the lg_drop=off cookie), and
 // not on a page that asks not to (<!--lg:no-drop-->: the drawing tool, where the pad would sit on the canvas).
 // Before </body>, outside <main>, so it is never inside what a page swaps out.
+// Video links play where they are shared (Brandon 2026-11-15; assets/video_links.js): on every page this builds.
+static void add_video_links(std::string& page) {
+    auto pos = page.rfind("</body>");
+    if (pos != std::string::npos) page.insert(pos, "<script src=\"" + asset_url("video_links.js") + "\" defer></script>");
+}
+
 static void add_drop(std::string& page, const std::string& user) {
     if (g_drop_off || page.find("/walker.js") != std::string::npos || page.find("<!--lg:no-drop-->") != std::string::npos) return;
     auto pos = page.rfind("</body>");
@@ -51,6 +57,7 @@ std::string wrap(const std::string& title, const std::string& user, int unread, 
         auto head = page.find("</head>");
         if (head != std::string::npos) page.insert(head, fit);
         add_drop(page, user);
+        add_video_links(page);
         return page;
     }
     std::string page = page_wrap(title, nav(user, unread), care + body, show_intro, intro_always_play);
@@ -67,6 +74,7 @@ std::string wrap(const std::string& title, const std::string& user, int unread, 
         if (pos != std::string::npos) page.insert(pos + 7, widget);
     }
     add_drop(page, user);
+    add_video_links(page);
     return page;
 }
 

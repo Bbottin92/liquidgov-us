@@ -14,6 +14,8 @@ extern thread_local bool g_https;
 extern thread_local bool g_embed;
 // True when this browser hid its droplet (Settings > Your droplet: the lg_drop=off cookie, Brandon 2026-11-15)
 extern thread_local bool g_drop_off;
+// True when this browser turned off the cover over adult videos (Settings > Adult videos: the lg_nsfw=on cookie)
+extern thread_local bool g_nsfw_on;
 extern std::set<std::string> g_care_notice;
 std::string set_cookie(const std::string& sid);
 std::string clear_cookie();

@@ -51,6 +51,10 @@ thread_local bool g_https = false;
 // choose to hide it if you want ... in settings"). Hidden in this browser by the lg_drop=off cookie (/drop/off), set
 // once per request in handle() like g_theme_mode.
 thread_local bool g_drop_off = false;
+// Shared adult videos play without a "tap to show" cover in this browser (Brandon 2026-11-15: "you should be able to
+// turn of NSFW limitations though ... in settings"): the lg_nsfw=on cookie (/nsfw/on), read by assets/video_links.js
+// itself; the server reads it only to show the setting's state.
+thread_local bool g_nsfw_on = false;
 // True when this page is loading inside the map's right-hand field (the
 // browser sends Sec-Fetch-Dest: iframe, also on redirects and clicks inside
 // it; ?embed=1 forces it for tests). wrap() then drops the site header,

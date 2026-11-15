@@ -120,7 +120,8 @@ std::optional<std::string> assets_routes(Route& r) {
     // Page scripts that were inlined into pages until 2026-11-12 (same code, now cached): one route for all of them.
     if(method=="GET"&&(path=="/assets/mail_widget.js"||path=="/assets/draft_publish.js"||path=="/assets/people_search.js"||
                        path=="/assets/jukebox.js"||path=="/assets/here.js"||path=="/assets/canvas.js"||
-                       path=="/assets/walker.js"||path=="/assets/here_media.js"||path=="/assets/lgmap_walk.js"||path=="/assets/tip.js"||path=="/assets/home_drop.js")) {
+                       path=="/assets/walker.js"||path=="/assets/here_media.js"||path=="/assets/lgmap_walk.js"||path=="/assets/tip.js"||path=="/assets/home_drop.js"||
+                       path=="/assets/video_links.js")) {
         std::ifstream in(path.substr(1), std::ios::binary);   // "assets/<name>.js"
         if(!in) return http_raw("404 Not Found","text/plain; charset=utf-8","not found");
         std::ostringstream ss; ss << in.rdbuf();
@@ -245,6 +246,17 @@ std::optional<std::string> assets_routes(Route& r) {
             back = "/settings#drop";
         std::string extra = path=="/drop/off" ? "Set-Cookie: lg_drop=off; Path=/; SameSite=Lax; Max-Age=31536000"
                                               : "Set-Cookie: lg_drop=; Path=/; SameSite=Lax; Max-Age=0";
+        if (g_https) extra += "; Secure";
+        extra += "\r\n";
+        return http_redir(back, extra);
+    }
+    // Settings > Adult videos: a shared adult video plays without its "tap to show" cover in this browser, or with it.
+    if(method=="GET"&&(path=="/nsfw/on"||path=="/nsfw/off")) {
+        std::string back = header_value(req, "Referer"), host = header_value(req, "Host");
+        if (host.empty() || (back.rfind("https://" + host + "/", 0) != 0 && back.rfind("http://" + host + "/", 0) != 0))
+            back = "/settings#nsfw";
+        std::string extra = path=="/nsfw/on" ? "Set-Cookie: lg_nsfw=on; Path=/; SameSite=Lax; Max-Age=31536000"
+                                             : "Set-Cookie: lg_nsfw=; Path=/; SameSite=Lax; Max-Age=0";
         if (g_https) extra += "; Secure";
         extra += "\r\n";
         return http_redir(back, extra);

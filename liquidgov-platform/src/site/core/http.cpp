@@ -90,6 +90,15 @@ bool drop_off_of(const std::string& headers) {
     k+=8; auto sc=line.find(';',k);
     return line.substr(k, sc==std::string::npos?std::string::npos:sc-k)=="off";
 }
+
+bool nsfw_on_of(const std::string& headers) {
+    auto pos=headers.find("Cookie:"); if(pos==std::string::npos) pos=headers.find("cookie:");
+    if(pos==std::string::npos) return false;
+    auto end=headers.find("\r\n",pos); std::string line=headers.substr(pos,end-pos);
+    auto k=line.find("lg_nsfw="); if(k==std::string::npos) return false;
+    k+=8; auto sc=line.find(';',k);
+    return line.substr(k, sc==std::string::npos?std::string::npos:sc-k)=="on";
+}
 std::string header_value(const std::string& headers, const std::string& name) {
     std::string key = name + ":";
     auto pos = headers.find(key);

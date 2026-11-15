@@ -7,6 +7,13 @@
 @media(hover:none){.lg-media-big .lg-media-full{opacity:1}}
 #lg-media-held .lg-media-bubble{position:relative;left:auto;top:auto;transform:none}
 #lg-here-pad{position:fixed;left:0;right:0;bottom:0;z-index:11;pointer-events:none;padding:0 max(var(--lgw-margin),env(safe-area-inset-right,0px)) calc(env(safe-area-inset-bottom,0px) + var(--lgw-lift)) max(var(--lgw-margin),env(safe-area-inset-left,0px))}#lg-here-pad button{pointer-events:auto;min-height:44px;min-width:44px;padding:0 .7rem}.lg-tip{position:relative;padding:.55rem calc(32px + .55rem) .55rem .7rem;background:var(--parchment);border:1px solid var(--rule);border-radius:var(--rmd);font-size:.8rem;color:var(--ink);box-shadow:0 4px 16px rgba(0,0,0,.2)}.lg-tip .lg-tip-close{position:absolute;top:.2rem;right:.2rem;width:32px;height:32px;min-width:32px;min-height:32px;margin:0;padding:0;border:0;border-radius:var(--rsm);background:none;color:var(--stone);font-size:1.1rem;line-height:1;cursor:pointer}/* the Center button (walker.js): above the touchpad unit; armed = filled */
+.msg .bubble a{color:inherit;text-decoration:underline;overflow-wrap:anywhere}
+.lg-vcard{display:block;margin:.5rem 0;max-width:min(100%,480px)}
+.lg-vcard-play{display:flex;align-items:center;gap:.6rem;width:100%;min-height:56px;padding:.6rem .9rem;border-radius:12px;border:1px solid var(--accent);background:#14120f;color:#f7f1e4;font:inherit;font-weight:600;text-align:left;cursor:pointer}
+.lg-vcard-icon{display:inline-flex;align-items:center;justify-content:center;flex:none;width:36px;height:36px;border-radius:50%;background:var(--accent);color:#fff;font-size:.95rem}
+.lg-vcard-adult .lg-vcard-play{background:repeating-linear-gradient(135deg,#2a1a1a 0 10px,#1d1212 10px 20px);border-style:dashed}
+.lg-vcard-player{display:block;width:100%;max-height:80vh;border:0;border-radius:12px;background:#000}
+.lg-vcard-on{max-width:min(100%,560px)}
 .lg-shell:not(.lg-shell-home) #lg-here-pad,.lg-shell:not(.lg-shell-home) #lg-here,.lg-shell:not(.lg-shell-home) #lg-drop-menu{display:none!important}
 #lg-drop-menu{position:fixed;z-index:60;display:flex;flex-direction:column;gap:6px;min-width:200px;max-width:calc(100vw - 16px);box-sizing:border-box;padding:10px;border-radius:14px;background:var(--card);color:var(--ink);border:1px solid var(--accent);box-shadow:0 6px 20px rgba(0,0,0,.3);font-size:.95rem}
 #lg-drop-menu[hidden]{display:none}

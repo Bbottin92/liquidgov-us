@@ -10,7 +10,7 @@ they are gone.
   B5 tapping a kind (Groups) makes it the center; the browser's Back (history.back, what the phone's back gesture
      does) returns to You (B5c)
   B6 the trail's previous box (Back; Brandon 2026-11-13: no Zoom out button) from a kind goes up one level, to You
-  B7 the MAINstream pill from You goes to the MAINstream
+  (B7, the MAINstream pill above the map, is gone: the map is fullscreen, 2026-11-15)
   B8 on a phone the trail stays at the top (position: sticky)
 Run: ci_map_bar_check.py (GitHub CI, a report-only step next to the phone check; this laptop rarely has the RAM).
 Writes <out>/phone-bar-<label>.json and <out>/phone-bar-<label>-*.png (look at them).
@@ -111,11 +111,8 @@ class BarRun(phone_check.Run):
         self.tap_sel("#lgm-trail .lgm-trail-prev")
         t6 = self.trail()
         self.check("B6 the previous box (Back) from Groups goes up to You", before == ["You", "Groups"] and t6 == ["You"], {"before": before, "after": t6})
-        self.tap_sel("#lgm-main")
-        time.sleep(1)
-        t7 = self.trail()
-        root = self.j("JSON.stringify(!!document.querySelector('#lgm-nodes .lgn-root'))")
-        self.check("B7 the MAINstream pill from You goes to the MAINstream", root is True and t7 and t7[-1] == "MAINstream", {"trail": t7, "root": root})
+        # B7 (the MAINstream pill from You) went with the strip above the map (Brandon 2026-11-15: the map is fullscreen
+        # under the site header; nothing else around it)
         self.shot("mainstream")
         st = self.j("(() => { const b = document.getElementById('lgm-bars'); return JSON.stringify(b ? getComputedStyle(b).position : null); })()")
         self.check("B8 on a phone the trail stays at the top (sticky)", st == "sticky", st)

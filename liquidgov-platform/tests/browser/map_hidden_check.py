@@ -42,6 +42,14 @@ class HiddenRun(map_bar_check.BarRun):
         if path == "/map":
             self.map_zoom_out()
 
+    def tap_sel(self, selector):
+        """On a phone the walker's pad is always over the bottom of the screen now, and the map's frame runs under it:
+        a box down there is scrolled up the page first, as a person would, then tapped (2026-11-15)."""
+        self.j("(() => { const e = document.querySelector(%s); if (!e) return '0'; const b = e.getBoundingClientRect(),"
+               " y = (b.top + b.bottom) / 2; if (y > 560) window.scrollBy(0, y - 450); return '1'; })()" % json.dumps(selector))
+        time.sleep(0.2)
+        return super().tap_sel(selector)
+
     def cases(self):
         self.goto("/map", settle=3)
         self.close_tips()

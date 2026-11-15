@@ -81,11 +81,11 @@ How Judgment works, so nobody can game it or be framed by it:
   touches the floor.
 - Juries are picked with Judgment in mind, so the people judging are the ones whose calls tend to hold up.
 
-## Round 3: decided, never vote weight; shown beside what you contribute (Brandon, 2026-11-15)
+## Round 3: a leaning, not a decision: never vote weight; shown beside what you contribute (Brandon, 2026-11-15)
 
 Brandon: "it shouldnt effect the weight of your votes but perhaps it could be shown in your comments or proposals to give
-people an idea of how seriously they should consider what you contribute". So question 1 is answered: one person, one
-vote, always; credibility is information shown beside comments and proposals.
+people an idea of how seriously they should consider what you contribute", then "take that with a grain of salt". So
+question 1 leans one way (one person, one vote; credibility as information beside comments and proposals) but is open.
 
 Claude's proposal for how it shows, so it informs without becoming a way to dismiss people:
 - Beside a comment or proposal, a small mark for the aspect that matters there: Topic standing in that group or subject

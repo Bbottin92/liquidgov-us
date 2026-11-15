@@ -183,3 +183,22 @@ html.lgm-sheet-open,html.lgm-sheet-open body{overflow:hidden}
    as solid objects you walk between. */
 #lgmap.lgm-dropping .lgn .lgs{filter:drop-shadow(0 10px 12px rgba(0,0,0,.55)) drop-shadow(0 3px 3px rgba(0,0,0,.45))}
 #lgmap.lgm-dropping .lgn.lgn-walk .lgs{filter:drop-shadow(0 12px 14px rgba(0,0,0,.6)) drop-shadow(0 0 8px var(--accent))}
+/* The map fills the screen (Brandon 2026-11-15: "the mainstream map should be like fullscreen besides the liquidgov
+   title and notifications and mail and profile pic and juketube"). This file is only on the map page, so these rules
+   only touch it: the site header stays, the map takes everything under it, and the page itself does not scroll.
+   Hidden: the strip above the map (MAINstream button, alerts pill, hint, Map privacy), the legend and note under it,
+   People you may know, the site footer and the Get the app bar. Kept: the 988 note (role=note) on the one page view it
+   shows, and the status line (errors), floating at the top of the map. Juketube, your drop and the pad float above. */
+html,body{height:100%}
+body{display:flex;flex-direction:column;height:100dvh;min-height:0;overflow:hidden;padding-bottom:0!important}
+body>header.top{flex:none}
+body>main.wrap{flex:1;min-height:0;display:flex;flex-direction:column;width:100%;max-width:none;margin:0;padding:0}
+main.wrap>:not(#lgmap):not([role=note]):not(link):not(script){display:none!important}
+body>footer.site,#lggetapp{display:none!important}
+.lgmap{flex:1;min-height:0;display:flex;flex-direction:column;width:100%;margin:0;transform:none}
+.lgmap-bar{position:absolute;left:50%;top:.5rem;transform:translateX(-50%);z-index:6;margin:0;padding:0;pointer-events:none}
+.lgmap-bar>:not(#lgm-status){display:none!important}
+.lgmap-bar #lgm-status:not(:empty){display:block;padding:.3rem .8rem;border-radius:999px;background:var(--card);box-shadow:0 2px 8px rgba(0,0,0,.3)}
+.lgm-legend,.lgm-foot{display:none!important}
+.lgmap-body{flex:1;min-height:0;height:auto;margin:0}
+.lgmap-canvas{flex:1;min-height:0;height:auto;border-radius:0}

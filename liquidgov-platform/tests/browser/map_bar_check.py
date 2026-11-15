@@ -2,18 +2,16 @@
 phase 1"): a filter bar per level, Back (the phone's back gesture too) and Zoom out, sticky on a phone.
 Same browser, phone and sample data as phone_check.py (it reuses phone_check.Run). New file: phone_check.py is frozen.
 
-Cases (Bbottin signed in, phone_serve.sh sample data):
+Cases (Bbottin signed in, phone_serve.sh sample data). The filter chips (old B1-B4, B5b) went with the map's Hidden
+mode (Brandon 2026-11-14: "i want to get rid of the hidden objects on the mainstream map"); map_hidden_check.py checks
+they are gone.
   B0 precondition: the server serves the very lgmap.js under test
-  B1 the bar at You has one chip per box on the ring, same names, all on
-  B2 tapping a chip hides that box and its line; the other boxes stay (B2b); the server still lists it (hiding is not
-     deleting, B2c); the bar says so (B2d)
-  B3 after a reload the chip is still off and the box still hidden (remembered on this device)
-  B4 tapping the chip again shows the box
-  B5 tapping a kind (Groups) makes it the center, the bar then holds that level's chips (B5b); the browser's Back
-     (history.back, what the phone's back gesture does) returns to You (B5c)
+  B1 precondition: the ring around You has at least 3 boxes
+  B5 tapping a kind (Groups) makes it the center; the browser's Back (history.back, what the phone's back gesture
+     does) returns to You (B5c)
   B6 the trail's previous box (Back; Brandon 2026-11-13: no Zoom out button) from a kind goes up one level, to You
   B7 the MAINstream pill from You goes to the MAINstream
-  B8 on a phone the trail and the bar stay at the top (position: sticky)
+  B8 on a phone the trail stays at the top (position: sticky)
 Run: ci_map_bar_check.py (GitHub CI, a report-only step next to the phone check; this laptop rarely has the RAM).
 Writes <out>/phone-bar-<label>.json and <out>/phone-bar-<label>-*.png (look at them).
 """
@@ -32,10 +30,6 @@ class BarRun(phone_check.Run):
         return self.j("JSON.stringify([...document.querySelectorAll('#lgm-nodes .lgn')].filter(g => !g.classList.contains('lgn-you'))"
                       ".map(g => ({id: g.getAttribute('data-id'), label: g.querySelector('title').textContent,"
                       " shown: getComputedStyle(g).display !== 'none' && g.getBoundingClientRect().width > 0})))")
-
-    def chips(self):
-        return self.j("JSON.stringify([...document.querySelectorAll('#lgm-filter .lgm-chip')].map(b => ({key: b.getAttribute('data-key'),"
-                      " label: b.textContent.trim(), on: b.getAttribute('aria-pressed') === 'true'})))")
 
     def goto(self, path, settle=1.5):
         """The map starts zoomed in around your drop now (2026-11-15, Brandon: "keep it zoomed in"), with the far boxes
@@ -97,52 +91,15 @@ class BarRun(phone_check.Run):
         # 2026-11-11: an early return left B3-B8 never run on the old build).
         self.goto("/map", settle=3)
         self.close_tips()
-        ring, chips = self.ring(), self.chips()
-        names = sorted(r["label"] for r in ring) if isinstance(ring, list) else None
-        self.check("B1 precondition: the ring has at least 3 boxes", isinstance(ring, list) and len(ring) >= 3, ring)
-        self.check("B1 the bar has one chip per ring box, same names, all on",
-                   isinstance(chips, list) and names == sorted(c["label"] for c in chips) and all(c["on"] for c in chips),
-                   {"ring": names, "chips": chips})
-        self.shot("you")
-        target = next((c for c in chips if c["key"] == "mine:friends"), chips[0] if chips else None) if isinstance(chips, list) else None
-        if not target:
-            self.check("B2 precondition: a chip to tap", False, chips)
-            target = {"key": "mine:friends"}  # the cases below still run, and fail on what they find
-        self.tap_sel('#lgm-filter .lgm-chip[data-key="%s"]' % target["key"])
-        ring2 = self.ring()
-        gone = [r for r in ring2 if r["id"] == target["key"]] if isinstance(ring2, list) else None
-        self.check("B2 tapping a chip hides that box", gone is not None and gone and not gone[0]["shown"], ring2)
-        line = self.j("(() => { const p = [...document.querySelectorAll('#lgm-edges .lge')].filter(e => e.getAttribute('data-a') === %s"
-                      " || e.getAttribute('data-b') === %s); return JSON.stringify(p.map(e => getComputedStyle(e).display)); })()"
-                      % (json.dumps(target["key"]), json.dumps(target["key"])))
-        self.check("B2 ...and its line", isinstance(line, list) and line and all(d == "none" for d in line), line)
-        others = [r for r in ring2 if r["id"] != target["key"]] if isinstance(ring2, list) else []
-        self.check("B2b the other ring boxes stay", others and all(r["shown"] for r in others), ring2)
-        srv = self.j("fetch('/map/node?n=you', {credentials: 'same-origin'}).then(r => r.json())"
-                     ".then(d => JSON.stringify(d.links.map(l => l.node.id)))")
-        self.check("B2c hiding is not deleting: the server still lists it", isinstance(srv, list) and target["key"] in srv, srv)
-        note = self.j("(() => { const n = document.getElementById('lgm-filter-note'); return JSON.stringify(n && !n.hidden ? n.textContent : ''); })()")
-        self.check("B2d the bar says hiding only changes this view", isinstance(note, str) and "only" in note.lower(), note)
-        self.shot("hidden")
-        self.goto("/map", settle=3)
-        self.close_tips()
-        ring3, chips3 = self.ring(), self.chips()
-        still = [r for r in ring3 if r["id"] == target["key"]] if isinstance(ring3, list) else None
-        c3 = [c for c in chips3 if c["key"] == target["key"]] if isinstance(chips3, list) else None
-        self.check("B3 after a reload the chip is still off and the box hidden",
-                   still and not still[0]["shown"] and c3 and not c3[0]["on"], {"ring": ring3, "chips": chips3})
-        self.tap_sel('#lgm-filter .lgm-chip[data-key="%s"]' % target["key"])
         ring4 = self.ring()
-        back = [r for r in ring4 if r["id"] == target["key"]] if isinstance(ring4, list) else None
-        self.check("B4 tapping the chip again shows the box", back and back[0]["shown"], ring4)
+        self.check("B1 precondition: the ring has at least 3 boxes", isinstance(ring4, list) and len(ring4) >= 3, ring4)
+        self.shot("you")
 
         if not self.tap_sel('#lgm-nodes .lgn[data-id="mine:groups"]'):
             self.check("B5 precondition: Groups is on the ring", False, ring4)
         time.sleep(1)
-        t5, chips5 = self.trail(), self.chips()
+        t5 = self.trail()
         self.check("B5 tapping Groups makes it the center (trail You > Groups)", t5 == ["You", "Groups"], t5)
-        self.check("B5b the bar now holds Groups' own chips", isinstance(chips5, list) and chips5 and
-                   not any(c["key"].startswith("mine:") for c in chips5), chips5)
         self.shot("groups")
         cdp.js(self.ws, "history.back(), 1")
         time.sleep(2)
@@ -161,7 +118,7 @@ class BarRun(phone_check.Run):
         self.check("B7 the MAINstream pill from You goes to the MAINstream", root is True and t7 and t7[-1] == "MAINstream", {"trail": t7, "root": root})
         self.shot("mainstream")
         st = self.j("(() => { const b = document.getElementById('lgm-bars'); return JSON.stringify(b ? getComputedStyle(b).position : null); })()")
-        self.check("B8 on a phone the trail and bar stay at the top (sticky)", st == "sticky", st)
+        self.check("B8 on a phone the trail stays at the top (sticky)", st == "sticky", st)
 
 
 def run(base, session, expected_js, label, out):

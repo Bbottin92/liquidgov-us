@@ -26,7 +26,7 @@
   var userZoom = 0, userOut = false, rezoom = 0;
 
   function box(id) { return id ? nodeLayer.querySelector('.lgn[data-id="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]') : null; }
-  function shown(el) { return el.style.display !== 'none' && !el.classList.contains('lge-hiddenbox'); }
+  function shown(el) { return el.style.display !== 'none'; }
   function region(id) { var r = MAP.instance(id); return r && r.region ? r.region : null; }
   // every box drawn on the map, with its region
   function boxes() {

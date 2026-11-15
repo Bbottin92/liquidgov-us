@@ -36,30 +36,8 @@ body header.top{position:relative}
 .lgm-navbtn{background:none;border:1px solid rgba(243,212,143,.45);color:#f3d48f;border-radius:999px;padding:.15rem .7rem;
   font-size:.82rem;min-height:32px;cursor:pointer;white-space:nowrap}
 .lgm-navbtn:disabled{opacity:.35;cursor:default}
-.lgm-filter{display:flex;gap:.35rem;padding:.35rem .6rem .45rem;overflow-x:auto;scrollbar-width:none;
-  -webkit-mask-image:linear-gradient(90deg,#000 88%,transparent);mask-image:linear-gradient(90deg,#000 88%,transparent)}
-.lgm-filter::-webkit-scrollbar{display:none}
-.lgm-filter:empty{display:none}
-/* chips: at least 32 px tall, a 44 px hit area (SPEC 8) */
-.lgm-chip{position:relative;flex:none;background:#1d1a14;border:1px solid #c9a35a;color:#f4ecd8;border-radius:999px;
-  padding:.2rem .75rem;font-size:.82rem;min-height:32px;cursor:pointer}
-.lgm-chip::after{content:"";position:absolute;inset:-6px -2px}
-.lgm-chip[aria-pressed="false"]{background:none;border-style:dashed;color:#9a927f;text-decoration:line-through}
-.lgm-filter-note{margin:0;padding:0 .7rem .4rem;font-size:.78rem;color:#c9bfa8}
-/* its line is kept while it is hidden (live look #7, Brandon 2026-11-11): showing it grew the bars and pushed the whole
-   map down the moment a chip went off. No chips yet (an empty filter row): no line either. */
-.lgm-filter-note[hidden]{display:block;visibility:hidden}
-.lgm-filter:empty+.lgm-filter-note[hidden]{display:none}
-/* Hidden mode (Brandon 2026-11-11): the toggle leads the chip row; while it is on, hidden boxes come back faded and
-   dashed, and a tap shows or hides a box instead of moving the map */
-.lgm-hidetoggle{position:relative;flex:none;background:none;border:1px dashed #c9a35a;color:#f3d48f;border-radius:999px;
-  padding:.2rem .75rem;font-size:.82rem;min-height:32px;cursor:pointer}
-.lgm-hidetoggle::after{content:"";position:absolute;inset:-6px -2px}
-.lgm-hidetoggle[aria-pressed="true"]{background:#c9a35a;color:#14120f;border-style:solid;font-weight:700}
-.lgn.lgn-hidden{opacity:.35}
-.lgn.lgn-hidden .lgs{stroke-dasharray:4 3;filter:none}
-.lge.lge-hiddenbox{opacity:.12}
-.lgm-hidemode .lgn:not(.lgn-you):not(.lgn-sel) .lgs{stroke:#f3d48f}
+/* The filter bar and Hidden mode are gone (Brandon 2026-11-14): their markup is still in the page, never shown */
+#lgm-filter,#lgm-filter-note{display:none}
 .lgm-status{font-size:.9rem;color:var(--warn)}
 .lgm-privacy{margin-left:auto;font-size:.9rem}
 .lgmap-body{position:relative;display:flex;gap:.75rem;height:calc(100vh - 210px);min-height:420px}

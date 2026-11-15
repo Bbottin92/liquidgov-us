@@ -16,7 +16,7 @@ Cases (desktop 1600x1000 unless said; "narrow" is a 755 px desktop window, Grok 
       history entry); no previous box again at the start
   L6  #6 the top MAINstream button opens the MAINstream view (trail You > MAINstream, the MAINstream at the ring's
       middle) from a deep level and from You, instead of panning the map
-  L7  #7 turning every chip off at the MAINstream does not move the map (frame and MAINstream box keep their place)
+  L7  (gone 2026-11-14 with the map's filter chips and Hidden mode, Brandon: "get rid of the hidden objects")
   L8  #8 the first view is centered in the frame (vertically too), not stuck in the top half
   L9  #9 in Scroll mode a plain mouse wheel over the map zooms the map and the page does not scroll (Brandon
       2026-11-13); ctrl+wheel (a trackpad pinch)
@@ -375,18 +375,6 @@ class LiveRun:
                    t6 == ["You", "MAINstream"] and ok, {"trail": t6, "center": d})
         self.inside("MAINstream")
         self.lines("MAINstream")
-        # L7: every chip off at the MAINstream: nothing moves
-        f0, r0 = self.j("__m.frame()"), self.j("__m.boxes().find(b => b.id === 'root') || null")
-        cdp.js(self.ws, "(() => { document.querySelectorAll('#lgm-filter .lgm-chip').forEach(c => c.click()); return 1; })()")
-        time.sleep(1)
-        f1, r1 = self.j("__m.frame()"), self.j("__m.boxes().find(b => b.id === 'root') || null")
-        moved = (not isinstance(f0, dict) or not isinstance(f1, dict) or not isinstance(r0, dict) or not isinstance(r1, dict)
-                 or abs(f0["t"] - f1["t"]) > 1 or abs(f0["b"] - f1["b"]) > 1 or abs(r0["t"] - r1["t"]) > 1 or abs(r0["l"] - r1["l"]) > 1)
-        self.check("L7 all chips off at the MAINstream: the frame and the MAINstream box stay put", not moved,
-                   {"frame": [f0, f1], "root": [r0, r1]})
-        self.shot("mainstream-chips-off")
-        cdp.js(self.ws, "(() => { document.querySelectorAll('#lgm-filter .lgm-chip').forEach(c => c.click()); return 1; })()")
-        time.sleep(0.5)
         # back to You by the trail, then the MAINstream button from You
         self.click_sel("#lgm-trail .lgm-trail-step")
         self.check("L6 precondition: back at You", self.j("__m.trail()") == ["You"], self.j("__m.trail()"))

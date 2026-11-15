@@ -1,16 +1,12 @@
-"""The map's Hidden mode (Brandon 2026-11-11: "there should be a 'hidden' toggle that reveals all of the boxes that you
-have hidden as translucent boxes that you can select to unhide or select a non-hidden box in that mode to hide it").
-Same browser, phone and sample data as map_bar_check.py (reuses its BarRun helpers).
+"""The map has no hiding (Brandon 2026-11-14: "i want to get rid of the hidden objects on the mainstream map, that was a
+bad idea and its causing clutter"). This file checked the Hidden mode added 2026-11-11; it now checks that it is gone
+and that a box hidden with it before is shown again. Same browser, phone and sample data as map_bar_check.py.
 
 Cases (Bbottin signed in, phone_serve.sh sample data):
-  H1 a Hidden button on the bar; tapping it turns Hidden mode on (pressed, says Done) and the note says what to tap
-  H2 in Hidden mode a tap on a box hides it: it stays drawn but faded (lgn-hidden), the trail does not move (no
-     navigation), and the server still lists it (hiding is never deleting)
-  H3 Done: the faded box disappears, the button counts it ("Hidden (1)"), and at You its chip shows off too
-  H4 after a reload it is still hidden
-  H5 Hidden mode again: the hidden box is back, faded; tapping it shows it; Done leaves it shown
-  H6 a whole kind hidden by its chip (Groups' groups): in Hidden mode a tap on one faded group shows only that one;
-     the others stay hidden
+  H0 no Hidden button, no kind chips, and the filter bar and its note are not shown
+  H1 a box hidden with the old Hidden mode on this device (its localStorage entry, lgmap.filter.<you>) is shown, not
+     faded, and so is a whole kind switched off with an old chip
+  H2 a tap on a box does what a tap always does: it becomes the center (no tap-to-hide)
 Writes <out>/phone-hidden-<label>.json and <out>/phone-hidden-<label>-*.png (look at them).
 """
 import json
@@ -28,71 +24,33 @@ class HiddenRun(map_bar_check.BarRun):
                       " return JSON.stringify({shown: getComputedStyle(g).display !== 'none' && g.getBoundingClientRect().width > 0,"
                       " faded: g.classList.contains('lgn-hidden')}); })()" % json.dumps(box_id))
 
-    def toggle(self):
-        return self.j("(() => { const b = document.getElementById('lgm-hidetoggle'); if (!b) return JSON.stringify(null);"
-                      " return JSON.stringify({label: b.textContent.trim(), on: b.getAttribute('aria-pressed') === 'true'}); })()")
-
-    def note(self):
-        return self.j("(() => { const n = document.getElementById('lgm-filter-note'); return JSON.stringify(n && !n.hidden ? n.textContent : ''); })()")
-
     def cases(self):
         self.goto("/map", settle=3)
         self.close_tips()
-        t0 = self.toggle()
-        self.check("H1 the bar has a Hidden button, off", isinstance(t0, dict) and t0.get("label", "").startswith("Hidden") and not t0["on"], t0)
-        self.tap_sel("#lgm-hidetoggle")
-        t1, n1 = self.toggle(), self.note()
-        self.check("H1 tapping it turns Hidden mode on (pressed, says Done)", isinstance(t1, dict) and t1["on"] and t1["label"] == "Done", t1)
-        self.check("H1 ...and the note says what to tap", isinstance(n1, str) and "tap" in n1.lower(), n1)
-        trail0 = self.trail()
-        self.tap_sel('#lgm-nodes .lgn[data-id="mine:friends"]')
-        s2 = self.box_state("mine:friends")
-        self.check("H2 in Hidden mode a tap hides the box: still drawn, faded", isinstance(s2, dict) and s2["shown"] and s2["faded"], s2)
-        self.check("H2 ...and does not move you (trail unchanged)", self.trail() == trail0, {"before": trail0, "after": self.trail()})
-        srv = self.j("fetch('/map/node?n=you', {credentials: 'same-origin'}).then(r => r.json())"
-                     ".then(d => JSON.stringify(d.links.map(l => l.node.id)))")
-        self.check("H2 hiding is not deleting: the server still lists it", isinstance(srv, list) and "mine:friends" in srv, srv)
-        self.shot("mode-on")
-        self.tap_sel("#lgm-hidetoggle")
-        s3, t3, chips3 = self.box_state("mine:friends"), self.toggle(), self.chips()
-        fchip = [c for c in chips3 if c["key"] == "mine:friends"] if isinstance(chips3, list) else []
-        self.check("H3 Done: the box is gone", isinstance(s3, dict) and not s3["shown"], s3)
-        self.check("H3 ...the button counts it (Hidden (1))", isinstance(t3, dict) and t3["label"] == "Hidden (1)" and not t3["on"], t3)
-        self.check("H3 ...and its chip shows off", fchip and not fchip[0]["on"], chips3)
-        self.shot("done")
+        me = self.j("JSON.stringify(document.getElementById('lgmap').getAttribute('data-me'))") or ""
+        gone = self.j("(() => { const f = document.getElementById('lgm-filter'), n = document.getElementById('lgm-filter-note');"
+                      " const shown = e => !!e && getComputedStyle(e).display !== 'none' && e.getBoundingClientRect().height > 0;"
+                      " return JSON.stringify({toggle: !!document.getElementById('lgm-hidetoggle'), chips: document.querySelectorAll('.lgm-chip').length,"
+                      " bar: shown(f), note: shown(n)}); })()")
+        self.check("H0 no Hidden button, no kind chips; the filter bar and its note are not shown",
+                   gone == {"toggle": False, "chips": 0, "bar": False, "note": False}, gone)
+        # what the old Hidden mode saved on this device: Friends hidden at You, every group hidden inside Groups
+        self.j("(() => { localStorage.setItem('lgmap.filter.' + %s, JSON.stringify({you: ['mine:friends'], 'mine:groups': ['group']}));"
+               " return '1'; })()" % json.dumps(me))
         self.goto("/map", settle=3)
         self.close_tips()
-        s4 = self.box_state("mine:friends")
-        self.check("H4 after a reload it is still hidden", isinstance(s4, dict) and not s4["shown"], s4)
-        self.tap_sel("#lgm-hidetoggle")
-        s5 = self.box_state("mine:friends")
-        self.check("H5 Hidden mode shows it again, faded", isinstance(s5, dict) and s5["shown"] and s5["faded"], s5)
-        self.tap_sel('#lgm-nodes .lgn[data-id="mine:friends"]')
-        s5b = self.box_state("mine:friends")
-        self.check("H5 tapping the faded box shows it", isinstance(s5b, dict) and s5b["shown"] and not s5b["faded"], s5b)
-        self.tap_sel("#lgm-hidetoggle")
-        s5c = self.box_state("mine:friends")
-        self.check("H5 Done leaves it shown", isinstance(s5c, dict) and s5c["shown"] and not s5c["faded"], s5c)
-
+        s1 = self.box_state("mine:friends")
         self.tap_sel('#lgm-nodes .lgn[data-id="mine:groups"]')
         time.sleep(1)
-        kids = self.j("JSON.stringify([...document.querySelectorAll('#lgm-nodes .lgn-group')].map(g => g.getAttribute('data-id')))")
-        self.check("H6 precondition: Groups is the center with at least 2 groups", self.trail() == ["You", "Groups"] and
-                   isinstance(kids, list) and len(kids) >= 2, {"trail": self.trail(), "groups": kids})
-        kids = kids if isinstance(kids, list) else []
-        self.tap_sel('#lgm-filter .lgm-chip[data-key="group"]')
-        gone = [self.box_state(k) for k in kids]
-        self.check("H6 precondition: the Groups chip hid every group", gone and all(isinstance(s, dict) and not s["shown"] for s in gone), gone)
-        self.tap_sel("#lgm-hidetoggle")
-        if kids:
-            self.tap_sel('#lgm-nodes .lgn[data-id="%s"]' % kids[0])
-        self.tap_sel("#lgm-hidetoggle")
-        after = {k: self.box_state(k) for k in kids}
-        first = after.get(kids[0]) if kids else None
-        rest = [after[k] for k in kids[1:]]
-        self.check("H6 one tapped group comes back; the others stay hidden",
-                   isinstance(first, dict) and first["shown"] and rest and all(isinstance(s, dict) and not s["shown"] for s in rest), after)
-        self.shot("one-group")
+        kids = self.j("JSON.stringify([...document.querySelectorAll('#lgm-nodes .lgn-group')].map(g => g.getAttribute('data-id')))") or []
+        states = {k: self.box_state(k) for k in kids}
+        self.check("H1 boxes hidden with the old Hidden mode on this device are shown, not faded (Friends at You, every group)",
+                   isinstance(s1, dict) and s1["shown"] and not s1["faded"] and len(kids) >= 2
+                   and all(isinstance(v, dict) and v["shown"] and not v["faded"] for v in states.values()),
+                   {"friends": s1, "groups": states})
+        self.check("H2 a tap on a box makes it the center, as always (Groups: trail You > Groups)", self.trail() == ["You", "Groups"],
+                   self.trail())
+        self.shot("groups")
         cdp.js(self.ws, "(() => { try { localStorage.clear(); } catch (e) {} return 1; })()")  # leave no state for other runs
 
 

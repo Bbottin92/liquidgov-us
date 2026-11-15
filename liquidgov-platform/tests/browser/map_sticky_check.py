@@ -10,7 +10,7 @@ Cases (Bbottin signed in, phone_serve.sh sample data, the 390x844 phone of phone
   S2 control: with the bars made position:static for a moment, the same scroll moves them off the top of the screen
      (so S3 can't pass merely because nothing moved). Restored straight after.
   S3 the bars' top edge is at the screen's top (within 2 px), with the same height as before the scroll
-  S4 what a finger hits there is the bars: elementFromPoint at the center of the bars' first filter button is that
+  S4 what a finger hits there is the bars: elementFromPoint at the center of the trail's first button is that
      button (nothing, e.g. a fixed site header, covers them). Updated 2026-11-15 with Brandon's OK: it used the
      Drop/Scroll switch, which is gone (walking is always on).
 Not covered: iOS before 16 (no overflow:clip, falls back to hidden, which traps sticky): look on a real old iPhone.
@@ -64,10 +64,10 @@ class StickyRun(map_bar_check.BarRun):
         self.check("S3 scrolled: the bars' top edge is at the screen's top (within 2 px), same height as unscrolled",
                    isinstance(g2, dict) and isinstance(g0, dict) and abs(g2["bars_top"]) <= 2 and g2["bars_h"] > 0
                    and abs(g2["bars_h"] - g0["bars_h"]) <= 1, {"scrolled": g2, "before": g0})
-        hit = self.j("(() => { const z = document.querySelector('#lgm-filter button'); if (!z) return JSON.stringify(null);"
+        hit = self.j("(() => { const z = document.querySelector('#lgm-trail button'); if (!z) return JSON.stringify(null);"
                      " const r = z.getBoundingClientRect(), e = document.elementFromPoint((r.left + r.right) / 2, (r.top + r.bottom) / 2);"
                      " return JSON.stringify({top: r.top, hit: e ? (e.id || e.tagName) : null, ok: !!e && (e === z || z.contains(e))}); })()")
-        self.check("S4 scrolled: a finger on the bars' first filter button hits it (nothing covers the bars)",
+        self.check("S4 scrolled: a finger on the trail's first button hits it (nothing covers the bars)",
                    isinstance(hit, dict) and hit["ok"] and 0 <= hit["top"] < 120, hit)
         self.shot("scrolled")
 

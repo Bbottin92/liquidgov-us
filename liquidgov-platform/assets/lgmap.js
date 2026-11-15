@@ -945,6 +945,8 @@
     // box's page calls onOpen(id, page) when the map walker set it (it grows the peek into the page); with no walker
     // (the droplet hidden in Settings) the page simply opens.
     onOpen: null,
+    // the box at the middle of the map now (the trail's last step): the map walker opens a pool you swim into
+    center: function () { return centerId(); },
     focus: function (id, zoom) {
       var n = nodes[id], b = svg.getBoundingClientRect();
       if (!n || !b.width) return false;

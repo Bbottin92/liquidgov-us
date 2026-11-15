@@ -249,11 +249,35 @@
   }
 
   // ---- walking
-  // may the drop stand at p? Not inside a box it may not enter (unless it is already inside it: a box that moved onto
-  // you never traps you), and not off the map (150 map units past its outermost boxes).
+  // Pools and gates (Brandon 2026-11-15: boxes are pools, "you cant swim" across dry land, connections are channels
+  // with floodgates that open when relevant): your drop is only ever in water, inside a pool (a box's region) or in the
+  // channel along a connection that is showing (an edge whose two boxes are on the map and not hidden), CHANNEL map
+  // units either side of the line between their middles. First version: a connection is relevant when it is yours, and
+  // every connection on your map is, so every showing channel is open; a box you may not enter still stops you at its
+  // edge (its valve). If a new layout ever leaves you on dry land you may still move (never trapped).
+  var CHANNEL = 26;
+  function nearSeg(p, a, b, w) {
+    var dx = b.cx - a.cx, dy = b.cy - a.cy, L = dx * dx + dy * dy, t = L ? ((p.x - a.cx) * dx + (p.y - a.cy) * dy) / L : 0;
+    t = Math.max(0, Math.min(1, t));
+    var qx = a.cx + t * dx - p.x, qy = a.cy + t * dy - p.y;
+    return qx * qx + qy * qy <= w * w;
+  }
+  function inWater(all, p) {
+    if (holding(all, p).length) return true;
+    var ok = false;
+    Array.prototype.forEach.call(edgeLayer.querySelectorAll('.lge'), function (e) {
+      if (ok || !shown(e) || e.style.visibility === 'hidden') return;
+      var a = region(e.getAttribute('data-a')), b = region(e.getAttribute('data-b'));
+      if (a && b && nearSeg(p, a, b, CHANNEL)) ok = true;
+    });
+    return ok;
+  }
+  // may the drop be at p? In water (above), not inside a box it may not enter (unless it is already inside it: a box
+  // that moved onto you never traps you), and not off the map (150 map units past its outermost boxes).
   function allowed(all, p) {
     var e = MAP.extent();
     if (e && (p.x < e.x0 - 150 || p.x > e.x1 + 150 || p.y < e.y0 - 150 || p.y > e.y1 + 150)) return false;
+    if (!inWater(all, p) && inWater(all, me)) return false;   // the shore: dry land stops you
     var was = holding(all, me).map(function (b) { return b.id; }), ok = true;
     holding(all, p).forEach(function (b) {
       if (was.indexOf(b.id) < 0 && entry(b.id, true) === 'no') ok = false;
@@ -276,10 +300,13 @@
   // the map moved the box you stand in (a box opened, the ring was laid out again): you go with it
   function carry() {
     var r = at ? region(at) : null;
+    var moved = false;
     if (r && anchor && anchor.id === at && (anchor.cx !== r.cx || anchor.cy !== r.cy)) {
       me = { x: me.x + r.cx - anchor.cx, y: me.y + r.cy - anchor.cy };
+      moved = true;
     }
     anchor = r ? { id: at, cx: r.cx, cy: r.cy } : null;
+    return moved;
   }
   function start() {
     var id = box(want) ? want : (box('you') ? 'you' : ''), r = id ? region(id) : null;
@@ -294,7 +321,7 @@
       userOut = false;
       centerView(walkScale(), false);
     }
-    carry();
+    var carried = carry();   // a pool that opened moves you with it: the screen follows, as it does when you swim
     var all = boxes(), v = W.velocity(held, pull), moved = false;
     W.shape(dropPortrait, v.x, v.y);
     if (v.x || v.y) moved = move(all, v);
@@ -305,7 +332,7 @@
     Array.prototype.forEach.call(nodeLayer.querySelectorAll('.lgn.lgn-walk'), function (o) { if (o.getAttribute('data-id') !== at) o.classList.remove('lgn-walk'); });
     if (at && box(at)) box(at).classList.add('lgn-walk');
     scopeCss();
-    if (moved) follow();
+    if (moved || carried) follow();
     watchZoom();
     proximity(all);
     var p = MAP.toScreen(me.x, me.y);
@@ -320,6 +347,7 @@
     herePlace();
     presence();
     peekTick();
+    poolTick();
   }
 
   var walker = document.createElement('div');
@@ -360,6 +388,18 @@
   // page for dwellMs, its page (live, only looked at: lg_peek=1, walker.js) grows out of the box's middle in a
   // see-through window; walking away shrinks it back. A there, or opening the box (a double tap, a hold, Enter), grows
   // it over the whole screen as it turns solid, and then you are on that page.
+  // Swimming into a pool opens it (Brandon 2026-11-15, pools and gates): stay in a box that is not the middle of the map
+  // for openMs and its connections spread around it, as a tap on it does (this replaces A making a box the center; A is
+  // now the portal). B / Esc, or the trail, goes back.
+  var OPEN_MS = 700, inSince = 0, inFor = '';
+  function poolTick() {
+    if (entering || !at || !MAP.center || at === MAP.center()) { inFor = ''; return; }
+    if (inFor !== at) { inFor = at; inSince = Date.now(); return; }
+    if (Date.now() - inSince < OPEN_MS) return;
+    inFor = '';
+    var b = box(at);
+    if (b) b.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+  }
   var PEEK = { dwellMs: 250, w: 520, h: 380, alpha: 0.6, ms: 320, growMs: 420, cls: 'lgm-peek' };
   var peekEl = null, peekFrame = null, peekFor = '', peekPage = '', peekSince = 0, peekOpen = false, entering = false;
   function peekUrl(page) { return page + (page.indexOf('?') < 0 ? '?' : '&') + 'lg_peek=1'; }
@@ -377,7 +417,7 @@
   // the window's place: above the box when there is room, else below, inside the screen; it grows from the box's middle
   function peekPlace(el, page) {
     var b = el.getBoundingClientRect(), vw = window.innerWidth, vh = window.innerHeight;
-    var w = Math.min(PEEK.w, vw - 24), h = Math.min(PEEK.h, Math.round(vh * 0.45));
+    var w = Math.min(PEEK.w, Math.round(vw * 0.62)), h = Math.min(PEEK.h, Math.round(vh * 0.3));   // a glimpse, not a cover
     var cx = (b.left + b.right) / 2, top = b.top - h - 12 >= 8 ? b.top - h - 12 : Math.min(vh - h - 8, b.bottom + 12);
     var left = Math.max(12, Math.min(vw - w - 12, cx - w / 2));
     top = Math.max(8, top);

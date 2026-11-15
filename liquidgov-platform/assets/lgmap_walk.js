@@ -373,7 +373,10 @@
       if (POOLS && at && !userOut) centerView(walkScale(), true);
     }
     if (at) last = at;
-    instanceId = at && at !== 'you' ? at : MAINSTREAM;
+    // Your own pool is your own place (Brandon 2026-11-15: "yeah do that"; it was a lobby everyone shared): standing in
+    // it you are in the instance of your own box, user:<you>, the one a visitor is in when they swim into your pool
+    // on their map. Only the open water between pools (in no box) is the shared mainstream.
+    instanceId = at === 'you' ? (myName ? 'user:' + myName : MAINSTREAM) : (at || MAINSTREAM);
     Array.prototype.forEach.call(nodeLayer.querySelectorAll('.lgn.lgn-walk'), function (o) { if (o.getAttribute('data-id') !== at) o.classList.remove('lgn-walk'); });
     if (at && box(at)) box(at).classList.add('lgn-walk');
     scopeCss();
@@ -445,7 +448,6 @@
       same(f, e);
     }
     function nameOf(id) {
-      if (id === 'you') return POOLS.label({ kind: 'you' });
       var b = box(id), t = b && b.querySelector('title');
       return t ? t.textContent : '';
     }

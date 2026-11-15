@@ -86,7 +86,8 @@
   // how many new channels a pool can take: what fits round it at its largest, less the way back
   function poolCap(c) { return Math.max(3, Math.floor(2 * Math.PI * 0.9 / mouthAngle(poolMax(c))) - 1); }
   function poolFont(d) { return Math.round(poolR(d) * (d.kind === 'you' ? 0.3 : 0.2)); }
-  function poolLabel(d) { return d.kind === 'you' ? 'Main' : d.label; }
+  // your own pool carries your name (Brandon 2026-11-15: it is yours, not a "Main" for everyone)
+  function poolLabel(d) { return d.label; }
   var nodes = {};   // id -> {id,label,kind,page,rel,x,y,el,expanded}
   var edges = {};   // "a|b" -> {a,b,kind,el}
   var selected = null;

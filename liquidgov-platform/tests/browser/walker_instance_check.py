@@ -1,12 +1,12 @@
 """Spatial step 3 (SPATIAL_EVOLUTION.md): the map walker's instanceId. Walking onto a box sets it to that box; back at
-the you box, or between boxes, it is the parent, "mainstream".
+your own pool it is user:<you> (your own place, 2026-11-15); between boxes it is the shared "mainstream".
 
 Real headless Chromium at phone size (the touchpad can push straight at any box), NO C++ server: walker_controls_check.py's stdlib server and fake graph (the real lgmap.js,
 walker.js and lgmap_walk.js), reused as they are. The walker's instance is read from #lgm-walker[data-instance].
 
-  I1  the map loaded and the walker stands on the you box: mainstream
+  I1  the map loaded and the walker stands in your own pool: user:<you>
   I2  walk onto a profile box (kind person): the instance is that box's id
-  I3  walk off it: the instance leaves the profile box; back at the you box it is mainstream again
+  I3  walk off it: the instance leaves the profile box; back in your own pool it is user:<you> again
   I4  between boxes (in no box) the walker is still shown and the instance is mainstream
 
 2026-11-15 (Brandon's OK to update the checks that test the switch or the hopping): walking is always on and free, so
@@ -103,8 +103,9 @@ class Run(wc.Run):
         self.tp = (self.j(wc.BOXES) or {}).get("touchpad")
         self.reach = (self.j("JSON.stringify(LG_WALKER.CONTROLS.touchpad)") or {}).get("reach", 0)
         st = self.state()
-        self.check("I1 the map loaded and the walker stands on the you box: the instance is mainstream",
-                   ok and bool(self.tp) and st.get("at") == "you" and not st.get("hidden") and st.get("instance") == "mainstream",
+        home = "user:" + wc.m2.ME   # your own pool is your own place (Brandon 2026-11-15), not the shared mainstream
+        self.check("I1 the map loaded and the walker stands in your own pool: the instance is user:<you>",
+                   ok and bool(self.tp) and st.get("at") == "you" and not st.get("hidden") and st.get("instance") == home,
                    {k: st.get(k) for k in ("at", "hidden", "instance")})
         # the profile boxes are behind the friends box: walk there, open it (Enter), then walk onto a friend
         self.hop("mine:friends")
@@ -122,8 +123,8 @@ class Run(wc.Run):
         time.sleep(0.8)
         time.sleep(0.6)   # the camera settles after going back
         st = self.hop("you")
-        self.check("I3 walk off it: the instance leaves the profile box, and back at the you box it is mainstream again",
-                   bool(people) and off.get("instance") == "mine:friends" and st.get("at") == "you" and st.get("instance") == "mainstream",
+        self.check("I3 walk off it: the instance leaves the profile box, and back in your own pool it is user:<you> again",
+                   bool(people) and off.get("instance") == "mine:friends" and st.get("at") == "you" and st.get("instance") == home,
                    {"off": {k: off.get(k) for k in ("at", "instance")}, "you": {k: st.get(k) for k in ("at", "instance")}})
         time.sleep(0.6)
         before = self.hop("mine:friends")     # stand in a box again, then step out of it onto the open map

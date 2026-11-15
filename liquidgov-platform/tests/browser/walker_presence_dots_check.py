@@ -4,10 +4,10 @@ lgmap_walk.js hereDraw). They are removed when that person leaves your instance 
 
 Two real browsers (Bbottin and pal) on the REAL server, as walker_presence_check.py (its Tab is reused as it is).
 
-  D0  precondition: both on the map, on the you box in mainstream; no dot is drawn for yourself
-  D1  same instance: each sees one dot, the other's, a small circle on the screen next to the walker
+  D0  precondition: both on the map, each in their own pool; no dot is drawn for yourself
+  D1  your own pool is your own place (Brandon 2026-11-15): each in their own pool, neither has a dot
   D2  Bbottin walks onto the group's box (another instance): neither has a dot
-  D3  pal walks onto the same box: each has the other's dot again
+  D3  pal walks onto the same box: each has one dot, the other's, a small circle on the screen next to the walker
   D4  Bbottin leaves the map (another page): pal no longer has Bbottin's dot (2026-11-15, Brandon's OK: no
       Drop/Scroll switch any more, so the old Scroll case became leaving the map)
 
@@ -47,26 +47,28 @@ def cases(a, b):
     A, B = "Bbottin", "pal"
     ok = a.enter_map() and b.enter_map()
     sa, sb = a.state(), b.state()
-    a.check("D0 precondition: both on the map, on the you box in mainstream; no dot for yourself",
-            ok and all(s.get("at") == "you" and s.get("instance") == "mainstream" and not s.get("hidden") for s in (sa, sb))
+    a.check("D0 precondition: both on the map, each in their own pool; no dot for yourself",
+            ok and all(s.get("at") == "you" and not s.get("hidden") for s in (sa, sb))
+            and sa.get("instance") == "user:" + A and sb.get("instance") == "user:" + B
             and A not in who(a) and B not in who(b),
             {"A": {k: sa.get(k) for k in ("at", "instance", "hidden")}, "B": {k: sb.get(k) for k in ("at", "instance", "hidden")}})
 
-    both = wp.until(lambda: who(a) == [B] and who(b) == [A])
+    wp.time.sleep(1.5)   # several snapshots
     da, db = dots(a), dots(b)
-    a.check("D1 same instance: each sees one dot, the other's, a small circle next to the walker",
-            both and len(da) == 1 and len(db) == 1 and good(da[0]) and good(db[0]), {"A draws": da, "B draws": db})
+    both = not da and not db and not who(a) and not who(b)
+    a.check("D1 each in their own pool: neither has a dot", both, {"A draws": da, "B draws": db})
 
     st = a.walk_to_group()
     apart = wp.until(lambda: not dots(a) and not dots(b))
     a.check("D2 Bbottin walks onto the group's box (another instance): neither has a dot",
-            both and st.get("instance") == wp.BOX and b.state().get("instance") == "mainstream" and apart,
+            both and st.get("instance") == wp.BOX and b.state().get("instance") == "user:" + B and apart,
             {"A instance": st.get("instance"), "A draws": dots(a), "B draws": dots(b)})
 
     st = b.walk_to_group()
     together = wp.until(lambda: who(a) == [B] and who(b) == [A] and all(good(d) for d in dots(a) + dots(b)))
-    a.check("D3 pal walks onto the same box: each has the other's dot again",
-            apart and st.get("instance") == wp.BOX and together, {"A draws": dots(a), "B draws": dots(b)})
+    da, db = dots(a), dots(b)
+    a.check("D3 pal walks onto the same box: each has one dot, the other's, a small circle next to the walker",
+            apart and st.get("instance") == wp.BOX and together and len(da) == 1 and len(db) == 1, {"A draws": da, "B draws": db})
 
     a.nav("/feed")   # walking is always on (2026-11-15): the way out is leaving the map
     off = wp.until(lambda: not dots(b))

@@ -1,4 +1,4 @@
-"""The map walker tells the presence server which instance it is in (2026-11-14). While Drop is on, lgmap_walk.js is in
+"""The map walker tells the presence server which instance it is in (2026-11-14). On the map, lgmap_walk.js is in
 the presence server's map room (/here/ws?page=/map) and every position update it sends is {x, y, instanceId}, the
 message the dots on profile pages send. The server's snapshot holds only the walkers in the same instance (spatial
 step 5), so two walkers on different boxes do not see each other and two on the same box do. New file.
@@ -7,13 +7,14 @@ Two real browsers (Bbottin and pal) on the REAL server (phone_serve.sh's throwaw
 map and walker. Who a walker sees is read from #lgm-walker[data-here]; what it sent, from a recorder put on
 WebSocket.send before the page loads. Both are in the group Fresno Neighbors, so that box is on both maps.
 
-  W0  precondition: both chose Yes, both maps loaded, Drop on, standing on the you box in mainstream, the socket is open
+  W0  precondition: both chose Yes, both maps loaded, standing on the you box in mainstream, the socket is open
   W1  every message the walker sent has x, y and instanceId; standing on the you box it says mainstream
   W2  same instance (both in mainstream): each sees the other
   W3  Bbottin walks onto the group's box: the moves it sends name that box, and now neither sees the other
   W4  pal walks onto the same box: both in that instance, each sees the other again
-  W5  Bbottin switches to Scroll: the walker is hidden, its socket is closed and pal no longer sees Bbottin; Drop
-      again and both are back (the Drop/Scroll switch still works)
+  W5  Bbottin leaves the map (another page): pal no longer sees Bbottin; back on the map its socket is open again
+      and it says mainstream (2026-11-15, Brandon's OK: there is no Drop/Scroll switch any more, so the old Scroll
+      case became leaving the map)
 
 Usage as ci_phone_check.py's checks; see ci_walker_presence_check.py."""
 import json
@@ -92,7 +93,7 @@ def cases(a, b):
     ok = a.enter_map() and b.enter_map()
     until(lambda: a.presence().get("open") == 1 and b.presence().get("open") == 1 and a.presence()["sent"] and b.presence()["sent"])
     sa, sb, pa, pb = a.state(), b.state(), a.presence(), b.presence()
-    a.check("W0 precondition: both chose Yes, maps loaded, Drop on, on the you box in mainstream, the socket is open",
+    a.check("W0 precondition: both chose Yes, maps loaded, on the you box in mainstream, the socket is open",
             ok and all(s.get("at") == "you" and s.get("instance") == "mainstream" and not s.get("hidden") for s in (sa, sb))
             and pa.get("open") == 1 and pb.get("open") == 1,
             {"A": {k: sa.get(k) for k in ("at", "instance", "hidden")}, "B": {k: sb.get(k) for k in ("at", "instance", "hidden")},
@@ -126,16 +127,18 @@ def cases(a, b):
             apart and st.get("at") == BOX and bool(pb["sent"]) and pb["sent"][-1]["instanceId"] == BOX and together,
             {"B at": st.get("at"), "B sent": pb["sent"][-3:], "A sees": a.presence()["sees"], "B sees": pb["sees"]})
 
-    a.j("(() => { document.querySelector('.' + LG_WALKER.CONTROLS.buttons.drop.cls).click(); return '1'; })()")
-    off = until(lambda: a.state().get("hidden") and a.presence().get("open") == 0 and A not in b.presence()["sees"])
-    after_off = {"A hidden": a.state().get("hidden"), "A open": a.presence().get("open"), "B sees": b.presence()["sees"]}
-    a.drop()
-    back = until(lambda: not a.state().get("hidden") and a.presence().get("open") == 1 and A in b.presence()["sees"]
-                 and B in a.presence()["sees"])
-    a.check("W5 Scroll: the walker is hidden, its socket closed, pal no longer sees Bbottin; Drop again and both are back",
-            together and off and back,
-            {"after Scroll": after_off, "after Drop": {"A": a.state().get("instance"), "A open": a.presence().get("open"),
-                                                         "A sees": a.presence()["sees"], "B sees": b.presence()["sees"]}})
+    # walking is always on (2026-11-15): the way out of the map room is leaving the map
+    a.nav("/feed")
+    off = until(lambda: A not in b.presence()["sees"])
+    after_off = {"A on": a.j("JSON.stringify(location.pathname)"), "B sees": b.presence()["sees"]}
+    a.nav("/map")
+    a.wait("!!document.getElementById('lgm-walker') && !document.getElementById('lgm-walker').hidden", 15)
+    back = until(lambda: a.presence().get("open") == 1 and bool(a.presence()["sent"])
+                 and a.presence()["sent"][-1]["instanceId"] == "mainstream")
+    a.check("W5 Bbottin leaves the map: pal no longer sees Bbottin; back on the map its socket is open again and it says mainstream",
+            together and off and back and after_off["A on"] == "/feed",
+            {"after leaving": after_off, "back": {"A": a.state().get("instance"), "A open": a.presence().get("open"),
+                                                  "A sent": a.presence()["sent"][-2:]}})
 
 
 def run(base, session, expected_js, label, out):

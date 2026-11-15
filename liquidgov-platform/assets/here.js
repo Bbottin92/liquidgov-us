@@ -93,9 +93,18 @@
     };
     ws.onclose = function () {
       Object.keys(dots).forEach(function (u) { if (u !== cfg.me) { dots[u].remove(); delete dots[u]; } });
-      if (++tries <= 5) setTimeout(connect, 1000 * tries);
+      if (!gone && ++tries <= 5) setTimeout(connect, 1000 * tries);
     };
   }
+  // Leaving the page (2026-11-15): a browser can keep the page you left in memory (its back/forward cache) with this
+  // socket still open, and then the others on the page kept seeing your dot after you had gone. So the socket is closed
+  // on the way out (not retried), and opened again if that kept page is shown again (Back).
+  var gone = false;
+  window.addEventListener('pagehide', function () {
+    gone = true;
+    try { if (ws) ws.close(); } catch (e) { /* err-ok: already closing */ }
+  });
+  window.addEventListener('pageshow', function (e) { if (e.persisted && gone) { gone = false; tries = 0; connect(); } });
 
   // ---- walking
   // what you stand next to, and using it: walker.js's (the home page walks the same way)

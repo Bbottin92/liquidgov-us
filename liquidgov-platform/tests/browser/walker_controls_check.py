@@ -1,6 +1,6 @@
 """Walker controls (Brandon 2026-11-13, 12:28 AM: "the desktop would be wasd controls and enter to select and esc to go
 back. also the button that turns dripping on should be at the top of the screen"; 12:30 AM: "d pad lower left, A and B
-buttons lower right. right now theyre all scrunched in the lower left"). New file: no committed check is edited.
+buttons lower right. right now theyre all scrunched in the lower left").
 
 Real headless Chromium, NO C++ server (like site_hidden_check.py): a stdlib server serves a profile-like page (site
 header, a button, a text field, the Juketube button, the footer) with the real assets/site.css, assets/juketube.css and
@@ -9,79 +9,68 @@ serve map_page_body's markup with the real lgmap.js/lgmap.css + walker.js + lgma
 fake graph. Every key and button name comes from walker.js's one controls map (window.LG_WALKER.CONTROLS); this file
 keeps no copy of the bindings.
 
-  K0  precondition: the controls map is on the page and binds every direction to keys, select and back to keys and
-      buttons, and names the touchpad (reach, dead zone, size, translucency, place) and the top speed
-  Phone 390x844 (walking; Brandon 1:08/1:09 AM: a see-through touchpad, A and B attached to its right side, at the
-  bottom center in thumb reach):
-  P1  the touchpad + A/B unit is centered, in the bottom quarter, lifted CONTROLS.touchpad.lift px off the bottom, and
-      fits the screen with its margins
-  P2  A and B are attached to the touchpad's right side, stacked, each half its height (together its height)
-  U1  the touchpad, A and B are equally see-through (opacity = CONTROLS.touchpad.alpha, under 1)
-  P3  no two controls overlap (touchpad, A, B, the Drop button, the Juketube button)
-  P4  every control is at least 44x44 px
+Walking is always on (Brandon 2026-11-14/15: no Drop/Scroll switch, a Center button, free walking on the map), so
+the old switch and hopping cases are gone (P5, P6, T1-T3, C1, C2, D1, and the old M1/M3/M4, H0/H1); the names below
+are the cases this file runs now.
+
+  K0  the controls map (LG_WALKER.CONTROLS) binds every direction, select and back to keys and buttons, and names Center
+  Phone 390x844, the profile-like page:
+  N1  there is no Drop/Scroll switch, strip or note; the pad is on the page from the start
+  P1  the touchpad + A/B unit is centered, in the bottom quarter, lifted CONTROLS.touchpad.lift px, inside its margins
+  P2  A and B are attached to the touchpad's right side, stacked, each half its height
+  U1  the touchpad, A and B are equally see-through (CONTROLS.touchpad.alpha)
   J1  the touchpad replaced the D-pad: no direction buttons are left on the pad
-  J2  a pull inside the dead zone does not move your dot (positive control: J3 moves it)
-  J3  a full pull (from where the finger touched, not the middle) moves the dot its way at about CONTROLS.maxSpeed px
-      per 40 ms, faster than a half pull; let go, it stops
-  P5  the Drop button (Brandon's name; it turns walking on) is in the top 15% of the screen and does not cover the site header's middle
-  P6  the Drop button is a Drop/Scroll switch: it shows both of the map's state names (CONTROLS.buttons.drop.states)
-      and marks the one you are in (Scroll before, Drop while walking)
-  First-time note (Brandon 2:05/2:07 AM; tip.js, the mechanism Juketube's first-time tip uses):
-  T1  a first visit shows the note with the map's text (CONTROLS.buttons.drop.tip.text), styled as Juketube's tip
-      (the same .lg-tip look: background, border, corners, shadow, font size as a #jbhint)
-  T2  the note sits in the Drop strip under the switch and covers nothing (no link, button or field; not the switch)
-  T3  its close button hides it and saves the seen-flag (LG_TIP.flag); the next page view shows no note
-  T4  one tip at a time (LG_TIP): while one shows, another waits for a later page view without counting it
-  C2  on the map the switch sits at the end of the map's own row (after the trail; no Back or Zoom out buttons, Brandon
-      5:01 AM), so the map keeps its place on the page (no strip at the top there)
-  C3  the map's nav row (Brandon 4:26 AM: the switch squeezed the trail's "You" to "ou"): no Back or Zoom out button,
-      the switch does not meet the trail, the trail shows its whole first step, and the row stays one line (the map
-      keeps its place); at 390x844 and 1280x800
-  Map zoom and back without buttons (Brandon 5:01 AM), in Scroll mode:
-  Z1  1280x800: the mouse wheel over the map zooms in toward the pointer (the box under it stays under it) and out
-      again, the page does not scroll, and the zoom stops at LG_MAP.ZOOM.max / never goes under ZOOM.min
-  Z2  390x844: a two-finger pinch spreads the map (scale grows with the fingers); one finger on the empty map still
-      pans without zooming
-  Z3  the trail marks the box you came from (lgm-trail-prev, "Back to ..."); clicking it goes back there
-  A1  the switch's labels meet WCAG AA (4.5:1) against what is behind them, the chosen one and the other, on the
-      profile-like page and inside the map's dark frame; the colors are the site's --lg-switch-* variables
-  T5  a first-time tip's close button (x) does not cover its text: the walker's note, the home page's note and a
-      Juketube tip (#jbhint, long text)
-  C1  the Drop button covers nothing (Brandon 1:59 AM: on the map it covered MAINstream): its box meets neither the
-      portal (CONTROLS.portal), nor the map's MAINstream button (#lgm-main), nor any other link, button or field;
-      at 390x844 and 1280x800, on the profile-like page and on the map
+  P3  no two controls overlap (touchpad, A, B, the Center button, the Juketube button)
+  P4  every control is at least 44x44 px
+  A1  the Center button's label meets WCAG AA (4.5:1), disarmed and armed (the site's --lg-switch-* colors)
+  T5  a tip's close button does not cover its text (Juketube's tip; the walker has no note of its own any more)
+  T4  one tip at a time (LG_TIP): while one shows, another waits without its view being counted
+  J2  a pull inside the dead zone does not move your dot
+  J3  a full pull walks the dot at about CONTROLS.maxSpeed px a tick, a half pull slower; let go, it stops
+  S1-S3  your drop is your portrait: a circle stopped, stretched with a tail at speed, a circle under reduced motion
+  The Center button and plain scrolling:
+  CE0 a first visit: disarmed
+  CE1 disarmed: walking down scrolls the page only to keep the dot in view (not held in the middle)
+  SC1 scrolling by hand works as always: the page stays where you scrolled it and the dot where it stood
+  CE2 armed: the screen slides so the dot is in its middle, at once and after every move
+  CE3 the choice is remembered on the device (armed after a reload)
+  CE4 disarmed again: as before, and that is remembered too
   Desktop 1280x800:
-  D1  the Drop button is in the top 15% of the screen and does not cover the site header's middle
-  D2  each movement key in the map (W/A/S/D and the arrows) moves your dot its way
+  D2  each movement key (W/A/S/D and the arrows) moves your dot its way
   D3  select (Enter) uses the button you stand next to (positive control: nothing was used before)
   D4  keys typed in a text field stay in the field (the dot does not move); back (Esc) there leaves the field
   D5  back (Esc) goes back a page
-  Map (Brandon 2026-11-13 12:36 AM: the walker stands on a box and walks along a connector to the next one):
-  M1  1280x800: each letter key of the map (D/A/W/S) moves the walker from you along a drawn connector to a connected
-      box that lies that way, and the opposite key walks it back to you
-  Q1  the portal (walker.js's CONTROLS.portal: the header's MAINstream link) is round and marked when you stand by it
-  Q2  dropped in next to it, select (Enter) takes you to the map, dropped in, standing at this page's box (user:pal)
-  M4  1280x800: Drop zooms the map toward the walker (a box grows by about LG_WALKER.CONTROLS.mapZoom), the camera
-      follows it to the next box (that box ends up near the frame's middle), and leaving Drop restores the zoom
-  M2  1280x800: select (Enter) opens the box you stand on (its page opens in the side panel; positive control: closed
-      before); back (Esc) closes it
-  M3  390x844: the touchpad moves the walker to a connected box; A does what a tap does (the box becomes the center:
-      the trail ends at it); B goes back (the trail is You again)
-  Home page (Brandon 4:03 AM: Drop as the home page's hook; genesis_body's own markup, with tip.js + walker.js +
-  home_drop.js), phone 390x844:
-  H0  it starts as usual: the switch marks Scroll, no drop on the page, and the switch pulses (CONTROLS.home.invite,
-      a running animation) to invite a tap; the first-time note ("Stop, Drop & Scroll") shows under the switch
-  H1  tapped, the pulse stops, the switch marks Drop, your drop appears just under the switch (and the sticky header:
-      nothing covers it) and a guide
-      (CONTROLS.home.guide.text) points down, under the drop
-  H2  walking down keeps the guide with you until the scrolling-words section (CONTROLS.home.belt.after); past it the
-      guide is gone and the moving sidewalk (CONTROLS.home.belt.cls) covers the floor from that section's bottom
-  H3  on the sidewalk, walking with it (belt.dir) is about (1 + boost) x your speed off it, against it about (1 - boost) x
-  H4  A (Enter) with nothing next to you: a squish-and-bounce (the drop's CONTROLS.hop animation and a splat mark run;
-      data-hops counts it); nothing is clicked and the page stays
-  H5  A next to a link still uses it (positive control for H4: the link's page opens)
-  H6  reduced motion: no pulse, guide, sidewalk or hop animation, and the drop stays round while walking; A with
-      nothing next to you still counts (no animation)
+  The map, 1280x800 and 390x844:
+  M0  the map is drawn and the walker stands on you, with no switch to tap
+  M4  it starts zoomed in around the walker (CONTROLS.mapZoom times the fitted view), the walker in the middle of the
+      part of the map you can see
+  C3  no Back, Zoom out or Drop/Scroll switch: the nav row is the trail alone and shows its whole first step
+  S4  the walker is your portrait drop: a teardrop while it walks, a circle after
+  M1  each key walks the walker freely at about maxSpeed, not from box to box; walking onto a connected box puts you
+      in it, walking back puts you in you again
+  M5  zoomed in, only the box you are at and the boxes connected to it are shown; zoom out with the wheel and every
+      box shows and stays shown while you walk; zoom back in and the far boxes are hidden again
+  M2  select (Enter) opens the box you stand in (positive control: closed before); back (Esc) closes it
+  M6  when the map zooms out by itself (a box was opened), the walking zoom comes back
+  MC1 phone, Center disarmed: the touchpad walks the walker across the map; the map stays put
+  MC2 phone, Center armed: the map slides so the walker stays in the middle of the part you can see (above the pad)
+  M3  phone: the touchpad walks the walker onto a connected box; A does what a tap does; B goes back
+  Z1  1280x800: the wheel over the map zooms in toward the pointer and back out, the page does not scroll, and the
+      zoom stops at LG_MAP.ZOOM.max / never goes under ZOOM.min
+  Z3  the trail marks the box you came from (lgm-trail-prev, "Back to ..."); clicking it goes back there
+  Z2  390x844: two fingers on the map above the pad pinch it (scale grows with the fingers' spread); one finger on the
+      empty map still pans without zooming
+  Q1  the portal (CONTROLS.portal: the header's MAINstream link) is round and marked when you stand by it
+  Q2  select by the portal: the map, with your walker standing in this page's box (user:pal)
+  Home page (genesis_body's own markup, with tip.js + walker.js + home_drop.js), phone 390x844:
+  H0  no switch, strip or note: your drop is on the page from the start, under the header, in view
+  H1  a guide (CONTROLS.home.guide.text) points down, under the drop
+  H2  the guide stays with you down to the scrolling-words section (CONTROLS.home.belt.after); past it the guide is
+      gone and the moving sidewalk (CONTROLS.home.belt.cls) covers the floor from that section's bottom
+  H3  on the sidewalk, walking with it is about (1 + boost) x your speed off it, against it about (1 - boost) x
+  H4  A (Enter) with nothing next to you: a squish-and-bounce and a splat; nothing is clicked and the page stays
+  H5  A next to a link still uses it (positive control for H4)
+  H6  reduced motion: no guide, sidewalk or hop animation, the drop stays round while walking; A still counts
 Usage: LG_BROWSER=$(command -v google-chrome) python3 walker_controls_check.py [<liquidgov-platform dir> [<out dir>]]
 Writes <out dir>/phone-walker-controls-*.png. Prints "VERDICT walker-controls: ALL-PASS" or the failed cases.
 Exit 1 on a FAIL."""
@@ -441,7 +430,12 @@ class Run(m.Run):
         time.sleep(0.4)
         c0 = self.j(self.CENTER) or {}
         self.check("CE0 a first visit: the Center button is disarmed", c0.get("pressed") == "false" and c0.get("stored") in (None, "0"), c0)
-        self.key("s", 2.0)
+        # walk down until the page has scrolled well past SC1's 260 px (2026-11-15: a fixed 2 s stopped short of the
+        # point where the page starts to follow, so CE1 and SC1 measured a page that had not moved)
+        for _ in range(14):
+            self.key("s", 1.0)
+            if ((self.j(self.CENTER) or {}).get("sy") or 0) >= 300:
+                break
         time.sleep(0.3)
         c1 = self.j(self.CENTER) or {}
         self.check("CE1 disarmed: walking down scrolls the page only to keep the dot in view (it is on the screen, not in the middle)",
@@ -466,7 +460,8 @@ class Run(m.Run):
         self.check("CE2 armed: after every move the dot is in the middle again (down, then up)",
                    c4.get("pageY", 0) > c3.get("pageY", 0) + 40 and abs(c4["y"] - c4["vh"] / 2) <= 12
                    and c5.get("pageY", 0) < c4.get("pageY", 0) - 20 and abs(c5["y"] - c5["vh"] / 2) <= 12, {"down": c4, "up": c5})
-        self.shot("center-armed-phone", {"x": 0, "y": 0, "width": 390, "height": 844})
+        # the picture is of the screen where it is scrolled to (a clip from the page's top came out blank: 2026-11-15)
+        self.shot("center-armed-phone", {"x": 0, "y": c5.get("sy", 0), "width": 390, "height": 844})
         self.goto("/walk")
         self.drop()
         time.sleep(0.3)
@@ -1109,7 +1104,16 @@ def _map_zoom_back(self):
     self.ws.call("Emulation.setTouchEmulationEnabled", enabled=True, maxTouchPoints=5)
     try:
         f = (self.j(MAPZ) or {}).get("frame")
-        cx, cy = (f["l"] + f["r"]) / 2, f["t"] + 0.55 * (f["b"] - f["t"])
+        # the fingers go on the map you can see: above the pad (on a phone the frame runs under it; a finger on the
+        # Center button is a press of that button, not a pinch: 2026-11-15, the first version of this case did that)
+        pad_top = self.j("(() => { const c = document.querySelector('#lg-here-pad .' + LG_WALKER.CONTROLS.buttons.center.cls);"
+                         " return JSON.stringify(c ? c.getBoundingClientRect().top : innerHeight); })()")
+        top, bottom = max(f["t"], 0), min(f["b"], pad_top)
+        cx, cy = (f["l"] + f["r"]) / 2, (top + bottom) / 2
+        hit = self.j("JSON.stringify([-30, 30, -90, 90].map(d => { const h = document.elementFromPoint(%f + d, %f);"
+                     " return !!(h && h.closest('#lgm-svg')); }))" % (cx, cy))
+        self.check("Z2 phone: there is map to pinch above the pad (both fingers land on the map, start and end)",
+                   bottom - top >= 120 and hit == [True] * 4, {"map above the pad": [top, bottom], "fingers on the map": hit})
         s0 = (self.j(MAPZ) or {}).get("scale")
         pts = lambda d: [{"x": cx - d, "y": cy, "id": 1}, {"x": cx + d, "y": cy, "id": 2}]
         self.ws.call("Input.dispatchTouchEvent", type="touchStart", touchPoints=pts(30))
@@ -1124,7 +1128,9 @@ def _map_zoom_back(self):
                    bool(s0) and s1 is not None and abs(s1 - want) <= 0.15 * want, {"before": s0, "pinched": s1, "want": want})
         # one finger on the empty map: a pan, no zoom
         e = self.j("(() => { const s = document.getElementById('lgm-svg').getBoundingClientRect(); for (let y = s.top + 12; y < s.bottom; y += 9) for (let x = s.left + 12; x < s.right; x += 9) {"
-                   " const h = document.elementFromPoint(x, y); if (h && !h.closest('.lgn') && h.closest('#lgm-svg')) return JSON.stringify([x, y]); } return 'null'; })()")
+                   " const free = (a, b) => { const h = document.elementFromPoint(a, b); return !!(h && !h.closest('.lgn') && h.closest('#lgm-svg')); };"
+                   " if (free(x, y) && free(x - 8, y) && free(x + 8, y) && free(x, y - 8) && free(x, y + 8)) return JSON.stringify([x, y]); } return 'null'; })()")
+        # (clear on every side by 8 px: zoomed in, a point right at a box's outline is taken by that box, and a drag that starts on a box does not pan)
         s2 = (self.j(MAPZ) or {}).get("scale")
         y0 = (self.j(MAPZ) or {}).get("you")
         if e:

@@ -5,16 +5,18 @@ Real headless Chromium at phone size, NO C++ server: walker_controls_check.py's 
 and walker_instance_check.py's touchpad walk. The valves come in through the graph's data (the fake graph's
 nodes are edited in this process before each page load), the way a real box's data would carry one.
 The meanings (Brandon 2026-11-14): open: anyone; closed: no one; private: only the owner; invite: only people on the
-list; request: turned away, recorded for the owner; conduit: passed through to the next box, never stood on. A new
+list; request: turned away, recorded for the owner; conduit: walked across, never stood IN. A new
 box copies its parent's valve unless its own data names one.
 
   Y0  precondition: the map loaded; boxes with no valve in their data are Open
   Y1  Open: the walker enters an Open box
   Y2  Private: a box private to someone else is not entered; private to you, it is entered
   Y3  inheritance: the boxes opened from that private-to-you box carry a copy of its valve (private, same owner)
-  Y4  Conduit: with a conduit box between you and the box beyond it (one box and connector this check adds to the page,
-      since the stand-in map never shows two in a row), the walker is carried through it onto the box beyond and
-      never stands on the conduit; positive control: as an Open box the same push stops on it
+  Y4  Conduit: you walk across a conduit box but are never in it (standing over it you are in no box, mainstream);
+      positive control: as an Open box, standing in the same place, you are in it
+
+2026-11-15 (Brandon's OK): free walking. A refused box leaves you at its edge in no box (data-at '', it used to be the
+box you came from), and a conduit is walked across where one push used to carry you through it to the box beyond.
 
 Usage: python3 walker_valve_types_check.py [<liquidgov-platform dir> [<out dir>]]
 Prints PASS/FAIL lines and "VERDICT walker-valve-types: ALL-PASS" or the failures; exit 1 on a FAIL."""
@@ -45,16 +47,10 @@ class Run(wi.Run):
         self.reach = (self.j("JSON.stringify(LG_WALKER.CONTROLS.touchpad)") or {}).get("reach", 0)
         return ok
 
-    ROW = ("(() => { const f = document.querySelector('#lgm-nodes .lgn[data-id=\"mine:friends\"]'),"
-           " y = document.querySelector('#lgm-nodes .lgn[data-id=\"you\"]');"
-           " const mid = e => { const r = e.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; };"
-           " const c = f.cloneNode(true); c.setAttribute('data-id', 'beyond'); c.setAttribute('data-valve', 'open'); f.parentNode.appendChild(c);"
-           " const base = f.getAttribute('transform'); c.setAttribute('transform', 'translate(100,0) ' + base);"
-           " const m0 = mid(f), m1 = mid(c), k = (m1[0] - m0[0]) / 100, yy = mid(y);"
-           " c.setAttribute('transform', 'translate(' + (m0[0] - yy[0]) / k + ',' + (m0[1] - yy[1]) / k + ') ' + base);"
-           " const e0 = document.querySelector('#lgm-edges .lge'), e = e0.cloneNode(true);"
-           " e.setAttribute('data-a', 'mine:friends'); e.setAttribute('data-b', 'beyond'); e0.parentNode.appendChild(e);"
-           " return '1'; })()")
+    OVER = ("(() => { const w = document.getElementById('lgm-walker').getBoundingClientRect(),"
+            " b = document.querySelector('#lgm-nodes .lgn[data-id=\"mine:friends\"]').getBoundingClientRect(),"
+            " x = w.left + w.width / 2, y = w.top + w.height / 2;"
+            " return JSON.stringify(x > b.left + 4 && x < b.right - 4 && y > b.top + 4 && y < b.bottom - 4); })()")
 
     def set_valve(self, box_id, kind):
         self.j("(() => { document.querySelector('#lgm-nodes .lgn[data-id=\"%s\"]').setAttribute('data-valve', '%s'); return '1'; })()"
@@ -76,10 +72,9 @@ class Run(wi.Run):
         nodes["mine:friends"]["valve"] = {"type": "private", "owner": me}
         self.load()
         refused = self.hop("mine:politics").get("at")
-        self.hop("you")
         entered = self.hop("mine:friends").get("at")
-        self.check("Y2 Private: a box private to someone else is not entered; private to you, it is entered",
-                   refused == "you" and entered == "mine:friends", {"private to someone else -> at": refused, "private to you -> at": entered})
+        self.check("Y2 Private: a box private to someone else is not entered (you stop at its edge, in no box); private to you, it is entered",
+                   refused == "" and entered == "mine:friends", {"private to someone else -> at": refused, "private to you -> at": entered})
         self.key("enter")
         self.wait("!!document.querySelector('#lgm-nodes .lgn-person')", 5)
         time.sleep(0.8)
@@ -87,19 +82,20 @@ class Run(wi.Run):
         self.check("Y3 inheritance: the boxes opened from a private box carry a copy of its valve (private, same owner)",
                    len(kids) == 3 and all(v == ["private", me] for v in kids.values()), kids)
 
-        # The stand-in map shows one box and its neighbors, so no two boxes sit in a row. This check adds one box
-        # ("beyond") and its connector to the page by hand, in line past the friends box: you -> friends -> beyond.
+        # Free walking (2026-11-15): a conduit box is walked across. You can stand over it, but you are never IN it.
         nodes["mine:friends"]["valve"] = {"type": "conduit"}
         self.load()
-        self.j(self.ROW)
-        through = self.hop("mine:friends")
+        through = self.hop("mine:friends")     # walks to its middle and stops getting closer there
+        over = self.j(self.OVER)
         self.set_valve("mine:friends", "open")
-        self.hop("you")
-        stops = self.hop("mine:friends")
-        self.check("Y4 Conduit: the walker is carried through the conduit box onto the box beyond it, never standing on it;"
-                   " as an Open box it stops there",
-                   through.get("at") == "beyond" and through.get("instance") == "beyond" and stops.get("at") == "mine:friends",
-                   {"conduit -> at": through.get("at"), "open -> at": stops.get("at")})
+        time.sleep(0.4)
+        stops = self.state()
+        self.check("Y4 Conduit: you walk across the conduit box but are never in it (over it, in no box, mainstream);"
+                   " as an Open box, standing in the same place, you are in it",
+                   over is True and through.get("at") == "" and through.get("instance") == "mainstream"
+                   and stops.get("at") == "mine:friends" and stops.get("instance") == "mine:friends",
+                   {"over the conduit box": over, "conduit -> at": through.get("at"), "conduit -> instance": through.get("instance"),
+                    "open -> at": stops.get("at")})
         for n in nodes.values():
             n.pop("valve", None)
 

@@ -22,14 +22,13 @@
       settleMs: 180, mapMoveMs: 350 },
     // The phone's touchpad (Brandon 2026-11-13 1:08 AM, in place of the D-pad; it works like a joystick): touch anywhere
     // on it and drag; the farther your finger from where it touched (up to reach px), the faster you walk. A pull under
-    // deadZone (a fraction of reach) does nothing; full reach is maxSpeed. On the map one push walks one connector, and
-    // held it walks on, every mapRepeatMs at full pull.
+    // deadZone (a fraction of reach) does nothing; full reach is maxSpeed, on the map as on any page.
     // Its look and place (1:08/1:09 AM), the one source for site.css (as CSS variables on #lg-here-pad): width x height
     // px, A and B are boxes height/2 tall stacked on its right side (together its height), all three at opacity alpha;
     // the unit sits at the bottom center, lift px above the bottom edge (above the safe area), at most the screen's width
     // less 2 x margin.
     touchpad: { cls: 'lg-here-touchpad', knob: 'lg-here-knob', label: 'Walk: touch and drag', reach: 48, deadZone: 0.2,
-      mapRepeatMs: 600, width: 220, height: 132, alpha: 0.62, lift: 28, margin: 16 },
+      width: 220, height: 132, alpha: 0.62, lift: 28, margin: 16 },
     // On the map the camera shows the boxes this many times bigger than the fitted view, around your drop (Brandon
     // 2026-11-13 12:55 AM: "it should look bigger"), until you zoom out yourself (pinch, wheel).
     mapZoom: 1.8,

@@ -199,6 +199,17 @@
     };
     s.onclose = function () { if (s === hws) { hws = null; hereDraw([]); } };   // refused (chose No) or dropped: not retried on this page view
   }
+  // Leaving the map (2026-11-15): a browser can keep the page you left in memory (its back/forward cache) with this
+  // socket still open, and then the others in your instance kept seeing your drop after you had gone. So the socket is
+  // closed on the way out, and opened again if that kept page is shown again (Back).
+  window.addEventListener('pagehide', function () {
+    if (!hws) return;
+    var s = hws;
+    hws = null;
+    try { s.close(); } catch (e) { /* err-ok: already closing */ }
+    hereDraw([]);
+  });
+  window.addEventListener('pageshow', function (e) { if (e.persisted && ready) presenceOn(); });
 
   // ---- the camera
   // The part of the map's frame you can see: on the screen, and above the pad (on a phone the frame runs under the

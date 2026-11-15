@@ -1,14 +1,15 @@
-"""The map draws the other droplets in your instance (2026-11-14): while Drop is on, each person in the presence
+"""The map draws the other droplets in your instance (2026-11-14): each person in the presence
 snapshot (walker_presence_check.py) is a small circle on a ring around the walker (#lgm-here .lgm-here-dot[data-u],
-lgmap_walk.js hereDraw). They are removed when that person leaves your instance or you switch to Scroll. New file.
+lgmap_walk.js hereDraw). They are removed when that person leaves your instance or the map.
 
 Two real browsers (Bbottin and pal) on the REAL server, as walker_presence_check.py (its Tab is reused as it is).
 
-  D0  precondition: both on the map, Drop on, on the you box in mainstream; no dot is drawn for yourself
+  D0  precondition: both on the map, on the you box in mainstream; no dot is drawn for yourself
   D1  same instance: each sees one dot, the other's, a small circle on the screen next to the walker
   D2  Bbottin walks onto the group's box (another instance): neither has a dot
   D3  pal walks onto the same box: each has the other's dot again
-  D4  Bbottin switches to Scroll: Bbottin has no dots and pal no longer has Bbottin's
+  D4  Bbottin leaves the map (another page): pal no longer has Bbottin's dot (2026-11-15, Brandon's OK: no
+      Drop/Scroll switch any more, so the old Scroll case became leaving the map)
 
 Usage as ci_phone_check.py's checks; see ci_walker_presence_dots_check.py."""
 import os
@@ -46,7 +47,7 @@ def cases(a, b):
     A, B = "Bbottin", "pal"
     ok = a.enter_map() and b.enter_map()
     sa, sb = a.state(), b.state()
-    a.check("D0 precondition: both on the map, Drop on, on the you box in mainstream; no dot for yourself",
+    a.check("D0 precondition: both on the map, on the you box in mainstream; no dot for yourself",
             ok and all(s.get("at") == "you" and s.get("instance") == "mainstream" and not s.get("hidden") for s in (sa, sb))
             and A not in who(a) and B not in who(b),
             {"A": {k: sa.get(k) for k in ("at", "instance", "hidden")}, "B": {k: sb.get(k) for k in ("at", "instance", "hidden")}})
@@ -67,11 +68,11 @@ def cases(a, b):
     a.check("D3 pal walks onto the same box: each has the other's dot again",
             apart and st.get("instance") == wp.BOX and together, {"A draws": dots(a), "B draws": dots(b)})
 
-    a.j("(() => { document.querySelector('.' + LG_WALKER.CONTROLS.buttons.drop.cls).click(); return '1'; })()")
-    off = wp.until(lambda: a.state().get("hidden") and not dots(a) and not dots(b))
-    a.check("D4 Bbottin switches to Scroll: Bbottin has no dots and pal no longer has Bbottin's",
-            together and off and not b.state().get("hidden"),
-            {"A hidden": a.state().get("hidden"), "A draws": dots(a), "B draws": dots(b)})
+    a.nav("/feed")   # walking is always on (2026-11-15): the way out is leaving the map
+    off = wp.until(lambda: not dots(b))
+    a.check("D4 Bbottin leaves the map: pal no longer has Bbottin's dot",
+            together and off and not b.state().get("hidden") and a.j("JSON.stringify(location.pathname)") == "/feed",
+            {"A on": a.j("JSON.stringify(location.pathname)"), "B draws": dots(b)})
 
 
 def run(base, session, expected_js, label, out):

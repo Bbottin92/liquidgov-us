@@ -1,15 +1,16 @@
-"""Spatial step 4 (SPATIAL_EVOLUTION.md): the Drop-mode proximity filter on the map. While Drop is on, only the box the
-walker stands on (Inside) and the boxes connected to it (Near) are shown; every other box (Far) and its connectors
-are hidden. Scroll mode shows the full map again. New file: no committed check is edited.
+"""Spatial step 4 (SPATIAL_EVOLUTION.md): the proximity filter on the map. Zoomed in (the walking zoom), only the box
+the walker is at (Inside) and the boxes connected to it (Near) are shown; every other box (Far) and its connectors are
+hidden. Zoom out yourself and the full map shows again.
 
 Real headless Chromium at phone size, NO C++ server: walker_controls_check.py's stdlib server and fake graph,
 and walker_instance_check.py's touchpad walk, reused as they are. "Hidden" is the computed visibility of a box.
 
-  F0  precondition: the map loaded; in Scroll mode no box is hidden (8 boxes)
-  F1  Drop on, standing on the you box: every box is connected to it, so none is hidden
+  F1  the map loaded (8 boxes); standing on the you box every box is connected to it, so none is hidden
   F2  walk onto the friends box: you and friends stay shown, the six other boxes are hidden, and so is every
       connector to a hidden box
-  F3  back in Scroll mode: every box and connector is shown again
+  F3  zoomed out by you (the wheel): every box and connector is shown again
+
+2026-11-15 (Brandon's OK): walking is always on, so the Scroll cases (old F0, F3) became "zoom out yourself".
 
 Usage: python3 walker_proximity_check.py [<liquidgov-platform dir> [<out dir>]]
 Prints PASS/FAIL lines and "VERDICT walker-proximity: ALL-PASS" or the failures; exit 1 on a FAIL."""
@@ -42,17 +43,14 @@ class Run(wi.Run):
     def cases(self):
         self.size(390, 844, True)
         ok = self.map_load()
-        s = self.seen()
-        everything = s.get("shown", [])
-        self.check("F0 precondition: the map loaded; in Scroll mode no box is hidden (8 boxes)",
-                   ok and len(everything) == 8 and not s.get("hidden") and s.get("edgesHidden") == 0, s)
         self.map_walking()
         time.sleep(0.6)   # the camera glides in
         self.tp = (self.j(wc.BOXES) or {}).get("touchpad")
         self.reach = (self.j("JSON.stringify(LG_WALKER.CONTROLS.touchpad)") or {}).get("reach", 0)
         s = self.seen()
-        self.check("F1 Drop on, standing on the you box: every box is connected to it, so none is hidden",
-                   s.get("shown") == everything and not s.get("hidden"), s)
+        everything = s.get("shown", [])
+        self.check("F1 the map loaded (8 boxes); standing on the you box every box is connected to it, so none is hidden",
+                   ok and len(everything) == 8 and not s.get("hidden") and s.get("edgesHidden") == 0, s)
         st = self.hop("mine:friends")
         time.sleep(0.3)
         s = self.seen()
@@ -61,10 +59,17 @@ class Run(wi.Run):
                    st.get("at") == "mine:friends" and s.get("shown") == ["mine:friends", "you"] and s.get("hidden") == far
                    and len(far) == 6 and all(set(e) <= {"you", "mine:friends"} for e in s.get("edgesShown", []))
                    and s.get("edgesHidden") == 6, {"at": st.get("at"), "seen": s})
-        self.drop_off()
+        # zoom out yourself (the wheel over the map; a pinch does the same, walker_controls_check Z2): the whole map shows
+        f = (self.j(wc.MAPZ) or {}).get("frame") or {}
+        x, y = (f.get("l", 0) + f.get("r", 0)) / 2, max(f.get("t", 0), 0) + 60
+        for _ in range(12):
+            self.ws.call("Input.dispatchMouseEvent", type="mouseWheel", x=x, y=y, deltaX=0, deltaY=100)
+            time.sleep(0.05)
+        time.sleep(0.8)
         s = self.seen()
-        self.check("F3 back in Scroll mode: every box and connector is shown again",
-                   s.get("shown") == everything and not s.get("hidden") and s.get("edgesHidden") == 0, s)
+        self.check("F3 zoomed out by you: every box and connector is shown again, still standing on friends",
+                   s.get("shown") == everything and not s.get("hidden") and s.get("edgesHidden") == 0
+                   and self.state().get("at") == "mine:friends", s)
 
 
 def main(argv):

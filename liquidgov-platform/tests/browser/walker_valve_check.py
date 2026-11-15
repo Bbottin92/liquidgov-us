@@ -1,6 +1,7 @@
 """Spatial step 6 (SPATIAL_EVOLUTION.md): every map box has a valve, Open by default, and the walker's step onto a box
 (the entry path) goes through it. The regression check: every box on the map can still be entered.
-New file: no committed check is edited.
+2026-11-15 (Brandon's OK): free walking. A box that turns you away leaves you at its edge, in no box (data-at ''),
+where one push used to leave you standing on the box you came from.
 
 Real headless Chromium at phone size, NO C++ server: walker_controls_check.py's stdlib server and fake graph,
 and walker_instance_check.py's touchpad walk, reused as they are.
@@ -55,11 +56,10 @@ class Run(wi.Run):
         target = around[0] if around else "none"
         self.set_valve(target, "closed")
         shut = self.hop(target).get("at")
-        self.hop("you")
         self.set_valve(target, "open")
         again = self.hop(target).get("at")
-        self.check("V2 positive control: a box whose valve is not open is not entered; open again, it is",
-                   shut == "you" and again == target, {"box": target, "valve closed -> at": shut, "valve open -> at": again})
+        self.check("V2 positive control: a box whose valve is not open is not entered (you stop at its edge, in no box); open again, it is",
+                   shut == "" and again == target, {"box": target, "valve closed -> at": shut, "valve open -> at": again})
 
 
 def main(argv):

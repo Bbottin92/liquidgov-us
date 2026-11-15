@@ -1,14 +1,16 @@
 """Spatial step 3 (SPATIAL_EVOLUTION.md): the map walker's instanceId. Walking onto a box sets it to that box; back at
-the you box, or in Scroll mode, it is the parent, "mainstream". New file: no committed check is edited.
+the you box, or between boxes, it is the parent, "mainstream".
 
 Real headless Chromium at phone size (the touchpad can push straight at any box), NO C++ server: walker_controls_check.py's stdlib server and fake graph (the real lgmap.js,
 walker.js and lgmap_walk.js), reused as they are. The walker's instance is read from #lgm-walker[data-instance].
 
-  I0  precondition: the map loaded; in Scroll mode the instance is mainstream
-  I1  Drop on, standing on the you box: still mainstream
+  I1  the map loaded and the walker stands on the you box: mainstream
   I2  walk onto a profile box (kind person): the instance is that box's id
   I3  walk off it: the instance leaves the profile box; back at the you box it is mainstream again
-  I4  the Drop/Scroll switch still works: back in Scroll mode the walker is hidden and the instance is mainstream
+  I4  between boxes (in no box) the walker is still shown and the instance is mainstream
+
+2026-11-15 (Brandon's OK to update the checks that test the switch or the hopping): walking is always on and free, so
+the Scroll cases (old I0, I4) are gone, and hop() walks until it is inside the box instead of one push per connector.
 
 Usage: python3 walker_instance_check.py [<liquidgov-platform dir> [<out dir>]]
 Prints PASS/FAIL lines and "VERDICT walker-instance: ALL-PASS" or the failures; exit 1 on a FAIL."""
@@ -39,31 +41,50 @@ class Run(wc.Run):
     def state(self):
         return self.j(STATE) or {}
 
-    def hop(self, target):
-        """One push of the touchpad straight toward box `target` (the walker takes the connector that points that way)."""
-        st = self.state()
-        mid = {b["id"]: b for b in st.get("boxes", [])}
-        if st.get("at") not in mid or target not in mid:
-            return st
-        dx, dy = mid[target]["x"] - mid[st["at"]]["x"], mid[target]["y"] - mid[st["at"]]["y"]
-        n = math.hypot(dx, dy) or 1
-        self.pull(self.tp, dx / n * self.reach, dy / n * self.reach, 0.25)   # under mapRepeatMs: one connector
-        time.sleep(0.4)
+    def hop(self, target, limit_s=14):
+        """Walk to box `target` with the touchpad (free walking, 2026-11-15; it used to be one push along a connector):
+        pulls straight at its middle until the walker is inside it, or cannot get any closer (a valve turned it away
+        at the box's edge), or the time is up. Returns the state then. The checks that inherit this keep calling it
+        hop()."""
+        end, best, stuck = time.time() + limit_s, None, 0
+        while time.time() < end:
+            st = self.j(self.WALK) or {}
+            to, spot = (st.get("mids") or {}).get(target), st.get("spot")
+            if st.get("at") == target or not to or not spot or not self.tp:
+                break
+            dx, dy = to[0] - spot[0], to[1] - spot[1]
+            n = math.hypot(dx, dy) or 1
+            stuck = stuck + 1 if best is not None and n > best - 2 else 0
+            if stuck >= 3:
+                break
+            best = n if best is None else min(best, n)
+            self.pull(self.tp, dx / n * self.reach, dy / n * self.reach, max(0.08, min(0.4, n / 175.0)))
+        time.sleep(0.3)
+        return self.state()
+
+    def step_off(self, toward, limit_s=6):
+        """Short pulls toward box `toward` until the walker is in no box (data-at ''), or the time is up."""
+        end = time.time() + limit_s
+        while time.time() < end:
+            st = self.j(self.WALK) or {}
+            to, spot = (st.get("mids") or {}).get(toward), st.get("spot")
+            if st.get("at") == "" or not to or not spot or not self.tp:
+                break
+            dx, dy = to[0] - spot[0], to[1] - spot[1]
+            n = math.hypot(dx, dy) or 1
+            self.pull(self.tp, dx / n * self.reach, dy / n * self.reach, 0.08)
         return self.state()
 
     def cases(self):
         self.size(390, 844, True)
         ok = self.map_load()
-        st = self.state()
-        self.check("I0 precondition: the map loaded; in Scroll mode the instance is mainstream",
-                   ok and st.get("hidden") and st.get("instance") == "mainstream", {k: st.get(k) for k in ("at", "hidden", "instance")})
         self.map_walking()
         time.sleep(0.6)   # the camera glides in
         self.tp = (self.j(wc.BOXES) or {}).get("touchpad")
         self.reach = (self.j("JSON.stringify(LG_WALKER.CONTROLS.touchpad)") or {}).get("reach", 0)
         st = self.state()
-        self.check("I1 Drop on, standing on the you box: still mainstream",
-                   bool(self.tp) and st.get("at") == "you" and not st.get("hidden") and st.get("instance") == "mainstream",
+        self.check("I1 the map loaded and the walker stands on the you box: the instance is mainstream",
+                   ok and bool(self.tp) and st.get("at") == "you" and not st.get("hidden") and st.get("instance") == "mainstream",
                    {k: st.get(k) for k in ("at", "hidden", "instance")})
         # the profile boxes are behind the friends box: walk there, open it (Enter), then walk onto a friend
         self.hop("mine:friends")
@@ -83,17 +104,12 @@ class Run(wc.Run):
         self.check("I3 walk off it: the instance leaves the profile box, and back at the you box it is mainstream again",
                    bool(people) and off.get("instance") == "mine:friends" and st.get("at") == "you" and st.get("instance") == "mainstream",
                    {"off": {k: off.get(k) for k in ("at", "instance")}, "you": {k: st.get(k) for k in ("at", "instance")}})
-        before = self.hop("mine:friends")     # stand on a box again, then switch to Scroll
-        self.drop_off()
-        st = self.state()
-        self.check("I4 back in Scroll mode the walker is hidden and the instance is mainstream",
-                   before.get("instance") == "mine:friends" and st.get("hidden") and st.get("instance") == "mainstream",
-                   {"before": before.get("instance"), "hidden": st.get("hidden"), "instance": st.get("instance")})
-
-    def drop_off(self):
-        self.j("(() => { document.querySelector('.' + LG_WALKER.CONTROLS.buttons.drop.cls).click(); return '1'; })()")
-        self.wait("document.getElementById('lgm-walker').hidden", 3)
-        time.sleep(0.3)
+        before = self.hop("mine:friends")     # stand in a box again, then step out of it onto the open map
+        st = self.step_off("you")
+        self.check("I4 between boxes (in no box) the walker is still shown and the instance is mainstream",
+                   before.get("instance") == "mine:friends" and st.get("at") == "" and not st.get("hidden")
+                   and st.get("instance") == "mainstream",
+                   {"before": before.get("instance"), "at": st.get("at"), "hidden": st.get("hidden"), "instance": st.get("instance")})
 
 
 def main(argv):

@@ -85,7 +85,7 @@ class Run(wg.Run):
                    " and it is gone when the walker leaves",
                    inside.get("instance") == BOX and still.get("instance") == BOX
                    and shut.get("at") != BOX and shut.get("instance") == "mainstream" and closed_css is None
-                   and refused_box.get("at") == "you" and away is None and outside == [],
+                   and refused_box.get("at") == "" and refused_box.get("instance") == "mainstream" and away is None and outside == [],
                    {"instance while Inside": still.get("instance"), "closed box + css -> at": shut.get("at"),
                     "css applied on a closed box": closed_css, "closed events box -> at": refused_box.get("at"),
                     "css after leaving": away, "new requests off this site": outside})

@@ -4,7 +4,8 @@ without core.hooksPath, or a push that skipped the hooks, got past all of them.
 
   C0  preconditions: 20+ checks on disk, workflows present (so nothing below passes on an empty list)
   C1  one workflow has a step that runs scripts/run_hook_checks.py
-  C2  that workflow runs on a push to master and to wip/** and has no paths: filter (it can't be skipped by path)
+  C2  that workflow has no paths: filter and runs on a push to master and wip/**, or (manual-only since 2026-11-15,
+      Actions costs money) scripts/local_ci.py runs it on every run (it can't be skipped)
   C3  run_hook_checks.py --list prints exactly affected_checks.py's run order of the checks on disk (one list,
       shared with the hooks; a new check file is picked up without editing the runner or the workflow)
   C4  run on a fake repo: one passing + one failing check -> exit 1, the failing one named, SUMMARY fails=1
@@ -57,10 +58,20 @@ steps = [w for w in workflows if re.search(r"^\s*(?:run:|python3?)\s.*scripts/ru
 check("C1 a workflow step runs scripts/run_hook_checks.py", len(steps) == 1, [os.path.basename(w) for w in workflows])
 for w in steps:
     block = on_block(open(w, encoding="utf-8").read())
-    check("C2 %s runs on push" % os.path.basename(w), re.search(r"^\s+push:", block, re.M), block)
-    check("C2 %s push covers master and wip/**" % os.path.basename(w),
-          "master" in block and '"wip/**"' in block, block)
     check("C2 %s has no paths: filter" % os.path.basename(w), not re.search(r"^\s+paths(-ignore)?:", block, re.M), block)
+    if re.search(r"^\s+push:", block, re.M):
+        check("C2 %s push covers master and wip/**" % os.path.basename(w),
+              "master" in block and '"wip/**"' in block, block)
+    else:
+        # Manual-only on GitHub (Brandon 2026-11-15: Actions costs money): scripts/local_ci.py runs this workflow
+        # instead, on every run, with no paths filter of its own, and the deploy gate needs its record.
+        lc = os.path.join(ROOT, "scripts", "local_ci.py")
+        txt = open(lc, encoding="utf-8").read() if os.path.exists(lc) else ""
+        name = os.path.splitext(os.path.basename(w))[0]
+        check("C2 %s is manual-only (workflow_dispatch)" % os.path.basename(w), "workflow_dispatch" in block, block)
+        check("C2 scripts/local_ci.py runs %s on every run" % name,
+              re.search(r'^WORKFLOWS = \[[^\]]*"%s"' % re.escape(name), txt, re.M) is not None
+              and not re.search(r'wf == "%s" and' % re.escape(name), txt), lc)
 
 if os.path.exists(RUNNER):
     r = run(RUNNER, ROOT, "--list")

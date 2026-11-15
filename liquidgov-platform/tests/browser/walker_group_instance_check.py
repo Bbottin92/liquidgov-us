@@ -78,7 +78,7 @@ class Run(wi.Run):
         self.reach = (self.j("JSON.stringify(LG_WALKER.CONTROLS.touchpad)") or {}).get("reach", 0)
         gid = "group:" + SLUG
         st = self.hop("mine:groups")
-        self.key("enter")
+        self.open_here()
         appeared = self.wait("!!document.querySelector('#lgm-nodes .lgn[data-id=\"%s\"]')" % gid, 8)
         time.sleep(0.8)
         self.check("G1 the walker enters Groups (private to you) and opens it; the new group appears there as a box",

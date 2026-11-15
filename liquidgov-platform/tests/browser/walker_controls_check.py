@@ -320,6 +320,13 @@ class Run(m.Run):
             time.sleep(0.05)
         return False
 
+    def open_here(self, limit_s=4):
+        """Open the box the walker stands in the way the map does it now: swim into a pool and stay (lgmap_walk.js
+        poolTick, 0.7 s) and its connections spread around it. (A / Enter is the portal since 2026-11-15: it goes into
+        the box's page, leaving the map.) Waits until the box is the map's center; True if it is."""
+        return self.wait("(() => { const w = document.getElementById('lgm-walker'), at = w && w.getAttribute('data-at');"
+                         " return !!at && LG_MAP.center() === at; })()", limit_s)
+
     def key(self, k, hold_s=0.05, text=False):
         """k is a key as the map names it (lowercase KeyboardEvent.key)."""
         dom = DOM_KEY.get(k, k)

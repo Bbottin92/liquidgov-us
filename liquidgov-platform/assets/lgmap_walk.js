@@ -568,7 +568,15 @@
     var k = w / vw;
     peekFrame.style.width = vw + 'px'; peekFrame.style.height = Math.round(h / k) + 'px';
     peekFrame.style.transform = 'scale(' + k + ')';
-    if (peekPage !== page) { peekPage = page; peekFrame.src = peekUrl(page); }
+    if (peekPage !== page) {
+      // a frame that already shows a page would add a step to the browser's history if given a new address (then the
+      // phone's back gesture went back inside the peek, not on the map): its own location is replaced instead
+      var had = !!peekPage;
+      peekPage = page;
+      try { if (had && peekFrame.contentWindow) { peekFrame.contentWindow.location.replace(peekUrl(page)); return; } }
+      catch (e) { /* err-ok: not reachable: set the address below */ }
+      peekFrame.src = peekUrl(page);
+    }
   }
   function peekShow(id, el, page) {
     if (!peekEl) peekBuild();

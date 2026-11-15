@@ -23,7 +23,11 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 EXEMPT = {"me_autosave_check.py": "A3 is timing-flaky on a fast mock (3 of 6 runs failed, run 4); "
                                   "me_autosave_slow_check.py runs the same 8 cases with a 400 ms answer",
           "run_phone_check.py": "a Windows runner for phone_check.py (WSL server + Edge), not a check; "
-                                "phone_check.py runs in CI through ci_phone_check.py"}
+                                "phone_check.py runs in CI through ci_phone_check.py",
+          # retired 2026-11-15 (the map is one world; map_world_check.py checks it); kept as code other checks import
+          "map_live_check.py": "retired: the old ring model; kept for its page markup and helpers (walker checks import it)",
+          "map_live_check2.py": "retired: the old ring model; kept for its fake graph (map_world_check imports it)",
+          "map_big_level_check.py": "retired: the old ring model; kept for its big graph (map_world_check imports it)"}
 OUT_DIR = '"$RUNNER_TEMP/phone"'
 
 

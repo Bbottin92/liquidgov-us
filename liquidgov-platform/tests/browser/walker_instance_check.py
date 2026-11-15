@@ -47,6 +47,23 @@ class Run(wc.Run):
         at the box's edge), or the time is up. Returns the state then. The checks that inherit this keep calling it
         hop()."""
         end, best, stuck = time.time() + limit_s, None, 0
+        # first to the middle of the box it stands in, so it leaves through the channel's mouth (a pull straight at the
+        # target from off to one side meets the bank: dry land stops the drop since 2026-11-15)
+        st = self.j(self.WALK) or {}
+        if st.get("at"):
+            self.last_box = st["at"]
+        here = st.get("at") or getattr(self, "last_box", "")   # in no box (turned away at a valve): back to the last one
+        if here and here != target:
+            for _ in range(30):
+                st = self.j(self.WALK) or {}
+                mid, spot = (st.get("mids") or {}).get(here), st.get("spot")
+                if not mid or not spot or not self.tp:
+                    break
+                dx, dy = mid[0] - spot[0], mid[1] - spot[1]
+                n = math.hypot(dx, dy)
+                if n < 6:
+                    break
+                self.pull(self.tp, dx / n * self.reach, dy / n * self.reach, max(0.05, min(0.3, n / 175.0)))
         while time.time() < end:
             st = self.j(self.WALK) or {}
             to, spot = (st.get("mids") or {}).get(target), st.get("spot")
@@ -55,12 +72,15 @@ class Run(wc.Run):
             dx, dy = to[0] - spot[0], to[1] - spot[1]
             n = math.hypot(dx, dy) or 1
             stuck = stuck + 1 if best is not None and n > best - 2 else 0
-            if stuck >= 3:
+            if stuck >= 6:   # the camera can still be gliding after a level change: a few looks that seem stuck are not
                 break
             best = n if best is None else min(best, n)
             self.pull(self.tp, dx / n * self.reach, dy / n * self.reach, max(0.08, min(0.4, n / 175.0)))
         time.sleep(0.3)
-        return self.state()
+        st = self.state()
+        if st.get("at"):
+            self.last_box = st["at"]
+        return st
 
     def step_off(self, toward, limit_s=6):
         """Short pulls toward box `toward` until the walker is in no box (data-at ''), or the time is up."""
@@ -88,7 +108,7 @@ class Run(wc.Run):
                    {k: st.get(k) for k in ("at", "hidden", "instance")})
         # the profile boxes are behind the friends box: walk there, open it (Enter), then walk onto a friend
         self.hop("mine:friends")
-        self.key("enter")
+        self.open_here()
         self.wait("!!document.querySelector('#lgm-nodes .lgn-person')", 5)
         time.sleep(0.8)
         people = [b["id"] for b in self.state().get("boxes", []) if b.get("person")]
@@ -97,13 +117,15 @@ class Run(wc.Run):
                    bool(people) and st.get("at") == people[0] and st.get("instance") == people[0],
                    {"at": st.get("at"), "instance": st.get("instance"), "people": people})
         off = self.hop("mine:friends")       # off the profile box, onto the box it hangs from
-        self.key("escape")                    # back a level: the you box is on the map again
-        self.wait("!!document.querySelector('#lgm-nodes .lgn[data-id=\"you\"]')", 5)
+        # one world (2026-11-15): the you box never leaves the map, so you swim back to it (no Back needed; Back would
+        # also step back through the pools you opened by staying in them)
         time.sleep(0.8)
+        time.sleep(0.6)   # the camera settles after going back
         st = self.hop("you")
         self.check("I3 walk off it: the instance leaves the profile box, and back at the you box it is mainstream again",
                    bool(people) and off.get("instance") == "mine:friends" and st.get("at") == "you" and st.get("instance") == "mainstream",
                    {"off": {k: off.get(k) for k in ("at", "instance")}, "you": {k: st.get(k) for k in ("at", "instance")}})
+        time.sleep(0.6)
         before = self.hop("mine:friends")     # stand in a box again, then step out of it onto the open map
         st = self.step_off("you")
         self.check("I4 between boxes (in no box) the walker is still shown and the instance is mainstream",

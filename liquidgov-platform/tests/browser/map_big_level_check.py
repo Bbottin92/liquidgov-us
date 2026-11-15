@@ -1,4 +1,7 @@
-"""Big map levels (Grok Bot's audit AUDIT-CLAUDE.md on cb39901/44c3262, ranked fix 3; Brief 5 item 2): the server sends
+"""RETIRED 2026-11-15 as a check (the map is one world: pools, each thing once, no side panel; map_world_check.py checks
+it). Kept because other checks import its page markup, fake graph and helpers; its own cases test the old ring model.
+
+Big map levels (Grok Bot's audit AUDIT-CLAUDE.md on cb39901/44c3262, ranked fix 3; Brief 5 item 2): the server sends
 up to 40 links of a kind (src/http_server.cpp map links, kMax = 40; a group's members are not capped at all), and the
 ring grew until 16+ boxes ran off the frame while the 0.4x zoom floor drew 14 px labels at about 5.6 px.
 Real Chromium, the real lgmap.js/lgmap.css and map_page_body's markup, no C++ server; the fake graph and the

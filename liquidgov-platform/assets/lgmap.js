@@ -58,14 +58,33 @@
   // least mouthAngle apart (worldPlace): mouths never run into each other.
   var MOUTH = 140;
   function mouthAngle(R) { return 2 * Math.asin(Math.min(1, MOUTH / 2 / R)); }
-  function poolFit(c, k) {
-    var R = poolR(c), R0 = R;
-    while (k * mouthAngle(R) > 2 * Math.PI * 0.9 && R < 1200) R += 10;
-    if (R === R0) return;
+  // A pool grows at most to POOL_GROW times its own size, and never into another pool (POOL_LAND of land kept between):
+  // a pool that grew without a limit spread over its neighbours (map_world_check O4, 2026-11-15). What does not fit
+  // goes behind "+N more" (capRing: poolCap).
+  var POOL_GROW = 2, POOL_LAND = 60;
+  function poolBase(d) { var R = d.R; d.R = 0; var b = poolR(d); d.R = R; return b; }
+  function poolMax(d) { return poolBase(d) * POOL_GROW; }
+  function setPoolR(c, R) {
+    R = Math.min(poolMax(c), R);
+    if (R <= poolR(c)) return false;
+    var cc = c.region, ok = Object.keys(nodes).every(function (id) {
+      if (id === c.id) return true;
+      var o = nodes[id].region;
+      return Math.hypot(o.cx - cc.cx, o.cy - cc.cy) >= R + Math.max(o.hw, o.hh) + POOL_LAND;
+    });
+    if (!ok) return false;
     c.R = R;
     var sh = c.el && c.el.querySelector('.lgs');
     if (sh) { sh.setAttribute('rx', R); sh.setAttribute('ry', R * POOL_Y); }
+    return true;
   }
+  function poolFit(c, k) {
+    var R = poolR(c);
+    while (k * mouthAngle(R) > 2 * Math.PI * 0.9 && R < poolMax(c)) R += 10;
+    setPoolR(c, R);
+  }
+  // how many new channels a pool can take: what fits round it at its largest, less the way back
+  function poolCap(c) { return Math.max(3, Math.floor(2 * Math.PI * 0.9 / mouthAngle(poolMax(c))) - 1); }
   function poolFont(d) { return Math.round(poolR(d) * (d.kind === 'you' ? 0.3 : 0.2)); }
   function poolLabel(d) { return d.kind === 'you' ? 'Main' : d.label; }
   var nodes = {};   // id -> {id,label,kind,page,rel,x,y,el,expanded}
@@ -465,12 +484,17 @@
   function capRing(c, list) {
     var fr = layoutFrame(), m = fitMargin(), total = list.length;
     // your own kinds are never capped (rule: all of them always show), nor is a small level
-    if (c.kind === 'you' || total <= CAP_MIN) return ringAll(c, list.slice());
+    if (c.kind === 'you' || (total <= CAP_MIN && !(POOLS && total > poolCap(c)))) return ringAll(c, list.slice());
     // id: more:<the level's own box>:<how many are left>, the same for every "+N more" page of that level
     var base = c.kind === 'more' ? c.id.slice(5, c.id.lastIndexOf(':')) : c.id;
     function more(rest) {
       return { id: 'more:' + base + ':' + rest.length, label: '+' + rest.length + ' more', kind: 'more', page: '',
         rel: -1, sub: '', more: rest };
+    }
+    // pools: as many as fit round the pool at its largest (poolCap), the rest behind "+N more"
+    if (POOLS) {
+      var pc = poolCap(c);
+      return { items: total <= pc ? list.slice() : list.slice(0, pc - 1).concat([more(list.slice(pc - 1))]), r: null };
     }
     for (var k = Math.min(total, CAP_MAX); k >= CAP_MIN; k--) {
       var items = k >= total ? list.slice() : list.slice(0, k - 1).concat([more(list.slice(k - 1))]);
@@ -634,20 +658,20 @@
     });
     function roomAt(a) { return used.every(function (u) { var d = Math.abs(Math.atan2(Math.sin(a - u), Math.cos(a - u))); return d >= step; }); }
     // a shore with no room left for one more mouth: the pool grows until there is (its mouths then sit closer)
+    // a shore with no room left for one more mouth: the pool grows (within its limit) until there is
     function makeRoom() {
       for (var g = 0; g < 120; g++) {
         for (var q = 0; q < 72; q++) if (roomAt(q * Math.PI / 36)) return;
-        poolFit(c, 0); c.R = poolR(c) + 10;
-        var sh = c.el && c.el.querySelector('.lgs');
-        if (sh) { sh.setAttribute('rx', c.R); sh.setAttribute('ry', c.R * POOL_Y); }
-        R0 = c.R; step = mouthAngle(R0) * 1.05;
+        if (!grow(10)) return;   // at its largest: mouths sit closer
       }
     }
     function grow(by) {
-      c.R = poolR(c) + by;
-      var sh = c.el && c.el.querySelector('.lgs');
-      if (sh) { sh.setAttribute('rx', c.R); sh.setAttribute('ry', c.R * POOL_Y); }
+      // the pools placed in this round are not on the map yet: the pool must not grow into them either
+      var R = Math.min(poolMax(c), poolR(c) + by);
+      if (!taken.every(function (o) { return (o.x === cc.x && o.y === cc.y) || Math.hypot(o.x - cc.x, o.y - cc.y) >= R + Math.max(o.w, o.h) + POOL_LAND; })) return false;
+      if (!setPoolR(c, R)) return false;
       R0 = c.R; step = mouthAngle(R0) * 1.05;
+      return true;
     }
     return items.map(function (d, i) {
       makeRoom();
@@ -670,7 +694,7 @@
         }
         return false;
       }
-      for (var tries = 0; tries < 12 && !found; tries++) { found = look(8, true); if (!found) grow(20); }
+      for (var tries = 0; tries < 12 && !found; tries++) { found = look(8, true); if (!found && !grow(20)) break; }
       if (!found) look(60, false);
       taken.push({ x: x, y: y, w: h.w, h: h.h });
       used.push(Math.atan2(y - cc.y, x - cc.x));

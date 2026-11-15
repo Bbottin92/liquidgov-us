@@ -1,4 +1,7 @@
-"""The live-map faults Brandon saw on 2026-11-11 ("all funky... definitely not right"; Grok Bot's MAP-LIVE-FINDINGS.md,
+"""RETIRED 2026-11-15 as a check (the map is one world: pools, each thing once, no side panel; map_world_check.py checks
+it). Kept because other checks import its page markup, fake graph and helpers; its own cases test the old ring model.
+
+The live-map faults Brandon saw on 2026-11-11 ("all funky... definitely not right"; Grok Bot's MAP-LIVE-FINDINGS.md,
 deploy 76a5ec1), checked in a real Chromium against the real lgmap.js/lgmap.css, with NO C++ server: a small stdlib
 server here serves the map page's markup (cut from map_page_body in src/http_server.cpp, so it follows the real page)
 and a fake /map/node graph shaped like what Brandon's account showed (Groups > The Gov, Politics' long proposal names,
@@ -101,8 +104,10 @@ LINKS = {
 }
 
 
-def page_markup(platform):
-    """map_page_body's string literals, in order (the parts built at run time, like the asset URLs, are left out)."""
+def page_markup(platform, pools=True):
+    """map_page_body's string literals, in order (the parts built at run time, like the asset URLs, are left out).
+    pools: keep data-pools="1" (the real page has it when the droplet is on, with the walker); False drops it, as the
+    real page does when the droplet is hidden in Settings (no walker)."""
     src = __import__("server_source").read(platform)  # whole server source (http_server.cpp + its src/site pieces)
     a = src.index("std::string map_page_body(")
     b = src.index("\n}\n", a)
@@ -110,7 +115,8 @@ def page_markup(platform):
     html = "".join(p.encode().decode("unicode_escape") for p in parts)
     html = html[html.index('<div id="lgmap"'):]
     html = html[:html.index("<script")]
-    return html.replace('data-me=""', 'data-me="%s"' % ME)
+    html = html.replace('data-me=""', 'data-me="%s"' % ME)
+    return html if pools else html.replace(' data-pools="1"', '')
 
 
 def make_handler(platform):

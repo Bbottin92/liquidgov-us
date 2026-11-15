@@ -1,4 +1,7 @@
-"""map_live_check.py's blind spots (Grok Bot's audit AUDIT-CLAUDE.md, ranked fix 4; Brief 5 item 3), in a new file
+"""RETIRED 2026-11-15 as a check (the map is one world: pools, each thing once, no side panel; map_world_check.py checks
+it). Kept because other checks import its page markup, fake graph and helpers; its own cases test the old ring model.
+
+map_live_check.py's blind spots (Grok Bot's audit AUDIT-CLAUDE.md, ranked fix 4; Brief 5 item 3), in a new file
 (the committed check is frozen). Real Chromium, the real lgmap.js/lgmap.css and map_page_body's markup, no C++ server.
 What is different from map_live_check.py:
   - the fake /map/node graph follows the real server (src/http_server.cpp map links): people are user:<name> (never
@@ -89,8 +92,8 @@ LINKS = {
 }
 
 
-def make_handler(platform, nodes, links):
-    markup = mlc.page_markup(platform)
+def make_handler(platform, nodes, links, pools=False):
+    markup = mlc.page_markup(platform, pools)   # no walker here: the map as it is with the droplet hidden (unless pools)
 
     class H(http.server.BaseHTTPRequestHandler):
         def log_message(self, *a):
@@ -175,8 +178,13 @@ class Run2(mlc.LiveRun):
             if must:
                 self.check("click %s: the box is on the map" % box_id, False, [x["id"] for x in self.j("__m.boxes()") or []])
             return False
-        self.click_xy((b["l"] + b["r"]) / 2, (b["t"] + b["b"]) / 2)
-        return self.ready("after clicking " + box_id, trail)
+        # 2026-11-15: a click on a box with a page opens that page now (the side panel is gone; Brandon: "the mini preview
+        # page on the right ... should be abandoned"), which leaves the map. Space on the box still only grows its
+        # connections, so that is how a box is opened here.
+        self.j("(() => { const e = document.querySelector('#lgm-nodes .lgn[data-id=' + JSON.stringify(%s) + ']'); e.focus();"
+               " e.dispatchEvent(new KeyboardEvent('keydown', {key: ' ', bubbles: true, cancelable: true})); return 1; })()"
+               % json.dumps(box_id))
+        return self.ready("after opening " + box_id, trail)
 
     def click_sel(self, sel, trail=None):
         b = self.j("(() => { const e = document.querySelector(%s); if (!e) return null; const r = e.getBoundingClientRect();"

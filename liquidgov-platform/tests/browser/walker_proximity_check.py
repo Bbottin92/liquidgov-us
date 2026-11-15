@@ -6,9 +6,10 @@ Real headless Chromium at phone size, NO C++ server: walker_controls_check.py's 
 and walker_instance_check.py's touchpad walk, reused as they are. "Hidden" is the computed visibility of a box.
 
   F1  the map loaded (8 boxes); standing on the you box every box is connected to it, so none is hidden
-  F2  walk onto the friends box: you and friends stay shown, the six other boxes are hidden, and so is every
-      connector to a hidden box
-  F3  zoomed out by you (the wheel): every box and connector is shown again
+  F2  walk onto the friends box and stay (it opens): layers outward from there (2026-11-15, Brandon: "3 or 4 layers of
+      pools and streams", rings outward from wherever you are): friends 0, you and the friends 1 (clear), the six other
+      kinds 2 (half there); nothing near is hidden
+  F3  zoomed out by you (the wheel): every box and connector is shown at full strength again
 
 2026-11-15 (Brandon's OK): walking is always on, so the Scroll cases (old F0, F3) became "zoom out yourself".
 
@@ -33,7 +34,8 @@ SEEN = ("(() => { const vis = e => getComputedStyle(e).visibility !== 'hidden';"
         " const hiddenBoxes = boxes.filter(b => !vis(b)).map(b => b.getAttribute('data-id')).sort();"
         " return JSON.stringify({shown: boxes.filter(vis).map(b => b.getAttribute('data-id')).sort(), hidden: hiddenBoxes,"
         "  edgesShown: edges.filter(vis).map(e => [e.getAttribute('data-a'), e.getAttribute('data-b')]),"
-        "  edgesHidden: edges.filter(e => !vis(e)).length, edges: edges.length}); })()")
+        "  edgesHidden: edges.filter(e => !vis(e)).length, edges: edges.length,"
+        "  layer: Object.fromEntries(boxes.map(b => [b.getAttribute('data-id'), [b.getAttribute('data-layer') || '', b.style.opacity || '1']]))}); })()")
 
 
 class Run(wi.Run):
@@ -52,13 +54,18 @@ class Run(wi.Run):
         self.check("F1 the map loaded (8 boxes); standing on the you box every box is connected to it, so none is hidden",
                    ok and len(everything) == 8 and not s.get("hidden") and s.get("edgesHidden") == 0, s)
         st = self.hop("mine:friends")
-        time.sleep(0.3)
+        self.open_here()       # staying in a pool opens it: the friends spread round it
+        time.sleep(0.5)
         s = self.seen()
-        far = sorted(set(everything) - {"you", "mine:friends"})
-        self.check("F2 on the friends box: you and friends shown, the six other boxes and their connectors hidden",
-                   st.get("at") == "mine:friends" and s.get("shown") == ["mine:friends", "you"] and s.get("hidden") == far
-                   and len(far) == 6 and all(set(e) <= {"you", "mine:friends"} for e in s.get("edgesShown", []))
-                   and s.get("edgesHidden") == 6, {"at": st.get("at"), "seen": s})
+        lay = s.get("layer") or {}
+        sib = sorted(set(everything) - {"you", "mine:friends"})
+        friends = sorted(i for i in lay if i.startswith("user:"))
+        self.check("F2 on the friends box, layers (Brandon 2026-11-15, rings outward from where you are): friends layer 0, "
+                   "you and the friends next to it clear (layer 1), the six other kinds two channels away half there (layer 2)",
+                   st.get("at") == "mine:friends" and lay.get("mine:friends") == ["0", "1"] and lay.get("you") == ["1", "1"]
+                   and len(friends) >= 1 and all(lay[f] == ["1", "1"] for f in friends)
+                   and len(sib) == 6 and all(lay.get(b) == ["2", "0.5"] for b in sib) and not s.get("hidden"),
+                   {"at": st.get("at"), "layer": lay})
         # zoom out yourself (the wheel over the map; a pinch does the same, walker_controls_check Z2): the whole map shows
         f = (self.j(wc.MAPZ) or {}).get("frame") or {}
         x, y = (f.get("l", 0) + f.get("r", 0)) / 2, max(f.get("t", 0), 0) + 60
@@ -67,8 +74,9 @@ class Run(wi.Run):
             time.sleep(0.05)
         time.sleep(0.8)
         s = self.seen()
-        self.check("F3 zoomed out by you: every box and connector is shown again, still standing on friends",
-                   s.get("shown") == everything and not s.get("hidden") and s.get("edgesHidden") == 0
+        self.check("F3 zoomed out by you: every box and connector is shown at full strength, still standing on friends",
+                   set(everything) <= set(s.get("shown", [])) and not s.get("hidden") and s.get("edgesHidden") == 0
+                   and all(v == ["", "1"] for v in (s.get("layer") or {}).values())
                    and self.state().get("at") == "mine:friends", s)
 
 

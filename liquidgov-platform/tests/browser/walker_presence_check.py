@@ -73,7 +73,7 @@ class Tab(wg.Run):
 
     def walk_to_group(self):
         self.hop(GROUPS)
-        self.key("enter")
+        self.open_here()
         self.wait("!!document.querySelector('#lgm-nodes .lgn[data-id=\"%s\"]')" % BOX, 8)
         time.sleep(0.8)
         return self.hop(BOX)

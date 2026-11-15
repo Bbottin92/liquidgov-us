@@ -75,7 +75,7 @@ class Run(wi.Run):
         entered = self.hop("mine:friends").get("at")
         self.check("Y2 Private: a box private to someone else is not entered (you stop at its edge, in no box); private to you, it is entered",
                    refused == "" and entered == "mine:friends", {"private to someone else -> at": refused, "private to you -> at": entered})
-        self.key("enter")
+        self.open_here()
         self.wait("!!document.querySelector('#lgm-nodes .lgn-person')", 5)
         time.sleep(0.8)
         kids = {i: v for i, v in (self.j(ATTRS) or {}).items() if i.startswith("user:")}

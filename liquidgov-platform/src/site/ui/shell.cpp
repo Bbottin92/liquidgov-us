@@ -349,6 +349,11 @@ std::string nav(const std::string& user, int unread) {
         "<a href=\"/proposals\">Proposals</a>"
         "<a href=\"/officials\">Officials</a>"
         "<a href=\"/laws\">Laws</a>"
+        "<form method=\"POST\" action=\"/settings/hints\" class=\"inline\"><input type=\"hidden\" name=\"on\" value=\""+
+        std::string(g_store.hints_of(user).on ? "0" : "1")+"\"><button type=\"submit\" class=\"ghost\" "
+        "style=\"width:100%;justify-content:flex-start;border:0;border-radius:0;padding:.55rem 1.1rem;min-height:40px;"
+        "font-weight:400;font-size:.92rem;color:var(--ink);background:transparent\">Hints: "+
+        std::string(g_store.hints_of(user).on ? "on &middot; turn off" : "off &middot; turn on")+"</button></form>"
         "<a href=\"/logout\">Log out</a>"
         "</nav>";
     return bell+mail+avatar+menu+mail_widget_script();

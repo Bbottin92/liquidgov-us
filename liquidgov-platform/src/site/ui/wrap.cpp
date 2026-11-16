@@ -30,6 +30,19 @@ static void add_drop(std::string& page, const std::string& user) {
                      "<script src=\"" + asset_url("here.js") + "\" defer></script>");
 }
 
+// Hints for newcomers (assets/hints.js): only for a signed-in person whose Hints setting is on, outside framed pages.
+static void add_hints(std::string& page, const std::string& user) {
+    if (user.empty()) return;
+    const HintPrefs hp = g_store.hints_of(user);
+    if (!hp.on) return;
+    auto pos = page.rfind("</body>");
+    if (pos == std::string::npos) return;
+    std::string ids;   // ids are letters, digits, - and _ only (set_hints), so they cannot end the script
+    for (const auto& d : hp.dismissed) ids += std::string(ids.empty() ? "" : ",") + "\"" + d + "\"";
+    page.insert(pos, "<script>window.LG_HINTS={\"done\":[" + ids + "]};</script>"
+                     "<script src=\"" + asset_url("hints.js") + "\" defer></script>");
+}
+
 std::string wrap(const std::string& title, const std::string& user, int unread, const std::string& body, bool show_intro) {
     // Anonymous visitors have no prefs to consult -- they always get the
     // plain first-time-only (localStorage) behavior, same as before this
@@ -74,6 +87,7 @@ std::string wrap(const std::string& title, const std::string& user, int unread, 
         if (pos != std::string::npos) page.insert(pos + 7, widget);
     }
     add_drop(page, user);
+    add_hints(page, user);
     add_video_links(page);
     return page;
 }

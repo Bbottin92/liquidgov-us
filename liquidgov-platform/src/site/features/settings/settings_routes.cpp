@@ -280,6 +280,22 @@ std::optional<std::string> settings_routes(Route& r) {
         g_store.set_password_hash(acc->id, hash_password(f["next"]));
         return http_redir("/settings?ok=password");
     }
+    // Hints for newcomers (Brandon 2026-11-16): on=0|1 turns the phase off or on, dismiss=<id> is "got it" for one hint,
+    // reset=1 shows the dismissed ones again. ajax=1 answers "ok"; otherwise back to the page you were on.
+    if(method=="POST"&&path=="/settings/hints") {
+        if(!acc) return need_login();
+        auto f=parse_form(body);
+        HintPrefs h = g_store.hints_of(user);
+        if (f.count("on")) h.on = f["on"] == "1";
+        if (f.count("dismiss") && !f["dismiss"].empty()) h.dismissed.push_back(f["dismiss"]);   // set_hints drops a bad id
+        if (f["reset"] == "1") h.dismissed.clear();
+        g_store.set_hints(user, h);
+        if (f["ajax"] == "1") return http_ok("ok");
+        std::string back = header_value(req, "Referer"), host = header_value(req, "Host");
+        if (host.empty() || (back.rfind("https://" + host + "/", 0) != 0 && back.rfind("http://" + host + "/", 0) != 0))
+            back = "/settings#hints";
+        return http_redir(back);
+    }
     if(method=="POST"&&path=="/settings/map") {
         if(!acc) return need_login();
         auto f=parse_form(body);

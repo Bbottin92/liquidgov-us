@@ -127,3 +127,10 @@ Order of thumbs (Brandon, 2026-11-16): "you should see the order in which people
 
 Decided (Brandon, 2026-11-16): a time is shown beside each name in the list ("i like the time addition"), and private thumbs keep their place in the true order. Still open: the "and N private" line under the list; public or private by default; who sees the tint (Claude's lean: everyone who can see the pool).
 
+Decided (Brandon, 2026-11-16), closing Round 4's open questions:
+- **No "and N private" line** under the list ("-no"): the list shows only the people who did not choose private.
+- **Public by default.**
+- **A menu that expands from the corner of whatever post or thing you are looking at**, where you choose: thumbs always private; or specific people or groups who cannot see your thumbs; or thumbs private on that one thing.
+- **Everyone sees the tint.**
+Consequence to build for: a thumb is counted for everyone (the count and the tint), but its NAME is left out of the list for the viewers you hid it from, and for everyone if it is private. The same thumb can therefore be named to one viewer and unnamed to another.
+

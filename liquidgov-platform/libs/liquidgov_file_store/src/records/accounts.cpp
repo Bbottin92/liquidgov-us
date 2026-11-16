@@ -255,6 +255,7 @@ bool FileStore::delete_account(AccountId id) {
     jukebox_subs_.swap(keep_jsub);
     prefs_.erase(name);
     map_prefs_.erase(name);
+    hints_.erase(name);
     pains_.erase(std::remove_if(pains_.begin(), pains_.end(), [&](const PainPoint& p) { return p.owner == name; }),
                  pains_.end());
     for (auto& [slug, set] : members_) set.erase(name);

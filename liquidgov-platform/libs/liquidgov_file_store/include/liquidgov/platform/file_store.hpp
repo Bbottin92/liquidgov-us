@@ -98,6 +98,11 @@
 //          Source is post:<id>, prop:<id> or prply:<id>; a row whose source is gone,
 //          or an unkept one older than 30 days, is dropped.
 //   painn  <next_pain_id>
+//   hints  <username> <on> [<dismissed ids, comma-separated>]  // Brandon 2026-11-16: a hint phase for newcomers that
+//          can be turned off and back on from the dropdown menu. on is 0|1 (absent record = off, so accounts that
+//          existed before hints are not nagged; a new account is written with on=1). dismissed is the ids of the
+//          hints this person has said "got it" to (letters, digits, - and _ only); they stay dismissed when hints are
+//          turned off and on again, until "show hints again" clears the list. Fields after these are kept verbatim.
 //   mapp   <username> <show> <groups> <posts> <comments> <friends> [<pains>]  // each 0|1:
 //          what the map may show about this person (MapPrefs). Absence = the
 //          defaults (all on except friends). Separate tag so pref keeps its shape.
@@ -437,6 +442,9 @@ public:
     AccountPrefs prefs_of(const std::string& username) const;
     void set_prefs(const std::string& username, const AccountPrefs& p);
     MapPrefs map_prefs_of(const std::string& username) const;
+    // Hints for newcomers (see the hints tag above). hints_of gives {on=false, no dismissed} for someone with no record.
+    HintPrefs hints_of(const std::string& username) const;
+    void set_hints(const std::string& username, const HintPrefs& h);
     // True once the person has a saved mapp record (they saved Map settings, or the 2026-11-10 friends-on migration
     // wrote their defaults). Without one, map_prefs_of() gives MapPrefs{} defaults.
     bool has_map_prefs(const std::string& username) const;
@@ -800,6 +808,7 @@ private:
     void write_mail(std::ostream& body);
     void write_mail_read(std::ostream& body);
     void write_map_prefs(std::ostream& body);
+    void write_hints(std::ostream& body);
     void write_members(std::ostream& body);
     void write_notices(std::ostream& body);
     void write_pains(std::ostream& body);
@@ -851,6 +860,7 @@ private:
     std::map<std::string, std::set<std::string>> inner_;
     std::map<std::string, AccountPrefs> prefs_;
     std::map<std::string, MapPrefs> map_prefs_; // absent = MapPrefs{} defaults
+    std::map<std::string, HintPrefs> hints_;    // absent = off, nothing dismissed
     std::vector<Post> posts_;
     std::uint64_t next_reply_id_ = 1;
     std::vector<PostReply> replies_;

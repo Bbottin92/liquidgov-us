@@ -7,6 +7,7 @@
 #include "core/load_pending.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <cstddef>
 #include <map>
 #include <ostream>
@@ -197,6 +198,22 @@ bool FileStore::read_prefs(const std::vector<std::string>& f, LoadPending& pendi
         prefs_[pct_decode(f[1])] = p;
         return true;
     }
+    if (tag == "hints") {
+        if (f.size() < 3) throw std::runtime_error("LGP1: bad hints record");
+        const std::string who = pct_decode(f[1]);
+        if (f[2] != "0" && f[2] != "1") throw std::runtime_error("LGP1: bad hints flag");
+        HintPrefs hp;
+        hp.on = f[2] == "1";
+        if (f.size() >= 4 && !f[3].empty()) {
+            std::string cur;
+            for (char ch : f[3] + ",") {
+                if (ch == ',') { if (!cur.empty()) hp.dismissed.push_back(cur); cur.clear(); } else cur += ch;
+            }
+        }
+        for (std::size_t i = 4; i < f.size(); ++i) hp.extra_fields.push_back(f[i]);
+        if (!who.empty()) hints_[who] = hp;
+        return true;
+    }
     if (tag == "mapp") {
         // 7 or 8 fields, or more from a newer version (kept verbatim in extra_fields).
         if (f.size() < 7) throw std::runtime_error("LGP1: bad mapp record");
@@ -214,6 +231,43 @@ bool FileStore::read_prefs(const std::vector<std::string>& f, LoadPending& pendi
         return true;
     }
     return false;
+}
+
+// Hints are plain ids (letters, digits, - and _), so nothing in them needs escaping; anything else is dropped on save.
+static bool hint_id_ok(const std::string& s) {
+    if (s.empty() || s.size() > 40) return false;
+    for (unsigned char ch : s) if (!(std::isalnum(ch) || ch == '-' || ch == '_')) return false;
+    return true;
+}
+
+HintPrefs FileStore::hints_of(const std::string& username) const {
+    auto it = hints_.find(username);
+    return it == hints_.end() ? HintPrefs{} : it->second;
+}
+
+void FileStore::set_hints(const std::string& username, const HintPrefs& h) {
+    if (username.empty()) return;
+    HintPrefs c;
+    c.on = h.on;
+    for (const auto& d : h.dismissed) {
+        if (!hint_id_ok(d)) continue;
+        if (std::find(c.dismissed.begin(), c.dismissed.end(), d) != c.dismissed.end()) continue;
+        c.dismissed.push_back(d);
+    }
+    auto old = hints_.find(username);
+    c.extra_fields = h.extra_fields;
+    if (old != hints_.end() && c.extra_fields.empty()) c.extra_fields = old->second.extra_fields;
+    hints_[username] = c;
+    flush();
+}
+
+void FileStore::write_hints(std::ostream& body) {
+    for (const auto& [who, hp] : hints_) {
+        body << "hints\t" << pct_encode(who) << "\t" << (hp.on ? 1 : 0) << "\t";
+        for (std::size_t i = 0; i < hp.dismissed.size(); ++i) body << (i ? "," : "") << hp.dismissed[i];
+        for (const auto& x : hp.extra_fields) body << "\t" << x;
+        body << "\n";
+    }
 }
 
 // Save: this module's records, at their place in the store (flush() calls the sections in order).

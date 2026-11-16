@@ -175,6 +175,7 @@ void FileStore::flush() {
     write_communities(body);
     write_city_lists(body);
     write_map_prefs(body);
+    write_hints(body);
     write_pains(body);
     write_city_tags(body);
     write_members(body);

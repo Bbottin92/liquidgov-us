@@ -10,6 +10,7 @@
 #include "site/features/map/map_rules.hpp"
 #include "site/features/map/map_search.hpp"
 #include "site/features/map/map_svg.hpp"
+#include "site/features/outside/outside.hpp"
 #include "site/features/pains/pains.hpp"
 #include "site/features/profile/profile_css.hpp"
 #include "site/features/profile/portrait.hpp"
@@ -233,9 +234,12 @@ std::optional<std::string> map_routes(Route& r) {
         if (!n) return http_raw("404 Not Found","application/json; charset=utf-8","{\"error\":\"not found\"}");
         const MapCtx ctx = map_ctx(user); // relevance colours, for this viewer only
         map_add_sub(*n, user);
+        outside_fill_interest(*n);   // an interest of yours with a Wikipedia article carries its short summary (outside.hpp)
         std::string out = "{\"node\":" + with_instance_css(map_node_json(*n, map_relevance(*n, ctx)), id) + ",\"links\":[";
         bool first = true;
-        for (auto l : map_links(id, user)) {
+        auto linked = map_links(id, user);
+        outside_fill_interests(linked);   // your interest boxes carry their Wikipedia summaries when the list is drawn
+        for (auto l : linked) {
             if (!first) out += ",";
             first = false;
             map_add_sub(l.to, user);

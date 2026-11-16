@@ -256,3 +256,10 @@ main.wrap>.lgmap .lgmap-canvas{flex:1;min-height:0;height:auto;border-radius:0}
 .lgm-hit-text{overflow-wrap:anywhere}
 .lgm-hit-by{font-size:.75rem;color:rgba(200,230,245,.6)}
 .lgm-bars:has(.lgm-hits:not([hidden])){z-index:70}   /* the open results list sits over your drop, the pad and the peek */
+/* Pools show what they are (2026-11-16): the author row is small and quiet, the text is the substance. */
+#lgmap[data-pools] .lgn text.lgn-pool-body{font-size:17px;font-weight:400;fill:#f2fbff;text-anchor:start;stroke:rgba(8,30,45,.35);stroke-width:2px;paint-order:stroke;letter-spacing:0}
+#lgmap[data-pools] .lgn text.lgn-by{font-size:13px;font-weight:600;fill:#cfeaf6;text-anchor:start;opacity:.8;stroke:none}
+#lgmap[data-pools] .lgn tspan.lgn-when{font-size:12px;font-weight:400;opacity:.65}
+#lgmap[data-pools] .lgn-ava-bg{fill:rgba(255,255,255,.16);stroke:none}
+#lgmap[data-pools] .lgn text.lgn-ava-ch{font-size:11px;font-weight:700;fill:#fff;text-anchor:middle;stroke:none;opacity:.8}
+#lgmap[data-pools] .lgn-ava{opacity:.78}

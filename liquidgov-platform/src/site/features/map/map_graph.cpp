@@ -247,6 +247,8 @@ std::string map_node_json(const GNode& n, double rel) {
     return "{\"id\":\"" + json_escape(n.id) + "\",\"label\":\"" + json_escape(n.label) + "\",\"kind\":\"" +
            json_escape(n.kind) + "\",\"page\":\"" + json_escape(n.page) + "\"" +
            (n.sub.empty() ? std::string() : ",\"sub\":\"" + json_escape(n.sub) + "\"") +
+           (n.body.empty() ? std::string() : ",\"body\":\"" + json_escape(n.body.size() > 6000 ? n.body.substr(0, 6000) : n.body) + "\"") +
+           (n.by.empty() ? std::string() : ",\"by\":\"" + json_escape(n.by) + "\",\"ts\":" + std::to_string(n.ts)) +
            (rel < 0 ? std::string() : std::string(",\"rel\":") + buf) + "}";
 }
 

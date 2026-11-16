@@ -52,7 +52,58 @@
   // poolR: a pool's half width in map units (its half height is POOL_Y of that); the label's size follows the pool.
   var POOLS = root.getAttribute('data-pools') === '1';
   var POOL_Y = 0.9, POOL_GAP = 240;
-  function poolR(d) { return d.R || (d.kind === 'you' ? 220 : d.kind === 'mine' ? 175 : d.kind === 'more' ? 120 : 145); }
+  function poolR(d) { return d.R || (d.body ? contentLayout(d).R : 0) || (d.kind === 'you' ? 220 : d.kind === 'mine' ? 175 : d.kind === 'more' ? 120 : 145); }
+  // Pools show what they are (Brandon 2026-11-16: a post's pool holds its text and who wrote it, with a quiet picture; a
+  // comment's pool its whole comment; "if the post is super long then ... just make the pool big enough to fit it").
+  // contentLayout wraps the text at the width that makes the smallest oval and sizes the pool to hold the block (author
+  // row on top, then the lines). Cached on the data (d._cl); lines are measured with the same font they are drawn in.
+  var CF = { text: 17, line: 24, name: 13, ava: 11, head: 30, pad: 38 };
+  function contentLayout(d) {
+    if (d._cl) return d._cl;
+    var font = '400 ' + CF.text + 'px', nameFont = '600 ' + CF.name + 'px', paras = String(d.body || '').replace(/\r/g, '').split('\n');
+    function wrap(w) {
+      var lines = [];
+      paras.forEach(function (para) {
+        if (!para.trim()) { lines.push(''); return; }
+        var cur = '';
+        para.split(/\s+/).forEach(function (wd) {
+          if (!wd) return;
+          var t = cur ? cur + ' ' + wd : wd;
+          if (textW(t, font) <= w) { cur = t; return; }
+          if (cur) lines.push(cur);
+          while (textW(wd, font) > w) {   // a word wider than the block is broken
+            var k = wd.length;
+            while (k > 1 && textW(wd.slice(0, k), font) > w) k--;
+            lines.push(wd.slice(0, k)); wd = wd.slice(k);
+          }
+          cur = wd;
+        });
+        lines.push(cur);
+      });
+      return lines;
+    }
+    var headW = d.by ? CF.ava * 2 + 8 + textW(d.by, nameFont) + 8 + textW('9 min ago', '400 ' + (CF.name - 1) + 'px') : 0, best = null;
+    for (var w = 280; w <= 960; w += 40) {
+      var lines = wrap(w), used = headW;
+      lines.forEach(function (l) { used = Math.max(used, textW(l, font)); });
+      var h = (d.by ? CF.head : 0) + lines.length * CF.line;
+      var R = Math.sqrt(Math.pow(used / 2, 2) + Math.pow(h / 2 / POOL_Y, 2)) + CF.pad;   // the block's corner inside the oval
+      if (!best || R < best.R) best = { R: Math.ceil(R), w: used, h: h, lines: lines };
+    }
+    best.R = Math.max(best.R, d.kind === 'comment' ? 120 : 145);
+    d._cl = best;
+    return best;
+  }
+  function ago(ts) {
+    if (!ts) return '';
+    var sec = Math.max(0, Date.now() / 1000 - ts);
+    if (sec < 90) return 'just now';
+    if (sec < 3600) return Math.round(sec / 60) + ' min ago';
+    if (sec < 86400) return Math.round(sec / 3600) + ' h ago';
+    if (sec < 7 * 86400) return Math.round(sec / 86400) + ' d ago';
+    return new Date(ts * 1000).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+  }
+  var clipN = 0;
   // Room on a pool's shore: each channel's mouth takes MOUTH map units of it (its 98-wide shore and some land either
   // side), so a pool with many channels grows (poolFit) until they all fit, and the channels leaving it are spread at
   // least mouthAngle apart (worldPlace): mouths never run into each other.
@@ -263,7 +314,7 @@
   function copyValve(v) { return { type: v.type, owner: v.owner || '', invite: (v.invite || []).slice() }; }
   function addNode(d, x, y, parent) {
     if (nodes[d.id]) return nodes[d.id];
-    var n = { id: d.id, label: d.label, kind: d.kind, page: d.page, rel: d.rel, sub: d.sub || '', x: x, y: y,
+    var n = { id: d.id, label: d.label, kind: d.kind, page: d.page, rel: d.rel, sub: d.sub || '', body: d.body || '', by: d.by || '', ts: d.ts || 0, x: x, y: y,
       expanded: false, more: d.more, css: d.css || '',   // ring places are exact (see ringPlace); css: spatial step 10, an admin's CSS for this instance
       // spatial steps 6-7: who may enter. The box's own valve if its data has one, else a copy of its parent's (the box
       // it was opened from), else Open. A valve is { type: open|conduit|invite|private|request|closed, owner, invite[] }.
@@ -280,7 +331,27 @@
     var shape = POOLS ? el('ellipse', { cx: W / 2, cy: H / 2, rx: poolR(n), ry: poolR(n) * POOL_Y, 'class': 'lgs' }) : shapeEl(n.kind, n.w, H);
     if (ox) shape.setAttribute('transform', 'translate(' + ox + ',0)');
     g.appendChild(shape);
-    if (POOLS) {
+    if (POOLS && n.body) {
+      // what the pool holds: who wrote it (a small quiet picture and name) and, under it, the whole text
+      var cl = contentLayout(n), x0 = W / 2 - cl.w / 2, y0 = H / 2 - cl.h / 2, ty = y0;
+      if (n.by) {
+        var cid = 'lgm-av-' + (++clipN), ay = y0 + CF.ava + 1;
+        var defs2 = el('clipPath', { id: cid }); defs2.appendChild(el('circle', { cx: x0 + CF.ava, cy: ay, r: CF.ava })); g.appendChild(defs2);
+        g.appendChild(el('circle', { cx: x0 + CF.ava, cy: ay, r: CF.ava, 'class': 'lgn-ava-bg' }));
+        var ch = el('text', { x: x0 + CF.ava, y: ay + 4, 'class': 'lgn-ava-ch' }); ch.textContent = n.by.charAt(0).toUpperCase(); g.appendChild(ch);
+        var img = el('image', { x: x0, y: ay - CF.ava, width: CF.ava * 2, height: CF.ava * 2, 'clip-path': 'url(#' + cid + ')', 'class': 'lgn-ava',
+          href: '/portrait/' + encodeURIComponent(n.by), preserveAspectRatio: 'xMidYMid slice' });
+        img.addEventListener('error', function () { if (img.parentNode) img.parentNode.removeChild(img); });
+        g.appendChild(img);
+        var nm2 = el('text', { x: x0 + CF.ava * 2 + 8, y: ay + 4, 'class': 'lgn-by' }); nm2.textContent = n.by;
+        var tm = el('tspan', { 'class': 'lgn-when', dx: 8 }); tm.textContent = ago(n.ts); nm2.appendChild(tm);
+        g.appendChild(nm2);
+        ty = y0 + CF.head;
+      }
+      var body = el('text', { x: x0, y: ty + CF.text, 'class': 'lgn-pool-body' });
+      cl.lines.forEach(function (ln, i) { var tsp = el('tspan', { x: x0, dy: i ? CF.line : 0 }); tsp.textContent = ln; body.appendChild(tsp); });
+      g.appendChild(body);
+    } else if (POOLS) {
       // the pool's name, big in its middle, with a line of waves under it
       var R = poolR(n), fs = poolFont(n), pt = el('text', { x: W / 2, y: H / 2 + fs * 0.3, 'class': 'lgn-pool-name' });
       pt.style.fontSize = fs + 'px';
@@ -705,7 +776,7 @@
     });
   }
   // a "+N more" box keeps its rest, so Back and the trail can draw it again
-  function dataOf(n) { return { id: n.id, label: n.label, kind: n.kind, page: n.page, rel: n.rel, sub: n.sub, more: n.more }; }
+  function dataOf(n) { return { id: n.id, label: n.label, kind: n.kind, page: n.page, rel: n.rel, sub: n.sub, body: n.body, by: n.by, ts: n.ts, more: n.more }; }
   function expand(n) {
     if (n.expanded) return Promise.resolve(n);
     status('Loading…');
@@ -1086,7 +1157,7 @@
   // map's ZOOM.max), gliding; fit() is the normal view again. The zoom is walker.js's (LG_WALKER.CONTROLS.mapZoom).
   window.LG_MAP = {
     // spatial step 8: a box is an instance; this is its record (region and valve, as built), or null if it is not on the map
-    instance: function (id) { var n = nodes[id]; return n ? { id: n.id, region: n.region, valve: n.valve, css: n.css, page: n.page || '' } : null; },
+    instance: function (id) { var n = nodes[id]; return n ? { id: n.id, region: n.region, valve: n.valve, css: n.css, page: n.page || '', content: !!n.body } : null; },
     // The portal (2026-11-15, Brandon: the side panel is abandoned; a page is entered through its portal): opening a
     // box's page calls onOpen(id, page) when the map walker set it (it grows the peek into the page); with no walker
     // (the droplet hidden in Settings) the page simply opens.

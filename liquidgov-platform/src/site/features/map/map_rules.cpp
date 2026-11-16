@@ -245,7 +245,30 @@ std::optional<GNode> map_gnode(const std::string& id, const std::string& viewer)
         if (!n) return std::nullopt;
         auto p = g_store.proposal_by_id(*n);
         if (!p) return std::nullopt;
-        return GNode{id, p->title, "prop", "/proposals?id=" + std::to_string(p->id)};
+        return GNode{id, p->title, "prop", "/proposals?id=" + std::to_string(p->id), "", p->body, p->author, p->ts};
+    }
+    // A comment is a pool of its own (Brandon 2026-11-16): pcom:<id> on a post, rcom:<id> on a proposal. Shown to whoever
+    // may see the post (map_post_ok; proposals are public), minus a commenter blocked either way with the viewer.
+    if (type == "pcom" || type == "rcom") {
+        auto n = as_u64(rest);
+        if (!n) return std::nullopt;
+        std::string text, author, page;
+        std::int64_t ts = 0;
+        if (type == "pcom") {
+            auto r = g_store.post_reply_by_id(*n);
+            if (!r) return std::nullopt;
+            auto post = g_store.post_by_id(r->post_id);
+            if (!post || !map_post_ok(*post, viewer)) return std::nullopt;
+            text = r->text; author = r->author; ts = r->ts; page = "/post/" + std::to_string(post->id);
+        } else {
+            auto r = g_store.proposal_reply_by_id(*n);
+            if (!r || !g_store.proposal_by_id(r->proposal_id)) return std::nullopt;
+            text = r->text; author = r->author; ts = r->ts; page = "/proposals?id=" + std::to_string(r->proposal_id);
+        }
+        if (author != viewer && (g_store.is_blocked(viewer, author) || g_store.is_blocked(author, viewer))) return std::nullopt;
+        std::string label = text;
+        for (char& ch : label) if (ch == '\n' || ch == '\r' || ch == '\t') ch = ' ';
+        return GNode{id, label, "comment", page, "", text, author, ts};
     }
     if (type == "pain") { // a kept wish or pain point. Private until its owner Flows it.
         auto n = as_u64(rest);
@@ -265,7 +288,7 @@ std::optional<GNode> map_gnode(const std::string& id, const std::string& viewer)
         if (!p || !map_post_ok(*p, viewer)) return std::nullopt;
         std::string label = p->text.empty() ? "(attachment)" : p->text;
         for (char& ch : label) if (ch == '\n' || ch == '\r' || ch == '\t') ch = ' ';
-        return GNode{id, label, "post", "/post/" + std::to_string(p->id)};
+        return GNode{id, label, "post", "/post/" + std::to_string(p->id), "", p->text, p->author, p->ts};
     }
     return std::nullopt;
 }
@@ -297,6 +320,10 @@ std::vector<GLink> map_links(const std::string& id, const std::string& viewer) {
         link("user:" + p.author, "wrote");
         for (const auto& r : g_store.proposal_replies_of(p.id))
             if (person_comments_ok(r.author)) link("user:" + r.author, "commented");
+        {   // and the comments themselves, each a pool (the newest 12)
+            auto rs = g_store.proposal_replies_of(p.id);
+            for (std::size_t i = rs.size() > 12 ? rs.size() - 12 : 0; i < rs.size(); ++i) link("rcom:" + std::to_string(rs[i].id), "commented");
+        }
     };
     auto colon = id.find(':');
     const std::string type = colon == std::string::npos ? id : id.substr(0, colon);
@@ -432,6 +459,16 @@ std::vector<GLink> map_links(const std::string& id, const std::string& viewer) {
         if (!p->community.empty()) link("group:" + p->community, "posted");
         for (const auto& g : p->extra_groups) link("group:" + g, "posted");
         if (p->repost_of_id) link("post:" + std::to_string(p->repost_of_id), "shared");
+        // its comments, each a pool (the newest 12)
+        auto rs = g_store.replies_of(p->id);
+        for (std::size_t i = rs.size() > 12 ? rs.size() - 12 : 0; i < rs.size(); ++i) link("pcom:" + std::to_string(rs[i].id), "commented");
+    } else if (type == "pcom" || type == "rcom") {
+        auto n = map_gnode(id, viewer);
+        if (!n) return out;
+        const auto k = std::stoull(rest);
+        if (type == "pcom") { if (auto r = g_store.post_reply_by_id(k)) link("post:" + std::to_string(r->post_id), "on"); }
+        else if (auto r = g_store.proposal_reply_by_id(k)) link("prop:" + std::to_string(r->proposal_id), "on");
+        if (!n->by.empty()) link("user:" + n->by, "wrote");
     }
     return out;
 }

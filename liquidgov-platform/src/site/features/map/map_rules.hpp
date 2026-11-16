@@ -22,7 +22,10 @@ std::vector<MapInterest> map_interests_of(const std::string& user);
 // dept:<key>|<tag>, prop:<id>, post:<id>, pain:<id>. /map/node?n=<id> answers with the
 // box and every box it connects to that this viewer may see, as JSON. The
 // "page" of a box is what the right-hand field shows.
-struct GNode { std::string id, label, kind, page, sub; };
+struct GNode { std::string id, label, kind, page, sub;
+               // What a pool carries inside it (Brandon 2026-11-16: pools show what they are): the whole text of a post, a
+               // proposal or a comment, who wrote it and when. Empty for boxes that are only a name.
+               std::string body, by; std::int64_t ts = 0; };
  // sub: a short second line (your kind boxes only, M1.1 look)
 struct GLink { GNode to; std::string edge; };
 std::optional<GNode> map_gnode(const std::string& id, const std::string& viewer);

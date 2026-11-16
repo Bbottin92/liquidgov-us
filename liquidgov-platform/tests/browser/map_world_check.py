@@ -19,6 +19,7 @@ droplet on: big oval pools, a pool grows within a limit and never into another, 
   O5  a big level (41 links): a "+N more" box, and what is shown + N = 41; opening "+N more" shows the next ones
   O6  Back (the phone's back gesture) steps the center one back (the trail one shorter); nothing is removed
   O7  a click on a box with a page goes to that page (no side panel: the page itself)
+  O8  pools that hold text (a post, a comment): author row, every line, the block inside the pool, a long text a bigger pool
 
 Usage: LG_BROWSER=$(command -v google-chrome) python3 map_world_check.py [<liquidgov-platform dir>] [<out dir>]
 Prints "VERDICT map-world: ALL-PASS" or the failed cases. Exit 1 on a FAIL."""
@@ -37,6 +38,14 @@ import map_big_level_check as mb  # noqa: E402  (the big graph; through it map_l
 import map_live_check2 as m2  # noqa: E402
 import cdp  # noqa: E402
 
+# Pools show what they are (Brandon 2026-11-16): a post and a comment carry their whole text, who wrote it and when.
+SHORT = "Tomatoes are in. Come grab some from bed 4."
+LONG = " ".join(["The river cleanup crew meets at the old bridge on Saturday morning. Bring gloves, water and a friend."] * 9)
+for _id, _kind, _body, _by in (("post:90", "post", SHORT, "pal"), ("post:91", "post", LONG, "pal"), ("pcom:92", "comment", "Count me in for the whole morning.", "samyraine")):
+    _n = m2.N(_id, _body[:60], _kind, "/post/90", 0.5)
+    _n.update(body=_body, by=_by, ts=1794000000)
+    mb.NODES[_id] = _n
+    mb.LINKS[_id] = []
 KINDS = ["mine:events", "mine:feeds", "mine:friends", "mine:groups", "mine:interests", "mine:places", "mine:politics"]
 # every drawn box: id, its region (map units) and whether it is drawn twice
 REGIONS = ("[...document.querySelectorAll('#lgm-nodes > g.lgn')].map(g => { const id = g.getAttribute('data-id'),"
@@ -136,11 +145,37 @@ class Run(mb.BigRun):
         self.check("O6 %s: Back steps the center one back, and nothing is removed" % tag,
                    len(t1) == len(t0) - 1 and t1 == t0[:len(t1)] and len(self.regions()) == n0, {"before": t0, "after": t1})
 
+    def content_case(self):
+        """O8 a pool that holds text: the author row (a small picture or initial, the name, a time), every line of the text,
+        and the pool is big enough that the whole block sits inside it; a long text makes a bigger pool than a short one."""
+        self.base = self.pool_base
+        self.size(1600, 1000)
+        self.load()
+        for pid in ("post:90", "post:91", "pcom:92"):
+            cdp.js(self.ws, "LG_MAP.goTo(%s)" % json.dumps(pid))
+            self.ready("went to " + pid, None)
+        probe = ("(id => { const g = document.querySelector('#lgm-nodes .lgn[data-id=\"' + id + '\"]'); if (!g) return null;"
+                 " const body = g.querySelector('.lgn-pool-body'), el = g.querySelector('ellipse.lgs'), by = g.querySelector('.lgn-by');"
+                 " const bb = body.getBBox(), cx = +el.getAttribute('cx'), cy = +el.getAttribute('cy'), rx = +el.getAttribute('rx'), ry = +el.getAttribute('ry');"
+                 " const inside = [[bb.x, bb.y], [bb.x + bb.width, bb.y], [bb.x, bb.y + bb.height], [bb.x + bb.width, bb.y + bb.height]]"
+                 "   .every(p => Math.pow((p[0] - cx) / rx, 2) + Math.pow((p[1] - cy) / ry, 2) <= 1);"
+                 " return {lines: body.querySelectorAll('tspan').length, text: [...body.querySelectorAll('tspan')].map(t => t.textContent).join(' '),"
+                 "  by: by ? by.firstChild.textContent : null, when: !!g.querySelector('.lgn-when') && g.querySelector('.lgn-when').textContent,"
+                 "  ava: !!g.querySelector('.lgn-ava-bg'), rx: rx, inside: inside}; })(%s)")
+        a, b, c = (self.j(probe % json.dumps(i)) for i in ("post:90", "post:91", "pcom:92"))
+        ok = all(isinstance(x, dict) for x in (a, b, c))
+        self.check("O8 a post's pool holds its text, who wrote it and when, a small picture or initial; the block sits inside the pool",
+                   ok and a["text"] == SHORT and a["by"] == "pal" and a["when"] and a["ava"] and a["inside"], a)
+        self.check("O8 a comment's pool holds the whole comment and its author", ok and c["text"] == "Count me in for the whole morning." and c["by"] == "samyraine" and c["inside"], c)
+        self.check("O8 a very long post makes a bigger pool that still holds all of it (every word drawn)",
+                   ok and b["rx"] > a["rx"] * 1.5 and b["lines"] > a["lines"] + 4 and b["inside"] and b["text"] == LONG, {"short rx": a and a["rx"], "long rx": b and b["rx"], "long lines": b and b["lines"]})
+
     def cases(self):
         self.case_set("desktop", 1600, 1000, self.box_base)
         self.case_set("narrow", 755, 900, self.box_base)
         # the pools' layout (with the droplet on, lgmap.js lays the map out as pools; the walker is not needed for that)
         self.case_set("pools desktop", 1600, 1000, self.pool_base)
+        self.content_case()
         # O7: a click on a box with a page opens that page itself
         self.base = self.box_base
         self.size(1600, 1000)

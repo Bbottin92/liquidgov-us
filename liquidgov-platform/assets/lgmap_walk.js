@@ -629,7 +629,8 @@
     if (POOLS && Date.now() - lastMove < PEEK.stillMs) { peekSince = 0; peekHide(); return; }   // swimming: no peek
     var t = me ? target() : null, id = t ? t.getAttribute('data-id') : '', rec = id ? MAP.instance(id) : null;
     var page = rec && rec.page ? rec.page : '';
-    if (!page) { peekSince = 0; peekHide(); return; }
+    // a pool that already holds its own text (a post, a comment, a proposal) needs no preview of the same page over it
+    if (!page || (rec && rec.content)) { peekSince = 0; peekHide(); return; }
     if (peekOpen && peekFor === id) { peekPlace(t, page); return; }
     if (!peekSince || walker.getAttribute('data-peek-wait') !== id) { peekSince = Date.now(); walker.setAttribute('data-peek-wait', id); return; }
     if (Date.now() - peekSince >= PEEK.dwellMs) peekShow(id, t, page);

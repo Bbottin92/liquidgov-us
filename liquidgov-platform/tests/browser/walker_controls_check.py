@@ -824,6 +824,30 @@ class Run(m.Run):
         return any(set(e) == {a, b} for e in st.get("edges", []))
 
     def map_go(self, target, limit_s=14, keys=None):
+        """_map_go_once, and if the walker stopped short of the box, twice more (a person tries again; a busy machine can
+        end one walk early: the M5 flake of 2026-11-16, which passed alone)."""
+        st = self._map_go_once(target, limit_s, keys)
+        for _ in range(2):
+            if st.get("at") == target:
+                break
+            st = self._map_go_once(target, limit_s, keys)
+        return st
+
+    def settle(self, limit_s=3.0):
+        """Wait until the map is still: the same trail, zoom, place and box for two looks in a row. A walk that starts
+        while the map is still moving after the last step (a pool that opened, the camera gliding) races with it: the
+        M5 flake of 2026-11-16 (about 1 run in 2 on this machine)."""
+        end, last = time.time() + limit_s, None
+        while time.time() < end:
+            st = self.j(self.WALK) or {}
+            cur = (st.get("trail"), st.get("scale"), tuple(st.get("pos") or ()), st.get("at"))
+            if cur == last:
+                return
+            last = cur
+            time.sleep(0.25)
+
+    def _map_go_once(self, target, limit_s=14, keys=None):
+        self.settle()
         """Walk the map's walker to box `target` with the keys (free walking): short holds toward its middle until the
         walker is in it (data-at) or the time is up. Returns the last state."""
         keys = keys or {"up": "w", "down": "s", "left": "a", "right": "d"}

@@ -42,6 +42,19 @@ class Run(wc.Run):
         return self.j(STATE) or {}
 
     def hop(self, target, limit_s=14):
+        """hop_once, and if the walker stopped short of the box, twice more: a person who stops short tries again. A busy
+        machine can end one walk early (flakes in walker_valve_check V2, walker_valve_types_check Y2/Y3 and
+        walker_controls_check M5, 2026-11-16, each passing alone). A box whose valve turns the walker away is still
+        not entered however often it tries, so the refusal checks are unchanged."""
+        st = self._hop_once(target, limit_s)
+        for _ in range(2):
+            if st.get("at") == target:
+                break
+            st = self._hop_once(target, limit_s)
+        return st
+
+    def _hop_once(self, target, limit_s=14):
+        self.settle()   # (walker_controls_check.Run.settle: wait until the map is still before walking)
         """Walk to box `target` with the touchpad (free walking, 2026-11-15; it used to be one push along a connector):
         pulls straight at its middle until the walker is inside it, or cannot get any closer (a valve turned it away
         at the box's edge), or the time is up. Returns the state then. The checks that inherit this keep calling it

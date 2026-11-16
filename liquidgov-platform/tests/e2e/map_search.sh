@@ -37,6 +37,16 @@ r=$(ids "$ADMIN" "SYNTH")
 check "a group by part of its name, any case" '[ "$r" = "group:synth-heads" ]' "$r"
 r=$(ids "$ADMIN" "pal")
 check "a person by handle" 'echo " $r " | grep -q " user:pal "' "$r"
+# a person by the name they show (Brandon 2026-11-16): first name, last name, a start of either, both words in any order
+curl -s -o /dev/null -b "lg_session=$PAL" -d "display_name=Priya Raman-Okafor" $URL/me/profile
+for q in priya okafor raman "pri%20ram" "okaf%20priya" "Priya%20Raman-Okafor"; do
+    r=$(ids "$ADMIN" "$q")
+    check "a person by display name: $q" 'echo " $r " | grep -q " user:pal "' "$r"
+done
+r=$(ids "$ADMIN" "priya%20nguyen")
+check "...every word has to match" '! echo " $r " | grep -q " user:pal "' "$r"
+r=$(ids "$STRANGER" "priya")
+check "a name finds a person only where the handle would (findability unchanged)" '[ "$(ids "$STRANGER" pal | grep -c user:pal)" = "$(echo "$r" | grep -c user:pal)" ]' "$r"
 # words in what people wrote (any order), comments, your own messages, dates and times (tz=0: UTC)
 got() { curl -s -b "lg_session=$1" "$URL/map/search?tz=0&q=$2" | python3 -c 'import json,sys; print(" ".join(r["kind"] + "=" + (r["id"] or r["page"]) for r in json.load(sys.stdin)["results"]))'; }
 curl -s -o /dev/null -b "lg_session=$PAL" -F "text=The river cleanup crew meets at the old bridge" -F "anybody=1" $URL/feed

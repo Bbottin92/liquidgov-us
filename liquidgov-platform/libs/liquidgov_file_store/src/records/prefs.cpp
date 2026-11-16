@@ -30,6 +30,36 @@ bool starts_with_ci(const std::string& s, const std::string& prefix) {
     return true;
 }
 
+// Brandon 2026-11-16: "i want to be able to type in someone's name in search and find them. right now i have to know
+// someones handle." A display name matches when it starts with what was typed, or when every typed word starts one of
+// its words ("smi jo" finds "Jo Smith"). Same findability rules as the handle: this only widens WHAT is matched.
+std::vector<std::string> words_ci(const std::string& s) {
+    std::vector<std::string> w;
+    std::string cur;
+    for (unsigned char c : s) {
+        if (c == ' ' || c == '\t' || c == '-' || c == '.' || c == ',') {
+            if (!cur.empty()) { w.push_back(cur); cur.clear(); }
+        } else {
+            cur += static_cast<char>(c);
+        }
+    }
+    if (!cur.empty()) w.push_back(cur);
+    return w;
+}
+
+bool name_matches(const std::string& display, const std::string& typed) {
+    if (display.empty()) return false;
+    if (starts_with_ci(display, typed)) return true;
+    const auto have = words_ci(display), want = words_ci(typed);
+    if (want.empty()) return false;
+    for (const auto& q : want) {
+        bool hit = false;
+        for (const auto& h : have) if (starts_with_ci(h, q)) { hit = true; break; }
+        if (!hit) return false;
+    }
+    return true;
+}
+
 } // namespace
 
 AccountPrefs FileStore::prefs_of(const std::string& username) const {
@@ -89,7 +119,10 @@ std::vector<std::string> FileStore::typeahead(const std::string& requester, cons
     std::vector<std::string> out;
     if (prefix.size() < 3) return out;
     for (const auto& [name, id] : by_username_) {
-        if (!starts_with_ci(name, prefix)) continue;
+        if (!starts_with_ci(name, prefix)) {
+            auto pr = profiles_.find(name);
+            if (pr == profiles_.end() || !name_matches(pr->second.display_name, prefix)) continue;
+        }
         if (is_blocked(requester, name)) continue;
         if (requester == name) {
             out.push_back(name);

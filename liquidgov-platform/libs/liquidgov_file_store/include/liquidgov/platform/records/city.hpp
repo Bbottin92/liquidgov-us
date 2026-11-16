@@ -47,6 +47,13 @@ struct MapPrefs {
     std::vector<std::string> extra_fields;
 };
 
+// The hint phase for newcomers (hints tag). Absent record = off. A new account is created with on = true.
+struct HintPrefs {
+    bool on = false;
+    std::vector<std::string> dismissed;      // hint ids the person has said "got it" to, kept in the order given
+    std::vector<std::string> extra_fields;   // a newer version's fields, written back untouched
+};
+
 struct CityUse {
     std::string key;
     std::string name;   // the spelling most of its groups use (ties: first A-Z)

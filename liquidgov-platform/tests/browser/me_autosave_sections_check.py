@@ -9,7 +9,7 @@ check releases it, so "Saving…" is asserted while the save is in flight, not s
 condition with a time limit (a timeout is a FAIL), never a fixed sleep.
 
   S1  the GET /me handler's About you and Play settings forms carry data-draft and have no Save button
-  S2  typing in Display name sends ONE save to /me/profile with the new value and the other fields; Saving… while it
+  S2  typing in Name sends ONE save to /me/profile with the new value and the other fields; Saving… while it
       is held, then Saved, in About you's own status
   S3  no page load and no scroll (a marker on window survives, scrollY unchanged)
   S4  unticking "Play my Juketube" sends ONE save to /me/jukebox/play-settings without autoplay; Saved in Play
@@ -149,7 +149,7 @@ class Run(m.Run):
         held = self.held(1)
         ok, s = self.until("Saving…", lambda s: (s["/me/profile"]["status"] or "").startswith("Saving"), 3)
         p = self.posts()
-        self.check("S2 typing in Display name sends a save to /me/profile with the new value and the other fields",
+        self.check("S2 typing in Name sends a save to /me/profile with the new value and the other fields",
                    held and len(p) == 1 and p[0]["path"] == "/me/profile" and p[0]["body"].get("display_name") == "Bee"
                    and {"hometown", "living", "bio", "interests", "career", "school"} <= set(p[0]["body"]), p)
         self.check("S2 ... About you shows Saving… while the save is held", ok, s)

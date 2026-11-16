@@ -33,7 +33,7 @@ std::optional<std::string> profile_routes(Route& r) {
             auto bio = g_store.blurb(acc->id);
             html += "<div class=\"card\"><h2>About you</h2>"
                 "<form method=\"POST\" action=\"/me/profile\" data-draft=\"1\">"
-                "<label>Display name</label><input name=\"display_name\" required maxlength=\"80\" autocomplete=\"nickname\" value=\""+html_escape(prof.display_name)+"\">"
+                "<label>Name <span class=\"muted\">(people can find you by it)</span></label><input name=\"display_name\" required maxlength=\"80\" autocomplete=\"name\" value=\""+html_escape(prof.display_name)+"\">"
                 "<label>Hometown</label><input name=\"hometown\" maxlength=\"80\" value=\""+html_escape(prof.hometown)+"\">"
                 "<label>Where you live now</label><input name=\"living\" maxlength=\"80\" value=\""+html_escape(prof.living)+"\">"
                 "<label>Bio</label><textarea name=\"bio\" maxlength=\"500\">"+html_escape(bio)+"</textarea>"

@@ -1,6 +1,7 @@
 #include "site/router.hpp"
 #include "site/core/route.hpp"
 #include "site/features/system/system_routes.hpp"
+#include "site/features/preview/preview_routes.hpp"
 #include "site/features/assets/assets_routes.hpp"
 #include "site/features/jukebox/jukebox_routes.hpp"
 #include "site/features/mail/mail_routes.hpp"
@@ -84,6 +85,7 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
     Route route{req, peer_ip, body, method, rawpath, path, qs, ip, acc, user, sid, unread, pg, need_login, admin_404};
     // Each feature's routes, in the order they first appeared in handle(); the first that answers wins.
     if (auto out = system_routes(route)) return *out;
+    if (auto out = preview_routes(route)) return *out;
     if (auto out = assets_routes(route)) return *out;
     if (auto out = jukebox_routes(route)) return *out;
     if (auto out = mail_routes(route)) return *out;

@@ -36,6 +36,8 @@ set(LG_SITE_SOURCES
   src/site/features/pages/home.cpp
   src/site/features/pages/static_pages.cpp
   src/site/features/admin/admin.cpp
+  src/site/features/preview/preview.cpp
+  src/site/features/preview/preview_routes.cpp
   src/site/features/auth/signup.cpp
   src/site/features/feed/post_block.cpp
   src/site/features/proposals/proposals.cpp

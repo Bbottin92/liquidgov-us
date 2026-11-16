@@ -1,4 +1,5 @@
 #include "site/ui/shell.hpp"
+#include "site/features/preview/preview.hpp"
 #include "site/core/adapters_store.hpp"
 #include "site/core/html.hpp"
 #include "site/ui/assets.hpp"
@@ -167,12 +168,15 @@ std::string page_wrap(const std::string& title, const std::string& navhtml, cons
     // a voluntary association, not a replacement for the government you
     // already live under. The old Myspace joke stays on the genesis quote
     // card. It is not what a stranger should see in a share preview.
-    const std::string og_desc =
-        "This is YOUR government! Represent yourself — a voluntary "
-        "association, not a replacement for the one you already live under.";
+    // (2026-11-16: Brandon edits these from /admin/preview; a blank field keeps the built-in text and picture, which now
+    // live in features/preview/preview.cpp.)
+    const SitePreview preview = site_preview();
+    const std::string og_desc = html_escape(preview.description.empty() ? preview_builtin_description() : preview.description);
+    const std::string og_title = preview.title.empty() ? full_title : html_escape(preview.title);
     // One shared image site-wide. v4 is a new path because v3 (and v2
     // before it) is cached immutable for a year on crawlers.
-    const std::string og_image = "https://liquidgov.us/assets/og-image-v4.jpg";
+    const std::string og_image = preview.image_mime.empty() ? preview_builtin_image_url()
+                                                            : "https://liquidgov.us/preview-image?v=" + preview.image_version;
     // Facebook's Sharing Debugger flags og:url as a missing-but-recommended
     // property if it's absent -- it's what the scraper treats as this
     // page's canonical identity (and what like/share counts attribute to).
@@ -194,13 +198,13 @@ std::string page_wrap(const std::string& title, const std::string& navhtml, cons
            "<meta property=\"og:site_name\" content=\"LiquidGov.US\">"
            "<meta property=\"og:url\" content=\""+og_url+"\">"+
            (fb_app_id.empty() ? "" : "<meta property=\"fb:app_id\" content=\""+fb_app_id+"\">") +
-           "<meta property=\"og:title\" content=\""+full_title+"\">"
+           "<meta property=\"og:title\" content=\""+og_title+"\">"
            "<meta property=\"og:description\" content=\""+og_desc+"\">"
            "<meta property=\"og:image\" content=\""+og_image+"\">"
            "<meta property=\"og:image:width\" content=\"1200\">"
            "<meta property=\"og:image:height\" content=\"630\">"
            "<meta name=\"twitter:card\" content=\"summary_large_image\">"
-           "<meta name=\"twitter:title\" content=\""+full_title+"\">"
+           "<meta name=\"twitter:title\" content=\""+og_title+"\">"
            "<meta name=\"twitter:description\" content=\""+og_desc+"\">"
            "<meta name=\"twitter:image\" content=\""+og_image+"\">"
            "<link rel=\"icon\" href=\"/favicon.svg\" type=\"image/svg+xml\">"

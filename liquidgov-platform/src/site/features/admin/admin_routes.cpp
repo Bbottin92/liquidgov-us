@@ -3,6 +3,8 @@
 #include "site/core/http.hpp"
 #include "site/features/admin/admin.hpp"
 #include "site/features/mail/mail_attachments.hpp"
+#include "site/core/multipart.hpp"
+#include "site/features/preview/preview.hpp"
 
 namespace liquidgov::site {
 
@@ -146,6 +148,38 @@ std::optional<std::string> admin_routes(Route& r) {
         g_store.remove_style(sid);
         g_store.add_audit_log(user, "delete_style", std::to_string(sid) + " by " + s->author + ": " + s->name.substr(0, 60));
         return http_redir("/admin/styles?done=deleted");
+    }
+    // the site's link preview card (preview.hpp): the words, the picture, and a way back to the built-in one
+    if(method=="GET"&&path=="/admin/preview") {
+        if(!acc) return need_login();
+        if(!is_operator(user)) return admin_404();
+        return pg("Operator tools", admin_preview_page(qs.count("done") ? qs.at("done") : std::string()));
+    }
+    if(method=="POST"&&path=="/admin/preview") {
+        if(!acc) return need_login();
+        if(!is_operator(user)) return admin_404();
+        auto f = parse_form(body);
+        return http_redir(std::string("/admin/preview?done=") + (site_preview_save_text(f["title"], f["description"]) ? "saved" : "write"));
+    }
+    if(method=="POST"&&path=="/admin/preview/image") {
+        if(!acc) return need_login();
+        if(!is_operator(user)) return admin_404();
+        auto bytes = multipart_file(header_value(req, "Content-Type"), body, "image");
+        if (!bytes || bytes->empty()) return http_redir("/admin/preview?done=noimage");
+        const std::string why = site_preview_set_image(*bytes);
+        return http_redir("/admin/preview?done=" + (why.empty() ? std::string("image") : why));
+    }
+    if(method=="POST"&&path=="/admin/preview/image-remove") {
+        if(!acc) return need_login();
+        if(!is_operator(user)) return admin_404();
+        site_preview_remove_image();
+        return http_redir("/admin/preview?done=imagegone");
+    }
+    if(method=="POST"&&path=="/admin/preview/reset") {
+        if(!acc) return need_login();
+        if(!is_operator(user)) return admin_404();
+        site_preview_reset();
+        return http_redir("/admin/preview?done=reset");
     }
     if(method=="GET"&&path=="/admin/log") {
         if(!acc) return need_login();

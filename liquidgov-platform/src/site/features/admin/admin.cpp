@@ -4,6 +4,7 @@
 #include "site/core/html.hpp"
 #include "site/core/http.hpp"
 #include "site/features/mail/mail_attachments.hpp"
+#include "site/features/preview/preview.hpp"
 
 namespace liquidgov::site {
 // Genesis operator tools -- /admin and friends. Not Phase 2, not CitizenId,
@@ -29,6 +30,7 @@ std::string admin_nav(const char* active) {
         +tab("/admin/comments","comments","Comments")
         +tab("/admin/departments","departments","Departments")
         +tab("/admin/styles","styles","Styles")
+        +tab("/admin/preview","preview","Preview")
         +tab("/admin/communities","communities","Groups")
         +tab("/admin/log","log","Log")
         +"</div>";
@@ -285,6 +287,51 @@ bool archive_deleted_style(const ProfileStyle& s, const std::string& by) {
 
 // Every style in the library, reported ones first (most reports first), then newest. The preview is the same
 // sandboxed iframe /styles shows, so a hostile style can't reach this page either.
+// The link preview card (Brandon 2026-11-16: "i just want to be able to change the preview label thing myself from the
+// admin controls page"): what Facebook, X, Slack and others draw when someone shares a liquidgov.us link.
+std::string admin_preview_page(const std::string& done) {
+    static const std::pair<const char*, const char*> kMsgs[] = {
+        {"saved", "Saved."}, {"image", "Picture saved."}, {"imagegone", "Picture removed: the built-in picture is back."},
+        {"reset", "Reset: the built-in preview is back."}, {"type", "That file is not a JPEG or PNG picture."},
+        {"size", "That picture is over 2 MB."}, {"noimage", "Choose a picture first."}, {"write", "Could not save (the server could not write the file)."}};
+    std::string html = admin_header() + admin_nav("preview");
+    for (const auto& m : kMsgs)
+        if (done == m.first) html += "<p class=\"muted\" role=\"status\">" + std::string(m.second) + "</p>";
+    const SitePreview p = site_preview();
+    const std::string title = p.title.empty() ? "(the page's own title) \xE2\x80\x94 LiquidGov.US" : p.title;
+    const std::string desc = p.description.empty() ? preview_builtin_description() : p.description;
+    const std::string img = p.image_mime.empty() ? "/assets/og-image-v4.jpg" : "/preview-image?v=" + p.image_version;
+    html += "<div class=\"card\"><h2>Link preview</h2>"
+            "<p class=\"muted\">What Facebook, X, Slack and the like show when someone shares a liquidgov.us link. "
+            "Leave a field blank to keep the built-in one. Those sites keep what they have already seen for a while; "
+            "after a change, their own debugger tools can fetch it again.</p>"
+            "<h3>How it looks now</h3>"
+            "<div style=\"max-width:30rem;border:1px solid var(--rule,#ccc);border-radius:10px;overflow:hidden\">"
+            "<img src=\"" + html_escape(img) + "\" alt=\"\" style=\"display:block;width:100%;aspect-ratio:1200/630;object-fit:cover\">"
+            "<div style=\"padding:.6rem .8rem\"><div class=\"muted\" style=\"font-size:.75rem\">LIQUIDGOV.US</div>"
+            "<strong>" + html_escape(title) + "</strong>"
+            "<div class=\"muted\" style=\"font-size:.9rem;margin-top:.2rem\">" + html_escape(desc) + "</div></div></div></div>"
+            "<div class=\"card\"><h3>Words</h3>"
+            "<form method=\"POST\" action=\"/admin/preview\">"
+            "<label>Title (up to 120 characters; blank = each page's own title)</label>"
+            "<input name=\"title\" maxlength=\"120\" value=\"" + html_escape(p.title) + "\">"
+            "<label>Description (up to 300 characters; blank = the built-in line)</label>"
+            "<textarea name=\"description\" rows=\"3\" maxlength=\"300\">" + html_escape(p.description) + "</textarea>"
+            "<div class=\"row\" style=\"margin-top:.5rem\"><button>Save the words</button></div></form></div>"
+            "<div class=\"card\"><h3>Picture</h3>"
+            "<p class=\"muted\">1200 \xC3\x97 630 pixels works best. JPEG or PNG, up to 2 MB.</p>"
+            "<form method=\"POST\" action=\"/admin/preview/image\" enctype=\"multipart/form-data\">"
+            "<input type=\"file\" name=\"image\" accept=\"image/jpeg,image/png\">"
+            "<div class=\"row\" style=\"margin-top:.5rem\"><button>Upload the picture</button></div></form>"
+            + (p.image_mime.empty() ? std::string() :
+               "<form method=\"POST\" action=\"/admin/preview/image-remove\" style=\"margin-top:.5rem\">"
+               "<button class=\"ghost\">Remove the picture (use the built-in one)</button></form>") +
+            "</div>"
+            "<div class=\"card\"><form method=\"POST\" action=\"/admin/preview/reset\">"
+            "<button class=\"ghost\">Reset everything to the built-in preview</button></form></div>";
+    return html;
+}
+
 std::string admin_styles_page(const std::string& msg) {
     std::string html = admin_header() + admin_nav("styles");
     if (!msg.empty()) html += "<p class=\"muted\" role=\"status\">" + html_escape(msg) + "</p>";

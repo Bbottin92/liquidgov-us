@@ -111,3 +111,13 @@ Claude's reading, to be argued with:
 
 Questions: should a person see their own thumb history and its effect (their Judgment)? Should thumbs be public or only the tint? Does a stream's tint show to everyone, or only to people the thing is visible to?
 
+### Round 4, Brandon's answers (2026-11-16)
+
+- **History: yes.** "i think there should be a way to see your history": you can see your own thumbs, and (with Round 2's Judgment) how they weighed.
+- **Counts on the page.** "i think the thumb counts should be displayed on the page": each page a pool opens shows how many thumbs up and how many down.
+- **Private thumbs.** "you should be able to make your thumb reaction private if you want."
+- **Who reacted.** "if you click on the thumb count it should show you all of the people who reacted in that way": the names behind a count, except those who chose private.
+- **Tint: asked Claude.** "i dont know if everyone should see the tint, what do you think".
+
+Claude's answer on the tint (a lean): everyone who can see the pool sees the tint on the streams to it, and no one sees a tint for something they cannot see. It is a navigation signal like a stream's width, it is an aggregate (never one person), and it needs enough independent weight and fades, so it is hard to use as a public pile-on. The page's counts are the plain head count (private thumbs included, unnamed: "and 3 private"); the tint is the weighted balance; the two can differ, and the page should say so in one line. Open: whether thumbs are public or private BY DEFAULT (a public thumbs-down is easy to retaliate against; a private-by-default thumbs-down cannot be held to account).
+

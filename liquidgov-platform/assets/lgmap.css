@@ -263,3 +263,4 @@ main.wrap>.lgmap .lgmap-canvas{flex:1;min-height:0;height:auto;border-radius:0}
 #lgmap[data-pools] .lgn-ava-bg{fill:rgba(255,255,255,.16);stroke:none}
 #lgmap[data-pools] .lgn text.lgn-ava-ch{font-size:11px;font-weight:700;fill:#fff;text-anchor:middle;stroke:none;opacity:.8}
 #lgmap[data-pools] .lgn-ava{opacity:.78}
+#lgmap[data-pools] .lgn text.lgn-out{font-size:15px;font-weight:600;fill:#ffe9a8;text-anchor:start;text-decoration:underline;cursor:pointer;pointer-events:all}

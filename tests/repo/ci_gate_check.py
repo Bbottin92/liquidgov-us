@@ -119,6 +119,8 @@ try:
 
     rc, out = gate("dry", ["18 %s completed failure" % code])
     check("dry mode never blocks, but says it would refuse", rc == 0 and "CI_GATE_WOULD_REFUSE" in out, (rc, out))
+    rc, out = gate("dry", ["18 %s completed failure" % code], {"LIQUIDGOV_CI_GATE_MODE": "warn"})
+    check("dry mode in warn mode says go would only warn", rc == 0 and "CI_GATE_WARNING" in out and "WOULD_REFUSE" not in out, (rc, out))
 
     # git that reads stdin, as git.exe does through WSL interop: inside the gate's `while read` loop it swallowed the
     # rest of the run list, so a red run past the first line came out as "no run" (live probe 2026-11-08)

@@ -41,7 +41,9 @@ go = os.path.join(root, "deploy", name + "-go.sh")
 open(go, "w", newline="\n").write("""#!/usr/bin/env bash
 mode="$(cat "$FAKE_DIR/go_mode" 2>/dev/null || echo ok)"
 if [ "$1" = dry ]; then
-  if [ "$mode" = gate_refuse ]; then echo "CI_GATE_WOULD_REFUSE red"; else echo "CI_GATE_OK tree"; fi
+  if [ "$mode" = gate_refuse ]; then echo "CI_GATE_WOULD_REFUSE red"
+  elif [ "$mode" = gate_warn ]; then echo "CI_GATE_WARNING no run -- go would warn, not stop"
+  else echo "CI_GATE_OK tree"; fi
   echo DRY_OK
   echo "DRY_ONLY_DONE: nothing on the server was changed. Run with go to deploy."
   exit 0
@@ -131,6 +133,11 @@ try:
     rc, out = ship(tmp, work, "deploy", "thing1", "a thing")
     check("a dry run whose CI gate would refuse: not done", rc == 1 and "CI_GATE_WOULD_REFUSE" in out
           and "SHIP_DRY_DONE" not in out, out)
+
+    mode("gate_warn")
+    rc, out = ship(tmp, work, "deploy", "thing1", "a thing")
+    check("a dry run whose CI gate would only warn (warn mode): done, the warning shown", rc == 0 and "CI_GATE_WARNING" in out
+          and "SHIP_DRY_DONE" in out, out)
 
     other = os.path.join(tmp, "other")
     sh(tmp, "git", "clone", "-q", "-b", "master", origin, other)

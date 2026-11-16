@@ -394,7 +394,7 @@ def deploy(name, purpose):
         print("     " + l)
     if rc != 0 or "DRY_ONLY_DONE" not in text:
         raise Fail("the dry run did not finish (exit %d)" % rc)
-    if "CI_GATE_OK" not in text:
+    if "CI_GATE_OK" not in text and "CI_GATE_WARNING" not in text:
         raise Fail("the CI gate would refuse this deploy (see the dry-run lines above)")
     print("\nShow Brandon the dry run and the screenshots from `ship.py check`. On his \"merge\": "
           "python scripts/ship.py merge %s ; then only on his go: python scripts/ship.py go %s" % (branch, name))

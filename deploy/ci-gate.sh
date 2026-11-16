@@ -12,7 +12,8 @@
 # Usage: bash deploy/ci-gate.sh <go|dry>
 #   go:  by default (warn, Brandon 2026-11-16) a missing or failed CI result prints CI_GATE_WARNING and exits 0;
 #        with LIQUIDGOV_CI_GATE_MODE=block it exits 0 only on CI_GATE_OK (or an override), else CI_GATE_REFUSED and exit 1.
-#   dry: prints what go would decide (CI_GATE_OK or CI_GATE_WOULD_REFUSE) and always exits 0.
+#   dry: prints what go would decide (CI_GATE_OK, CI_GATE_WARNING in warn mode, or CI_GATE_WOULD_REFUSE in block mode)
+#        and always exits 0.
 # Override, emergencies only and only with Brandon's explicit OK for that deploy (e.g. a rollback while GitHub is down):
 #   LIQUIDGOV_CI_OVERRIDE="<reason>" -> prints CI_GATE_OVERRIDE: <reason> into the deploy log and lets it through.
 # Test seams: LIQUIDGOV_GH (the gh command), LIQUIDGOV_GATE_REPO (the repo root); tests: tests/repo/ci_gate_check.py
@@ -24,7 +25,11 @@ GH_REPO="Bbottin92/liquidgov-us"
 
 decide() { # $1 = OK|REFUSED, $2 = why
     if [ "$1" = OK ]; then echo "CI_GATE_OK $2"; exit 0; fi
-    if [ "$MODE" = dry ]; then echo "CI_GATE_WOULD_REFUSE $2"; exit 0; fi
+    if [ "$MODE" = dry ]; then
+        # the dry run says what go will do: warn mode (the default since 2026-11-16) would let it through with a warning
+        if [ "${LIQUIDGOV_CI_GATE_MODE:-warn}" = warn ]; then echo "CI_GATE_WARNING $2 -- go would warn, not stop"; exit 0; fi
+        echo "CI_GATE_WOULD_REFUSE $2"; exit 0
+    fi
     if [ "${LIQUIDGOV_CI_GATE_MODE:-warn}" = warn ]; then
         # Brandon 2026-11-16 ("cool with me", warn only): nobody is on the site yet, so a missing or failed CI result is a
         # loud warning in the deploy log, not a stop. The backup before the deploy and the undo scripts are unchanged.

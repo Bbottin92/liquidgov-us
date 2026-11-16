@@ -85,7 +85,7 @@ std::optional<std::string> auth_routes(Route& r) {
             return fail(err);
         }
         if (d.display_name.empty() || d.display_name.size() > 80)
-            return fail("Need a display name (up to 80 characters).");
+            return fail("Need a name (up to 80 characters).");
         if (pass.size() < 8)
             return fail("Password needs at least eight characters.");
         if (!looks_like_email(d.email))
@@ -93,7 +93,7 @@ std::optional<std::string> auth_routes(Route& r) {
         if (count_digits(d.phone) < 10)
             return fail("Need a real phone number (at least ten digits). It is a signup binding, not stored as the number itself, and not used to log in.");
         if (pass.empty() || d.phone.empty())
-            return fail("Need username, password, email, phone, and a display name.");
+            return fail("Need username, password, email, phone, and a name.");
         // Dots on profile pages: a required choice, nothing pre-selected (Brandon 2026-11-12)
         const std::string here = f["here"];
         if (here != "1" && here != "0")

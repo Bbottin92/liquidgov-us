@@ -63,7 +63,7 @@ std::string flash_error(const std::map<std::string,std::string>& qs) {
     if (e=="image") return "<p class=\"warn\">That file was not a usable image (PNG/JPEG/GIF, 2&nbsp;MiB, 1024px). SVG is not accepted.</p>";
     if (e=="portraitlarge") return "<p class=\"warn\">That file is too large. Cap is 2&nbsp;MiB and 1024 pixels on the long edge.</p>";
     if (e=="scan") return "<p class=\"warn\">That file could not be stored.</p>";
-    if (e=="profile") return "<p class=\"warn\">Display name is required (up to 80 characters).</p>";
+    if (e=="profile") return "<p class=\"warn\">Name is required (up to 80 characters).</p>";
     if (e=="css") {
         auto rit = qs.find("reason");
         return "<p class=\"warn\">"+html_escape(css_reject_message(rit==qs.end()?"":rit->second))+"</p>";

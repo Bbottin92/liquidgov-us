@@ -1,0 +1,281 @@
+as-is	OK fde976f23ddf1a2a
+drop-last-field:1:n	ERR LGP1: bad n record
+extra-field:1:n	ERR LGP1: bad n record
+drop-last-field:2:pn	ERR LGP1: bad pn record
+extra-field:2:pn	ERR LGP1: bad pn record
+drop-last-field:3:nn	ERR LGP1: bad nn record
+extra-field:3:nn	ERR LGP1: bad nn record
+drop-last-field:4:gcn	ERR LGP1: bad gcn record
+extra-field:4:gcn	ERR LGP1: bad gcn record
+drop-last-field:5:gmsn	ERR LGP1: bad gmsn record
+extra-field:5:gmsn	ERR LGP1: bad gmsn record
+drop-last-field:6:repln	ERR LGP1: bad repln record
+extra-field:6:repln	ERR LGP1: bad repln record
+drop-last-field:7:propn	ERR LGP1: bad propn record
+extra-field:7:propn	ERR LGP1: bad propn record
+drop-last-field:8:prpln	ERR LGP1: bad prpln record
+extra-field:8:prpln	ERR LGP1: bad prpln record
+drop-last-field:9:painn	ERR LGP1: bad painn record
+extra-field:9:painn	ERR LGP1: bad painn record
+drop-last-field:10:a	ERR LGP1: bad a record
+extra-field:10:a	ERR LGP1: bad a record
+drop-last-field:11:a	ERR LGP1: bad a record
+extra-field:11:a	ERR LGP1: bad a record
+drop-last-field:12:a	ERR LGP1: bad a record
+extra-field:12:a	ERR LGP1: bad a record
+drop-last-field:13:s	ERR LGP1: bad s record
+extra-field:13:s	ERR LGP1: bad s record
+drop-last-field:14:s	ERR LGP1: bad s record
+extra-field:14:s	ERR LGP1: bad s record
+drop-last-field:15:s	ERR LGP1: bad s record
+extra-field:15:s	ERR LGP1: bad s record
+drop-last-field:16:s	ERR LGP1: bad s record
+extra-field:16:s	ERR LGP1: bad s record
+drop-last-field:17:ph	ERR LGP1: bad ph record
+extra-field:17:ph	ERR LGP1: bad ph record
+drop-last-field:18:pq	ERR LGP1: bad pq record
+extra-field:18:pq	ERR LGP1: bad pq record
+drop-last-field:19:pq	ERR LGP1: bad pq record
+extra-field:19:pq	ERR LGP1: bad pq record
+drop-last-field:20:ml	ERR LGP1: bad ml record
+extra-field:20:ml	ERR LGP1: bad ml record
+drop-last-field:21:ml	ERR LGP1: bad ml record
+extra-field:21:ml	ERR LGP1: bad ml record
+drop-last-field:22:pr	ERR LGP1: bad pr record
+extra-field:22:pr	ERR LGP1: bad pr record
+drop-last-field:23:pr	ERR LGP1: bad pr record
+extra-field:23:pr	ERR LGP1: bad pr record
+drop-last-field:24:gid	ERR LGP1: bad gid record
+extra-field:24:gid	ERR LGP1: bad gid record
+drop-last-field:25:em	ERR LGP1: bad em record
+extra-field:25:em	ERR LGP1: bad em record
+drop-last-field:26:f	ERR LGP1: bad f record
+extra-field:26:f	ERR LGP1: bad f record
+drop-last-field:27:f	ERR LGP1: bad f record
+extra-field:27:f	ERR LGP1: bad f record
+drop-last-field:28:r	ERR LGP1: bad r record
+extra-field:28:r	ERR LGP1: bad r record
+drop-last-field:29:m	ERR LGP1: bad m record
+extra-field:29:m	ERR LGP1: bad mail ts
+drop-last-field:30:m	OK 9296aeca121c1f4b
+extra-field:30:m	ERR LGP1: bad m record
+drop-last-field:31:ma	ERR LGP1: bad ma record
+extra-field:31:ma	ERR LGP1: bad ma record
+drop-last-field:32:afn	ERR LGP1: bad afn record
+extra-field:32:afn	OK 82c4ab37bbb5d9a0
+drop-last-field:33:afn	ERR LGP1: bad afn record
+extra-field:33:afn	OK fde976f23ddf1a2a
+drop-last-field:34:afn	OK fde976f23ddf1a2a
+extra-field:34:afn	ERR LGP1: bad afn record
+drop-last-field:35:mlr	ERR LGP1: bad mlr record
+extra-field:35:mlr	ERR LGP1: bad mlr record
+drop-last-field:36:mlr	ERR LGP1: bad mlr record
+extra-field:36:mlr	ERR LGP1: bad mlr record
+drop-last-field:37:post	ERR LGP1: bad post record
+extra-field:37:post	ERR LGP1: bad post record
+drop-last-field:38:post	ERR LGP1: bad post record
+extra-field:38:post	ERR LGP1: bad post record
+drop-last-field:39:rp	ERR LGP1: bad rp record
+extra-field:39:rp	ERR LGP1: bad rp record
+drop-last-field:40:pa	ERR LGP1: bad pa record
+extra-field:40:pa	ERR LGP1: bad pa record
+drop-last-field:41:pau	ERR LGP1: bad pau record
+extra-field:41:pau	ERR LGP1: bad pau record
+drop-last-field:42:pv	ERR LGP1: bad pv record
+extra-field:42:pv	ERR LGP1: bad pv record
+drop-last-field:43:px	ERR LGP1: bad px record
+extra-field:43:px	ERR LGP1: bad px record
+drop-last-field:44:pf	ERR LGP1: bad pf record
+extra-field:44:pf	ERR LGP1: bad pf record
+drop-last-field:45:pg	ERR LGP1: bad pg record
+extra-field:45:pg	ERR LGP1: bad pg record
+drop-last-field:46:reply	ERR LGP1: bad reply record
+extra-field:46:reply	ERR LGP1: bad reply record
+drop-last-field:47:sec	ERR LGP1: bad sec record
+extra-field:47:sec	ERR LGP1: bad sec record
+drop-last-field:48:prop	ERR LGP1: bad prop record
+extra-field:48:prop	ERR LGP1: bad prop record
+drop-last-field:49:prop	ERR LGP1: bad prop record
+extra-field:49:prop	ERR LGP1: bad prop record
+drop-last-field:50:pcity	ERR LGP1: bad pcity record
+extra-field:50:pcity	ERR LGP1: bad pcity record
+drop-last-field:51:pwho	ERR LGP1: bad pwho record
+extra-field:51:pwho	ERR LGP1: bad pwho record
+drop-last-field:52:ptag	ERR LGP1: bad ptag record
+extra-field:52:ptag	ERR LGP1: bad ptag record
+drop-last-field:53:ptag	ERR LGP1: bad ptag record
+extra-field:53:ptag	ERR LGP1: bad ptag record
+drop-last-field:54:pvote	ERR LGP1: bad pvote record
+extra-field:54:pvote	ERR LGP1: bad pvote record
+drop-last-field:55:pvote	ERR LGP1: bad pvote record
+extra-field:55:pvote	ERR LGP1: bad pvote record
+drop-last-field:56:pbk	ERR LGP1: bad pbk record
+extra-field:56:pbk	ERR LGP1: bad pbk record
+drop-last-field:57:pbo	ERR LGP1: bad pbo record
+extra-field:57:pbo	ERR LGP1: bad pbo record
+drop-last-field:58:pbo	ERR LGP1: bad pbo record
+extra-field:58:pbo	ERR LGP1: bad pbo record
+drop-last-field:59:popen	ERR LGP1: bad popen record
+extra-field:59:popen	ERR LGP1: bad popen record
+drop-last-field:60:poff	ERR LGP1: bad poff record
+extra-field:60:poff	ERR LGP1: bad poff record
+drop-last-field:61:pba	ERR LGP1: bad pba record
+extra-field:61:pba	ERR LGP1: bad pba record
+drop-last-field:62:pbv	ERR LGP1: bad pbv record
+extra-field:62:pbv	ERR LGP1: bad pbv record
+drop-last-field:63:pbv	ERR LGP1: bad pbv record
+extra-field:63:pbv	ERR LGP1: bad pbv record
+drop-last-field:64:prply	ERR LGP1: bad prply record
+extra-field:64:prply	ERR LGP1: bad prply record
+drop-last-field:65:prply	ERR LGP1: bad prply record
+extra-field:65:prply	ERR LGP1: bad prply record
+drop-last-field:66:prx	ERR LGP1: bad prx record
+extra-field:66:prx	ERR LGP1: bad prx record
+drop-last-field:67:prx	ERR LGP1: bad prx record
+extra-field:67:prx	ERR LGP1: bad prx record
+drop-last-field:68:prx	ERR LGP1: bad prx record
+extra-field:68:prx	ERR LGP1: bad prx record
+drop-last-field:69:comm	ERR LGP1: bad comm record
+extra-field:69:comm	ERR LGP1: bad comm record
+drop-last-field:70:comm	ERR LGP1: bad comm record
+extra-field:70:comm	ERR LGP1: bad comm record
+drop-last-field:71:ccity	ERR LGP1: bad ccity record
+extra-field:71:ccity	ERR LGP1: bad ccity record
+drop-last-field:72:ccity	ERR LGP1: bad ccity record
+extra-field:72:ccity	ERR LGP1: bad ccity record
+drop-last-field:73:cm	ERR LGP1: bad cm record
+extra-field:73:cm	ERR LGP1: bad cm record
+drop-last-field:74:cm	ERR LGP1: bad cm record
+extra-field:74:cm	ERR LGP1: bad cm record
+drop-last-field:75:cm	ERR LGP1: bad cm record
+extra-field:75:cm	ERR LGP1: bad cm record
+drop-last-field:76:clist	ERR LGP1: bad clist record
+extra-field:76:clist	ERR LGP1: bad clist record
+drop-last-field:77:clist	ERR LGP1: bad clist record
+extra-field:77:clist	ERR LGP1: bad clist record
+drop-last-field:78:ctag	ERR LGP1: bad ctag record
+extra-field:78:ctag	ERR LGP1: bad ctag record
+drop-last-field:79:ctag	ERR LGP1: bad ctag record
+extra-field:79:ctag	ERR LGP1: bad ctag record
+drop-last-field:80:mapp	ERR LGP1: bad mapp record
+extra-field:80:mapp	ERR LGP1: bad mapp flag
+drop-last-field:81:mapp	OK a8e5fc6640949219
+extra-field:81:mapp	OK fff252d906bf9cf3
+drop-last-field:82:pain	ERR LGP1: bad pain record
+extra-field:82:pain	ERR LGP1: bad pain flowed flag
+drop-last-field:83:pain	OK 63bb32d09ae77bb1
+extra-field:83:pain	OK a3ce2805c522a025
+drop-last-field:84:blk	ERR LGP1: bad blk record
+extra-field:84:blk	ERR LGP1: bad blk record
+drop-last-field:85:blk	ERR LGP1: bad blk record
+extra-field:85:blk	ERR LGP1: bad blk record
+drop-last-field:86:inner	ERR LGP1: bad inner record
+extra-field:86:inner	ERR LGP1: bad inner record
+drop-last-field:87:pref	ERR LGP1: bad pref record
+extra-field:87:pref	ERR LGP1: bad pref record
+drop-last-field:88:pref	ERR LGP1: bad pref record
+extra-field:88:pref	ERR LGP1: bad intro_every_visit
+drop-last-field:89:pref	OK 8203e8c667dfadc5
+extra-field:89:pref	ERR LGP1: bad hide_profile_from_friends
+drop-last-field:90:pref	OK ab673a827b545c86
+extra-field:90:pref	ERR LGP1: bad pref record
+drop-last-field:91:prof	ERR LGP1: bad prof record
+extra-field:91:prof	ERR LGP1: bad prof record
+drop-last-field:92:note	ERR LGP1: bad note record
+extra-field:92:note	ERR LGP1: bad note record
+drop-last-field:93:av	ERR LGP1: bad av record
+extra-field:93:av	ERR LGP1: bad av record
+drop-last-field:94:av	ERR LGP1: bad av record
+extra-field:94:av	ERR LGP1: bad av record
+drop-last-field:95:ac	ERR LGP1: bad ac record
+extra-field:95:ac	ERR LGP1: bad ac record
+drop-last-field:96:ac	ERR LGP1: bad ac record
+extra-field:96:ac	ERR LGP1: bad ac record
+drop-last-field:97:cvf	ERR LGP1: bad cvf record
+extra-field:97:cvf	ERR LGP1: bad cvf record
+drop-last-field:98:cvf	ERR LGP1: bad cvf record
+extra-field:98:cvf	ERR LGP1: bad cvf record
+drop-last-field:99:cvm	ERR LGP1: bad cvm record
+extra-field:99:cvm	ERR LGP1: bad cvm record
+drop-last-field:100:jt	ERR LGP1: bad jt record
+extra-field:100:jt	OK acfebf8a2b1c3616
+drop-last-field:101:jt	OK ced0ee5c1e473cb7
+extra-field:101:jt	ERR LGP1: bad jt record
+drop-last-field:102:jt	ERR LGP1: bad jt record
+extra-field:102:jt	OK fde976f23ddf1a2a
+drop-last-field:103:jh	ERR LGP1: bad jh record
+extra-field:103:jh	ERR LGP1: bad jh record
+drop-last-field:104:jsub	ERR LGP1: bad jsub record
+extra-field:104:jsub	ERR LGP1: bad jsub record
+drop-last-field:105:jsub	ERR LGP1: bad jsub record
+extra-field:105:jsub	ERR LGP1: bad jsub record
+drop-last-field:106:jauto	ERR LGP1: bad jauto record
+extra-field:106:jauto	ERR LGP1: bad jauto record
+drop-last-field:107:jauto	ERR LGP1: bad jauto record
+extra-field:107:jauto	ERR LGP1: bad jauto record
+drop-last-field:108:jrelay	ERR LGP1: bad jrelay record
+extra-field:108:jrelay	ERR LGP1: bad jrelay record
+drop-last-field:109:jrelay	ERR LGP1: bad jrelay record
+extra-field:109:jrelay	ERR LGP1: bad jrelay record
+drop-last-field:110:jpos	ERR LGP1: bad jpos record
+extra-field:110:jpos	ERR LGP1: bad jpos record
+drop-last-field:111:lk	ERR LGP1: bad lk record
+extra-field:111:lk	ERR LGP1: bad lk record
+drop-last-field:112:alog	ERR LGP1: bad alog record
+extra-field:112:alog	ERR LGP1: bad alog record
+drop-last-field:113:prgr	ERR LGP1: bad prgr record
+extra-field:113:prgr	ERR LGP1: bad prgr record
+drop-last-field:114:prgr	ERR LGP1: bad prgr record
+extra-field:114:prgr	ERR LGP1: bad prgr record
+drop-last-field:115:gc	OK 5504591c3fd9ddfa
+extra-field:115:gc	ERR LGP1: bad gc record
+drop-last-field:116:gcm	ERR LGP1: bad gcm record
+extra-field:116:gcm	ERR LGP1: bad gcm record
+drop-last-field:117:gcm	ERR LGP1: bad gcm record
+extra-field:117:gcm	ERR LGP1: bad gcm record
+drop-last-field:118:gmsg	ERR LGP1: bad gmsg record
+extra-field:118:gmsg	ERR LGP1: bad gmsg record
+drop-last-field:119:gmsg	ERR LGP1: bad gmsg record
+extra-field:119:gmsg	ERR LGP1: bad gmsg record
+drop-last-field:120:gmh	ERR LGP1: bad gmh record
+extra-field:120:gmh	ERR LGP1: bad gmh record
+drop-last-field:121:afn	ERR LGP1: bad afn record
+extra-field:121:afn	OK 79c73bd674ccd321
+drop-last-field:122:here	ERR LGP1: bad here record
+extra-field:122:here	OK fde976f23ddf1a2a
+drop-last-field:123:here	OK fde976f23ddf1a2a
+extra-field:123:here	OK fde976f23ddf1a2a
+drop-last-field:124:here	ERR LGP1: bad here record
+extra-field:124:here	OK fde976f23ddf1a2a
+drop-last-field:125:styn	ERR LGP1: bad styn record
+extra-field:125:styn	OK fde976f23ddf1a2a
+drop-last-field:126:sty	ERR LGP1: bad sty record
+extra-field:126:sty	OK fde976f23ddf1a2a
+drop-last-field:127:sty	OK fde976f23ddf1a2a
+extra-field:127:sty	OK fde976f23ddf1a2a
+drop-last-field:128:sty	ERR LGP1: bad sty record
+extra-field:128:sty	OK fde976f23ddf1a2a
+drop-last-field:129:stu	ERR LGP1: bad stu record
+extra-field:129:stu	OK fde976f23ddf1a2a
+drop-last-field:130:stu	OK fde976f23ddf1a2a
+extra-field:130:stu	OK fde976f23ddf1a2a
+drop-last-field:131:stu	ERR LGP1: bad stu record
+extra-field:131:stu	OK fde976f23ddf1a2a
+drop-last-field:132:stu	ERR LGP1: bad stu record
+extra-field:132:stu	OK fde976f23ddf1a2a
+drop-last-field:133:stu	ERR LGP1: bad stu record
+extra-field:133:stu	OK fde976f23ddf1a2a
+drop-last-field:134:str	ERR LGP1: bad str record
+extra-field:134:str	OK fde976f23ddf1a2a
+drop-last-field:135:str	OK fde976f23ddf1a2a
+extra-field:135:str	OK fde976f23ddf1a2a
+drop-last-field:136:str	ERR LGP1: bad str record
+extra-field:136:str	OK fde976f23ddf1a2a
+drop-last-field:137:hints	OK fcce7fcfe6af95e6
+extra-field:137:hints	OK f2561ad606ab5ccb
+drop-last-field:138:hints	ERR LGP1: bad hints record
+extra-field:138:hints	OK 9ffc968804f958ac
+drop-last-field:139:hints	OK e862f8c8805b1cca
+extra-field:139:hints	OK 4d6a437a1d107be1
+bad-magic	ERR LGP1: bad magic in <path> (refusing to wipe)
+unknown-type	ERR LGP1: unknown record type 'zzz'

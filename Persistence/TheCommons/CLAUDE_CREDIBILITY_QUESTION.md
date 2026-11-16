@@ -96,3 +96,18 @@ Claude's proposal for how it shows, so it informs without becoming a way to dism
   misleading"), fading when the mark fades. It is never a permanent badge.
 - Judgment is never shown on posts (it is about how you judge others, not about what you wrote); you see your own.
 - Sorting stays yours: comments are not hidden or ranked down for low credibility unless a reader chooses that.
+
+## Round 4: thumbs on pools feed credibility, and their weight comes from it (Brandon, 2026-11-16; a direction, not a design)
+
+Context: Brandon's future-list item 3 (`Persistence/notes.md`, 2026-11-16): a thumb up or down on the page a pool opens, tinting the streams to it green, red or (with little feedback) blue. His answer to whether a thumbs-down on a person is wise: "i think we should wire the weight of people's thumbs up or thumbs down into the credibility discussion".
+
+Claude's reading, to be argued with:
+- **Thumbs are not votes.** Round 3's lean (credibility never touches the weight of a civic VOTE: one person, one vote) is about votes on proposals. A thumb on a pool is feedback about a thing, like a reaction, and may be weighted. Keep the two apart in every screen and every word, so nobody reads a weighted thumb as a weighted vote.
+- **Weight comes from Judgment, not popularity.** A thumb weighs more from someone whose past calls matched what independent people ended up finding (Round 2's Judgment), less from a new account, and never more than a cap per person. Popularity must not buy weight: that would be a loop (the liked are believed, so they are liked).
+- **Independent agreement counts more than a crowd** (Round 1, point 2): ten linked accounts thumbing the same thing count nearer to two voices. This is also what keeps a few angry accounts from turning a stream red.
+- **Thumbs feed the author's Contribution, through the same weights.** What others do with your work is Contribution (Round 2); a weighted thumbs-up on your post is such a signal, a weighted thumbs-down is a signal that goes to a jury only when enough independent people agree (Round 1, point 3), never straight into a score.
+- **People's pools: no thumbs on the person, thumbs on what they did.** A thumbs-down on a person invites exactly the sabotage this whole document is against. Disapproval attaches to a specific post or comment (the act), where it can be judged. The person's pool stays unthumbed.
+- **Tint = balance AND amount.** Few weighted thumbs stays blue, whatever their direction; green or red needs enough independent weight. Fades with time like every other mark (Round 1, point 5).
+
+Questions: should a person see their own thumb history and its effect (their Judgment)? Should thumbs be public or only the tint? Does a stream's tint show to everyone, or only to people the thing is visible to?
+

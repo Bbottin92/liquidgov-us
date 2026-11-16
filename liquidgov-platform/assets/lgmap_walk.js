@@ -451,12 +451,26 @@
       var b = box(id), t = b && b.querySelector('title');
       return t ? t.textContent : '';
     }
+    // where the channel from pool `from` to `to` meets from's shore, in map units (null when either is not on the map)
+    function shorePoint(from, to) {
+      var a = region(from), b = region(to);
+      if (!a || !b) return null;
+      var dx = b.cx - a.cx, dy = b.cy - a.cy, L = Math.sqrt(dx * dx + dy * dy) || 1, ux = dx / L, uy = dy / L;
+      var t = 1 / Math.sqrt(ux * ux / (a.hw * a.hw) + uy * uy / (a.hh * a.hh));
+      return { a: a, b: b, ux: ux, uy: uy, px: a.cx + ux * t, py: a.cy + uy * t };
+    }
+    // every mouth of every pool this pass, so a sign knows how much shore it has before the next mouth
+    var mouths = {};
+    function roomTo(from, key, px, py) {
+      var best = Infinity;
+      (mouths[from] || []).forEach(function (m) { if (m.key !== key) best = Math.min(best, Math.hypot(m.px - px, m.py - py)); });
+      return best;
+    }
     // one end of a channel: where it meets pool `from`'s shore (heading to `to`), its patch and its sign
     function mouth(key, from, to, e) {
-      var a = region(from), b = region(to);
-      if (!a || !b) return;
-      var dx = b.cx - a.cx, dy = b.cy - a.cy, L = Math.sqrt(dx * dx + dy * dy) || 1, ux = dx / L, uy = dy / L;
-      var t = 1 / Math.sqrt(ux * ux / (a.hw * a.hw) + uy * uy / (a.hh * a.hh)), px = a.cx + ux * t, py = a.cy + uy * t;
+      var sp = shorePoint(from, to);
+      if (!sp) return;
+      var a = sp.a, b = sp.b, ux = sp.ux, uy = sp.uy, px = sp.px, py = sp.py, room = roomTo(from, key + '>' + from, px, py);
       // drawn inside the pool's own drawing (its <g>, in its own units), so a pool laid over another covers its mouths
       var g = box(from), sh = g && g.querySelector('.lgs');
       if (!sh) return;
@@ -469,11 +483,17 @@
       if (m.getAttribute('d') !== d) m.setAttribute('d', d);
       var sg = g.querySelector('.lge-sign[data-for="' + mk + '"]');
       if (!sg) { sg = document.createElementNS(NS, 'text'); sg.setAttribute('class', 'lge-sign'); sg.setAttribute('data-for', mk); g.appendChild(sg); }
-      var fs = Math.round(Math.min(a.hw * 0.11, 22)), inset = fs * 1.4, sx = px - ux * inset, sy = py - uy * inset;
+      var fs = Math.round(Math.min(a.hw * 0.11, 22));
+      // a sign never runs into the next one (Brandon 2026-11-16, the live Groups pool: "all of the group names are
+      // jumbled at the top"): its width is at most the shore to the nearest other mouth; the lettering shrinks (to 9 px)
+      // before the name is cut, and a name that still cannot fit is cut to what does (at least 3 characters)
+      var avail = Math.min(a.hw * 0.85, 150, room * 0.9);
+      if (avail < fs * 0.66 * 8) fs = Math.max(9, Math.min(fs, Math.floor(avail / (0.66 * 8))));
+      var inset = fs * 1.4, sx = px - ux * inset, sy = py - uy * inset;
       var deg = Math.atan2(uy, ux) * 180 / Math.PI + 90;
       if (deg > 90) deg -= 180; else if (deg <= -90) deg += 180;   // never upside down
       var tr = 'rotate(' + deg.toFixed(1) + ' ' + sx.toFixed(1) + ' ' + sy.toFixed(1) + ')', name = nameOf(to);
-      var most = Math.max(4, Math.floor(Math.min(a.hw * 0.85, 150) / (fs * 0.6)));   // a sign stays inside its pool and its mouth's stretch of shore
+      var most = Math.max(3, Math.floor(avail / (fs * 0.66)));   // a sign stays inside its pool and its mouth's stretch of shore (bold: about 0.66 em a letter)
       if (name.length > most) name = name.slice(0, most - 1).replace(/\s+$/, '') + '\u2026';
       if (sg.getAttribute('transform') !== tr) { sg.setAttribute('x', sx.toFixed(1)); sg.setAttribute('y', sy.toFixed(1)); sg.setAttribute('transform', tr); sg.style.fontSize = fs + 'px'; }
       if (sg.textContent !== name) sg.textContent = name;
@@ -482,6 +502,14 @@
     }
     water = function () {
       var keep = {};
+      mouths = {};
+      if (POOLS) Array.prototype.forEach.call(edgeLayer.querySelectorAll('.lge'), function (e) {
+        var a = e.getAttribute('data-a'), b = e.getAttribute('data-b'), key = a + '|' + b;
+        [[a, b], [b, a]].forEach(function (p) {
+          var s = shorePoint(p[0], p[1]);
+          if (s) (mouths[p[0]] = mouths[p[0]] || []).push({ key: key + '>' + p[0], px: s.px, py: s.py });
+        });
+      });
       Array.prototype.forEach.call(edgeLayer.querySelectorAll('.lge'), function (e) {
         var a = e.getAttribute('data-a'), b = e.getAttribute('data-b'), key = a + '|' + b;
         keep[key] = 1;

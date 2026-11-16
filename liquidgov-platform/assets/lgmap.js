@@ -757,6 +757,7 @@
       R0 = c.R; step = mouthAngle(R0) * 1.05;
       return true;
     }
+    var over = 0;   // overflow children placed so far (see lookClear)
     return items.map(function (d, i) {
       makeRoom();
       var h = halfOf(d), a0 = start + gapA * i, x = 0, y = 0, found = false;
@@ -781,15 +782,24 @@
       // last resort (the first ring is full and the pool cannot grow): never a direction a channel already leaves by.
       // Of 72 directions, the one with the most clear shore (counted up to one mouth's width), then the nearest spot
       // that does not touch another pool; the channel may then pass near a pool, but two mouths never coincide.
+      // The overflow children go round by the golden angle (137.5 degrees, as sunflower seeds do): each next one starts
+      // from the direction that is farthest from every earlier one, however many there are; the first direction nearest
+      // that target with a mouth's width of clear shore wins, so no two coincide and they spread evenly.
       function lookClear() {
-        var best = null;
-        for (var q = 0; q < 72; q++) {
+        var best = null, target = out0 + (++over) * 2.399963229728653;   // the golden angle in radians
+        var dirs = [];
+        for (var q0 = 0; q0 < 72; q0++) dirs.push(q0);
+        function away(q) { return Math.abs(Math.atan2(Math.sin(q * Math.PI / 36 - target), Math.cos(q * Math.PI / 36 - target))); }
+        dirs.sort(function (p, r) { return away(p) - away(r); });
+        for (var qi = 0; qi < 72; qi++) {
+          var q = dirs[qi];
+          if (best && best.clear >= step - 1e-9) break;   // a golden-nearest direction with full clearance was found
           var a = q * Math.PI / 36, clear = Math.min(step, used.reduce(function (m, u) { return Math.min(m, Math.abs(Math.atan2(Math.sin(a - u), Math.cos(a - u)))); }, Math.PI));
           var D = Math.max(R0, R0 * POOL_Y) + h.w + POOL_GAP;
           for (var t = 0; t < 60; t++, D += 90) {
             var px = cc.x + D * Math.cos(a), py = cc.y + D * Math.sin(a);
             if (taken.every(function (o) { return (o.x === cc.x && o.y === cc.y) || !(Math.abs(o.x - px) < o.w + h.w + LAND && Math.abs(o.y - py) < o.h + h.h + LAND); })) {
-              if (!best || clear > best.clear + 1e-9 || (Math.abs(clear - best.clear) <= 1e-9 && D < best.D)) best = { x: px, y: py, clear: clear, D: D };
+              if (!best || clear > best.clear + 1e-9) best = { x: px, y: py, clear: clear, D: D };   // ties keep the earlier = nearer the golden target
               break;
             }
           }

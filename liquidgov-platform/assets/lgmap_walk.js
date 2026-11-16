@@ -463,8 +463,24 @@
     var mouths = {};
     function roomTo(from, key, px, py) {
       var best = Infinity;
-      (mouths[from] || []).forEach(function (m) { if (m.key !== key) best = Math.min(best, Math.hypot(m.px - px, m.py - py)); });
+      (mouths[from] || []).forEach(function (m) { if (m.key !== key && !m.hide) best = Math.min(best, Math.hypot(m.px - px, m.py - py)); });
       return best;
+    }
+    // two mouths closer than this (map units) cannot both carry a readable name (3 letters of 9 px bold is about 18): the
+    // later one (by key, so it never flickers) keeps its mouth but shows no name; a shown sign then has the shore to the
+    // next SHOWN one. Walked in key order, so a chain of close mouths hides every other one, not all but the first.
+    var SIGN_MIN = 36;
+    function hideCrowded() {
+      Object.keys(mouths).forEach(function (from) {
+        var shown = [];
+        mouths[from].slice().sort(function (p, q) { return p.key < q.key ? -1 : p.key > q.key ? 1 : 0; }).forEach(function (m) {
+          m.hide = shown.some(function (s) { return Math.hypot(s.px - m.px, s.py - m.py) < SIGN_MIN; });
+          if (!m.hide) shown.push(m);
+        });
+      });
+    }
+    function hidden(from, key) {
+      return (mouths[from] || []).some(function (m) { return m.key === key && m.hide; });
     }
     // one end of a channel: where it meets pool `from`'s shore (heading to `to`), its patch and its sign
     function mouth(key, from, to, e) {
@@ -497,6 +513,8 @@
       if (name.length > most) name = name.slice(0, most - 1).replace(/\s+$/, '') + '\u2026';
       if (sg.getAttribute('transform') !== tr) { sg.setAttribute('x', sx.toFixed(1)); sg.setAttribute('y', sy.toFixed(1)); sg.setAttribute('transform', tr); sg.style.fontSize = fs + 'px'; }
       if (sg.textContent !== name) sg.textContent = name;
+      sg.setAttribute('data-hidden', hidden(from, mk) ? '1' : '0');
+      sg.style.display = hidden(from, mk) ? 'none' : '';
       same(m, e); same(sg, e);
       m.setAttribute('data-keep', '1'); sg.setAttribute('data-keep', '1');
     }
@@ -510,6 +528,7 @@
           if (s) (mouths[p[0]] = mouths[p[0]] || []).push({ key: key + '>' + p[0], px: s.px, py: s.py });
         });
       });
+      hideCrowded();
       Array.prototype.forEach.call(edgeLayer.querySelectorAll('.lge'), function (e) {
         var a = e.getAttribute('data-a'), b = e.getAttribute('data-b'), key = a + '|' + b;
         keep[key] = 1;

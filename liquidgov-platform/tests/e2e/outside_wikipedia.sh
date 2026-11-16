@@ -87,6 +87,7 @@ check "...and nothing for the ones that do not" '[ "$(echo "$you" | j "[l[\"node
 n=$(node_of "$PAL" "$SNOW")
 check "an interest with an article carries its summary" '[ -n "$SNOW" ] && echo "$n" | j "d[\"node\"][\"body\"]" | grep -q "recreational activity"' "$n"
 check "...labelled from Wikipedia" '[ "$(echo "$n" | j "d[\"node\"][\"by\"]")" = "Wikipedia" ] && [ "$(echo "$n" | j "d[\"node\"][\"sub\"]")" = "from Wikipedia" ]' "$n"
+check "...with a link to the article (Wikipedia's own address, built from the title it gave)" '[ "$(echo "$n" | j "d[\"node\"][\"page\"]")" = "https://en.wikipedia.org/wiki/Snowboarding" ]' "$(echo "$n" | j 'd["node"]["page"]')"
 check "...cut short (a long article is not copied)" '[ "$(echo "$n" | j "len(d[\"node\"][\"body\"])")" -le 620 ]' "$(echo "$n" | j 'len(d["node"]["body"])')"
 check "...it is still the same pool (kind interest)" '[ "$(echo "$n" | j "d[\"node\"][\"kind\"]")" = "interest" ]' "$n"
 

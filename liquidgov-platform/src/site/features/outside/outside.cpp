@@ -165,6 +165,7 @@ void outside_fill_interest(GNode& n) {
     if (!outside_wikipedia(n.label, title, extract, url)) return;
     n.body = extract;
     n.by = "Wikipedia";
+    n.page = url;   // Wikipedia's own address, built from the title it returned; the map opens it in a new tab (lgmap.js isOut)
     n.sub = lower(title) == lower(n.label) ? "from Wikipedia" : "from Wikipedia: " + title;   // only a different name is worth showing
 }
 

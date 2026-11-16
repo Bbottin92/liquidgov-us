@@ -86,7 +86,7 @@
     for (var w = 280; w <= 960; w += 40) {
       var lines = wrap(w), used = headW;
       lines.forEach(function (l) { used = Math.max(used, textW(l, font)); });
-      var h = (d.by ? CF.head : 0) + lines.length * CF.line;
+      var h = (d.by ? CF.head : 0) + lines.length * CF.line + (isOut(d.page) ? CF.line + 8 : 0);
       var R = Math.sqrt(Math.pow(used / 2, 2) + Math.pow(h / 2 / POOL_Y, 2)) + CF.pad;   // the block's corner inside the oval
       if (!best || R < best.R) best = { R: Math.ceil(R), w: used, h: h, lines: lines };
     }
@@ -94,6 +94,10 @@
     d._cl = best;
     return best;
   }
+  // a page that is another website (https://...), not one of ours: it opens in a NEW TAB, never inside the map (Brandon
+  // 2026-11-16: "maybe it opens in a new tab unless youre using the browser extension"; the extension, when it is on,
+  // does its own thing on that tab)
+  function isOut(page) { return typeof page === 'string' && /^https:\/\//i.test(page); }
   function ago(ts) {
     if (!ts) return '';
     var sec = Math.max(0, Date.now() / 1000 - ts);
@@ -351,6 +355,12 @@
       var body = el('text', { x: x0, y: ty + CF.text, 'class': 'lgn-pool-body' });
       cl.lines.forEach(function (ln, i) { var tsp = el('tspan', { x: x0, dy: i ? CF.line : 0 }); tsp.textContent = ln; body.appendChild(tsp); });
       g.appendChild(body);
+      if (isOut(n.page)) {
+        var lk = el('text', { x: x0, y: ty + CF.text + cl.lines.length * CF.line + 8, 'class': 'lgn-out' });
+        lk.textContent = 'Open on ' + (n.by || 'the web') + ' \u2197';
+        lk.addEventListener('click', function (ev) { ev.stopPropagation(); ev.preventDefault(); openPage(n); });
+        g.appendChild(lk);
+      }
     } else if (POOLS) {
       // the pool's name, big in its middle, with a line of waves under it
       var R = poolR(n), fs = poolFont(n), pt = el('text', { x: W / 2, y: H / 2 + fs * 0.3, 'class': 'lgn-pool-name' });
@@ -952,6 +962,8 @@
 
   // a box's page opens as the page itself (through the walker's portal when it is on the map), not in a side panel
   function openPage(n) {
+    // another website: a new tab, no opener, no referrer (nothing about this site or the person goes along)
+    if (isOut(n.page)) { window.open(n.page, '_blank', 'noopener,noreferrer'); return; }
     var M = window.LG_MAP;
     if (M && typeof M.onOpen === 'function' && M.onOpen(n.id, n.page)) return;
     location.assign(n.page);

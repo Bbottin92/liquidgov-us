@@ -2,6 +2,7 @@
 #include "site/core/http.hpp"
 
 #include <chrono>
+#include <deque>
 #include <future>
 #include <cstdio>
 #include <cstdlib>
@@ -15,6 +16,7 @@ namespace {
 struct Entry { bool ok = false; std::string title, extract, url; std::chrono::steady_clock::time_point exp; };
 std::mutex g_mu;
 std::map<std::string, Entry> g_cache;
+std::deque<std::chrono::steady_clock::time_point> g_recent;   // when the last new requests went out
 
 std::string lower(std::string s) { for (char& c : s) if (c >= 'A' && c <= 'Z') c = static_cast<char>(c + 32); return s; }
 
@@ -122,6 +124,12 @@ bool outside_wikipedia(const std::string& term, std::string& title, std::string&
             return true;
         }
     }
+    {   // at most 30 new requests a minute for the whole site, so typing in the search bar can never hammer Wikipedia
+        std::lock_guard<std::mutex> lock(g_mu);
+        while (!g_recent.empty() && now - g_recent.front() > std::chrono::seconds(60)) g_recent.pop_front();
+        if (g_recent.size() >= 30) return false;
+        g_recent.push_back(now);
+    }
     const char* base_env = std::getenv("LIQUIDGOV_WIKI_BASE");
     const std::string base = base_env && *base_env ? base_env : "https://en.wikipedia.org/api/rest_v1/page/summary/";
     // url_encode leaves only [A-Za-z0-9._~%-], so the term cannot break out of the single-quoted argument. A generic
@@ -177,6 +185,37 @@ void outside_fill_interests(std::vector<GLink>& links) {
         jobs.push_back(std::async(std::launch::async, [n] { outside_fill_interest(*n); }));
     }
     for (auto& j : jobs) j.get();
+}
+
+std::string outside_topic_id(const std::string& typed) {
+    std::string t = trim_ws(typed);
+    if (t.size() < 3 || t.size() > 60) return "";
+    int words = 1; bool letter = false;
+    for (unsigned char c : t) {
+        if (c == ' ') { ++words; continue; }
+        if (std::isalpha(c) || c >= 0x80) { letter = true; continue; }
+        if (c == '-' || c == '\'' || c == '.') continue;
+        return "";   // digits and other characters: not a topic name (dates and times are handled elsewhere)
+    }
+    if (!letter || words > 4) return "";
+    std::string id = "topic:";
+    for (char c : t) id += c == ' ' ? '_' : c;
+    return id;
+}
+
+bool outside_topic(const std::string& rest, GNode& out) {
+    if (rest.size() < 3 || rest.size() > 60) return false;
+    for (unsigned char c : rest)
+        if (!(std::isalnum(c) || c >= 0x80 || c == '_' || c == '-' || c == '\'' || c == '.' || c == '(' || c == ')' || c == ',')) return false;
+    std::string term = rest;
+    for (char& c : term) if (c == '_') c = ' ';
+    std::string title, extract, url;
+    if (!outside_wikipedia(term, title, extract, url)) return false;
+    std::string slug = title;
+    for (char& c : slug) if (c == ' ') c = '_';
+    out = GNode{"topic:" + slug, title, "interest", url, "from Wikipedia"};
+    out.body = extract; out.by = "Wikipedia";
+    return true;
 }
 
 }  // namespace liquidgov::site

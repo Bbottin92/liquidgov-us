@@ -95,8 +95,24 @@ void map_interest_links(const std::string& key, const std::string& viewer,
     std::string label;
     for (const auto& i : map_interests_of(viewer)) if (i.key == key) label = i.label;
     if (label.empty()) return;
+    map_topic_links(label, viewer, link, false);
+}
+
+// What the site holds about a word or phrase: the groups, proposals and posts that mention it (and, once the signup
+// privacy step is live, people who list it). Shared by your interest boxes and by any topic you walk to.
+void map_topic_links(const std::string& label, const std::string& viewer,
+                     const std::function<void(const std::string&, const std::string&)>& link, bool with_posts) {
     constexpr std::size_t kMax = 40, kPeople = 8;
     std::size_t n = 0;
+    if (with_posts) {   // a topic you walked to also shows what people posted about it (newest 12 you may see)
+        const auto posts = g_store.all_posts();   // oldest first
+        for (auto it = posts.rbegin(); it != posts.rend() && n < 12; ++it) {
+            if (!map_post_ok(*it, viewer)) continue;
+            if (!map_interest_matches(label, map_folded_words(it->text))) continue;
+            link("post:" + std::to_string(it->id), "interest"); ++n;
+        }
+        n = 0;
+    }
     for (const auto& c : g_store.all_communities())
         if (n < kMax && map_interest_matches(label, map_folded_words(c.name + " " + c.about + " " + c.subcategory))) {
             link("group:" + c.slug, "interest"); ++n;

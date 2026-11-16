@@ -2,6 +2,7 @@
 #include "site/core/adapters_store.hpp"
 #include "site/core/html.hpp"
 #include "site/core/http.hpp"
+#include "site/features/outside/outside.hpp"
 #include "site/features/pains/pains.hpp"
 #include "site/features/map/map_graph.hpp"
 
@@ -202,6 +203,11 @@ std::optional<GNode> map_gnode(const std::string& id, const std::string& viewer)
         if (rest == "interests") return GNode{id, "Interests", "mine", "/me"};
         return std::nullopt;
     }
+    if (type == "topic") {   // any topic with a Wikipedia article (features/outside); a made-up one is simply not found
+        GNode g;
+        if (outside_topic(rest, g)) return g;
+        return std::nullopt;
+    }
     if (type == "int") { // one of YOUR interests; anyone else asking for it gets nothing
         if (viewer.empty()) return std::nullopt;
         for (const auto& i : map_interests_of(viewer))
@@ -354,6 +360,10 @@ std::vector<GLink> map_links(const std::string& id, const std::string& viewer) {
         if (!map_gnode(id, viewer)) return out;
         link("mine:feeds", "yours");
         map_feed_posts(rest, viewer, 12, [&](const Post& p) { link("post:" + std::to_string(p.id), "posted"); return true; });
+    } else if (type == "topic") {
+        auto t = map_gnode(id, viewer);   // an article Wikipedia has; the pool leads to what the site holds about it
+        if (!t) return out;
+        map_topic_links(t->label, viewer, link, true);
     } else if (type == "int") {
         if (!map_gnode(id, viewer)) return out; // only your own interests
         link("mine:interests", "yours");

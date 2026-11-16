@@ -52,7 +52,7 @@ class H(http.server.BaseHTTPRequestHandler):
         else:
             body = json.dumps(page).encode(); self.send_response(200)
         self.send_header("Content-Type", "application/json"); self.end_headers(); self.wfile.write(body)
-http.server.HTTPServer(("127.0.0.1", int(sys.argv[1])), H).serve_forever()
+http.server.ThreadingHTTPServer(("127.0.0.1", int(sys.argv[1])), H).serve_forever()
 PY
 python3 "$W/fake.py" $FAKE "$W/requests.log" > "$W/fake.out" 2>&1 &
 FAKEPID=$!
@@ -112,6 +112,25 @@ x=$(node_of "$STRANGER" "$SNOW")
 check "someone else's interest is still not available to you" '[ "$(echo "$x" | j "d.get(\"error\",\"\")")" = "not found" ]' "$x"
 code=$(curl -s -o /dev/null -w '%{http_code}' "$URL/map/node?n=$SNOW")
 check "signed out: refused" '[ "$code" = 401 ]' "$code"
+
+# --- any topic: search finds it, the pool opens, a made-up topic is not found (Brandon 2026-11-16: any word can be walked to)
+curl -s -o /dev/null -b "lg_session=$ADMIN" -F "text=Went snowboarding on Saturday, the powder was great" -F "anybody=1" $URL/feed
+r=$(curl -s -b "lg_session=$STRANGER" "$URL/map/search?tz=0&q=snowboarding")
+check "search finds the topic by what was typed" 'echo "$r" | j "[x[\"id\"] for x in d[\"results\"] if x[\"id\"].startswith(\"topic:\")][0]" | grep -qx "topic:Snowboarding"' "$r"
+check "...with its summary, source and link" 'echo "$r" | j "[x for x in d[\"results\"] if x[\"id\"]==\"topic:Snowboarding\"][0][\"by\"]" | grep -qx Wikipedia && echo "$r" | grep -q "https://en.wikipedia.org/wiki/Snowboarding"' "$r"
+tp=$(node_of "$STRANGER" "topic:Snowboarding")
+check "the topic opens as a pool of its own, for anyone signed in" '[ "$(echo "$tp" | j "d[\"node\"][\"label\"]")" = "Snowboarding" ]' "$tp"
+check "...and leads to the posts that mention it" 'echo "$tp" | j "[l[\"node\"][\"id\"] for l in d[\"links\"]]" | grep -q "post:"' "$tp"
+x=$(node_of "$STRANGER" "topic:Zzzqqqq")
+check "a made-up topic is not found" '[ "$(echo "$x" | j "d.get(\"error\",\"\")")" = "not found" ]' "$x"
+x=$(node_of "$STRANGER" "topic:Mercury")
+check "a disambiguation page is not a topic" '[ "$(echo "$x" | j "d.get(\"error\",\"\")")" = "not found" ]' "$x"
+x=$(node_of "$STRANGER" "topic:bad%27%3Bid")
+check "odd characters in a topic id are refused before anything is fetched" '[ "$(echo "$x" | j "d.get(\"error\",\"\")")" = "not found" ]' "$x"
+r=$(curl -s -b "lg_session=$STRANGER" "$URL/map/search?tz=0&q=nov%2012")
+check "a date is not looked up as a topic" '! echo "$r" | grep -q "topic:"' "$r"
+r=$(curl -s -b "lg_session=$STRANGER" "$URL/map/search?tz=0&q=one%20two%20three%20four%20five")
+check "a long phrase is not looked up as a topic" '! echo "$r" | grep -q "topic:"' "$r"
 
 echo "passes=$passes fails=$fails"
 [ $fails = 0 ]

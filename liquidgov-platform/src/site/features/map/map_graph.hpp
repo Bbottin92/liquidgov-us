@@ -26,6 +26,8 @@ void map_feed_posts(const std::string& feed, const std::string& viewer, std::siz
                     const std::function<bool(const Post&)>& emit);
 void map_interest_links(const std::string& key, const std::string& viewer,
                         const std::function<void(const std::string&, const std::string&)>& link);
+void map_topic_links(const std::string& label, const std::string& viewer,
+                     const std::function<void(const std::string&, const std::string&)>& link, bool with_posts = true);
 void map_add_sub(GNode& n, const std::string& viewer);
 double map_relevance(const GNode& n, const MapCtx& c);
 std::string map_node_json(const GNode& n, double rel = -1);

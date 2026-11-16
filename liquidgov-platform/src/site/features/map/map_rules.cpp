@@ -230,7 +230,12 @@ std::optional<GNode> map_gnode(const std::string& id, const std::string& viewer)
     }
     if (type == "user") {
         if (!map_person_ok(rest, viewer)) return std::nullopt;
-        return GNode{id, rest, "person", "/u/" + url_encode(rest)};
+        // the name they show (Brandon 2026-11-16: "theres nowhere for people to type in their actual name"); the handle stays
+        // as the second line so two people with the same name can be told apart
+        const std::string shown = g_store.profile_of(rest).display_name;
+        GNode g{id, shown.empty() ? rest : shown, "person", "/u/" + url_encode(rest)};
+        if (!shown.empty() && shown != rest) g.sub = "@" + rest;
+        return g;
     }
     if (type == "dept") {
         auto bar = rest.find('|');

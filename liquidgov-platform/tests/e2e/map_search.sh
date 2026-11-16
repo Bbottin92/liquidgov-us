@@ -43,6 +43,8 @@ for q in priya okafor raman "pri%20ram" "okaf%20priya" "Priya%20Raman-Okafor"; d
     r=$(ids "$ADMIN" "$q")
     check "a person by display name: $q" 'echo " $r " | grep -q " user:pal "' "$r"
 done
+n=$(curl -s -b "lg_session=$ADMIN" "$URL/map/node?n=user:pal")
+check "the person's pool is named by the name they show, handle underneath" 'echo "$n" | grep -q "\"label\":\"Priya Raman-Okafor\"" && echo "$n" | grep -q "\"sub\":\"@pal\""' "$n"
 r=$(ids "$ADMIN" "priya%20nguyen")
 check "...every word has to match" '! echo " $r " | grep -q " user:pal "' "$r"
 r=$(ids "$STRANGER" "priya")

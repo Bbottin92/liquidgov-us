@@ -778,8 +778,26 @@
         }
         return false;
       }
+      // last resort (the first ring is full and the pool cannot grow): never a direction a channel already leaves by.
+      // Of 72 directions, the one with the most clear shore (counted up to one mouth's width), then the nearest spot
+      // that does not touch another pool; the channel may then pass near a pool, but two mouths never coincide.
+      function lookClear() {
+        var best = null;
+        for (var q = 0; q < 72; q++) {
+          var a = q * Math.PI / 36, clear = Math.min(step, used.reduce(function (m, u) { return Math.min(m, Math.abs(Math.atan2(Math.sin(a - u), Math.cos(a - u)))); }, Math.PI));
+          var D = Math.max(R0, R0 * POOL_Y) + h.w + POOL_GAP;
+          for (var t = 0; t < 60; t++, D += 90) {
+            var px = cc.x + D * Math.cos(a), py = cc.y + D * Math.sin(a);
+            if (taken.every(function (o) { return (o.x === cc.x && o.y === cc.y) || !(Math.abs(o.x - px) < o.w + h.w + LAND && Math.abs(o.y - py) < o.h + h.h + LAND); })) {
+              if (!best || clear > best.clear + 1e-9 || (Math.abs(clear - best.clear) <= 1e-9 && D < best.D)) best = { x: px, y: py, clear: clear, D: D };
+              break;
+            }
+          }
+        }
+        if (best) { x = best.x; y = best.y; } else look(60, false);
+      }
       for (var tries = 0; tries < 12 && !found; tries++) { found = look(8, true); if (!found && !grow(20)) break; }
-      if (!found) look(60, false);
+      if (!found) lookClear();
       taken.push({ x: x, y: y, w: h.w, h: h.h });
       used.push(Math.atan2(y - cc.y, x - cc.x));
       return { x: Math.round(x - W / 2), y: Math.round(y - H / 2) };

@@ -1,4 +1,5 @@
 #include "site/features/map/map_search.hpp"
+#include "site/features/outside/outside.hpp"
 #include "site/core/adapters_store.hpp"
 #include "site/core/http.hpp"
 #include "site/core/text.hpp"
@@ -258,6 +259,8 @@ std::string map_search_json(const std::string& viewer, const std::string& raw, i
         for (const auto& cu : g_store.cities_in_use()) if (has(cu.name)) add_node("city:" + cu.key);
         auto props = g_store.all_proposals();
         for (auto it = props.rbegin(); it != props.rend(); ++it) if (has(it->title)) add_node("prop:" + std::to_string(it->id));
+        // a topic: the Wikipedia article of what was typed, when there is one (any word on the site can be walked to)
+        if (const std::string tid = outside_topic_id(trimmed); !tid.empty()) add_node(tid);
     }
     // what people wrote, newest first: posts, comments on posts and proposals, and your own messages
     std::vector<Hit> hits;

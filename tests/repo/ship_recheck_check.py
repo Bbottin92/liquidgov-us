@@ -128,7 +128,7 @@ try:
     check("E3 control: no run ever, no site files: it gives up after a few looks and is ready as before",
           rc == 0 and "SHIP_READY wip/2-ci" in out and 2 <= looks <= 6, (looks, out))
     rc, out, looks = ship(tmp, "wip/1-site", {"runs": [None], "log": ""})
-    check("E4 control: no run ever, site change: still not ready", rc == 1 and "no CI run for the head commit" in out, out)
+    check("E4 control: no run ever, site change: ready, with a WARNING (Brandon 2026-11-16)", rc == 0 and "WARNING: no CI run for the head commit" in out, out)
     rc, out, looks = ship(tmp, "wip/2-ci", {"runs": [None, GREEN], "log": LOG_OK}, wait="0")
     check("E5 --wait 0 does not look again", looks == 1 and "looking again" not in out, (looks, out))
 finally:

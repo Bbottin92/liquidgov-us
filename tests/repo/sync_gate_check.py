@@ -78,7 +78,8 @@ try:
         env = {k: v for k, v in os.environ.items()
                if not k.startswith("GIT_") and not k.startswith("LIQUIDGOV_")}
         env.update({"PATH": bin_dir + os.pathsep + os.environ.get("PATH", ""), "LIQUIDGOV_GH": "bash " + fwd(fake_gh),
-                    "LIQUIDGOV_DEPLOY_SSH": "true", "LIQUIDGOV_DEPLOY_KEY": "/nonexistent"})
+                    "LIQUIDGOV_DEPLOY_SSH": "true", "LIQUIDGOV_DEPLOY_KEY": "/nonexistent",
+                    "LIQUIDGOV_CI_GATE_MODE": "block"})
         env.update({"LIQUIDGOV_LIVE_COMMIT": head, "LIQUIDGOV_NO_ROLLBACK_OK": "sync_gate_check tests the CI gate only"})  # Brandon OK'd this line 2026-11-09 (rollback guard)
         if dry:
             env["LIQUIDGOV_DEPLOY_DRY_RUN"] = "1"

@@ -115,7 +115,7 @@ printf '%%s\n' "$out"
         with open(runs_file, "w", encoding="utf-8", newline="\n") as f:
             f.write("".join(l + "\n" for l in runs))
         env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_") and k != "LIQUIDGOV_CI_OVERRIDE"}
-        env.update({"LIQUIDGOV_GH": "bash " + fwd(fake_gh), "LIQUIDGOV_GATE_REPO": fwd(wt),
+        env.update({"LIQUIDGOV_GH": "bash " + fwd(fake_gh), "LIQUIDGOV_GATE_REPO": fwd(wt), "LIQUIDGOV_CI_GATE_MODE": "block",
                     "PATH": fakebin + os.pathsep + env.get("PATH", "")})
         try:
             r = subprocess.run([BASH, fwd(GATE), "go"], capture_output=True, text=True, env=env,

@@ -133,12 +133,12 @@ def check(branch, wait_min, out_dir):
     if not r:
         if pair != "none":
             print("4. CI: NO platform run for %s" % sha[:7])
-            reasons.append("no CI run for the head commit")
+            WARNINGS.append("no CI run for the head commit")   # Brandon 2026-11-16 (warn only): a missing result warns, a failed one still stops
         else:
             print("4. CI: no platform run (its paths filter skips this change); nothing to deploy")
         print("5. phone VERDICT: none (no run)")
         if site_changed:
-            reasons.append("no phone VERDICT")
+            WARNINGS.append("no phone VERDICT")
     else:
         rid = str(r.get("databaseId"))
         print("4. CI run %s: %s/%s" % (rid, r.get("status"), r.get("conclusion")))
@@ -213,8 +213,13 @@ def local_record(branch):
     return {"tree": tree, "when": when, "verdicts": [l.strip() for l in lines if l.startswith("VERDICT ")]}
 
 
+WARNINGS = []   # things worth a loud line that do not stop a merge (no CI result at all; see the gate's warn mode)
+
+
 def finish(branch, reasons, pair, files):
     print()
+    for w in WARNINGS:
+        print("WARNING: %s (not blocking; Brandon 2026-11-16: warn only while nobody is on the site)" % w)
     if reasons:
         print("SHIP_NOT_READY %s: %s" % (branch, "; ".join(reasons)))
         return 1

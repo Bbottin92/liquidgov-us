@@ -69,7 +69,8 @@ try:
         with open(runs_file, "w", encoding="utf-8", newline="\n") as f:
             f.write("".join(l + "\n" for l in runs))
         env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_") and k != "LIQUIDGOV_CI_OVERRIDE"}
-        env.update({"LIQUIDGOV_GH": "bash " + fwd(fake), "LIQUIDGOV_GATE_REPO": fwd(repo)})
+        env.update({"LIQUIDGOV_GH": "bash " + fwd(fake), "LIQUIDGOV_GATE_REPO": fwd(repo),
+                    "LIQUIDGOV_CI_GATE_MODE": "block"})   # the default is warn (Brandon 2026-11-16); these cases test the stop
         env.update(extra_env or {})
         # stdin closed and a timeout: a gate that reads stdin must fail fast, never hang the commit hook
         try:
@@ -95,6 +96,14 @@ try:
 
     rc, out = gate("go", [])
     check("no run at all -> refused", rc == 1 and "CI_GATE_REFUSED" in out, (rc, out))
+
+    # warn mode, the default since 2026-11-16 (Brandon: "cool with me"): the same bad results warn loudly and let it through
+    rc, out = gate("go", [], {"LIQUIDGOV_CI_GATE_MODE": "warn"})
+    check("warn mode: no run at all -> CI_GATE_WARNING, exit 0", rc == 0 and "CI_GATE_WARNING" in out and "REFUSED" not in out, (rc, out))
+    rc, out = gate("go", ["12 %s completed failure" % code], {"LIQUIDGOV_CI_GATE_MODE": "warn"})
+    check("warn mode: a red run -> CI_GATE_WARNING, exit 0", rc == 0 and "CI_GATE_WARNING" in out, (rc, out))
+    rc, out = gate("go", ["11 %s completed success" % code], {"LIQUIDGOV_CI_GATE_MODE": "warn"})
+    check("warn mode: a green run is still plain CI_GATE_OK", rc == 0 and out.startswith("CI_GATE_OK"), (rc, out))
 
     rc, out = gate("go", ["14 %s completed success" % old])
     check("green run only for a DIFFERENT tree -> refused", rc == 1 and "CI_GATE_REFUSED" in out, (rc, out))

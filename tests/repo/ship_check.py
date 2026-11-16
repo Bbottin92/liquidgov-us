@@ -4,7 +4,7 @@ Runs ship.py against a throwaway repo with a real bare "origin" and a fake gh (n
            change -> pair jbshell; docs-only change with no run -> ready, "no deploy needed"; a run still in progress
            is waited for and then counts.
   refuses: red run; VERDICT not ALL-PASS; no screenshots; unpushed commit; master moved on (not a fast-forward);
-           site change with no CI run; gh failing (fails closed); a run still in progress past --wait.
+           gh failing (fails closed); a run still in progress past --wait.
 Usage: python tests/repo/ship_check.py [repo root]   -> last line passes=N fails=M; exit 1 on any FAIL."""
 import json
 import os
@@ -125,7 +125,8 @@ try:
     rc, out = ship(tmp, "wip/4-local", ok_state)
     check("unpushed branch: not ready", rc == 1 and "not pushed" in out, out)
     rc, out = ship(tmp, "wip/1-code", {"runs": [None], "log": "", "pngs": False})
-    check("site change with no CI run: not ready", rc == 1 and "no CI run" in out, out)
+    # 2026-11-16 (Brandon: warn only): a MISSING CI result is a loud warning, not a stop; a failed one still stops (above)
+    check("site change with no CI run: ready, with a WARNING", rc == 0 and "SHIP_READY" in out and "WARNING: no CI run" in out, out)
     rc, out = ship(tmp, "wip/1-code", dict(ok_state, broken=True))
     check("gh failing: not ready (fails closed)", rc == 1 and "SHIP_NOT_READY" in out and "network down" in out, out)
     rc, out = ship(tmp, "wip/1-code", {"runs": [{"databaseId": 7, "status": "in_progress", "conclusion": ""}],
@@ -155,7 +156,7 @@ try:
     rc, out = ship(tmp, "wip/6-localbad", dict(ok_state, broken=True))
     check("local record whose phone VERDICT is not ALL-PASS: not ready", rc == 1 and "phone VERDICT not ALL-PASS" in out, out)
     rc, out = ship(tmp, "wip/7-notpass", {"runs": [None], "log": "", "pngs": False})
-    check("a record that does not say PASS is ignored: GitHub is asked (no run: not ready)", rc == 1 and "no CI run" in out, out)
+    check("a record that does not say PASS is ignored: GitHub is asked (no run: ready with a WARNING)", rc == 0 and "WARNING: no CI run" in out, out)
 
     # ---- merge: only a READY branch moves origin/master, and only by fast-forward
     def merge(branch, state):

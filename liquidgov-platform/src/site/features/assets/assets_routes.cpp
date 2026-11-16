@@ -123,7 +123,7 @@ std::optional<std::string> assets_routes(Route& r) {
     if(method=="GET"&&(path=="/assets/mail_widget.js"||path=="/assets/draft_publish.js"||path=="/assets/people_search.js"||
                        path=="/assets/jukebox.js"||path=="/assets/here.js"||path=="/assets/canvas.js"||
                        path=="/assets/walker.js"||path=="/assets/here_media.js"||path=="/assets/lgmap_walk.js"||path=="/assets/tip.js"||path=="/assets/home_drop.js"||
-                       path=="/assets/video_links.js")) {
+                       path=="/assets/video_links.js"||path=="/assets/hints.js")) {
         std::ifstream in(path.substr(1), std::ios::binary);   // "assets/<name>.js"
         if(!in) return http_raw("404 Not Found","text/plain; charset=utf-8","not found");
         std::ostringstream ss; ss << in.rdbuf();

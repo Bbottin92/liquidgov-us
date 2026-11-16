@@ -116,6 +116,7 @@ std::optional<std::string> auth_routes(Route& r) {
                 p.school = d.school.substr(0, 80);
                 g_store.set_profile(d.username, p);
                 g_store.set_map_prefs(d.username, MapPrefs{}); // today's defaults written down: no "now show" note later
+                { HintPrefs hp; hp.on = true; g_store.set_hints(d.username, hp); }   // a new account starts with hints on
                 g_store.set_here_choice(d.username, here == "1");
             }
             r=login(g_store,g_limiter,d.username,pass,device_label_from(req,ip),ip);

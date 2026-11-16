@@ -1,6 +1,6 @@
 /* Hints for newcomers (Brandon 2026-11-16: "a hint phase for newcomers that you can easily turn off and you can turn
    back on from the dropdown menu"). The server loads this only for a signed-in person whose Hints setting is on,
-   with LG_HINTS = {done: [ids already dismissed]}. At most ONE hint shows per page, and one per visit (sessionStorage) (the first whose spot is on the
+   with LG_HINTS = {done: [ids already dismissed]}. At most ONE hint shows per page (the first whose spot is on the
    page and that is not dismissed). "Got it" saves that hint as dismissed on the account (POST /settings/hints), so it
    never returns even if hints are turned off and on again, until "Show hints again" in Settings; "Turn hints off"
    turns the whole setting off. Not shown inside a frame (the map's boxes, previews). Everything fails quiet. */
@@ -42,19 +42,13 @@
     document.head.appendChild(st);
     document.body.appendChild(box);
   }
-  // Not overwhelming (Brandon 2026-11-16: "whatever gets the most without being overwhelming"): one new tip per visit
-  // (browser session), however many pages are opened. Storage that throws just means no limit this time.
-  function shownThisVisit() { try { return sessionStorage.getItem('lg-hint-shown') === '1'; } catch (e) { return false; } }
-  function markShown() { try { sessionStorage.setItem('lg-hint-shown', '1'); } catch (e) {} }
   function go() {
-    if (shownThisVisit()) return;
     for (var i = 0; i < HINTS.length; i++) {
       var h = HINTS[i];
       if (done[h.id] || !h.path.test(location.pathname)) continue;
       var el = document.querySelector(h.at);
       if (!el) continue;
       show(h, el);
-      markShown();
       return;
     }
   }

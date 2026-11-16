@@ -81,7 +81,7 @@ def main(argv):
     print("store: %s (%d bytes)" % (path, len(data)))
     for t in HINT_TAGS:
         print("  %-5s %d" % (t, removed[t]))
-    print("here records to remove: %d" % total)
+    print("hints records to remove: %d" % total)
     if not go:
         print("dry run: nothing changed. Stop the site, then rerun with --go.")
         return 0
@@ -139,7 +139,7 @@ def main(argv):
     after_lines = now.count(b"\n")
     if before_lines - after_lines != total:
         fail("verify failed: %d lines removed, expected %d. Restore %s by hand." % (before_lines - after_lines, total, backup))
-    print("done: removed %d here records; %d other records kept unchanged." % (total, after_lines - 1))
+    print("done: removed %d hints records; %d other records kept unchanged." % (total, after_lines - 1))
     return 0
 
 

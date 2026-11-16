@@ -57,7 +57,13 @@ class Run(wi.Run):
         self.set_valve(target, "closed")
         shut = self.hop(target).get("at")
         self.set_valve(target, "open")
-        again = self.hop(target).get("at")
+        time.sleep(0.4)
+        # a person who is stopped on the way tries again: a busy machine can end one walk early (a flake 2026-11-16, 1 in 5)
+        again = ""
+        for _ in range(3):
+            again = self.hop(target).get("at")
+            if again == target:
+                break
         self.check("V2 positive control: a box whose valve is not open is not entered (you stop at its edge, in no box); open again, it is",
                    shut == "" and again == target, {"box": target, "valve closed -> at": shut, "valve open -> at": again})
 

@@ -87,6 +87,11 @@ add_executable(liquidgov_platform_store_roundtrip_styles_here_test tests/store_r
 target_link_libraries(liquidgov_platform_store_roundtrip_styles_here_test PRIVATE liquidgov_auth liquidgov_file_store)
 target_compile_definitions(liquidgov_platform_store_roundtrip_styles_here_test PRIVATE LG_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 
+# Same check for the record type added after that (hints, 2026-11-16): a new file, the earlier round-trip tests are frozen.
+add_executable(liquidgov_platform_store_roundtrip_hints_test tests/store_roundtrip_hints_test.cpp)
+target_link_libraries(liquidgov_platform_store_roundtrip_hints_test PRIVATE liquidgov_auth liquidgov_file_store)
+target_compile_definitions(liquidgov_platform_store_roundtrip_hints_test PRIVATE LG_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+
 # End-to-end check of programs in mail against the real server on port 18080 with a throwaway store:
 #   bash tests/e2e/program_mail.sh build/liquidgov_http build/liquidgov_e2e_seed
 add_executable(liquidgov_e2e_seed tests/e2e/seed.cpp)

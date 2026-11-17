@@ -60,8 +60,8 @@ if [ "$code" = 200 ] && fast "$secs"; then ok "stylesheet answers behind 1 idle 
 read -r code secs < <(probe 60)
 if [ "$code" = 200 ] && fast "$secs"; then ok "stylesheet answers behind 60 idle sockets (${secs}s)"; else bad "stylesheet behind 60 idle sockets: $code in ${secs}s"; fi
 
-read -r code secs < <(probe 70)
-if [ "$code" = 503 ] && fast "$secs"; then ok "70 idle sockets (over the 64 cap): 503 at once (${secs}s), not a queue"; else bad "over the cap: $code in ${secs}s (want a fast 503)"; fi
+read -r code secs < <(probe 100)
+if [ "$code" = 503 ] && fast "$secs"; then ok "100 idle sockets (over the 64 cap): 503 at once (${secs}s), not a queue"; else bad "over the cap: $code in ${secs}s (want a fast 503)"; fi
 
 sleep 0.5
 read -r code secs < <(probe 0)

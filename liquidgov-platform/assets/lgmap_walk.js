@@ -400,6 +400,7 @@
   }
 
   var water = function () {};   // the channels' water, mouths and signs (set up below)
+  var pageAt = {};   // pool id -> where its page symbol really sits (map units), after it was moved clear of the signs (placePages)
   var walker = document.createElement('div');
   walker.id = 'lgm-walker';
   var dropPortrait = W.portrait(myName);
@@ -580,6 +581,57 @@
       m.setAttribute('data-keep', '1'); sg.setAttribute('data-keep', '1');
       if (mg) { mg.style.display = markHidden(from, mk) ? 'none' : ''; same(mg, e); mg.setAttribute('data-keep', '1'); }
     }
+    // The page symbol (lgmap.js .lgn-page) must never sit on a mouth's symbol or name, the pool's name or wave, or "Open your
+    // page" (Brandon 2026-11-16: in your own pool it sat under that button and over the Groups sign). Where the mouths fall
+    // depends on the channels, so it is measured here: every item's box on the screen, then the spot (a ring of candidates
+    // inside the pool, below the middle first) with the most clear water round the symbol. A spot that is already clear
+    // stays (no wandering). pageAt is what peekTick uses, so the sample still opens only over the symbol you can see.
+    var PAGE_HALF = { w: 17, h: 21, clear: 30, keep: 6 };   // the symbol's half size in map units (sheet 30 x 38 plus its line), clear water that is enough, clear water that is kept
+    var pageOff = {};
+    function gapBetween(x, y, hw, hh, r) {
+      var dx = Math.max(r.left - (x + hw), (x - hw) - r.right, 0), dy = Math.max(r.top - (y + hh), (y - hh) - r.bottom, 0);
+      return Math.hypot(dx, dy);
+    }
+    function placePages() {
+      Array.prototype.forEach.call(nodeLayer.querySelectorAll('.lgn'), function (g) {
+        var pg = g.querySelector('.lgn-page'), sh = g.querySelector('.lgs'), id = g.getAttribute('data-id');
+        if (!pg || !sh || g.style.visibility === 'hidden' || g.style.display === 'none') return;
+        var sr = sh.getBoundingClientRect(), reg = region(id);
+        if (!sr.width || !reg) return;
+        var rx = +sh.getAttribute('rx'), ry = +sh.getAttribute('ry'), cx = +sh.getAttribute('cx'), cy = +sh.getAttribute('cy');
+        var k = sr.width / (2 * rx), scx = sr.left + sr.width / 2, scy = sr.top + sr.height / 2, hw = PAGE_HALF.w * k, hh = PAGE_HALF.h * k;
+        var obs = [];
+        Array.prototype.forEach.call(g.querySelectorAll('text.lgn-pool-name,.lgn-pool-wave,.lge-mark,.lge-sign'), function (n) {
+          if (n.style.display === 'none') return;
+          var r = n.getBoundingClientRect();
+          if (r.width > 0 && r.height > 0) obs.push(r);
+        });
+        if (id === 'you') Array.prototype.forEach.call(nodeLayer.querySelectorAll('.lgn-openbtn'), function (n) { obs.push(n.getBoundingClientRect()); });
+        function clear(dx, dy) {   // the clear water round the symbol if it sat at this offset (map units) from the pool's middle
+          var x = scx + dx * k, y = scy + dy * k, g0 = Infinity;
+          // the symbol stays whole inside the pool: its four corners within 88% of the oval
+          if ([[-1, -1], [1, -1], [-1, 1], [1, 1]].some(function (c) { var u = (dx + c[0] * PAGE_HALF.w) / rx, v = (dy + c[1] * PAGE_HALF.h) / ry; return u * u + v * v > 0.88 * 0.88; })) return -1;
+          obs.forEach(function (r) { g0 = Math.min(g0, gapBetween(x, y, hw, hh, r)); });
+          return g0 / k;
+        }
+        var cur = pageOff[id], best = null;
+        if (cur && clear(cur.dx, cur.dy) >= PAGE_HALF.keep) best = cur;
+        else {
+          var bestScore = -2;
+          [0.5, 0.4, 0.6, 0.3, 0.7].forEach(function (f) {
+            for (var i = 0; i < 24; i++) {
+              var a = Math.PI / 2 + (i % 2 ? 1 : -1) * Math.ceil(i / 2) * Math.PI / 12, dx = Math.cos(a) * rx * f, dy = Math.sin(a) * ry * f;
+              var sc = Math.min(clear(dx, dy), PAGE_HALF.clear);
+              if (sc > bestScore + 1e-9) { bestScore = sc; best = { dx: dx, dy: dy }; }
+            }
+          });
+        }
+        pageOff[id] = best;
+        var tr = 'translate(' + (cx + best.dx).toFixed(1) + ',' + (cy + best.dy).toFixed(1) + ')';
+        if (pg.getAttribute('transform') !== tr) pg.setAttribute('transform', tr);
+        pageAt[id] = { x: reg.cx + best.dx, y: reg.cy + best.dy };
+      });
+    }
     water = function () {
       var keep = {};
       mouths = {};
@@ -605,6 +657,7 @@
       if (POOLS) Array.prototype.slice.call(nodeLayer.querySelectorAll('.lge-mouth,.lge-sign,.lge-mark')).forEach(function (x) {
         if (x.getAttribute('data-keep')) x.removeAttribute('data-keep'); else x.remove();
       });
+      if (POOLS) placePages();
     };
     setInterval(water, 400);
   })();
@@ -742,7 +795,8 @@
     // Pools (Brandon 2026-11-16: "the sample page ... should only show up when you walk over a page symbol ... otherwise,
     // the sample is just like in the way and clutters the view"): the sample opens only while your drop is over the pool's
     // page symbol (lgmap.js, .lgn-page; rec.pageSpot, map units), at once, with no wait for you to be still; off it, it closes.
-    if (POOLS && !(rec && rec.pageSpot && me && Math.hypot(me.x - rec.pageSpot.x, me.y - rec.pageSpot.y) <= PEEK.symbolR)) { peekSince = 0; peekHide(); return; }
+    var ps = pageAt[id] || (rec && rec.pageSpot);
+    if (POOLS && !(ps && me && Math.hypot(me.x - ps.x, me.y - ps.y) <= PEEK.symbolR)) { peekSince = 0; peekHide(); return; }
     if (peekOpen && peekFor === id) { peekPlace(t, page); return; }
     if (!peekSince || walker.getAttribute('data-peek-wait') !== id) { peekSince = Date.now(); walker.setAttribute('data-peek-wait', id); return; }
     if (Date.now() - peekSince >= PEEK.dwellMs) peekShow(id, t, page);

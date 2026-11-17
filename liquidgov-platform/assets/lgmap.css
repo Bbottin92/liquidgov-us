@@ -198,6 +198,8 @@ html.lgm-sheet-open,html.lgm-sheet-open body{overflow:hidden}
    pools sit over the channels with a pale shore of their own; at each mouth a patch of water (.lge-mouth) opens that
    shore; signs (.lge-sign) inside the pool name where each channel goes. */
 #lgmap[data-pools].lgm-dropping .lge{stroke:#8fd0ea!important;stroke-width:98px!important;stroke-dasharray:none!important;stroke-linecap:round;opacity:1}
+/* the stream you are in, drawn again over every other stream (lgmap_walk.js raiseStream, #lgm-top): same pale shore, same water */
+#lgmap[data-pools] .lge-topshore{fill:none;stroke:#8fd0ea;stroke-width:98px;stroke-linecap:round;pointer-events:none}
 #lgmap[data-pools] .lge-fill{fill:none;stroke:#2a7ea6;stroke-width:84px;stroke-linecap:round;pointer-events:none}
 /* The shore takes the colour of the pool's own kind (lgmap_walk.js sets --kind on the pool, the same colours as the mouth
    symbols), mixed into the pale rim so it stays a pale ring of the same width; a pool with no kind colour (Events, "+N more")

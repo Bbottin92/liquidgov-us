@@ -287,8 +287,45 @@
     var qx = a.cx + t * dx - p.x, qy = a.cy + t * dy - p.y;
     return qx * qx + qy * qy <= w * w;
   }
+  // The stream you are in (Brandon 2026-11-16: "you shouldnt be able to jump from one stream into a different crossing
+  // stream"). In open water you are in ONE channel, {a, b, key}; you may leave it only through its two ends, into the pools
+  // it joins, or by going back; a channel that merely crosses it is not yours to take. Before this, any point within CHANNEL
+  // of ANY channel was water, so at a crossing a push sideways simply carried you onto the other channel.
+  var stream = null;
+  function liveEdge(a, b) {
+    var found = null;
+    Array.prototype.forEach.call(edgeLayer.querySelectorAll('.lge'), function (e) {
+      if (!found && e.getAttribute('data-a') === a && e.getAttribute('data-b') === b && shown(e) && e.style.visibility !== 'hidden') found = e;
+    });
+    return found;
+  }
+  function inStream(p, s) {
+    var a = region(s.a), b = region(s.b);
+    return !!(a && b && nearSeg(p, a, b, CHANNEL));
+  }
+  // the channel whose middle line p is nearest (of those it is in): the one you came out of a mouth into
+  function pickStream(p) {
+    var best = null;
+    Array.prototype.forEach.call(edgeLayer.querySelectorAll('.lge'), function (e) {
+      if (!shown(e) || e.style.visibility === 'hidden') return;
+      var ia = e.getAttribute('data-a'), ib = e.getAttribute('data-b'), a = region(ia), b = region(ib);
+      if (!a || !b || !nearSeg(p, a, b, CHANNEL)) return;
+      var dx = b.cx - a.cx, dy = b.cy - a.cy, L = dx * dx + dy * dy, t = L ? Math.max(0, Math.min(1, ((p.x - a.cx) * dx + (p.y - a.cy) * dy) / L)) : 0;
+      var d2 = Math.pow(a.cx + t * dx - p.x, 2) + Math.pow(a.cy + t * dy - p.y, 2);
+      if (!best || d2 < best.d2) best = { a: ia, b: ib, key: ia + '|' + ib, d2: d2 };
+    });
+    return best;
+  }
+  // each tick: in a pool you are in no stream; in open water, the stream you came into stays yours while you are in it (and
+  // while it still shows); otherwise (a layout that moved under you, a fade) the nearest one is taken again
+  function streamTick(all) {
+    if (holding(all, me).length) { stream = null; return; }
+    if (stream && liveEdge(stream.a, stream.b) && inStream(me, stream)) return;
+    stream = pickStream(me);
+  }
   function inWater(all, p) {
     if (holding(all, p).length) return true;
+    if (stream) return inStream(p, stream);
     var ok = false;
     Array.prototype.forEach.call(edgeLayer.querySelectorAll('.lge'), function (e) {
       if (ok || !shown(e) || e.style.visibility === 'hidden') return;
@@ -325,6 +362,7 @@
     var best = null;
     Array.prototype.forEach.call(edgeLayer.querySelectorAll('.lge'), function (e) {
       if (e.style.visibility === 'hidden' || !shown(e)) return;
+      if (stream && (e.getAttribute('data-a') !== stream.a || e.getAttribute('data-b') !== stream.b)) return;   // the banks of the stream you are in only
       var a = region(e.getAttribute('data-a')), b = region(e.getAttribute('data-b'));
       if (!a || !b || !nearSeg(me, a, b, CHANNEL + 4)) return;
       var dx = b.cx - a.cx, dy = b.cy - a.cy, L = Math.sqrt(dx * dx + dy * dy) || 1, ux = dx / L, uy = dy / L;
@@ -366,6 +404,7 @@
     W.shape(dropPortrait, v.x, v.y);
     if (v.x || v.y) moved = move(all, v);
     if (moved) lastMove = Date.now();
+    streamTick(all);
     var now = insideOf(all, me);
     if (now !== at) {
       at = now; anchor = null; carry();
@@ -429,12 +468,14 @@
     // the water joins; the pools sit over the channels, and at each mouth a patch of water (.lge-mouth) opens the pool's
     // shore so the channel runs into it. The name of where a channel goes is written inside the pool at its mouth, along
     // the shore (.lge-sign). All copy the channel's own visibility and fading (proximity), every tick.
-    var fillLayer = null, flowLayer = edgeLayer;
+    var fillLayer = null, flowLayer = edgeLayer, topLayer = null;
     if (POOLS) {
       fillLayer = document.createElementNS(NS, 'g'); fillLayer.id = 'lgm-fills';
       flowLayer = document.createElementNS(NS, 'g'); flowLayer.id = 'lgm-flows';
       edgeLayer.parentNode.insertBefore(fillLayer, edgeLayer.nextSibling);
       edgeLayer.parentNode.insertBefore(flowLayer, fillLayer.nextSibling);
+      topLayer = document.createElementNS(NS, 'g'); topLayer.id = 'lgm-top';   // the stream you are in, drawn over every other stream
+      edgeLayer.parentNode.insertBefore(topLayer, flowLayer.nextSibling);
       defs.innerHTML += '<radialGradient id="lgm-pool" cx="50%" cy="45%" r="60%"><stop offset="0" stop-color="#1b5d80"/>' +
         '<stop offset="1" stop-color="#2a7ea6"/></radialGradient>';
     }
@@ -641,6 +682,18 @@
         else if (g.style.getPropertyValue('--kind')) g.style.removeProperty('--kind');
       });
     }
+    // The stream you are in is drawn over the others where they cross (Brandon 2026-11-16: "whatever stream youre on should be
+    // on the topmost layer"): its shore, water and shimmer are drawn again in #lgm-top, above every stream and below the pools,
+    // their signs and symbols. Out of a stream (in a pool) the layer is empty and the order is as it was.
+    function raiseStream() {
+      var cur = POOLS && stream && liveEdge(stream.a, stream.b) ? stream : null, e = cur ? liveEdge(cur.a, cur.b) : null;
+      walker.setAttribute('data-stream', e ? cur.key : '');
+      Array.prototype.slice.call(topLayer.children).forEach(function (n) { if (!e || n.getAttribute('data-for') !== cur.key) n.remove(); });
+      if (!e) return;
+      mirror(topLayer, 'lge-topshore', e, cur.key);
+      mirror(topLayer, 'lge-fill', e, cur.key);
+      mirror(topLayer, 'lge-flow', e, cur.key);
+    }
     water = function () {
       var keep = {};
       mouths = {};
@@ -666,7 +719,7 @@
       if (POOLS) Array.prototype.slice.call(nodeLayer.querySelectorAll('.lge-mouth,.lge-sign,.lge-mark')).forEach(function (x) {
         if (x.getAttribute('data-keep')) x.removeAttribute('data-keep'); else x.remove();
       });
-      if (POOLS) { placePages(); tintShores(); }
+      if (POOLS) { placePages(); tintShores(); raiseStream(); }
     };
     setInterval(water, 400);
   })();

@@ -7,6 +7,7 @@
 #include "site/features/feed/post_block.hpp"
 #include "site/features/jukebox/jukebox_widget.hpp"
 #include "site/features/profile/portrait.hpp"
+#include "site/features/profile/portrait_history.hpp"
 #include "site/features/profile/profile_css.hpp"
 #include "site/features/here/here.hpp"
 #include "site/features/styles/styles.hpp"
@@ -225,6 +226,7 @@ std::optional<std::string> profile_routes(Route& r) {
                     html_escape(found->username)+"\"><button>Send friend request</button></form>";
         }
         html += "</div>";
+        html += portrait_history_public_html(found->username);   // only when its owner chose to show them
         html += jukebox_widget(found->username, is_owner, user, qs);
         // "Play my Juketube when someone opens my profile" -- off by
         // default. Signed-in visitors only (the floating widget doesn't
@@ -312,7 +314,7 @@ std::optional<std::string> profile_routes(Route& r) {
         std::string hdrs = hdr_end==std::string::npos ? req : req.substr(0, hdr_end);
         auto file = multipart_file(header_value(hdrs, "Content-Type"), body, "photo");
         if (!file || file->empty()) return http_redir("/me?err=image");
-        auto r = save_avatar(g_blobs, g_store, g_scanner, acc->id, *file);
+        auto r = save_portrait_keeping_history(acc->id, *file);   // the portrait it replaces moves into the history
         if (r.error == SaveAvatarError::TooLarge) return http_redir("/me?err=portraitlarge");
         if (r.error == SaveAvatarError::FailedScan) return http_redir("/me?err=scan");
         if (r.error != SaveAvatarError::None) return http_redir("/me?err=image");

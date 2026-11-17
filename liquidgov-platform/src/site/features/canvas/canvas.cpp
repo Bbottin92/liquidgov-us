@@ -2,6 +2,7 @@
 #include "site/core/adapters_store.hpp"
 #include "site/core/html.hpp"
 #include "site/core/text.hpp"
+#include "site/features/profile/portrait_history.hpp"
 #include "site/ui/assets.hpp"
 
 namespace liquidgov::site {
@@ -471,6 +472,7 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "</div>"
         "<p class=\"muted\" id=\"cstatus\"></p></div>"
         ;
+    if (portrait) html += portrait_history_owner_html(username);   // earlier portraits; canvas.js loads one on click
     // The drawing engine is assets/canvas.js (moved out of this file 2026-11-13, code moved, not rewritten); this page
     // passes its own values in. Usernames and post targets are [A-Za-z0-9._/-] only, so JSON-escaped text cannot end
     // the script.

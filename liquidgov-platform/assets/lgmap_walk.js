@@ -632,6 +632,15 @@
         pageAt[id] = { x: reg.cx + best.dx, y: reg.cy + best.dy };
       });
     }
+    // each pool's shore takes its own kind's colour (lgmap.css mixes --kind into the pale rim): the same mapping and colours as
+    // the mouth symbols (markOf, MARKS), so far pools show what they are as they come into view
+    function tintShores() {
+      Array.prototype.forEach.call(nodeLayer.querySelectorAll('.lgn[data-id]'), function (g) {
+        var which = markOf(g.getAttribute('data-id')), col = which ? MARKS[which][0] : '';
+        if (col) { if (g.style.getPropertyValue('--kind') !== col) g.style.setProperty('--kind', col); }
+        else if (g.style.getPropertyValue('--kind')) g.style.removeProperty('--kind');
+      });
+    }
     water = function () {
       var keep = {};
       mouths = {};
@@ -657,7 +666,7 @@
       if (POOLS) Array.prototype.slice.call(nodeLayer.querySelectorAll('.lge-mouth,.lge-sign,.lge-mark')).forEach(function (x) {
         if (x.getAttribute('data-keep')) x.removeAttribute('data-keep'); else x.remove();
       });
-      if (POOLS) placePages();
+      if (POOLS) { placePages(); tintShores(); }
     };
     setInterval(water, 400);
   })();

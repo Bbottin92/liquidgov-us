@@ -538,41 +538,51 @@
       for (var i = 0; i < 10; i++) { var r = i % 2 ? 4.6 : 11.5, t = -Math.PI / 2 + i * Math.PI / 5; pts.push((r * Math.cos(t)).toFixed(1) + ' ' + (r * Math.sin(t) + 0.5).toFixed(1)); }
       return 'M' + pts.join(' L') + 'Z';
     })();
-    // each symbol: [colour, [[tag, attrs, isDetail] ...]] on a 24-unit grid centred on 0 (a detail is drawn dark)
+    // THE table of what a kind of pool looks like (Brandon 2026-11-16): symbol and colour (mouth symbols, shore tint), and
+    // whether its mouth shows a name. Plain JSON, read by walker_kind_table_check.py from this very block; nothing else in
+    // the page or its tests keeps a copy. "colours": symbol -> colour; "kinds": pool kind -> symbol; "mine": your lists
+    // (mine:<name>) -> symbol; a kind or list not named has no symbol (Events, "+N more"). "named": the home pool names every
+    // mouth (so the symbols are learned); the kinds in "always" are named in every pool.
+    var KINDS = /*KINDS-BEGIN*/{
+      "colours": { "person": "#f2c94c", "heads": "#b392f0", "ticked": "#ff7f6e", "bubble": "#3fd0c4", "pin": "#5fd068", "star": "#ff7eb6", "house": "#ffffff" },
+      "kinds": { "you": "house", "root": "house", "person": "person", "group": "heads", "prop": "ticked", "sitewide": "ticked", "pain": "ticked",
+        "feed": "bubble", "post": "bubble", "comment": "bubble", "message": "bubble", "city": "pin", "interest": "star", "dept": "star" },
+      "mine": { "friends": "person", "groups": "heads", "politics": "ticked", "problems": "ticked", "feeds": "bubble", "places": "pin", "interests": "star" },
+      "named": { "home": "you", "always": ["person"] }
+    }/*KINDS-END*/;
+    // each symbol's drawing: [[tag, attrs, isDetail] ...] on a 24-unit grid centred on 0 (a detail is drawn dark); its colour is KINDS.colours
     var MARKS = {
-      person: ['#f2c94c', [['circle', { cx: 0, cy: -5, r: 4.2 }], ['path', { d: 'M-8 10C-8 1.5 8 1.5 8 10Z' }]]],
-      heads: ['#b392f0', [['circle', { cx: 0, cy: -5, r: 4 }], ['circle', { cx: -8, cy: -2, r: 3.2 }], ['circle', { cx: 8, cy: -2, r: 3.2 }], ['path', { d: 'M-11.5 10Q0 -1 11.5 10Z' }]]],
-      ticked: ['#ff7f6e', [['rect', { x: -9.5, y: -9.5, width: 19, height: 19, rx: 3 }], ['path', { d: 'M-5 0L-1.2 4L5.5 -4' }, 1]]],
-      bubble: ['#3fd0c4', [['path', { d: 'M-10 -8.5H10Q12 -8.5 12 -6.5V3.5Q12 5.5 10 5.5H0L-6 11V5.5H-10Q-12 5.5 -12 3.5V-6.5Q-12 -8.5 -10 -8.5Z' }]]],
-      pin: ['#5fd068', [['path', { d: 'M0 11.5C-7.5 2 -9 -1 -9 -4A9 9 0 0 1 9 -4C9 -1 7.5 2 0 11.5Z' }], ['circle', { cx: 0, cy: -4, r: 3.2 }, 1]]],
-      star: ['#ff7eb6', [['path', { d: STAR }]]],
-      house: ['#ffffff', [['path', { d: 'M0 -11L-11.5 -1H-8.5V10H-2.2V3H2.2V10H8.5V-1H11.5Z' }]]]
+      person: [['circle', { cx: 0, cy: -5, r: 4.2 }], ['path', { d: 'M-8 10C-8 1.5 8 1.5 8 10Z' }]],
+      heads: [['circle', { cx: 0, cy: -5, r: 4 }], ['circle', { cx: -8, cy: -2, r: 3.2 }], ['circle', { cx: 8, cy: -2, r: 3.2 }], ['path', { d: 'M-11.5 10Q0 -1 11.5 10Z' }]],
+      ticked: [['rect', { x: -9.5, y: -9.5, width: 19, height: 19, rx: 3 }], ['path', { d: 'M-5 0L-1.2 4L5.5 -4' }, 1]],
+      bubble: [['path', { d: 'M-10 -8.5H10Q12 -8.5 12 -6.5V3.5Q12 5.5 10 5.5H0L-6 11V5.5H-10Q-12 5.5 -12 3.5V-6.5Q-12 -8.5 -10 -8.5Z' }]],
+      pin: [['path', { d: 'M0 11.5C-7.5 2 -9 -1 -9 -4A9 9 0 0 1 9 -4C9 -1 7.5 2 0 11.5Z' }], ['circle', { cx: 0, cy: -4, r: 3.2 }, 1]],
+      star: [['path', { d: STAR }]],
+      house: [['path', { d: 'M0 -11L-11.5 -1H-8.5V10H-2.2V3H2.2V10H8.5V-1H11.5Z' }]]
     };
-    var MINE_MARK = { friends: 'person', groups: 'heads', politics: 'ticked', problems: 'ticked', feeds: 'bubble', places: 'pin', interests: 'star' };
-    var KIND_MARK = { you: 'house', root: 'house', person: 'person', group: 'heads', prop: 'ticked', sitewide: 'ticked', pain: 'ticked', feed: 'bubble',
-      post: 'bubble', comment: 'bubble', message: 'bubble', city: 'pin', interest: 'star', dept: 'star' };
     function kindOf(id) {
-      var b = box(id), cls = (b && b.getAttribute('class')) || '', m = /(?:^|\s)lgn-(you|root|mine|person|group|prop|sitewide|pain|feed|post|comment|message|city|interest|dept|more)(?:\s|$)/.exec(cls);
-      return m ? m[1] : '';
+      var b = box(id), cls = ((b && b.getAttribute('class')) || '').split(/\s+/), kind = '';
+      cls.forEach(function (c) { var k = c.indexOf('lgn-') === 0 ? c.slice(4) : ''; if (k === 'mine' || KINDS.kinds[k]) kind = k; });
+      return kind;
     }
     function markOf(id) {
       var kind = kindOf(id);
-      return kind === 'mine' ? (MINE_MARK[String(id).slice(5)] || '') : (KIND_MARK[kind] || '');
+      return kind === 'mine' ? (KINDS.mine[String(id).slice(5)] || '') : (KINDS.kinds[kind] || '');
     }
-    // a person's mouth keeps their name in every pool; every other pool's mouths are symbol-only, except your own home pool
-    // ('you'), which names them so the symbols are learned
-    function wantsName(from, to) { return from === 'you' || kindOf(to) === 'person'; }
+    // the home pool names every mouth; the kinds the table lists as always named keep their name in every pool; every other
+    // pool's mouths are symbol-only
+    function wantsName(from, to) { return from === KINDS.named.home || KINDS.named.always.indexOf(kindOf(to)) >= 0; }
     function drawMark(g, mk, which, x, y, size) {
       var mg = g.querySelector('.lge-mark[data-for="' + mk + '"]');
       if (!which) { if (mg) mg.remove(); return null; }
       if (mg && mg.getAttribute('data-sym') !== which) { mg.remove(); mg = null; }
       if (!mg) {
         mg = document.createElementNS(NS, 'g'); mg.setAttribute('class', 'lge-mark'); mg.setAttribute('data-for', mk); mg.setAttribute('data-sym', which);
-        MARKS[which][1].forEach(function (c) {
+        MARKS[which].forEach(function (c) {
           var n = document.createElementNS(NS, c[0]);
           Object.keys(c[1]).forEach(function (k) { n.setAttribute(k, c[1][k]); });
           n.setAttribute('class', c[2] ? 'lge-mark-detail' : 'lge-mark-body');
-          if (!c[2]) n.setAttribute('fill', MARKS[which][0]);
+          if (!c[2]) n.setAttribute('fill', KINDS.colours[which]);
           mg.appendChild(n);
         });
         g.appendChild(mg);
@@ -681,7 +691,7 @@
     // the mouth symbols (markOf, MARKS), so far pools show what they are as they come into view
     function tintShores() {
       Array.prototype.forEach.call(nodeLayer.querySelectorAll('.lgn[data-id]'), function (g) {
-        var which = markOf(g.getAttribute('data-id')), col = which ? MARKS[which][0] : '';
+        var which = markOf(g.getAttribute('data-id')), col = which ? KINDS.colours[which] : '';
         if (col) { if (g.style.getPropertyValue('--kind') !== col) g.style.setProperty('--kind', col); }
         else if (g.style.getPropertyValue('--kind')) g.style.removeProperty('--kind');
       });

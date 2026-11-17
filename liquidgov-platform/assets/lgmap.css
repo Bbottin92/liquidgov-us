@@ -208,7 +208,6 @@ html.lgm-sheet-open,html.lgm-sheet-open body{overflow:hidden}
 #lgmap[data-pools].lgm-dropping .lgn.lgn-walk .lgs{stroke:#bfe9f8;stroke:color-mix(in srgb,var(--kind,#bfe9f8) 50%,#bfe9f8);filter:drop-shadow(0 0 26px rgba(150,220,250,.55))}
 #lgmap[data-pools] .lge-mouth{fill:none;stroke:#2a7ea6;stroke-width:84px;stroke-linecap:butt;pointer-events:none}
 #lgmap[data-pools] .lgn text.lgn-pool-name{font-weight:800;fill:#eef9ff;stroke:rgba(8,30,45,.45);stroke-width:4px;paint-order:stroke;letter-spacing:.01em}
-#lgmap[data-pools] .lgn-pool-wave{fill:none;stroke:rgba(215,245,255,.45);stroke-width:4px;stroke-linecap:round;pointer-events:none}
 /* the page symbol (lgmap.js): a pale sheet with a folded corner and three lines, on the pool's lower water; the sample
    page shows only while your drop is over it. Looks only: no clicks, so a tap still goes to the pool. */
 #lgmap[data-pools] .lgn-page{pointer-events:none}

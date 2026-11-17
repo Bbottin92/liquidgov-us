@@ -143,8 +143,10 @@
   function poolFont(d) { return Math.round(poolR(d) * (d.kind === 'you' ? 0.3 : 0.2)); }
   // your own pool carries your name (Brandon 2026-11-15: it is yours, not a "Main" for everyone)
   function poolLabel(d) { return d.label; }
-  // where a pool's page symbol sits (map units): in the pool's lower water, below its name and waves
-  function pageSpot(n) { return { x: n.x + W / 2, y: n.y + H / 2 + poolR(n) * POOL_Y * 0.5 }; }
+  // where a pool's page symbol sits (map units): one fixed slot straight under the pool's name (Brandon 2026-11-16: the wave line
+  // that was there is gone). Your own pool has none: its "Open your page" button is the page marker.
+  function pageSpot(n) { return { x: n.x + W / 2, y: n.y + H / 2 + poolFont(n) * 0.75 + 30 }; }
+  function hasPageSpot(n) { return POOLS && !!n.page && !n.body && n.kind !== 'you'; }
   var nodes = {};   // id -> {id,label,kind,page,rel,x,y,el,expanded}
   var edges = {};   // "a|b" -> {a,b,kind,el}
   var selected = null;
@@ -364,18 +366,16 @@
         g.appendChild(lk);
       }
     } else if (POOLS) {
-      // the pool's name, big in its middle, with a line of waves under it
+      // the pool's name, big in its middle
       var R = poolR(n), fs = poolFont(n), pt = el('text', { x: W / 2, y: H / 2 + fs * 0.3, 'class': 'lgn-pool-name' });
       pt.style.fontSize = fs + 'px';
       pt.textContent = fitText(poolLabel(n), '700 ' + fs + 'px', R * 1.6);
       g.appendChild(pt);
-      var wy = H / 2 + fs * 0.75, ww = Math.min(R * 1.2, textW(pt.textContent, '700 ' + fs + 'px') * 1.15), wx = W / 2 - ww / 2, amp = fs * 0.12, waves = 4, d = 'M' + wx.toFixed(1) + ' ' + wy.toFixed(1);
-      for (var wi = 0; wi < waves; wi++) d += ' q' + (ww / waves / 2).toFixed(1) + ' ' + (wi % 2 ? amp : -amp).toFixed(1) + ' ' + (ww / waves).toFixed(1) + ' 0';
-      g.appendChild(el('path', { d: d, 'class': 'lgn-pool-wave' }));
       // The page symbol (Brandon 2026-11-16: the sample page "should only show up when you walk over a page symbol"; there was
       // none, "i think we should invent one"): a small sheet with a folded corner on the pool's lower water, only on a pool
-      // that has a page. The walker shows the sample (lgmap_walk.js) only while the drop is over it. Not part of the click target.
-      if (n.page) {
+      // that has a page (not your own: its button is the marker). The walker shows the sample (lgmap_walk.js) only while the drop
+      // is over it. Not part of the click target.
+      if (n.page && n.kind !== 'you') {
         var ps = pageSpot(n), pg = el('g', { 'class': 'lgn-page', 'aria-hidden': 'true', transform: 'translate(' + (ps.x - n.x) + ',' + (ps.y - n.y) + ')' });
         pg.appendChild(el('path', { d: 'M-15 -19 H5 L15 -9 V19 H-15 Z', 'class': 'lgn-page-sheet' }));
         pg.appendChild(el('path', { d: 'M5 -19 V-9 H15', 'class': 'lgn-page-fold' }));
@@ -1209,7 +1209,7 @@
   // map's ZOOM.max), gliding; fit() is the normal view again. The zoom is walker.js's (LG_WALKER.CONTROLS.mapZoom).
   window.LG_MAP = {
     // spatial step 8: a box is an instance; this is its record (region and valve, as built), or null if it is not on the map
-    instance: function (id) { var n = nodes[id]; return n ? { id: n.id, region: n.region, valve: n.valve, css: n.css, page: n.page || '', content: !!n.body, pageSpot: POOLS && n.page && !n.body ? pageSpot(n) : null } : null; },
+    instance: function (id) { var n = nodes[id]; return n ? { id: n.id, region: n.region, valve: n.valve, css: n.css, page: n.page || '', content: !!n.body, pageSpot: hasPageSpot(n) ? pageSpot(n) : null } : null; },
     // The portal (2026-11-15, Brandon: the side panel is abandoned; a page is entered through its portal): opening a
     // box's page calls onOpen(id, page) when the map walker set it (it grows the peek into the page); with no walker
     // (the droplet hidden in Settings) the page simply opens.

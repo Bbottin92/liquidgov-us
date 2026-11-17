@@ -622,7 +622,7 @@
       m.setAttribute('data-keep', '1'); sg.setAttribute('data-keep', '1');
       if (mg) { mg.style.display = markHidden(from, mk) ? 'none' : ''; same(mg, e); mg.setAttribute('data-keep', '1'); }
     }
-    // The page symbol (lgmap.js .lgn-page) must never sit on a mouth's symbol or name, the pool's name or wave, or "Open your
+    // The page symbol (lgmap.js .lgn-page) must never sit on a mouth's symbol or name, the pool's name, or "Open your
     // page" (Brandon 2026-11-16: in your own pool it sat under that button and over the Groups sign). Where the mouths fall
     // depends on the channels, so it is measured here: every item's box on the screen, then the spot (a ring of candidates
     // inside the pool, below the middle first) with the most clear water round the symbol. A spot that is already clear
@@ -642,7 +642,7 @@
         var rx = +sh.getAttribute('rx'), ry = +sh.getAttribute('ry'), cx = +sh.getAttribute('cx'), cy = +sh.getAttribute('cy');
         var k = sr.width / (2 * rx), scx = sr.left + sr.width / 2, scy = sr.top + sr.height / 2, hw = PAGE_HALF.w * k, hh = PAGE_HALF.h * k;
         var obs = [];
-        Array.prototype.forEach.call(g.querySelectorAll('text.lgn-pool-name,.lgn-pool-wave,.lge-mark,.lge-sign'), function (n) {
+        Array.prototype.forEach.call(g.querySelectorAll('text.lgn-pool-name,.lge-mark,.lge-sign'), function (n) {
           if (n.style.display === 'none') return;
           var r = n.getBoundingClientRect();
           if (r.width > 0 && r.height > 0) obs.push(r);
@@ -655,8 +655,12 @@
           obs.forEach(function (r) { g0 = Math.min(g0, gapBetween(x, y, hw, hh, r)); });
           return g0 / k;
         }
+        // the symbol's own slot (lgmap.js pageSpot: straight under the pool's name) comes first; it is left only while something
+        // (a person's name at a mouth straight below, say) sits on it, and comes back as soon as the slot is clear again
+        var spot = MAP.instance(id).pageSpot, slot = spot ? { dx: spot.x - reg.cx, dy: spot.y - reg.cy } : null;
         var cur = pageOff[id], best = null;
-        if (cur && clear(cur.dx, cur.dy) >= PAGE_HALF.keep) best = cur;
+        if (slot && clear(slot.dx, slot.dy) >= PAGE_HALF.keep) best = slot;
+        else if (cur && clear(cur.dx, cur.dy) >= PAGE_HALF.keep) best = cur;
         else {
           var bestScore = -2;
           [0.5, 0.4, 0.6, 0.3, 0.7].forEach(function (f) {

@@ -59,6 +59,15 @@ target_link_libraries(liquidgov_platform_here_store_test PRIVATE liquidgov_auth 
 add_executable(liquidgov_platform_style_store_test tests/style_store_test.cpp)
 target_link_libraries(liquidgov_platform_style_store_test PRIVATE liquidgov_auth liquidgov_file_store)
 
+# Same round-trip check for the earlier-portrait records (avh, avhs, 2026-11-16): a new file, the earlier ones are frozen.
+add_executable(liquidgov_platform_store_roundtrip_portraits_test tests/store_roundtrip_portraits_test.cpp)
+target_link_libraries(liquidgov_platform_store_roundtrip_portraits_test PRIVATE liquidgov_auth liquidgov_file_store)
+target_compile_definitions(liquidgov_platform_store_roundtrip_portraits_test PRIVATE LG_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+
+# Earlier self-portraits' store records (avh/avhs, 2026-11-16): a new file, committed tests stay frozen.
+add_executable(liquidgov_platform_portrait_history_store_test tests/portrait_history_store_test.cpp)
+target_link_libraries(liquidgov_platform_portrait_history_store_test PRIVATE liquidgov_auth liquidgov_file_store)
+
 add_executable(liquidgov_platform_blob_test tests/blob_test.cpp)
 target_link_libraries(liquidgov_platform_blob_test PRIVATE liquidgov_blob liquidgov_image)
 

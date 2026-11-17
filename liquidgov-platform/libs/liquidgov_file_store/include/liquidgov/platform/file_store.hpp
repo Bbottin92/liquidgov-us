@@ -129,6 +129,13 @@
 //   note   <id> <to> <type> <from> <ts> <read 0|1> <extra>
 //   nn     <next_note_id>
 //   av     <account_id> <blob_id> <created_at>   // self-portrait; bytes live in the blob dir
+//   avh    <account_id> <blob_id> <created_at>   // one EARLIER self-portrait (Brandon 2026-11-16: "save and load
+//          prior self portraits"), oldest first; the newest kPortraitHistoryKeep (10) are kept, an older one is
+//          dropped and its blob released. Bytes live in the blob dir like av. Only the owner sees the list
+//          unless avhs says otherwise. Not written once the account is gone (same as av).
+//   avhs   <account_id> <public 0|1>   // whether people who can see this profile may see the avh pictures
+//          (absence = 0 = only the owner; only 1 is ever written). Not written once the account is gone.
+//   (Rollback: an older binary refuses these two; strip them first with deploy/portraits-undo.py.)
 //   jt     <owner_username> <video_id> <added_at> [<queued_by>]  // jukebox queue entry;
 //          video_id is an 11-char YouTube id already validated by extract_youtube_id, never
 //          a raw URL. queued_by is who requested it -- absent (older lines) means the owner.
@@ -673,6 +680,16 @@ public:
     void erase(AccountId owner) override;
     std::vector<Avatar> all_avatars() const;
 
+    // Earlier self-portraits ("avh"/"avhs"). Oldest first. keep_portrait() appends one and, when more than
+    // kPortraitHistoryKeep are held, removes the oldest and returns their blob ids so the caller can release them.
+    static constexpr std::size_t kPortraitHistoryKeep = 10;
+    std::vector<Avatar> portrait_history(AccountId owner) const;
+    std::vector<std::string> keep_portrait(AccountId owner, const std::string& blob_id, std::int64_t at);
+    std::optional<std::string> drop_portrait(AccountId owner, std::size_t index);   // the removed blob id
+    bool portrait_history_public(AccountId owner) const;
+    void set_portrait_history_public(AccountId owner, bool on);
+    std::vector<std::string> all_portrait_history_blob_ids() const;
+
     // ConversationStore — messenger groups. See messenger.hpp for the
     // business rules; this is storage only, same relationship FileStore
     // has to auth.hpp/avatar.hpp above.
@@ -885,6 +902,8 @@ private:
     std::map<std::string, std::vector<std::string>> city_tags_;
     std::vector<Notice> notices_;
     std::map<AccountId, Avatar> avatars_;
+    std::map<AccountId, std::vector<Avatar>> portrait_history_;   // avh
+    std::map<AccountId, bool> portrait_history_public_;           // avhs
     std::map<std::string, std::vector<JukeboxTrack>> jukebox_;
     std::map<std::string, std::vector<JukeboxHistoryEntry>> jukebox_history_;
     std::set<std::pair<std::string, std::string>> jukebox_subs_; // (subscriber, owner)

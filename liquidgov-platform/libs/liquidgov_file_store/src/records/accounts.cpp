@@ -298,6 +298,8 @@ bool FileStore::delete_account(AccountId id) {
     canvas_frames_.erase(id);
     canvas_timelapse_.erase(id);
     avatars_.erase(id);
+    portrait_history_.erase(id);
+    portrait_history_public_.erase(id);
     jukebox_.erase(name);
     jukebox_history_.erase(name);
     jukebox_autoplay_.erase(name);

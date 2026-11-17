@@ -197,6 +197,8 @@ int main(int argc, char** argv) {
     // sitting on disk the whole time, invisible only because of this.
     for (const auto& av : g_store.all_avatars())
         g_blobs.adopt(av.blob_id, "image/png");
+    for (const auto& blob_id : g_store.all_portrait_history_blob_ids())   // earlier self-portraits (avh)
+        g_blobs.adopt(blob_id, "image/png");
     for (const auto& m : g_store.all_mail_with_attachments())
         g_blobs.adopt(*m.attachment_blob_id, m.attachment_mime.value_or("application/octet-stream"));
     for (const auto& m : g_store.all_group_messages_with_attachments())

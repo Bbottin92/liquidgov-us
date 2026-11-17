@@ -66,6 +66,8 @@ void FileStore::load() {
     style_reports_.clear();
     canvas_frames_.clear();
     canvas_timelapse_.clear();
+    portrait_history_.clear();
+    portrait_history_public_.clear();
     phone_fp_.clear();
     quarantine_.clear();
     emails_.clear();

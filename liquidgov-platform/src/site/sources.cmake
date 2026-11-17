@@ -57,6 +57,7 @@ set(LG_SITE_SOURCES
   src/site/features/feed/feed_routes.cpp
   src/site/features/proposals/proposals_routes.cpp
   src/site/features/profile/profile_routes.cpp
+  src/site/features/profile/portrait_history.cpp
   src/site/features/here/here_routes.cpp
   src/site/features/styles/styles_routes.cpp
   src/site/features/people/people_routes.cpp

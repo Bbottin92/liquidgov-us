@@ -582,7 +582,7 @@
   // Pools (Brandon 2026-11-15, "you pick something"): the pool you are in fills the screen, so the peek waits until your
   // drop has been still for stillMs, is smaller, and sits at the top of the map on the side away from your drop; moving
   // hides it at once. The box map keeps its own place for it (over or under the box).
-  var PEEK = { dwellMs: 250, stillMs: 550, w: 520, h: 380, poolW: 0.46, poolH: 0.24, alpha: 0.6, ms: 320, growMs: 420, cls: 'lgm-peek' };
+  var PEEK = { dwellMs: 250, symbolR: 30, stillMs: 550, w: 520, h: 380, poolW: 0.46, poolH: 0.24, alpha: 0.6, ms: 320, growMs: 420, cls: 'lgm-peek' };
   var lastMove = 0;
   var peekEl = null, peekFrame = null, peekFor = '', peekPage = '', peekSince = 0, peekOpen = false, entering = false;
   function peekUrl(page) { return page + (page.indexOf('?') < 0 ? '?' : '&') + 'lg_peek=1'; }
@@ -673,11 +673,14 @@
   // each tick: the box you are at (in it, or right next to it) and its page
   function peekTick() {
     if (entering) return;
-    if (POOLS && Date.now() - lastMove < PEEK.stillMs) { peekSince = 0; peekHide(); return; }   // swimming: no peek
     var t = me ? target() : null, id = t ? t.getAttribute('data-id') : '', rec = id ? MAP.instance(id) : null;
     var page = rec && rec.page ? rec.page : '';
     // a pool that already holds its own text (a post, a comment, a proposal) needs no preview of the same page over it
     if (!page || (rec && rec.content)) { peekSince = 0; peekHide(); return; }
+    // Pools (Brandon 2026-11-16: "the sample page ... should only show up when you walk over a page symbol ... otherwise,
+    // the sample is just like in the way and clutters the view"): the sample opens only while your drop is over the pool's
+    // page symbol (lgmap.js, .lgn-page; rec.pageSpot, map units), at once, with no wait for you to be still; off it, it closes.
+    if (POOLS && !(rec && rec.pageSpot && me && Math.hypot(me.x - rec.pageSpot.x, me.y - rec.pageSpot.y) <= PEEK.symbolR)) { peekSince = 0; peekHide(); return; }
     if (peekOpen && peekFor === id) { peekPlace(t, page); return; }
     if (!peekSince || walker.getAttribute('data-peek-wait') !== id) { peekSince = Date.now(); walker.setAttribute('data-peek-wait', id); return; }
     if (Date.now() - peekSince >= PEEK.dwellMs) peekShow(id, t, page);

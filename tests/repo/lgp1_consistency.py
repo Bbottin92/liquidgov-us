@@ -74,6 +74,7 @@ check(pre is not None and set(pre.group(1).split()) <= city_tags and len(set(pre
 srv = __import__("runpy").run_path(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "liquidgov-platform", "tests", "browser", "server_source.py"))["read"](os.path.join(ROOT, "liquidgov-platform"))  # http_server.cpp + its src/site pieces
 assets = sorted(set(re.findall(r'ifstream in\("assets/([\w.-]+)"', srv)) | set(re.findall(r'js \? "assets/([\w.-]+)" : "assets/([\w.-]+)"', srv) and
                 [x for pair in re.findall(r'js \? "assets/([\w.-]+)" : "assets/([\w.-]+)"', srv) for x in pair] or []))
+assets = sorted(set(assets) | set(re.findall(r'^\s*\{"/[^"]+",\s*"assets/([\w.-]+)"', srv, re.M)))   # + the static_files.cpp table rows (2026-11-17)
 check(len(assets) >= 5, "found the asset files http_server.cpp opens (%d)" % len(assets))
 for a in assets:
     check(os.path.exists(os.path.join(ROOT, "liquidgov-platform", "assets", a)), "asset '%s' that the server opens exists" % a)

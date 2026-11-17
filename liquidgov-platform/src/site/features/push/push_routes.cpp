@@ -8,20 +8,6 @@ namespace liquidgov::site {
 
 std::optional<std::string> push_routes(Route& r) {
     LG_ROUTE_LOCALS(r)
-    if(method=="GET"&&path=="/sw.js") {
-        std::ifstream in("assets/sw.js", std::ios::binary);
-        if(!in) return http_raw("404 Not Found","text/plain; charset=utf-8","not found");
-        std::ostringstream ss; ss << in.rdbuf();
-        return http_raw("200 OK","text/javascript; charset=utf-8", ss.str(),
-            "Service-Worker-Allowed: /\r\nCache-Control: no-store\r\n");
-    }
-    if(method=="GET"&&path=="/assets/push.js") {
-        std::ifstream in("assets/push.js", std::ios::binary);
-        if(!in) return http_raw("404 Not Found","text/plain; charset=utf-8","not found");
-        std::ostringstream ss; ss << in.rdbuf();
-        return http_raw("200 OK","text/javascript; charset=utf-8", ss.str(),
-            asset_cache_header(rawpath));
-    }
     if(method=="GET"&&path=="/push/vapid") {
         std::ifstream in("deploy/vapid.public");
         if(!in) return http_raw("404 Not Found","text/plain; charset=utf-8","no vapid");

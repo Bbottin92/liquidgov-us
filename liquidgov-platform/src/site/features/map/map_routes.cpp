@@ -248,14 +248,6 @@ std::optional<std::string> map_routes(Route& r) {
         out += "]}";
         return http_raw("200 OK","application/json; charset=utf-8", out, "Cache-Control: no-store\r\n");
     }
-    if(method=="GET"&&(path=="/assets/lgmap.js"||path=="/assets/lgmap.css")) {
-        const bool js = path=="/assets/lgmap.js";
-        std::ifstream in(js ? "assets/lgmap.js" : "assets/lgmap.css", std::ios::binary);
-        if(!in) return http_raw("404 Not Found","text/plain; charset=utf-8","not found");
-        std::ostringstream ss; ss << in.rdbuf();
-        return http_raw("200 OK", js ? "text/javascript; charset=utf-8" : "text/css; charset=utf-8", ss.str(),
-                        asset_cache_header(rawpath));
-    }
     if(method=="GET"&&path.rfind("/city/",0)==0&&path.size()>10&&path.compare(path.size()-4,4,"/map")==0) {
         if(!acc) return need_login();
         const std::string raw = url_decode(path.substr(6, path.size()-6-4));

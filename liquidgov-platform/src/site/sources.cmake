@@ -7,6 +7,7 @@ set(LG_SITE_SOURCES
   src/site/core/html.cpp
   src/site/features/profile/profile_css.cpp
   src/site/ui/assets.cpp
+  src/site/ui/static_files.cpp
   src/site/ui/favicon_cookies.cpp
   src/site/ui/shell.cpp
   src/site/core/http.cpp

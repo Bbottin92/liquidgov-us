@@ -212,6 +212,12 @@ html.lgm-sheet-open,html.lgm-sheet-open body{overflow:hidden}
 #lgmap[data-pools] .lgn-page-line{fill:none;stroke:#2a7ea6;stroke-width:2.5px;stroke-linecap:round}
 #lgmap[data-pools] .lge-sign{font-weight:800;fill:#eef9ff;text-anchor:middle;dominant-baseline:central;paint-order:stroke;
   stroke:rgba(8,30,45,.5);stroke-width:3px;pointer-events:none;opacity:.92}
+/* the kind of pool a channel leads to (lgmap_walk.js MARKS): a symbol in the kind's colour, no box, a thin dark outline
+   only so it reads on the water; a detail (the tick, the pin's hole) is drawn dark. Looks only: no taps. */
+#lgmap[data-pools] .lge-mark{pointer-events:none}
+#lgmap[data-pools] .lge-mark-body{paint-order:stroke;stroke:rgba(8,30,45,.8);stroke-width:2.2px;stroke-linejoin:round}
+#lgmap[data-pools] .lge-mark-detail{fill:rgba(8,30,45,.85);stroke:rgba(8,30,45,.85);stroke-width:2.6px;stroke-linecap:round;stroke-linejoin:round}
+#lgmap[data-pools] path.lge-mark-detail{fill:none}
 #lgmap[data-pools] .lge-flow{stroke-width:7px}
 /* The map fills the screen (Brandon 2026-11-15: "the mainstream map should be like fullscreen besides the liquidgov
    title and notifications and mail and profile pic and juketube"). This file is only on the map page, so these rules

@@ -106,7 +106,7 @@
   function walkScale() {
     if (POOLS) {
       var r = region(at || last || 'you') || region('you'), s = seen();
-      if (r) return Math.max(MAP.ZOOM.min, Math.min(MAP.ZOOM.max, (s.x1 - s.x0) / (2 * r.hw * 1.04), (s.y1 - s.y0) / (2 * r.hh * 1.12)));
+      if (r) return Math.max(MAP.ZOOM.min, Math.min(MAP.ZOOM.max, (s.x1 - s.x0) / (2 * r.hw * 0.90), (s.y1 - s.y0) / (2 * r.hh * 0.98)));
     }
     return Math.min(MAP.ZOOM.max, MAP.fitScale() * C.mapZoom);
   }
@@ -469,18 +469,75 @@
     // two mouths closer than this (map units) cannot both carry a readable name (3 letters of 9 px bold is about 18): the
     // later one (by key, so it never flickers) keeps its mouth but shows no name; a shown sign then has the shore to the
     // next SHOWN one. Walked in key order, so a chain of close mouths hides every other one, not all but the first.
-    var SIGN_MIN = 36;
+    var SIGN_MIN = 36, MARK_MIN = 24;
     function hideCrowded() {
       Object.keys(mouths).forEach(function (from) {
-        var shown = [];
+        var shown = [], marked = [];
         mouths[from].slice().sort(function (p, q) { return p.key < q.key ? -1 : p.key > q.key ? 1 : 0; }).forEach(function (m) {
           m.hide = shown.some(function (s) { return Math.hypot(s.px - m.px, s.py - m.py) < SIGN_MIN; });
           if (!m.hide) shown.push(m);
+          // a symbol is smaller than a name: it gives way only to a shown symbol nearer than MARK_MIN
+          m.hideMark = marked.some(function (s) { return Math.hypot(s.px - m.px, s.py - m.py) < MARK_MIN; });
+          if (!m.hideMark) marked.push(m);
         });
       });
     }
     function hidden(from, key) {
       return (mouths[from] || []).some(function (m) { return m.key === key && m.hide; });
+    }
+    function markHidden(from, key) {
+      return (mouths[from] || []).some(function (m) { return m.key === key && m.hideMark; });
+    }
+    // The kind of pool a channel leads to, drawn at its mouth (Brandon 2026-11-16, "that feels right"): a symbol in the
+    // kind's colour with no box (a thin dark outline only, for reading on the water). Kinds come from the pool's own
+    // class (lgn-<kind>) and, for your lists, its id (mine:friends ...). Events and "+N more" have no symbol.
+    var STAR = (function () {
+      var pts = [];
+      for (var i = 0; i < 10; i++) { var r = i % 2 ? 4.6 : 11.5, t = -Math.PI / 2 + i * Math.PI / 5; pts.push((r * Math.cos(t)).toFixed(1) + ' ' + (r * Math.sin(t) + 0.5).toFixed(1)); }
+      return 'M' + pts.join(' L') + 'Z';
+    })();
+    // each symbol: [colour, [[tag, attrs, isDetail] ...]] on a 24-unit grid centred on 0 (a detail is drawn dark)
+    var MARKS = {
+      person: ['#f2c94c', [['circle', { cx: 0, cy: -5, r: 4.2 }], ['path', { d: 'M-8 10C-8 1.5 8 1.5 8 10Z' }]]],
+      heads: ['#b392f0', [['circle', { cx: 0, cy: -5, r: 4 }], ['circle', { cx: -8, cy: -2, r: 3.2 }], ['circle', { cx: 8, cy: -2, r: 3.2 }], ['path', { d: 'M-11.5 10Q0 -1 11.5 10Z' }]]],
+      ticked: ['#ff7f6e', [['rect', { x: -9.5, y: -9.5, width: 19, height: 19, rx: 3 }], ['path', { d: 'M-5 0L-1.2 4L5.5 -4' }, 1]]],
+      bubble: ['#3fd0c4', [['path', { d: 'M-10 -8.5H10Q12 -8.5 12 -6.5V3.5Q12 5.5 10 5.5H0L-6 11V5.5H-10Q-12 5.5 -12 3.5V-6.5Q-12 -8.5 -10 -8.5Z' }]]],
+      pin: ['#5fd068', [['path', { d: 'M0 11.5C-7.5 2 -9 -1 -9 -4A9 9 0 0 1 9 -4C9 -1 7.5 2 0 11.5Z' }], ['circle', { cx: 0, cy: -4, r: 3.2 }, 1]]],
+      star: ['#ff7eb6', [['path', { d: STAR }]]],
+      house: ['#ffffff', [['path', { d: 'M0 -11L-11.5 -1H-8.5V10H-2.2V3H2.2V10H8.5V-1H11.5Z' }]]]
+    };
+    var MINE_MARK = { friends: 'person', groups: 'heads', politics: 'ticked', problems: 'ticked', feeds: 'bubble', places: 'pin', interests: 'star' };
+    var KIND_MARK = { you: 'house', root: 'house', person: 'person', group: 'heads', prop: 'ticked', sitewide: 'ticked', pain: 'ticked', feed: 'bubble',
+      post: 'bubble', comment: 'bubble', message: 'bubble', city: 'pin', interest: 'star', dept: 'star' };
+    function kindOf(id) {
+      var b = box(id), cls = (b && b.getAttribute('class')) || '', m = /(?:^|\s)lgn-(you|root|mine|person|group|prop|sitewide|pain|feed|post|comment|message|city|interest|dept|more)(?:\s|$)/.exec(cls);
+      return m ? m[1] : '';
+    }
+    function markOf(id) {
+      var kind = kindOf(id);
+      return kind === 'mine' ? (MINE_MARK[String(id).slice(5)] || '') : (KIND_MARK[kind] || '');
+    }
+    // a person's mouth keeps their name in every pool; every other pool's mouths are symbol-only, except your own home pool
+    // ('you'), which names them so the symbols are learned
+    function wantsName(from, to) { return from === 'you' || kindOf(to) === 'person'; }
+    function drawMark(g, mk, which, x, y, size) {
+      var mg = g.querySelector('.lge-mark[data-for="' + mk + '"]');
+      if (!which) { if (mg) mg.remove(); return null; }
+      if (mg && mg.getAttribute('data-sym') !== which) { mg.remove(); mg = null; }
+      if (!mg) {
+        mg = document.createElementNS(NS, 'g'); mg.setAttribute('class', 'lge-mark'); mg.setAttribute('data-for', mk); mg.setAttribute('data-sym', which);
+        MARKS[which][1].forEach(function (c) {
+          var n = document.createElementNS(NS, c[0]);
+          Object.keys(c[1]).forEach(function (k) { n.setAttribute(k, c[1][k]); });
+          n.setAttribute('class', c[2] ? 'lge-mark-detail' : 'lge-mark-body');
+          if (!c[2]) n.setAttribute('fill', MARKS[which][0]);
+          mg.appendChild(n);
+        });
+        g.appendChild(mg);
+      }
+      var tr = 'translate(' + x.toFixed(1) + ' ' + y.toFixed(1) + ') scale(' + (size / 24).toFixed(3) + ')';
+      if (mg.getAttribute('transform') !== tr) mg.setAttribute('transform', tr);
+      return mg;
     }
     // one end of a channel: where it meets pool `from`'s shore (heading to `to`), its patch and its sign
     function mouth(key, from, to, e) {
@@ -505,7 +562,11 @@
       // before the name is cut, and a name that still cannot fit is cut to what does (at least 3 characters)
       var avail = Math.min(a.hw * 0.85, 150, room * 0.9);
       if (avail < fs * 0.66 * 8) fs = Math.max(9, Math.min(fs, Math.floor(avail / (0.66 * 8))));
-      var inset = fs * 1.4, sx = px - ux * inset, sy = py - uy * inset;
+      // the kind of pool this channel leads to: its symbol sits at the mouth; the name (home pool, and people) goes inside it
+      var which = markOf(to), named = !which || wantsName(from, to), msz = Math.max(16, Math.min(Math.round(a.hw * 0.15), 28));
+      var inset = which && named ? msz * 2.3 + fs * 0.7 : fs * 1.4, sx = px - ux * inset, sy = py - uy * inset;
+      // the symbol sits 1.5 sizes inside the shore, so on a phone the side mouths (the pool is a little wider than the screen) stay whole
+      var mg = drawMark(g, mk, which, px - ux * msz * 1.5, py - uy * msz * 1.5, msz);
       var deg = Math.atan2(uy, ux) * 180 / Math.PI + 90;
       if (deg > 90) deg -= 180; else if (deg <= -90) deg += 180;   // never upside down
       var tr = 'rotate(' + deg.toFixed(1) + ' ' + sx.toFixed(1) + ' ' + sy.toFixed(1) + ')', name = nameOf(to);
@@ -514,9 +575,10 @@
       if (sg.getAttribute('transform') !== tr) { sg.setAttribute('x', sx.toFixed(1)); sg.setAttribute('y', sy.toFixed(1)); sg.setAttribute('transform', tr); sg.style.fontSize = fs + 'px'; }
       if (sg.textContent !== name) sg.textContent = name;
       sg.setAttribute('data-hidden', hidden(from, mk) ? '1' : '0');
-      sg.style.display = hidden(from, mk) ? 'none' : '';
+      sg.style.display = hidden(from, mk) || !named ? 'none' : '';
       same(m, e); same(sg, e);
       m.setAttribute('data-keep', '1'); sg.setAttribute('data-keep', '1');
+      if (mg) { mg.style.display = markHidden(from, mk) ? 'none' : ''; same(mg, e); mg.setAttribute('data-keep', '1'); }
     }
     water = function () {
       var keep = {};
@@ -540,7 +602,7 @@
       [flowLayer, fillLayer].forEach(function (layer) {
         if (layer) Array.prototype.slice.call(layer.querySelectorAll('.lge-flow,.lge-fill')).forEach(function (f) { if (!keep[f.getAttribute('data-for')]) f.remove(); });
       });
-      if (POOLS) Array.prototype.slice.call(nodeLayer.querySelectorAll('.lge-mouth,.lge-sign')).forEach(function (x) {
+      if (POOLS) Array.prototype.slice.call(nodeLayer.querySelectorAll('.lge-mouth,.lge-sign,.lge-mark')).forEach(function (x) {
         if (x.getAttribute('data-keep')) x.removeAttribute('data-keep'); else x.remove();
       });
     };

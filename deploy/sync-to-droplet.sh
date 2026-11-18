@@ -78,7 +78,7 @@ if [ ${#DRY[@]} -eq 0 ]; then
     fi
 fi
 
-# No-rollback guard on every REAL sync (Brandon 2026-11-09): the program a rollback restores (built from the LIVE
+# No-rollback guard on every sync, dry runs included since q67 (Brandon 2026-11-09): the program a rollback restores (built from the LIVE
 # commit) must still open the store this commit writes; deploy/rollback_guard.py compares the two versions of the
 # store code (libs/liquidgov_file_store, the files its sources.cmake lists). The live commit comes from <dest>/DEPLOYED_COMMIT on the server (written below by every real sync), or
 # LIQUIDGOV_LIVE_COMMIT=<commit> (the first deploy after this change, before the file exists). Unknown -> refused
@@ -99,39 +99,40 @@ pick_python() {
     return 1
 }
 PREV_LIVE=""
-if [ ${#DRY[@]} -eq 0 ]; then
-    if [ -n "${LIQUIDGOV_LIVE_COMMIT:-}" ]; then
-        LIVES="$LIQUIDGOV_LIVE_COMMIT"
-    else
-        # shellcheck disable=SC2086  # SSH_CMD is a command line, split on purpose (as rsync -e does)
-        LIVES="$($SSH_CMD "$DEST_HOST" "cat ${DEST_DIR%/}/DEPLOYED_COMMIT" 2>/dev/null </dev/null | tr -d '\r' | head -2 | tr '\n' ' ')" || LIVES=""
+# Runs on dry runs too (q67, Brandon 2026-11-17): every deploy/*-go.sh does its dry sync before the server backup, so a
+# refusal here stops the deploy while the server is still untouched. The guard only reads (one ssh cat of
+# DEPLOYED_COMMIT, then a local python run); a dry run still sends and records nothing.
+if [ -n "${LIQUIDGOV_LIVE_COMMIT:-}" ]; then
+    LIVES="$LIQUIDGOV_LIVE_COMMIT"
+else
+    # shellcheck disable=SC2086  # SSH_CMD is a command line, split on purpose (as rsync -e does)
+    LIVES="$($SSH_CMD "$DEST_HOST" "cat ${DEST_DIR%/}/DEPLOYED_COMMIT" 2>/dev/null </dev/null | tr -d '\r' | head -2 | tr '\n' ' ')" || LIVES=""
+fi
+read -r -a LIVE_LIST <<< "$LIVES"
+if [ ${#LIVE_LIST[@]} -eq 0 ]; then LIVE_LIST=(""); fi
+for LIVE in "${LIVE_LIST[@]}"; do
+    if ! [[ "$LIVE" =~ ^[0-9a-f]{7,40}$ ]]; then
+        echo "Refusing to sync: the live commit is unknown (no usable ${DEST_DIR%/}/DEPLOYED_COMMIT on $DEST_HOST, got '${LIVE:0:40}')."
+        echo "Give it from the last deploy record: LIQUIDGOV_LIVE_COMMIT=<commit> $0 $*   Nothing was sent."
+        exit 5
     fi
-    read -r -a LIVE_LIST <<< "$LIVES"
-    if [ ${#LIVE_LIST[@]} -eq 0 ]; then LIVE_LIST=(""); fi
+done
+PREV_LIVE="${LIVE_LIST[0]}"
+GUARD="$(dirname "${BASH_SOURCE[0]}")/rollback_guard.py"
+PY="$(pick_python)" || PY=""
+if [ -n "$PY" ] && [ -f "$GUARD" ]; then
     for LIVE in "${LIVE_LIST[@]}"; do
-        if ! [[ "$LIVE" =~ ^[0-9a-f]{7,40}$ ]]; then
-            echo "Refusing to sync: the live commit is unknown (no usable ${DEST_DIR%/}/DEPLOYED_COMMIT on $DEST_HOST, got '${LIVE:0:40}')."
-            echo "Give it from the last deploy record: LIQUIDGOV_LIVE_COMMIT=<commit> $0 $*   Nothing was sent."
+        if ! "$PY" "$GUARD" "$LIVE" "$REPO"; then
+            echo "Refusing to sync: the no-rollback guard (deploy/rollback_guard.py) did not pass against $LIVE. Nothing was sent."
             exit 5
         fi
     done
-    PREV_LIVE="${LIVE_LIST[0]}"
-    GUARD="$(dirname "${BASH_SOURCE[0]}")/rollback_guard.py"
-    PY="$(pick_python)" || PY=""
-    if [ -n "$PY" ] && [ -f "$GUARD" ]; then
-        for LIVE in "${LIVE_LIST[@]}"; do
-            if ! "$PY" "$GUARD" "$LIVE" "$REPO"; then
-                echo "Refusing to sync: the no-rollback guard (deploy/rollback_guard.py) did not pass against $LIVE. Nothing was sent."
-                exit 5
-            fi
-        done
-    elif [ -n "${LIQUIDGOV_NO_ROLLBACK_OK:-}" ]; then
-        # the override is the emergency path, so it must not depend on Python or the guard file being there
-        echo "ROLLBACK_GUARD_OVERRIDE: $LIQUIDGOV_NO_ROLLBACK_OK (guard not run: ${PY:-no Python 3.8+}, $GUARD)"
-    else
-        echo "Refusing to sync: cannot run the no-rollback guard (${PY:-no Python 3.8+}; $GUARD). Nothing was sent."
-        exit 5
-    fi
+elif [ -n "${LIQUIDGOV_NO_ROLLBACK_OK:-}" ]; then
+    # the override is the emergency path, so it must not depend on Python or the guard file being there
+    echo "ROLLBACK_GUARD_OVERRIDE: $LIQUIDGOV_NO_ROLLBACK_OK (guard not run: ${PY:-no Python 3.8+}, $GUARD)"
+else
+    echo "Refusing to sync: cannot run the no-rollback guard (${PY:-no Python 3.8+}; $GUARD). Nothing was sent."
+    exit 5
 fi
 
 echo "Syncing $SRC -> $DEST (excluding build/.git/data files)${DRY:+ [dry run]}"

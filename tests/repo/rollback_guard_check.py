@@ -244,8 +244,8 @@ try:
     check("sync: LIQUIDGOV_LIVE_COMMIT given (first deploy) -> syncs and records", rc == 0 and len(lines) == 2
           and recorded().split() == [head, live_ok], (rc, lines, recorded(), out[-400:]))
     rc, out, lines = sync(server_has=live_bad, dry=True)
-    check("sync: dry run -> not guarded, nothing recorded", rc == 0 and len(lines) == 1 and "ROLLBACK_GUARD" not in out,
-          (rc, lines, out[-400:]))
+    check("sync: dry run, incompatible live commit -> refused (q67: guard runs on dry runs), rsync never called, nothing recorded",
+          rc == 5 and not lines and "ROLLBACK_GUARD_REFUSED" in out and recorded() == live_bad, (rc, lines, recorded(), out[-400:]))
     rc, out, lines = sync(server_has=live_ok, extra={"FAKE_RSYNC_FAIL_REC": "1"})
     check("sync: DEPLOYED_COMMIT cannot be written -> exit 6, says it stopped before build",
           rc == 6 and "could NOT record" in out, (rc, lines, out[-400:]))

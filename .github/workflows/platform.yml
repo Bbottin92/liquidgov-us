@@ -124,6 +124,13 @@ jobs:
         timeout-minutes: 5
         run: python3 liquidgov-platform/tests/assets_js_parse_check.py "$PWD/liquidgov-platform"
 
+      # The Juketube widget tells the server a track ended, even a clip shorter than its old 4 s "stale ended" window
+      # (q188: a 0.8 s clip left Site-wide stuck on it). Runs the real jukebox.js under node with a fake player; no
+      # browser, no network, so GATING like the parse check above.
+      - name: juketube reports short clips ended (jukebox_ended_check)
+        timeout-minutes: 5
+        run: python3 liquidgov-platform/tests/jukebox_ended_check.py "$PWD/liquidgov-platform"
+
       # Static checks (no browser): American spelling in the site's strings, and this file keeping every browser
       # check in a report-only, bounded step.
       - name: site spelling (site_spelling_check, report-only)

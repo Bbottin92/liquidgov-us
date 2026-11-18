@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Spatial step 5 (SPATIAL_EVOLUTION.md): presence is scoped to the instance. In a /here/ws room, a person only gets
+# Spatial step 5 (spatial_evolution.md): presence is scoped to the instance. In a /here/ws room, a person only gets
 # the dots whose instanceId equals their own. A client names its instance with "instanceId" in the move message it
 # already sends; one that sends none stays in the room's own instance (how every page behaves today).
 # The one check: two people in the same room. Neither names an instance -> they see each other (precondition).

@@ -220,6 +220,16 @@ def scan(root, cfg, branches):
         hidden = nested_watched(directory, end, re.compile(cfg[section]["pattern"]))
         t.check(not hidden, "no %s file hides under %s (%s)" % (end, cfg[section]["root"], ", ".join(hidden)))
 
+    if "docs" in cfg:  # every name under docs/, any depth, files and folders (2026-11-18)
+        droot = os.path.join(root, cfg["docs"]["root"].replace("/", os.sep))
+        dpat = re.compile(cfg["docs"]["pattern"])
+        bad = []
+        for dp, dns, fns in os.walk(droot):
+            for n in dns + fns:
+                if n != "README.md" and not dpat.match(n):
+                    bad.append(os.path.relpath(os.path.join(dp, n), root).replace(os.sep, "/"))
+        t.check(not bad, "every name under %s matches %s (%s)" % (cfg["docs"]["root"], cfg["docs"]["pattern"], ", ".join(bad[:10])))
+
     e2e_dir = os.path.join(root, cfg["e2e"]["root"].replace("/", os.sep))
     seen = {}
     lo, hi = int(cfg["e2e"]["port_min"]), int(cfg["e2e"]["port_max"])

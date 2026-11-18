@@ -1,4 +1,4 @@
-"""Spatial step 7 (SPATIAL_EVOLUTION.md): the valve types on the map walker's entry path. Three focused cases
+"""Spatial step 7 (spatial_evolution.md): the valve types on the map walker's entry path. Three focused cases
 (Open, Private, Conduit) and the inheritance rule. New file: no committed check is edited.
 
 Real headless Chromium at phone size, NO C++ server: walker_controls_check.py's stdlib server and fake graph,

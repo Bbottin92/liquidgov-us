@@ -1,4 +1,4 @@
-/* Proximity voice and video on profile pages (spatial step 11, SPATIAL_EVOLUTION.md). Off until you turn it on: the Microphone and
+/* Proximity voice and video on profile pages (spatial step 11, spatial_evolution.md). Off until you turn it on: the Microphone and
    Camera switches in your drop's menu (walker.js, LG_WALKER.media) ask the browser for permission and stay on across
    pages until you turn them off; this file tells the server what you are sharing. With someone else in the same
    instance who is also sharing, within RANGE.aware of you, a direct browser-to-browser connection (WebRTC) carries the

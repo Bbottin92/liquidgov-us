@@ -79,11 +79,11 @@ Not bug classes. Not “what is live on the droplet.”
 - **2026-11-16 PT -- Thumbs, decided (Brandon; WANTED, nothing built).** No "and N private" line under the list; PUBLIC by default; a menu that expands from the corner of whatever post or thing you are interacting with, to choose: thumbs always private, or specific people or groups who cannot see your thumbs, or private on that one thing; EVERYONE sees the stream tint. With the earlier decisions: counts on the page include private thumbs; clicking a count lists the public ones in order with a time beside each; private thumbs keep their place; your own thumb history; thumbs on things, not on people's pools; weight from Judgment, capped, linked accounts counted nearer to one voice (credibility doc Round 4). A thumb counts for everyone but its name is hidden from the viewers you chose (or everyone when private).
 - **2026-11-16 PT -- Thumbs also show the ORDER people thumbed (Brandon; WANTED, nothing built).** The list behind a count shows who reacted in the order they did ("i feel like that could be useful data somehow"). Claude's notes in the credibility doc (Round 4): early independent thumbs that later prove right are evidence of good Judgment, late ones that followed a visible crowd are weaker; the order is shown in the click-through list only (not the headline count) to avoid starting a bandwagon; private thumbs keep their place in the true order; DECIDED by Brandon: a time beside each name, and private thumbs keep their place in the true order ("i like the time addition. and also the private thumbs keeping their place"). Still open: the "and N private" line, public or private by default, who sees the tint.
 - **2026-11-16 PT -- Thumbs: your own history, counts on the page, private thumbs, names behind a count (Brandon; WANTED, nothing built).** Brandon: you can see your own thumb history; the thumb counts show on the page; you can make your thumb private; clicking a count lists the people who reacted that way (not those who chose private). On who sees the stream tint he asked Claude; Claude's lean (Round 4 in the credibility doc): everyone who can see the pool, nobody for things they cannot see; the page shows the plain head count (private included; Brandon's clarification: 5 thumbs-down with 2 private shows 5 to everyone, and clicking it lists the 3 who did not choose private; whether to add an "and 2 private" line is open), the tint is the weighted balance, and the page says they can differ. Open: public or private by default.
-- **2026-11-16 PT -- Thumbs and credibility are one discussion (Brandon, direction; nothing built).** Brandon: "i think thats a fair consideration. you know what? i think we should wire the weight of people's thumbs up or thumbs down into the credibility discussion" (after Claude's point that a thumbs-down on a person invites sabotage, and the suggestion of thumbs on things only, with each person's influence capped). Written up as Round 4 in `Persistence/TheCommons/CLAUDE_CREDIBILITY_QUESTION.md`: thumbs are feedback, not votes (credibility still never weights a civic vote); a thumb's weight comes from the thumber's Judgment (not popularity), capped, with linked accounts counted nearer to one voice; thumbs feed the author's Contribution through the same weights, and a thumbs-down reaches a jury only when enough independent people agree; no thumbs on a PERSON's pool, thumbs on what they did; the stream tint is balance and amount (little feedback stays blue). Open: whether people see their own thumb history, whether thumbs are public or only the tint, who sees the tint.
-- **2026-11-16 PT -- Future list, items 2-4: traffic, and thumbs that tint streams (Brandon; WANTED, not scheduled, nothing built).** Answer to item 1's open question: a very long post makes its pool "big enough to fit it" (the pool grows to hold the whole text). Item 2, traffic: "streams that have a number people walking down them should be relatively wider than ones that don't", and "if theres a lot of recent traffic the dots indicating flow should indicate an elevated amount of flow" (more and faster flow dots on busy streams). Item 3, feedback: "every pool that doesnt represent a foundational page (one you would see in the dropdown menu), when you open the page to that pool, there should be a way to provide positive or negative feedback via thumb up or down". Item 4, tint: "streams to pools with positive feedback should be tinted greener, while negative feedback should be tinted redder, and little feedback would just be blue". Claude's notes for later (not decided): traffic needs the server to count walkers per stream over a recent window (the presence server knows each walker's box; store only anonymous counts, never who walked where, and show width only above a small count so one person's route is not readable from it); thumbs need one vote per person per thing, changeable, stored on the server, with the tint from the balance AND the amount (little feedback stays blue); the foundational-page list (the dropdown menu's pages) must be named so those pools are exempt; open questions for Brandon: do thumbs apply to PEOPLE'S pools or only to things (posts, groups, proposals, comments)? a downvote on a person is the kind of thing his credibility notes (`Persistence/TheCommons/CLAUDE_CREDIBILITY_QUESTION.md`: one person cannot sabotage another; disapproval judged, not tallied) warn about; and should a few angry accounts be able to turn a pool red (cap each person's influence, count independent voters more)?
+- **2026-11-16 PT -- Thumbs and credibility are one discussion (Brandon, direction; nothing built).** Brandon: "i think thats a fair consideration. you know what? i think we should wire the weight of people's thumbs up or thumbs down into the credibility discussion" (after Claude's point that a thumbs-down on a person invites sabotage, and the suggestion of thumbs on things only, with each person's influence capped). Written up as Round 4 in `docs/archive/the_commons/claude_credibility_question.md`: thumbs are feedback, not votes (credibility still never weights a civic vote); a thumb's weight comes from the thumber's Judgment (not popularity), capped, with linked accounts counted nearer to one voice; thumbs feed the author's Contribution through the same weights, and a thumbs-down reaches a jury only when enough independent people agree; no thumbs on a PERSON's pool, thumbs on what they did; the stream tint is balance and amount (little feedback stays blue). Open: whether people see their own thumb history, whether thumbs are public or only the tint, who sees the tint.
+- **2026-11-16 PT -- Future list, items 2-4: traffic, and thumbs that tint streams (Brandon; WANTED, not scheduled, nothing built).** Answer to item 1's open question: a very long post makes its pool "big enough to fit it" (the pool grows to hold the whole text). Item 2, traffic: "streams that have a number people walking down them should be relatively wider than ones that don't", and "if theres a lot of recent traffic the dots indicating flow should indicate an elevated amount of flow" (more and faster flow dots on busy streams). Item 3, feedback: "every pool that doesnt represent a foundational page (one you would see in the dropdown menu), when you open the page to that pool, there should be a way to provide positive or negative feedback via thumb up or down". Item 4, tint: "streams to pools with positive feedback should be tinted greener, while negative feedback should be tinted redder, and little feedback would just be blue". Claude's notes for later (not decided): traffic needs the server to count walkers per stream over a recent window (the presence server knows each walker's box; store only anonymous counts, never who walked where, and show width only above a small count so one person's route is not readable from it); thumbs need one vote per person per thing, changeable, stored on the server, with the tint from the balance AND the amount (little feedback stays blue); the foundational-page list (the dropdown menu's pages) must be named so those pools are exempt; open questions for Brandon: do thumbs apply to PEOPLE'S pools or only to things (posts, groups, proposals, comments)? a downvote on a person is the kind of thing his credibility notes (`docs/archive/the_commons/claude_credibility_question.md`: one person cannot sabotage another; disapproval judged, not tallied) warn about; and should a few angry accounts be able to turn a pool red (cap each person's influence, count independent voters more)?
 - **2026-11-16 PT -- Future list, item 1: pools show what they are (Brandon; WANTED, not scheduled, nothing built).** Brandon, while the Commons archive was deploying, said he is "going to start listing things that id like to see in the future"; this is the first. Pools should carry their content: a pool for a GROUP shows the group's cover photo; a pool for a POST on a group's feed shows the post's contents and who posted it, with their profile picture, "but the profile picture shouldn't be too distracting"; when someone COMMENTS on a post, that pool shows their whole comment with their name and picture, "similarly being sure not to distract too much from the real substance of the pool"; and "anywhere else that can follow this kind of logic should, like proposals or events, or whatever". Claude's notes for later (not decided): groups have no cover photo today (new field, upload and storage); posts, comments (on posts and proposals) and proposals already exist as data; events do not exist yet; the map's node data (`/map/node`) carries only a label now, so each kind needs its content added to it, with the same privacy gates the map already applies (map_gnode, blocks); open questions: how long text fits a pool (grow, scroll, or "open to read the rest"), whether a pool shows its content only when you are in or near it, and how big the picture is (a small quiet avatar).
-- **2026-11-15 PT -- The Commons archived in the repo (BUILT on `wip/106-commons-archive`; not merged, not deployed; the droplet daemon is still running).** Brandon: archive it, extract what is used, discard the rest. What was used: the repo's OWN tooling tests lived in `commons-daemon/tests/` (ship, ci-gate, naming, git-hook checks, make-go, ...): 44 files moved to `tests/repo/` (two levels deep like before, so their repo-root math is unchanged), with a slim `tests/repo/lib.sh` and `run_all.sh` (the daemon parts of the harness are gone) and a new hook-checks.yml step that runs the wrappers. Deleted: `commons-daemon/`, `commons/`, `.github/workflows/commons.yml`, the daemon-only tests, `local_ci.py`'s commons handling, `pwa_files_check.py`'s Commons half (33 checks left: the Mail/Social/Civic manifests). Site: the four `/internal/*` same-box routes (session-user, friends, blocked, user-exists) and `/canvas-frame/<user>/latest` removed. KEPT on purpose: `deploy/commons-closed.html` and its nginx conf (the static "The Commons is closed" notice answers old bookmarks; `/world` still redirects there; `city-live-check.py` still probes it) and the design notes in `Persistence/TheCommons/` (+ `ARCHIVED.md`). Safety copy: branch `archive/commons-final` on GitHub = master `a006386` (a tag push is refused here, so the tag is local only). CORRECTION to an earlier line: the public `/commons/` address was never the game, only that static closed notice; the daemon listens on 127.0.0.1:8765 only. Checks: hook checks 34/34, tests/repo wrapper tests 6/6 (test_nginx_www 37 with a real nginx), canvas e2e passing; the full local CI run is next. STILL TO DO by Brandon on the droplet, after the deploy: stop and disable `commons-daemon` (script to come: backs up /var/lib/commons/commons.sqlite first). Old `wip/70-commons-remove` (13 Nov, 104 commits behind, also moved tests to tests/repo) was never merged and is superseded.
-- **2026-11-15 PT -- The Commons (commons-daemon + /commons/ client): found live but unused; Brandon: archive it, and "if some part of it is being used, maybe it should be extracted and then discard the rest" (NOT done yet; planned after the pools deploy).** Checked on the droplet (Brandon ran read-only commands): `commons-daemon` is active and enabled, `https://liquidgov.us/commons/` answers 200, the DB (`/var/lib/commons/commons.sqlite`) has exactly 1 player (Bbottin), the daemon logged nothing but its 14 Nov restart in 7 days, and the web logs show no visitor requests (older logs: 0 in 14 days; today only our own `deploy/city-live-check.py` and a curl). Nothing on the site links to it (home and Genesis cards are off, "closed until it is built"; only the old `/world` bookmark redirects to /commons/). Plan, on its own branch after the pools deploy: tag `commons-final`; delete `commons-daemon/`, `commons/`, `.github/workflows/commons.yml` and their tests; remove the site's hooks that only serve it (four `/internal/*` routes in system_routes.cpp, `/canvas-frame/<user>/latest`, the `/world` redirect); update `deploy/city-live-check.py` and `deploy/nginx-www-apex.sh`, which probe /commons/; keep `Persistence/TheCommons/` (design notes only); give Brandon a droplet script that backs up the DB, stops and disables the service, and removes its nginx rules. README line "local-only, not deployed" there is out of date.
+- **2026-11-15 PT -- The Commons archived in the repo (BUILT on `wip/106-commons-archive`; not merged, not deployed; the droplet daemon is still running).** Brandon: archive it, extract what is used, discard the rest. What was used: the repo's OWN tooling tests lived in `commons-daemon/tests/` (ship, ci-gate, naming, git-hook checks, make-go, ...): 44 files moved to `tests/repo/` (two levels deep like before, so their repo-root math is unchanged), with a slim `tests/repo/lib.sh` and `run_all.sh` (the daemon parts of the harness are gone) and a new hook-checks.yml step that runs the wrappers. Deleted: `commons-daemon/`, `commons/`, `.github/workflows/commons.yml`, the daemon-only tests, `local_ci.py`'s commons handling, `pwa_files_check.py`'s Commons half (33 checks left: the Mail/Social/Civic manifests). Site: the four `/internal/*` same-box routes (session-user, friends, blocked, user-exists) and `/canvas-frame/<user>/latest` removed. KEPT on purpose: `deploy/commons-closed.html` and its nginx conf (the static "The Commons is closed" notice answers old bookmarks; `/world` still redirects there; `city-live-check.py` still probes it) and the design notes in `docs/archive/the_commons/` (+ `archived.md`). Safety copy: branch `archive/commons-final` on GitHub = master `a006386` (a tag push is refused here, so the tag is local only). CORRECTION to an earlier line: the public `/commons/` address was never the game, only that static closed notice; the daemon listens on 127.0.0.1:8765 only. Checks: hook checks 34/34, tests/repo wrapper tests 6/6 (test_nginx_www 37 with a real nginx), canvas e2e passing; the full local CI run is next. STILL TO DO by Brandon on the droplet, after the deploy: stop and disable `commons-daemon` (script to come: backs up /var/lib/commons/commons.sqlite first). Old `wip/70-commons-remove` (13 Nov, 104 commits behind, also moved tests to tests/repo) was never merged and is superseded.
+- **2026-11-15 PT -- The Commons (commons-daemon + /commons/ client): found live but unused; Brandon: archive it, and "if some part of it is being used, maybe it should be extracted and then discard the rest" (NOT done yet; planned after the pools deploy).** Checked on the droplet (Brandon ran read-only commands): `commons-daemon` is active and enabled, `https://liquidgov.us/commons/` answers 200, the DB (`/var/lib/commons/commons.sqlite`) has exactly 1 player (Bbottin), the daemon logged nothing but its 14 Nov restart in 7 days, and the web logs show no visitor requests (older logs: 0 in 14 days; today only our own `deploy/city-live-check.py` and a curl). Nothing on the site links to it (home and Genesis cards are off, "closed until it is built"; only the old `/world` bookmark redirects to /commons/). Plan, on its own branch after the pools deploy: tag `commons-final`; delete `commons-daemon/`, `commons/`, `.github/workflows/commons.yml` and their tests; remove the site's hooks that only serve it (four `/internal/*` routes in system_routes.cpp, `/canvas-frame/<user>/latest`, the `/world` redirect); update `deploy/city-live-check.py` and `deploy/nginx-www-apex.sh`, which probe /commons/; keep `docs/archive/the_commons/` (design notes only); give Brandon a droplet script that backs up the DB, stops and disables the service, and removes its nginx rules. README line "local-only, not deployed" there is out of date.
 - **2026-11-15 PT -- Local CI follows each workflow's old branch triggers; commons runs on master only.** Before Actions went manual, platform and hook-checks started on master and wip/**, commons on master only, so the deploy gate never needed commons. `scripts/local_ci.py` now does the same (`--only <name>` forces one). Found while at it: the commons daemon's `test_orphans` fails the same 3 cases here every run (SUSPECT guard cases, timing-based: delete accounts, sleep 5); this branch changed no daemon code, so it is not from this work; worth a look on a normal machine before the next commons change. Work now lives on `wip/103-pools-search` (the deploy flow's branch naming); `claude/upbeat-ramanujan-z42rkm` on GitHub holds the same commit.
 - **2026-11-15 PT -- Your starting pool is yours, not "Main" (Brandon asked "should main exist?"; Claude recommended keep it, name it after you, make it your own place; Brandon: "yeah do that").** The pool you start in carries your name (it said "Main"), and it is no longer a lobby everyone shares: standing in it you are in the instance `user:<you>`, the same room a visitor is in when they swim into your pool on their map. Only the open water between pools is the shared "mainstream". Strangers meet in real places (a city, a group). Still parked: whether the pools round you stay Politics/Friends/Events/Feeds/Places/Groups or become People/Places/Things/Ideas.
 - **2026-11-15 PT -- Map checks brought up to the one-world map; five old ones retired (Claude, under the one-world map Brandon OK'd).** map_live_check, map_live_check2, map_big_level_check, map_you_ring_all_kinds_check and map_view_only_check tested the old model (a fresh ring per level that fits the frame; the side panel), so they are out of CI (the last two deleted; the first three kept only as code other checks import). New `tests/browser/map_world_check.py` (22 cases, boxes at desktop and narrow, pools at desktop): you + kinds, opening adds without moving anything, each thing once, no overlaps, "+N more", Back, a click opens the page. The walker checks open a pool by staying in it (A/Enter is the portal now) and walk out through a pool's middle. Two real bugs found on the way, fixed: the peek's frame added steps to the browser history (the phone's back gesture went back inside the peek), and a pool could grow without limit over its neighbours (now at most twice its size, never into another pool; what does not fit goes behind "+N more").
@@ -101,7 +101,7 @@ Not bug classes. Not “what is live on the droplet.”
 - **2026-11-15 PT -- A guiding principle (one of several, not THE rule) for the map and connections (Brandon).** "the point here is to build the map and connections as far and densely as possible without becoming incoherent"; then "not THE guiding principal but" (his message ended there). Weigh it with other goals; it leans open questions toward more connection (seeing more people, more streams, the wider web), and design effort toward keeping it coherent (nesting, locks instead of dead ends, privacy that hides details rather than whole paths). Claude's application to the extension: see everyone on a page by default (block and per-site off still work), and let a page you choose to share become a pool on the map.
 - **2026-11-15 PT -- Next: portal peek, water map, credibility; and droplets on other websites (Brandon).** Brandon: "lets build out portal peek, watermap and credibility. also i want to be able to hang out as droplets on other websites. so like visit other websites from a droplet filter of sorts on liquidgov.us". Claude's order: portal peek first (decided 5A), then the water map, then credibility (its open questions taken at Claude's recommendations unless Brandon objects). Other websites: a feasibility question in the chat (most big sites refuse to be framed; a browser extension is the realistic route). Brandon: "i kinda like the browser extension idea... say more" (Claude's outline in the chat: what it does, privacy by default, how it connects, what it takes to ship; not decided).
 - **2026-11-15 02:11 PT -- Messages fixes, video links, fullscreen map, camera and mic stay on, ripples (bundle1) LIVE (commit `fa34e0f`, PID 868219, public checks FAILS 0).** Build and restart (care pair). Site code went to master as `9bd47be` (wip/101-bundle: platform run green; locally lgcheck EXIT=0 and all 37 browser checks), the pair as `fa34e0f` (wip/102-deploy-bundle1). DEPLOYED WITH LIQUIDGOV_CI_OVERRIDE, on Brandon's explicit OK ("lets deploy"): master's own CI run 43701232781 never started, GitHub: "The job was not started because recent account payments have failed or your spending limit needs to be increased" (a rerun hit the same); the same commit fa34e0f had passed platform run 43700864681 minutes earlier on the deploy branch. Run by hand from PowerShell through WSL with Claude's key (ship.py refuses overrides); WSL timed out once (WSAETIMEDOUT) and started after `wsl --shutdown`. OPEN: GitHub Actions billing must be fixed or every later deploy hits the same gate. Not verified by Claude: the live site on a real phone.
-- **2026-11-15 PT -- Credibility: earned agency, fair consequences, no sabotage (Brandon asked; nothing built).** Brandon: "I want to figure out a good, fair way to allow people to earn more credibility to access more agency or face bad credibility if you do things that people disapprove of. but i want to make sure that one person cant sabotage anothers credibility". Claude's proposal and five questions: `Persistence/TheCommons/CLAUDE_CREDIBILITY_QUESTION.md` (capped influence per person, independent agreement counts most, disapproval judged by small random juries not tallied, false reports cost the reporter, fading marks, appeals, a floor nobody loses; recommendation: never touch vote weight). Then: "different aspects of credibility ... if you get a reputation for being hyper judgemental, then maybe your judgements regarding other's credibility would have less weight accordingly": proposed aspects Contribution, Conduct, Judgment (measured from how your calls match independent outcomes, both too harsh and too soft lose weight; never voted on, so a rival cannot lower it), optional topic standing (doc's Round 2). Leaning, NOT decided (Brandon: "it shouldnt effect the weight of your votes but perhaps it could be shown in your comments or proposals to give people an idea of how seriously they should consider what you contribute", then "take that with a grain of salt"; doc's Round 3 sketches how it could show).
+- **2026-11-15 PT -- Credibility: earned agency, fair consequences, no sabotage (Brandon asked; nothing built).** Brandon: "I want to figure out a good, fair way to allow people to earn more credibility to access more agency or face bad credibility if you do things that people disapprove of. but i want to make sure that one person cant sabotage anothers credibility". Claude's proposal and five questions: `docs/archive/the_commons/claude_credibility_question.md` (capped influence per person, independent agreement counts most, disapproval judged by small random juries not tallied, false reports cost the reporter, fading marks, appeals, a floor nobody loses; recommendation: never touch vote weight). Then: "different aspects of credibility ... if you get a reputation for being hyper judgemental, then maybe your judgements regarding other's credibility would have less weight accordingly": proposed aspects Contribution, Conduct, Judgment (measured from how your calls match independent outcomes, both too harsh and too soft lose weight; never voted on, so a rival cannot lower it), optional topic standing (doc's Round 2). Leaning, NOT decided (Brandon: "it shouldnt effect the weight of your votes but perhaps it could be shown in your comments or proposals to give people an idea of how seriously they should consider what you contribute", then "take that with a grain of salt"; doc's Round 3 sketches how it could show).
 - **2026-11-15 PT -- Camera and microphone stay on until you turn them off (Brandon decided; not built).** Brandon: "if you turn on camera and/or microphone, they should stay on everywhere until you make a clear decision to turn them off". Today they live on one profile page and stop at the next page load. Then: "you should be allowed to see your own camera and hear your own microphone. if theres a way to simply or easily require headphones that would be cool, otherwise fuck it i guess". Claude: a page cannot reliably tell whether headphones are plugged in, so hearing yourself is its own switch, off by default, labelled for headphones (on speakers it howls); your own camera shows as your bubble.
 - **2026-11-15 PT -- MAINstream map fullscreen (Brandon decided; building).** Brandon: "the mainstream map should be like fullscreen besides the liquidgov title and notifications and mail and profile pic and juketube".
 - **2026-11-15 PT -- Sound ripples off your drop (Brandon decided; building on `claude/media-stay`).** Brandon: "there should be audiowaves that ripple off of your droplet when you make noises according to the intensity of the noises you make. so i guess a way to say that would be roughly anatomically correct audio waves?" Claude's reading: rings that spread from the drop like sound does, louder = stronger, wider and more often, each fading as it spreads; also on the people you are in a call with. Then: "the ripples shouldnt spread too far though" (kept within about 2.5 times the drop's size) and "the juketube should make ripples too when its playing and not muted" (BUILT: rings pulse off the Juketube button while a track plays with the sound on, stronger at a higher volume; YouTube's player does not let a page read its sound, so they follow the volume slider, not the music). Found while testing: a call offer that got no answer waited for ever (here_media M1 hung 2 times in 6 on a busy machine, the live version can do it too); the caller now offers again after 4 s (4/4 under load).
@@ -118,8 +118,8 @@ Not bug classes. Not “what is live on the droplet.”
 - **2026-11-14 PT (night, later) -- Waterways decisions (Brandon).** (a) Companionship forms automatically with anyone you walk alongside (option C); "you can just block anyone who you like, so youre basically invisible to eachother" (blocking already hides people from each other on the map and in presence). (b) The kind chips go with Hidden mode: "yes" (built on the branch, see the commit; not live). (c) What a locked path reveals: he asked "what makes the most sense and fits with the rest of the site?"; Claude's answer: a lock never shows more than the site already shows that viewer (the site's existing visibility rule: things you may not see are absent), so a public group you are not in shows its name on the lock, a private group or friends-only profile shows an unnamed lock. (d) Worn-in streams, automatic or deliberate: "idk, lets discuss it" (Claude's proposal in chat).
 - **2026-11-14 PT (night) -- Waterways: companionship and locked paths (Brandon's idea; not built).** Brandon: "maybe if youre walking within a certain distance of someone for a certain amount of steps or somewhat consistently, then youre shown to have some kind of relationship with eachother and you guys begin to see eachothers paths and connections are made additionally between the connections you would already have alone. if you have exclusive access to a path then maybe that path still shows for the person who isnt allowed down it, but its shown to have a lock or something impeeding you from going down it". Claude's read: walking together over time forms a relationship that merges what the two of you see; a path only one of you may take shows to the other with a lock instead of being hidden. Claude raised consent (a stranger trailing you would learn your connections) and what the locked path reveals; awaiting his reply. The earlier questions (do the kind chips go with Hidden mode; worn-in streams automatic or also deliberate) are still open.
 - **2026-11-14 PT (evening, later still) -- Map Hidden mode to go (Brandon decided; not built).** Brandon: "i want to get rid of the hidden objects on the mainstream map, that was a bad idea and its causing clutter... i think theres a better approach, lets flesh it out". This reverses the 2026-11-11 Hidden mode (the Hidden/Done button, faded boxes, tap-to-hide; hiding is stored per device in localStorage, never on the server). Claude's proposed replacement (the map tidies itself: nesting, worn-in streams, distance fading; no hand-hiding) and two questions are in the chat; awaiting his reply.
-- **2026-11-14 PT (evening, later) -- Waterways: "traveling together" decided; size and privacy under discussion (nothing built).** Brandon: "traveling together just means walking alongside someone, i dont want to make it overly formal" (no switch: being close to someone is enough). Size: "i dont know, lets figure it out". Privacy per thing or per relation: "i dont know... lets discuss it". Claude's proposals for both in CLAUDE_WATERWAYS_QUESTION.md "Round 3".
-- **2026-11-14 PT (evening) -- Waterways map: Brandon's answers to CLAUDE_WATERWAYS_QUESTION.md (nothing built).** (1) Water: "yeah basically, and if you can make currents fit in coherently then sure". (2) Size: "maybe some things could be bigger than others, we'd have to figure out what best determines that". (3) Top level: not decided; his ideas: "pools being nouns and streams being verbs", and "digital quantum entangled russian dolls". (4) The requirement: "variable amounts of privacy, seamless connectivity, and potential of discovery, while maintaining coherence ... there isnt a situation where youre walking with friends and you see an interesting path so you walk down it, but that connection wasnt made available to your friend so they just see you walk off the trail to nowhere and you get split up". (5) Portal peek: Claude's recommendation (5A: the real page, live, in the peek; A grows it into the page; the call carries over; the side panel goes). Claude's synthesis proposed in the question doc's "Round 2" section; awaiting his reply.
+- **2026-11-14 PT (evening, later) -- Waterways: "traveling together" decided; size and privacy under discussion (nothing built).** Brandon: "traveling together just means walking alongside someone, i dont want to make it overly formal" (no switch: being close to someone is enough). Size: "i dont know, lets figure it out". Privacy per thing or per relation: "i dont know... lets discuss it". Claude's proposals for both in claude_waterways_question.md "Round 3".
+- **2026-11-14 PT (evening) -- Waterways map: Brandon's answers to claude_waterways_question.md (nothing built).** (1) Water: "yeah basically, and if you can make currents fit in coherently then sure". (2) Size: "maybe some things could be bigger than others, we'd have to figure out what best determines that". (3) Top level: not decided; his ideas: "pools being nouns and streams being verbs", and "digital quantum entangled russian dolls". (4) The requirement: "variable amounts of privacy, seamless connectivity, and potential of discovery, while maintaining coherence ... there isnt a situation where youre walking with friends and you see an interesting path so you walk down it, but that connection wasnt made available to your friend so they just see you walk off the trail to nowhere and you get split up". (5) Portal peek: Claude's recommendation (5A: the real page, live, in the peek; A grows it into the page; the call carries over; the side panel goes). Claude's synthesis proposed in the question doc's "Round 2" section; awaiting his reply.
 - **2026-11-14 ~18:00 PT -- Next direction for walking, the map and pages (Brandon decided; nothing built yet).** Brandon, after freewalk1 went live: (1) "keep the screen tracking logic the way it is when center is selected, but like thats it, no other options": always centered, the Center button goes. (2) "the microphone/camera buttons shouldnt be on the screen. if you click on or tap your droplet it should expand a menu with things like microphone, camera (toggle on/off), and a drip speed adjustment slider." (3) The MAINstream map: "you should be bound to the lakes and streams and pools like youre in a closed loop system"; boxes "significantly larger, as if theyre like physical places you can be and hang out at with friends"; top level "people, places, things, and ideas", then "some inteligent and dynamic way for things to populate as you walk around going down roads of relatively connected concepts or objects". (4) Mic and camera "consistent and seamless when transitioning from the mainstream map to a page". (5) The side-panel page preview on the map is abandoned. Instead: walk up to a page's portal; within entry range a small semi-translucent window grows from the portal's center (a peek); A there expands it to fill the screen while it turns opaque, until it IS the page you are on. Claude's slicing: A = (1)+(2); B = (4)+(5), one mechanism (the page loads in place without a full reload, so the call survives); C = (3), which needs a spec first.
 - **2026-11-14 17:32 PT -- Always-on walking, Center button, free walking on the map (freewalk1) LIVE (commit `7426e4e`, PID 846784, public checks FAILS 0).** Brandon ran it from PowerShell (pasted scripts; cloud Claude read the output). No restart (jbshell pair, same PID as spatial1 and bubble1): 7 assets (here.js, home_drop.js, lgmap.css, lgmap.js, lgmap_walk.js, site.css, walker.js) and 13 browser checks. Site code went to master as `db7e1a9` (wip/94-free-walk, platform and hook-checks green on GitHub), the pair as `7426e4e` (wip/95-deploy-freewalk1). Also live with it: the presence socket now closes when you leave the map or a profile page (no more lingering drops). Timing traps met again, none a fault in the change: master's ship.py (without the recheck fix, which arrived with this merge) checked wip/94 before GitHub listed its run, and the pair's merge before its hook-checks finished; both passed on a second look. Not verified by Claude: the live site on a real phone.
 - **2026-11-15 PT (later, a second cloud session) -- Free walking: checks brought up to it, a leaving-the-map fault fixed; STILL NOT MERGED OR DEPLOYED (`claude/upbeat-ramanujan-z42rkm`, on top of the HANDOFF commit below).** Picked up from the HANDOFF entry. (1) The pinch (walker_controls Z2) was NOT a page fault: the check's second finger landed on the new Center button (on a phone the pad covers the map from about y 632 down, and the check touched at 643), which also armed centering and slid the map under the one-finger pan. The fingers now go on the map above the pad; the pan point is taken clear of box outlines. (2) CE1/SC1: the check walks until the page has scrolled 300 px. walker_controls_check: 78 of 78; its case list is rewritten; the centered-phone screenshot is no longer blank. (3) The eight hop-based checks are updated and pass on a local Linux build with headless Chromium: walker_instance (hop() walks until inside the box or it cannot get closer; new I4 "between boxes is mainstream"), walker_proximity (F3 = zoom out with the wheel), walker_valve and walker_valve_types (a refused box leaves data-at ''; Y4 = a conduit is walked across, never in it), walker_group_instance (unchanged, passes), walker_instance_css, walker_presence (W5) and walker_presence_dots (D4): their Scroll case became "leaves the map". (4) REAL FAULT those two found, fixed: a browser keeps the page you left in memory with its socket open, so others kept seeing your drop on the map for 30 s and more after you had gone (measured; the server was right, the socket never closed). `lgmap_walk.js` and `here.js` now close the presence socket on `pagehide` and reopen on `pageshow` of a kept page; the drop is gone within a second. Profile pages got the same fix but no check covers them there yet. This fault predates the free-walking work (any map visit since spatial1; profile dots since they shipped). (5) The zoomed-in first view broke two more frozen checks; Brandon: "yes update the phone check, keep it zoomed in". phone_check: case 2 = the zoomed-in first view, new 2b = zoomed out by you the ring fits the frame, cases 3/4c/4d zoom out first (18 of 18). map_hidden_check: zooms out on /map and scrolls a box out from under the pad or the sticky bars before tapping it (17 of 17). (6) `walker.js`: the unused `mapRepeatMs` and its hop comment removed. The whole platform.yml list was run here once: 35 of 37 ALL-PASS before (5), the two being phone and hidden. Hook checks here: 32 pass; naming_check fails only on the `claude/` branch name and rollback_guard_check only because this clone is shallow. FOR BRANDON TO KNOW: on a phone the pad is always over the bottom of the screen and the map's frame runs under it, so a box down there cannot be tapped until you scroll the page, drag the map, or walk to it and press A. OPEN: `map_page.cpp` line 37's stale switch comment (left: assets-only deploy); not looked at on a real phone; arrow keys walk instead of scroll on every page with a walker (Claude's choice, unseen); then a CI run on a wip branch, and only then merge and a no-restart deploy. Do not run the old `wip/94-ship-recheck` script: it takes this branch's tip.
@@ -190,7 +190,7 @@ Not bug classes. Not “what is live on the droplet.”
 
 - **2026-11-09 10:05 PT -- Google sign-in says when Google can't be reached (site sweep item 18; `wip/16-curl-errors`; not live).** Brandon OK'd. `curl_get` now returns curl's exit status (it was thrown away, so a timeout looked like an empty answer); `/login/google` sends `err=google-down` ("Couldn't reach Google to check your sign-in. Try again in a moment.") when nothing came back, and keeps `err=google` for a bad or foreign token. The YouTube check is unchanged ("{}" lets a pick through on purpose). No extra log line: curl's own error already reaches the service log (-sS). Test `tests/e2e/curl_errors.sh` (fake curl, port 18101): 7/7, fails 2 on the previous build; lgcheck all suites green.
 
-- **2026-11-09 10:00 PT -- Tidy (site sweep item 14): the 9 September root prompts moved to `docs/archive/` (`wip/17-tidy`).** Brandon OK'd. BUILD.txt, CLAUDE_CODE_CONTINUE.md, CLAUDE_P0/P0_PATCH/P1_PATCH/SPRITES_PATCH.md, CLAUDE_THE_COMMONS.md, GROK_BUILD_PROMPT.md, LIQUIDGOV_CONTEXT_HANDOFF.md (git mv; the existing docs/archive, not a new docs/history). Persistence/README.md updated; older bullets here keep the bare names as history (docs/archive/README.md says where they went). Item 15 (spent deploy pairs -> deploy/archive) NOT done: restart_bypass_check.py (frozen) writes each naming.toml restart_allowed path into a fixture with only deploy/, so an archive path crashes it; city-remote.sh also stays (deploy/city-status.sh runs it). Waiting on Brandon.
+- **2026-11-09 10:00 PT -- Tidy (site sweep item 14): the 9 September root prompts moved to `docs/archive/` (`wip/17-tidy`).** Brandon OK'd. build.txt, claude_code_continue.md, CLAUDE_P0/P0_PATCH/P1_PATCH/SPRITES_PATCH.md, claude_the_commons.md, grok_build_prompt.md, liquidgov_context_handoff.md (git mv; the existing docs/archive, not a new docs/history). Persistence/README.md updated; older bullets here keep the bare names as history (docs/archive/README.md says where they went). Item 15 (spent deploy pairs -> deploy/archive) NOT done: restart_bypass_check.py (frozen) writes each naming.toml restart_allowed path into a fixture with only deploy/, so an archive path crashes it; city-remote.sh also stays (deploy/city-status.sh runs it). Waiting on Brandon.
 
 - **2026-11-09 09:35 PT -- make-go.py: the `RECORD ctx log:` target now fits ctx's 120-char limit (`wip/15-record-length`).** Brandon agreed. The sweep1 go script's line was refused (124 chars: the whole purpose went into the target), so the log was written by hand. The purpose is trimmed with "..." in the ctx target only (pair name kept); the notes.md bullet keeps it whole. Existing *-go.sh pairs are unchanged (regenerate to pick it up). Check `commons-daemon/tests/make_go_record_length_check.py` (pre-push): 155 chars on the old make-go.py, 120 now; ctx refuses only > 120 (ctx.py checks `len(v) > 120`).
 
@@ -280,9 +280,9 @@ Not bug classes. Not “what is live on the droplet.”
 - **2026-11-06 22:22 -- Slice 6, map view: built and local-tested, not deployed (Brandon: "BUILD the map view").** Purpose, in Brandon's words: "tie as many things into one coherent collection of information and media as possible, and make it intuitive to help people communicate with the people they would optimally be communicating with." Pages: `/map` is the Main Stream, with each city's Current branching off it showing up to 3 groups and 3 proposals, plus a Sitewide branch. `/city/<key>/map` shows five columns: People here, Groups, City, Departments and councils, Proposals. Hovering a box lights up its lines. Lines are in-city, member-of, touches, wrote and commented. "Reacted" is deliberately not drawn: proposal pages show reactions only as counts, and the map must not reveal who reacted. Only opted-in people appear, blocks are respected, and there are no people at the Main Stream level. It is server-drawn SVG plus a 10-line hover script; no framework and no new store tags. Test `tests/e2e/city_map.sh` passes 39, and all other suites still pass on a clean build.
 - **2026-11-06 21:55 -- City slices 2-5 (Grok) verified by Claude, not committed, not deployed.** Clean build with 0 warnings. 7 unit programs pass, and e2e passes 38/22/18/18/25 plus Claude's 39. Open, waiting on Brandon: flush() and load() drop a proposal's city and the city's department/council tags whenever no group names that city (last group deleted, or its owner re-spells the city), and that loss is permanent. Claude recommends keeping them. **Resolved 22:00, Brandon: "keep it".** They are now kept: load and flush no longer erase them, and a city page with no groups but kept proposals returns 200 and links to them. New e2e `tests/e2e/city_keep.sh` (17) passes, and all the others still pass. Still open before any deploy: an undo that doesn't rewind the whole site (see the rollback note above). **Built 22:10 (Brandon: "build the undo"):** `deploy/city-undo.py <store>` does a dry run and `--go` applies it, with the site stopped. It removes only the 9 city record types (ccity clist pcity pwho ctag ptag prply prpln prx) and keeps every other record byte for byte. It first writes a private backup `<store>.pre-city-undo-<UTC>`, swaps the file in atomically, keeps the store's mode and owner, verifies the result, refuses a non-LGP1 file, and stops if the store changes mid-run; running it twice removes nothing more. Test `tests/e2e/city_undo.sh` (40 pass) uses the old binary built from an exact export of master 6ab8234. In that test the old binary refuses the city store, then after the undo opens it with posts, mail, group posts, membership, friends, votes and both proposals intact, and the new binary opens the undone store too. Rollback is then: stop the site, run city-undo, put the old binary back, start it, read the journal.
 - **2026-11-06 -- City slice 1 built, local-tested, not deployed (Brandon: "BUILD slice 1").** Branch `city-slice1`, worktree `liquidgov-us-city`, uncommitted. `Community.city` stored in new LGP1 tag `ccity <slug> <city>` (order-free on load; orphans dropped; malformed fails closed). Keys: `city_key()` lowercases and joins words with `-` ("Fresno, CA" -> `fresno-ca`). New: optional City field with typeahead on Start a group (and `?city=` prefill), owner-only Add/Change city on `/c/<slug>`, Cities card on Groups, `/city/<key>` listing that city's groups ("a label, not a government"). Rollback note: an older binary refuses a store holding `ccity` rows (unknown tag), so roll back with the pre-deploy store backup. Grok also built slice 2 (opt-in "People here") in the same worktree during Claude's pause; it is not OK'd by Brandon yet. Tests: 7 unit programs, e2e `tests/e2e/city_slice1.sh` 38, `city_slice2.sh` 22, Claude's own 39, all pass on a clean build.
-- **2026-11-06 -- City proposals: decided, planned, not built.** Brandon, planning on his Switchyard map. Purpose: foster connections between people, starting with people in the same city. Proposals start at city level: citizen proposals in any city where people start a community. Anyone can start one, with no minimum, and a city can have several communities. Accounts stay unverified for now; a semi-official Proposals transition announced later will require verification (CitizenId opt-in, untouched). Each city's community adds its own department and council tags. Discussion only; nothing is sent to any city. Roles: author, commenter, sharer, reactor. Public items only, except to their owner. A city is a label on platform groups, not an AVND locality, and has no standing. Plan: `CITY_PROPOSALS_BUILD_PLAN.md`, five slices: city on groups plus a city page, opt-in "people here", proposals get a city, department/council tags, proposal comments and reactions. Waiting on Brandon's BUILD for slice 1.
+- **2026-11-06 -- City proposals: decided, planned, not built.** Brandon, planning on his Switchyard map. Purpose: foster connections between people, starting with people in the same city. Proposals start at city level: citizen proposals in any city where people start a community. Anyone can start one, with no minimum, and a city can have several communities. Accounts stay unverified for now; a semi-official Proposals transition announced later will require verification (CitizenId opt-in, untouched). Each city's community adds its own department and council tags. Discussion only; nothing is sent to any city. Roles: author, commenter, sharer, reactor. Public items only, except to their owner. A city is a label on platform groups, not an AVND locality, and has no standing. Plan: `city_proposals_build_plan.md`, five slices: city on groups plus a city page, opt-in "people here", proposals get a city, department/council tags, proposal comments and reactions. Waiting on Brandon's BUILD for slice 1.
 
-- **2026-10-24 -- Google sign-in client was deleted.** Live button posted to Google and returned `Error 401: deleted_client` for `508630567243-f0s5gh21csd5evp1ls48j289pg14r0eb`. Brandon created a new Web client in a different project: `738917322917-p9hvl2s82l8esj70bc9s58dbv4viraqv.apps.googleusercontent.com`, origin `https://liquidgov.us`, redirect `https://liquidgov.us/login/google`. Not an AI-agent client. Grok cannot SSH. Job for Claude is `CLAUDE_GOOGLE_LOGIN.md`: set `LIQUIDGOV_GOOGLE_CLIENT_ID` in `/opt/liquidgov/.env.local` and `systemctl restart liquidgov` only. No rebuild, no rsync.
+- **2026-10-24 -- Google sign-in client was deleted.** Live button posted to Google and returned `Error 401: deleted_client` for `508630567243-f0s5gh21csd5evp1ls48j289pg14r0eb`. Brandon created a new Web client in a different project: `738917322917-p9hvl2s82l8esj70bc9s58dbv4viraqv.apps.googleusercontent.com`, origin `https://liquidgov.us`, redirect `https://liquidgov.us/login/google`. Not an AI-agent client. Grok cannot SSH. Job for Claude is `claude_google_login.md`: set `LIQUIDGOV_GOOGLE_CLIENT_ID` in `/opt/liquidgov/.env.local` and `systemctl restart liquidgov` only. No rebuild, no rsync.
 
 - **2026-10-04 -- Shops, short, with roofs.** The Lab, the Workshop, and the Hall are three tiles tall instead of blocks. Five stalls (Grove, Meadow, Hedge, Point, Dunes) sit at the end of paths that used to stop on grass. Each room has a window, a shelf, a counter, and a table, and you can look at what is on them. Nothing is for sale. Not deployed.
 
@@ -310,7 +310,7 @@ Not bug classes. Not “what is live on the droplet.”
   page. New image, `assets/og-image-v4.jpg`, generated by a new committed script
   (`liquidgov-platform/tools/make_og_card.ps1`, Windows PowerShell + System.Drawing -- no Pillow/
   ImageMagick/pip anywhere in this dev environment, .NET's own image API is what's actually there) rather
-  than hand-edited. See `og-card-v4-built.md`. Platform test suite unaffected, all green. Civic deployed
+  than hand-edited. See `og_card_v4_built.md`. Platform test suite unaffected, all green. Civic deployed
   first (chown before build, `NRestarts=0`, no journal errors), then `deploy-daemon.sh --go --with-client
   --civic-done` (37/37 verify checks). Confirmed live by content on `/` and `/commons/`, and Facebook's
   Sharing Debugger re-scraped: `og:title` "Home — LiquidGov.US", `og:image` v4, `og:url` now recognized
@@ -326,7 +326,7 @@ Not bug classes. Not “what is live on the droplet.”
   build, `NRestarts=0`, no journal errors), then `deploy-daemon.sh --go --with-client --civic-done`
   (37/37 verify checks). Confirmed live: `og:url` on both `/` and `/commons/`.
 
-- **2026-10-02 -- Share card hook, DEPLOYED (`7f66fe9`).** The unfurl no longer tells the Myspace joke. The card is `assets/og-image-v3.jpg`: "This is YOUR government." / "You represent yourself." The five stars are gone; that conceit was a review gag and could not carry the line. The description adds the limit the landing page already states: a voluntary association, not a replacement for the government you live under. The joke stays on the genesis quote card. v2 stays served so old cached shares still resolve. See `og-card-v3-built.md`. Civic deployed first (sync, chown before build, build, restart: `NRestarts=0`, no journal errors), then `deploy-daemon.sh --go --with-client --civic-done` (37/37 verify checks). Confirmed live across all four ways the URL gets shared -- `https://liquidgov.us`, `https://www.liquidgov.us`, bare `www.liquidgov.us`, bare `liquidgov.us` -- every one resolves (via nginx's existing www/http redirect, unrelated to this change) to the apex serving `og-image-v3.jpg` and the new description; `/commons/` carries the same tags too.
+- **2026-10-02 -- Share card hook, DEPLOYED (`7f66fe9`).** The unfurl no longer tells the Myspace joke. The card is `assets/og-image-v3.jpg`: "This is YOUR government." / "You represent yourself." The five stars are gone; that conceit was a review gag and could not carry the line. The description adds the limit the landing page already states: a voluntary association, not a replacement for the government you live under. The joke stays on the genesis quote card. v2 stays served so old cached shares still resolve. See `og_card_v3_built.md`. Civic deployed first (sync, chown before build, build, restart: `NRestarts=0`, no journal errors), then `deploy-daemon.sh --go --with-client --civic-done` (37/37 verify checks). Confirmed live across all four ways the URL gets shared -- `https://liquidgov.us`, `https://www.liquidgov.us`, bare `www.liquidgov.us`, bare `liquidgov.us` -- every one resolves (via nginx's existing www/http redirect, unrelated to this change) to the apex serving `og-image-v3.jpg` and the new description; `/commons/` carries the same tags too.
 
 - **2026-10-02 -- Two juketube bugs Brandon hit, both real, both fixed, DEPLOYED (`067fcff`).**
   (1) "I shouldn't be able to skip videos on public juketube channels": `run_community_session`'s WS `"play"`
@@ -363,7 +363,7 @@ Not bug classes. Not “what is live on the droplet.”
 
 - **2026-10-01 -- Walked the map fresh (no account, no tutorial) after `14e1f08`; one real problem, fixed.**
   The gate, its sign, the lab, the Square/Homestead region-name banner, and the guest-vs-bound gate copy
-  all read clearly and work as `property-coherence-built.md` describes -- verified live, not assumed. The
+  all read clearly and work as `property_coherence_built.md` describes -- verified live, not assumed. The
   one thing that didn't: Homestead Row, at 24x20 tiles the single widest region on the map, dressed down to
   a gate, one sign, and three trees, because `scatter_author.js`'s own candidate-space restriction for that
   region still carved out the old 8-door facade's door-front rows (y=46/48, the torn-down `HOMESTEAD_DOOR_XS`
@@ -380,13 +380,13 @@ Not bug classes. Not “what is live on the droplet.”
 
 - **2026-10-01 -- The gate moved onto Homestead Row.** It had been pasted on the unnamed grass south of Creek, and the homestead wall was a facade with nothing behind it. The wall is gone. The gate is on the west half of the road just south of the Square. The east half stays path, so Creek is not behind your door. The banner says "your plot." Not deployed.
 
-- **2026-10-01 -- `BUILD property coherence` built and tested; not deployed.** The Homestead doors are wall. The spine continues south of Creek to one gate. Enter asks where: Home, then whoever is online. A visit opens the grass plot, not the furnished room. Group is not a line. `client_files_unit.js` 155/0, `world_scatter_unit.js` 33/0. See `CLAUDE_PROPERTY_COHERENCE.md`.
+- **2026-10-01 -- `BUILD property coherence` built and tested; not deployed.** The Homestead doors are wall. The spine continues south of Creek to one gate. Enter asks where: Home, then whoever is online. A visit opens the grass plot, not the furnished room. Group is not a line. `client_files_unit.js` 155/0, `world_scatter_unit.js` 33/0. See `claude_property_coherence.md`.
 
-- **2026-10-01 -- Property coherence, the entrance changed before any build.** Brandon: a path to the edge, and a gate that asks Home, Friend, or Group. Home and the online-friend list can be that gate, south of Creek on the empty grass. Group cannot yet: the daemon never asks civic which group you are in, and only a house's owner can place. See `CLAUDE_PROPERTY_COHERENCE.md`.
+- **2026-10-01 -- Property coherence, the entrance changed before any build.** Brandon: a path to the edge, and a gate that asks Home, Friend, or Group. Home and the online-friend list can be that gate, south of Creek on the empty grass. Group cannot yet: the daemon never asks civic which group you are in, and only a house's owner can place. See `claude_property_coherence.md`.
 
-- **2026-10-01 -- Property coherence named, not built.** The demo door is an unlabeled furnished room, and a visit opens that room instead of the friend's grass plot. The six boarded Homestead doors are empty slots drawn as doors. The plot stays an instance: there is still no per-player outdoor tile grid, and this does not add one. Phase 5's shop is unchanged. See `CLAUDE_PROPERTY_COHERENCE.md`.
+- **2026-10-01 -- Property coherence named, not built.** The demo door is an unlabeled furnished room, and a visit opens that room instead of the friend's grass plot. The six boarded Homestead doors are empty slots drawn as doors. The plot stays an instance: there is still no per-player outdoor tile grid, and this does not add one. Phase 5's shop is unchanged. See `claude_property_coherence.md`.
 
-- **2026-10-01 -- Property phase 5 named, not built.** A shop door in the Square, not a new region. Coins are a `players` column the server writes, not a client-trusted balance and not an item. The counter sells a stool and a lantern. It buys the 10-minute raw gathers and nothing a recipe consumes or produces, so the keg and the long bench waits stay what `CLAUDE_STUDIO_5.md` tuned. Player-to-player trade is not in this doc. See `CLAUDE_PROPERTY_PHASE5.md`.
+- **2026-10-01 -- Property phase 5 named, not built.** A shop door in the Square, not a new region. Coins are a `players` column the server writes, not a client-trusted balance and not an item. The counter sells a stool and a lantern. It buys the 10-minute raw gathers and nothing a recipe consumes or produces, so the keg and the long bench waits stay what `claude_studio_5.md` tuned. Player-to-player trade is not in this doc. See `claude_property_phase5.md`.
 
 - **2026-10-01 -- Security fix: `POST /presence/pickup` was an unwhitelisted item mint, now fixed and
   DEPLOYED (`8f9f6ed`; 37 verify checks, 0 failed; every table unchanged against the pre-deploy backup;
@@ -402,7 +402,7 @@ Not bug classes. Not “what is live on the droplet.”
   Full suite: 26 files, 0 failed.
 - **2026-10-01 -- Property phase 4 built, tested, and DEPLOYED (`a8fd080`; 37 verify checks, 0 failed;
   `maps` correctly recognized as grown 14->15; confirmed live by content -- served `world.js` mentions
-  "the Dunes", served `tiles.png` is the exact regenerated 2817-byte file).** `CLAUDE_PROPERTY_PHASE4.md` as
+  "the Dunes", served `tiles.png` is the exact regenerated 2817-byte file).** `claude_property_phase4.md` as
   written: `GRID_ROWS` 4->5, a new region "the Dunes" at (0,4) with its own `T_SAND` tile (reusing the
   grass speckle technique) and a path in from Quarry Ridge. Two real bugs found while building, not by
   inspection: the existing spine path's own loop ran to `WORLD_H - 1` and would have silently extended 20
@@ -410,7 +410,7 @@ Not bug classes. Not “what is live on the droplet.”
   instead); and `make_art.py`'s tileset generator has a *hardcoded* `NTILES` constant that isn't derived
   from `world.js` like everything else in that script -- failed its own assertion the moment a new tile
   was added, caught by running it. `client_files_unit.js` grew from 143 to 148, both mutation-confirmed.
-  Full suite: 26 files, 0 failed. See `property-phase-4-built.md`.
+  Full suite: 26 files, 0 failed. See `property_phase_4_built.md`.
 
 - **2026-10-01 -- Property phase 4 proposed, not built.** Brandon wants real new world regions, not a
   re-skin -- checked the actual risk of expanding the grid rather than asserting it (he pushed back and
@@ -418,7 +418,7 @@ Not bug classes. Not “what is live on the droplet.”
   `REGIONS`, not hardcoded; the real cost is authoring a new region's content, the same amount of work any
   existing one took, not fragility. Also confirmed the world fills entirely with a default tile first, so
   an unfilled grid cell is just grass, not a hole -- a new row doesn't need 3 new regions to fill it.
-  `CLAUDE_PROPERTY_PHASE4.md`: `GRID_ROWS` 4->5 (`WORLD_H` 80->100), one new region "the Dunes" at (0,4)
+  `claude_property_phase4.md`: `GRID_ROWS` 4->5 (`WORLD_H` 80->100), one new region "the Dunes" at (0,4)
   south of Quarry Ridge, a new `T_SAND` tile reusing the grass dot-texture technique, a path connecting it
   in from the start (Brandon's own standing rule). Scope is the world-expansion only -- no desert gather
   spots/materials/recipes bundled, matching how phase 1 (empty plot) shipped before phase 2 (gather/craft)
@@ -427,7 +427,7 @@ Not bug classes. Not “what is live on the droplet.”
 
 - **2026-10-01 -- Property phase 2+3 built, tested, and DEPLOYED (`dac63fc`; 37 verify checks, 0 failed;
   catalog correctly recognized as grown -- items 38->40, recipes 21->23 -- not flagged as a mismatch;
-  confirmed live by content).** `CLAUDE_PROPERTY_PHASE2.md` as
+  confirmed live by content).** `claude_property_phase2.md` as
   written: two new catalog items (`hammer`, `fence_post`) reusing existing materials, no new gather spot,
   zero daemon C++ changes (pure `catalog.sql` data). The one genuinely new mechanic -- a structural floor
   item that actually blocks movement -- lives entirely client-side (`tileBlockedAtPixel` in `actors.js`),
@@ -436,7 +436,7 @@ Not bug classes. Not “what is live on the droplet.”
   The first full-suite run found a real miss: `test_migrations.sh` had its own separate hardcoded catalog
   totals (38 items/21 recipes) this build's own plan hadn't accounted for -- fixed to 40/23, then swept
   the rest of the test directory for the same numbers. Second full run: 26 files, 0 failed. See
-  `property-phase-2-built.md`.
+  `property_phase_2_built.md`.
 
 - **2026-10-01 -- Found and fixed a real bug after phase 1 shipped: `interact.js`'s `tryFloorPlace()` still
   refused at 8 after `house.cpp`'s own cap moved to 24 -- client-side pre-check missed in the original
@@ -446,7 +446,7 @@ Not bug classes. Not “what is live on the droplet.”
 
 - **2026-10-01 -- Property phase 2+3 proposed, not built.** Combined per Brandon's own framing ("gather
   things to make tools, then with those tools build") -- a tool with nothing to unlock would be
-  half-finished alone. `CLAUDE_PROPERTY_PHASE2.md`: two new catalog items reusing existing materials
+  half-finished alone. `claude_property_phase2.md`: two new catalog items reusing existing materials
   (`hammer` from willow_twigs+scrap_iron, `fence_post` from willow_twigs), both via the existing generic
   gather->bench->collect loop, no daemon code change. Checked first, not assumed: floor placement already
   doesn't consume inventory or check what you hold (an existing deliberate "low stakes" design, not a gap)
@@ -457,7 +457,7 @@ Not bug classes. Not “what is live on the droplet.”
   `BUILD property phase 2` against this doc.
 
 - **2026-10-01 -- Property phase 1 built, tested, and DEPLOYED (`90ff2ea`; 37 verify checks, 0 failed;
-  confirmed live by content, not just status -- the served `interiors.js` has `fillProperty`).** `CLAUDE_PROPERTY.md` as written: the
+  confirmed live by content, not just status -- the served `interiors.js` has `fillProperty`).** `claude_property.md` as written: the
   owner's own house is now an empty grass-and-hedge plot (`T_GRASS_A`/`T_HEDGE` via a new optional
   `baseTile`/`borderTile` pair on `buildInterior`, every other caller unaffected) instead of the old
   furnished room -- table, chairs, rugs, shelves, crates, lamp and flowerbed all removed. Door, latch,
@@ -468,15 +468,15 @@ Not bug classes. Not “what is live on the droplet.”
   player's room is redecorated, nothing of theirs deleted. `client_files_unit.js` grew from 129 to 136,
   `test_house.sh` from 51 to 53 (the cap-24 boundary checked against a real GET, not just "nothing
   errored" -- a wrong cap would have slipped past the old test shape). Full suite: 26 files, 0 failed.
-  See `property-phase-1-built.md`.
+  See `property_phase_1_built.md`.
 
 - **2026-10-01 -- Your own property, proposed, not built.** Brandon's full vision: an empty plot you
   design yourself, friends visit from a main world that could have several environments (forest, desert,
   mountains, beach), plus a town to buy and sell in. Confirmed as a 5-phase roadmap, not one feature --
   phase 5 (the town) is the one that reverses "no currency," said by Brandon himself this time, not
-  relayed, so it's real when we get there, but gets its own conversation first. `CLAUDE_PROPERTY.md` is
+  relayed, so it's real when we get there, but gets its own conversation first. `claude_property.md` is
   Phase 1 only (an empty plot): found while scoping it that "design your own space" is already fully built
-  and deployed (`HouseStore::place_floor`/cap 8, wired client-side) -- `CLAUDE_IDEAS.md`'s item 3 describing
+  and deployed (`HouseStore::place_floor`/cap 8, wired client-side) -- `claude_ideas.md`'s item 3 describing
   it as unbuilt was wrong, a gap in that survey, not the game. Also found: every player's house is one
   hardcoded shared room shape (no per-instance tile storage exists anywhere yet), so Phase 1 is a uniform
   visual/layout change (grass + hedge border replacing floor + wall, fixed furniture removed, a small real
@@ -504,12 +504,12 @@ Not bug classes. Not “what is live on the droplet.”
   commit -- see the deploy entry below for what actually shipped).** The grass no longer repeats the
   backpack's items. Bag opens a panel under the button instead of a full-screen page, and walking
   continues while it is open. `/proposals` links to `/commons/?at=hall`, which stands you on the path tile
-  north of the Hall door, facing it. `client_files_unit.js` 126/0. See `bag-widget-built.md`.
+  north of the Hall door, facing it. `client_files_unit.js` 126/0. See `bag_widget_built.md`.
 
 - **2026-09-28 -- `BUILD wear a pigment` built, tested, and DEPLOYED (`cdea606`; also carried the
   friend-door wording fix, which is therefore live too; 37 verify checks, 0 failed; migration and route
   confirmed live by a read-only column check and a 403 probe).** Schema + daemon route + client, not
-  client-only. `CLAUDE_WEAR_PIGMENT.md` as written: a nullable
+  client-only. `claude_wear_pigment.md` as written: a nullable
   `players.shirt_pigment_index`, a `shirt_hex` field on the in-RAM `Occupant` broadcast to everyone nearby
   (not just a private preference), `POST /presence/wear`, and a "Wear"/"Default" pair on the easel's own
   actions row. `client_files_unit.js` grew from 116 to 122 checks; `test_studio.sh` grew from 121 to 129,
@@ -522,12 +522,12 @@ Not bug classes. Not “what is live on the droplet.”
   recolour could not be visually confirmed in the browser preview -- its cache kept serving a stale
   `main.js`/`net.js` through several reloads even though a direct fetch proved the served file was
   correct (same artifact as the door-wording fix) -- so this is tested end-to-end but not yet eyeballed.
-  See `wear-a-pigment-built.md`.
+  See `wear_a_pigment_built.md`.
 
 - **2026-09-28 -- Wear-a-pigment proposed, not built.** Brandon: `BUILD wear a pigment`, the second pick
-  off `CLAUDE_IDEAS.md`'s build order -- but that doc only named the idea, it didn't settle how it's
+  off `claude_ideas.md`'s build order -- but that doc only named the idea, it didn't settle how it's
   picked, whether other players see it, or where it's stored, and this one touches the daemon (unlike the
-  door wording fix), so it got its own doc first: `CLAUDE_WEAR_PIGMENT.md`. Recommended: reuse the fixed
+  door wording fix), so it got its own doc first: `claude_wear_pigment.md`. Recommended: reuse the fixed
   13-pigment table's own unlock rule (charcoal 1-4 always, 5-13 once discovered), bound-only (guests never
   have discoveries); a new nullable `players.shirt_pigment_index` column (same idempotent migration
   pattern as `visit_policy`) plus a `shirt_hex` field on the in-RAM `Occupant` struct so a nearby friend
@@ -538,7 +538,7 @@ Not bug classes. Not “what is live on the droplet.”
 
 - **2026-09-28 -- Friend-door wording fix built, tested, and DEPLOYED (client only; shipped in `cdea606`
   alongside wear-a-pigment).** First pick off
-  `CLAUDE_IDEAS.md`'s build order. The six Homestead friend-lot doors defaulted to prompt "Closed" and a
+  `claude_ideas.md`'s build order. The six Homestead friend-lot doors defaulted to prompt "Closed" and a
   "Closed." toast whether you were a guest, a bound player with no friend currently home, or (mechanically
   identical either way) -- all three read the same, none said why. Now: the on-screen prompt is "Away"
   (was "Closed") until `netPollLots()` finds a mutual friend actually online; the toast splits into "Log in
@@ -549,7 +549,7 @@ Not bug classes. Not “what is live on the droplet.”
   Full suite: 116 checks, 0 failed.
 
 - **2026-09-28 -- Ideas survey proposed, not built.** Brandon: "pull the best aspects of other relevant
-  popular games and implement them" -- too open to build from directly, so `CLAUDE_IDEAS.md` surveys what
+  popular games and implement them" -- too open to build from directly, so `claude_ideas.md` surveys what
   actually fits (Animal Crossing's placeable decorations and museum, Stardew's Community Center framed as
   the Commons's own shared collection, a pigment-recolour "wear what you made" in place of new-art avatar
   customization) against what the schema already allows (the `placed` table already has x/y/rot90, only
@@ -561,19 +561,19 @@ Not bug classes. Not “what is live on the droplet.”
 
 - **2026-09-28 -- `BUILD backpack` built, tested, and DEPLOYED (`9a0896b`, client only -- the daemon cycle
   ran but changed nothing, confirmed by its own drift check; 37 verify checks, 0 failed).**
-  `CLAUDE_BACKPACK.md` as written. `ITEM_CATEGORY`/`ITEM_DESC` tables next to `PLACED_ITEM_INFO`; six new
+  `claude_backpack.md` as written. `ITEM_CATEGORY`/`ITEM_DESC` tables next to `PLACED_ITEM_INFO`; six new
   procedural glyph shapes in `sprites.js`'s `paintItemAtlas()`; a new `commons/js/backpack.js` (11th
   script) for the Bag button/`I` key/`#backpack` grid overlay and the shared `#itemTip` tooltip (hover +
   tap, click also selects like the strip already does); the bench (`studio.js`) grew section headers, a
   per-row icon, and a progress bar derived from a new client-side `RECIPE_DURATION_MS` table (the daemon's
   `/presence/studio` sends no `started_ms`, so it's `ready_ms - the recipe's known duration` -- checked
   against `main.cpp` directly, no route change). `client_files_unit.js` grew from 105 to 113 checks (three
-  new coverage checks, each mutation-confirmed). Full doc: `backpack-built.md`.
+  new coverage checks, each mutation-confirmed). Full doc: `backpack_built.md`.
 
 - **2026-09-28 -- Backpack proposed, not built.** Brandon: a real backpack for all items (own icon each,
   hover/tap description bubble), plus a "currency" readout and a much more organized/appealing bench.
   Asked to clarify currency first: confirmed there is no currency system anywhere in this game and none
-  should be built -- dropped entirely, not part of this pass. Handoff is `CLAUDE_BACKPACK.md`: a
+  should be built -- dropped entirely, not part of this pass. Handoff is `claude_backpack.md`: a
   persistent "Bag" button + `I` key opens a full grid view of `inventory` (the strip stays as the
   quick-reference); icons come from a small set of procedural shape categories (twig/leaf/stone/jar/
   powder/swatch/ink/bundle), not 38 bespoke drawings; descriptions are a new client-side `ITEM_DESC`
@@ -583,7 +583,7 @@ Not bug classes. Not “what is live on the droplet.”
   behavior change. Client only. Awaiting `BUILD backpack`.
 
 - **2026-09-27 -- `BUILD studio 5` built and tested; DEPLOYED 2026-09-28 (`c8ef0f1`, daemon-only
-  constants, no schema, no client change).** The proposal in `CLAUDE_STUDIO_5.md` as written: bench slot
+  constants, no schema, no client change).** The proposal in `claude_studio_5.md` as written: bench slot
   cap 3->5, Orchard keg cooldown 1 day->12h. Charcoal's 8h and verdigris's 7-day cap left untouched -- both
   already resolved by slice 1's own reference check, not guessed. `test_studio.sh` grew from 88 to 105
   checks: the slot-cap test now opens 5 batches before `slots_full`; a new section pins the keg's 12h
@@ -591,11 +591,11 @@ Not bug classes. Not “what is live on the droplet.”
   existed); one pre-existing assertion had hardcoded the shared clock's value as a literal and had to be
   fixed to compute it instead once the new keg test shifted the timeline. Full suite: 26 files, 0 failed.
   Mutation-checked (both numbers reverted in turn) -- each failed exactly where expected, restored. Deploy
-  verify: 37 checks, 0 failed. See `studio-5-built.md`.
+  verify: 37 checks, 0 failed. See `studio_5_built.md`.
 
 - **2026-09-27 -- Studio slice 5 proposed, not built.** Brandon: "go build slice 5," then, asked how to
   handle a slice with no named target numbers, "I propose defaults, you approve." Handoff is
-  `CLAUDE_STUDIO_5.md`. Two changes proposed: bench slot cap 3->5 (13 recipes spanning 30 min to 7 days
+  `claude_studio_5.md`. Two changes proposed: bench slot cap 3->5 (13 recipes spanning 30 min to 7 days
   can fill 3 slots with long batches alone and lock out short ones for most of a week); Orchard keg
   cooldown 1 day->12h (vinegar feeds two separate multi-day chains -- iron acetate, verdigris -- gating
   the shared input at a full day on top compounds an already-long wait for no reason tied to the
@@ -622,15 +622,15 @@ Not bug classes. Not “what is live on the droplet.”
   sentinel coordinates that must stay paved, and a subprocess call to `--check`. 33 checks, 0 failed.
   4 mutation checks run (groundOk disabled -- no effect this seed, an honest negative; a hand-inserted
   coordinate; a recipe under its own spec minimum; a shortened lane) -- the real ones each failed exactly
-  where expected, restored and reconfirmed. See `scatter-author-built.md`.
+  where expected, restored and reconfirmed. See `scatter_author_built.md`.
 
-- **2026-09-27 -- Map still had no edge after the building branches.** `3121a46` put a lane on the Workshop, the Lab, the Hall and the mine, and took the gather glyphs off. Left in place. The grass checker is gone: one field colour, darker green only as the shoulder of a lane. Added lanes, around those branches, to the Lookout, the Orchard keg, the woods (beside the galls and the twigs), the east doors and the Garden, and from the mine lane south to the ochre and the alum. Hall's flowerbeds moved into the Garden; the Square and Hall corner-trees pulled off the region box. Workshop and Lab rugs point at the door. Same tiles. `world_scatter_unit` 31/0, `client_files_unit` 105/0. Not deployed. See `wayfinding-built.md`.
+- **2026-09-27 -- Map still had no edge after the building branches.** `3121a46` put a lane on the Workshop, the Lab, the Hall and the mine, and took the gather glyphs off. Left in place. The grass checker is gone: one field colour, darker green only as the shoulder of a lane. Added lanes, around those branches, to the Lookout, the Orchard keg, the woods (beside the galls and the twigs), the east doors and the Garden, and from the mine lane south to the ochre and the alum. Hall's flowerbeds moved into the Garden; the Square and Hall corner-trees pulled off the region box. Workshop and Lab rugs point at the door. Same tiles. `world_scatter_unit` 31/0, `client_files_unit` 105/0. Not deployed. See `wayfinding_built.md`.
 
 - **2026-09-27 -- Deploy-record correction: the iOS intro-autoplay fix IS live, the earlier "NOT deployed" bullet
   was wrong.** Fetched live 2026-09-27 ~16:31 UTC: `https://liquidgov.us/` serves the `aee9a3d` fix (`vid.play()`,
   `.catch(finish)`, the 1.5s `vid.paused` watchdog, literal `1500`) -- verified independently, not taken on say-so.
   Corrected the 2026-09-27 "iOS Low Power Mode intro-autoplay fix... NOT deployed" bullet above and
-  `intro-autoplay-fix-built.md`'s own status line and Deploy section to match. Separately, `laws/1`'s
+  `intro_autoplay_fix_built.md`'s own status line and Deploy section to match. Separately, `laws/1`'s
   control-disclosure toggle (`3efe548`) was independently re-verified live too (`<details><summary>Disclaimer</summary>`
   wraps "Who holds control" in both nav and footer) -- the existing "BUILD control disclosure... DEPLOYED" bullet
   was already correct and needs no change. `deploy-daemon.sh`'s "CIVIC CHANGED since e028ec4" warning compares git
@@ -640,7 +640,7 @@ Not bug classes. Not “what is live on the droplet.”
   built and undeployed; not touched by this correction.
 
 - **2026-09-27 -- `BUILD studio 4` built and tested; NOT deployed (daemon + client, no schema, no
-  droplet).** The rest of the palette ladder and the second painting frame, per `CLAUDE_STUDIO_4.md`.
+  droplet).** The rest of the palette ladder and the second painting frame, per `claude_studio_4.md`.
   Indices 1-4 stay exactly the old charcoal table; 5-13 are the other nine pigments in tier order,
   discovery-gated (locked_index with no discovery, insufficient once discovered but out of stock).
   `save_portrait`'s cost/lock loop became one shared `save_canvas(kind)` function -- `save_painting` is
@@ -656,9 +656,9 @@ Not bug classes. Not “what is live on the droplet.”
   her actual prior balance. The frozen-civic "fails closed" check first passed for the wrong reason (bob's
   friends-list answer was already hot in the 15s cache from checks moments earlier) -- fixed by using a
   freshly created account whose first-ever visit check is the frozen one. Full suite: 26 files, 0 failed.
-  See `studio-4-built.md`.
+  See `studio_4_built.md`.
 
-- **2026-09-27 -- Studio slice 4 named, not built.** Handoff is `CLAUDE_STUDIO_4.md`. Palette indices stay fixed: charcoal remains 1–4 so stored portraits still mean the same colours; the other nine paintable pigments are 5–13 in tier order and discovery-gated. Cost rule unchanged (`ceil` of pixels that newly become that index, no refund). Second frame pinned at (4,0)–(5,1). It is flush against the shelf and the civic frame; this 16×16 house has no one-tile gap left for another 2×2, and the house is not growing. The second canvas reuses `/presence/painting/<kind>`, gets no stub, and uses the portrait's visit rule (owner and friends, fails closed). The workshop easel stays the portrait; the new frame opens the same overlay on the other bitmap. No deploy.
+- **2026-09-27 -- Studio slice 4 named, not built.** Handoff is `claude_studio_4.md`. Palette indices stay fixed: charcoal remains 1–4 so stored portraits still mean the same colours; the other nine paintable pigments are 5–13 in tier order and discovery-gated. Cost rule unchanged (`ceil` of pixels that newly become that index, no refund). Second frame pinned at (4,0)–(5,1). It is flush against the shelf and the civic frame; this 16×16 house has no one-tile gap left for another 2×2, and the house is not growing. The second canvas reuses `/presence/painting/<kind>`, gets no stub, and uses the portrait's visit rule (owner and friends, fails closed). The workshop easel stays the portrait; the new frame opens the same overlay on the other bitmap. No deploy.
 
 - **2026-09-27 -- `BUILD studio 3` built and tested; NOT deployed (client + one daemon field, no schema, no
   droplet).** Map/lab wiring, the bench overlay, the notebook. The daemon's `GET /presence/studio` now sends
@@ -670,14 +670,14 @@ Not bug classes. Not “what is live on the droplet.”
   lampblack/gum became `lab_soot`/`lab_gum` gather spots. Six of the frozen map table's own literal
   coordinates landed inside `world_scatter_unit.js`'s 1-tile clearance around a pre-existing scatter prop
   (three of them ARE scatter flowerbed tiles) -- nudged onto clear ground per the spec's own fallback rule,
-  table in `studio-3-built.md`. Also found and fixed: `world_scatter_unit.js`'s workshop check had been
+  table in `studio_3_built.md`. Also found and fixed: `world_scatter_unit.js`'s workshop check had been
   silently wrong since slice 2 added the easel (still asserted "exactly one interactable, a sign"); and the
   new marker code first broke `test_world_scatter.sh`'s own "`scatterRegions()` is the last thing
   `dressRegions()` does" wiring check, fixed by giving it its own `addStudioGatherMarkers()` function called
-  right after, not folded into that function. Full suite: 26 files, 0 failed, 344s. See `studio-3-built.md`.
+  right after, not folded into that function. Full suite: 26 files, 0 failed, 344s. See `studio_3_built.md`.
 
 - **2026-09-27 -- BUILD studio 3 named, not built.** Brandon: "lets do map sources and bench."
-  Handoff is `CLAUDE_STUDIO_3.md`. Client work plus one field on `GET /presence/studio`
+  Handoff is `claude_studio_3.md`. Client work plus one field on `GET /presence/studio`
   (discovery notes + a recipe count, no undiscovered names). Lab freeze: copper/iron/chalk
   stay trophies; vinegar, tannin, and alum toast and stop granting; lampblack and gum
   become soot and raw gum. The orchard apple tile becomes the keg. No second markers.
@@ -698,7 +698,7 @@ Not bug classes. Not “what is live on the droplet.”
   `PRAGMA foreign_keys` throws and rolls back, but the account is then stuck retrying forever). Also fixed two
   pre-existing tests that hardcoded catalog counts (`test_migrations`, `test_client_files`'s exact-equality check,
   which slice 1 breaks on purpose by being server-only). Full suite: 25 files, 0 failed. No client, no droplet.
-  See `studio-1-built.md`.
+  See `studio_1_built.md`.
 
 - **2026-09-27 -- iOS Low Power Mode intro-autoplay fix, built, tested and DEPLOYED (civic only, verified live; corrected
   from "NOT deployed" the same day -- see the correction bullet above).** Brandon: "finish the iOS fix
@@ -709,7 +709,7 @@ Not bug classes. Not “what is live on the droplet.”
   Verified against the REAL compiled binary: extracted the actual served intro script (found and fixed a wrong-script
   extraction bug first -- the homepage has 4 self-invoking scripts) and ran it in a fake-clock harness, 13 checks, normal
   playback unaffected, both failure shapes now end in <=1.5s instead of 12s, idempotent. Mutation-checked: the same harness
-  against the pre-fix script correctly fails. See `intro-autoplay-fix-built.md`.
+  against the pre-fix script correctly fails. See `intro_autoplay_fix_built.md`.
 
 - **2026-09-27 -- `BUILD control disclosure` built, tested and DEPLOYED (civic only, verified live).** Grok relay (laws/1): the chapter-audio button
   was already live, done differently (real narration, not speechSynthesis) -- nothing to do there. "Who holds control" came
@@ -720,13 +720,13 @@ Not bug classes. Not “what is live on the droplet.”
   nav and footer, both closed, the audio button and /control untouched, a signed-in page too. civic has no CI; this is the
   repo's usual local-build-then-live-check pattern. **Found and set aside, not part of this build:** an uncommitted,
   undocumented iOS Low Power Mode autoplay fix on http_server.cpp (real bug trace, iPhone Safari 2026-09-21) -- stashed, not
-  shipped; needs its own decision. See `control-disclosure-built.md`.
+  shipped; needs its own decision. See `control_disclosure_built.md`.
 
-- **2026-09-20 — Studio v2 deviations accepted, table still unsigned.** `GROK_STUDIO_V2.md`.
+- **2026-09-20 — Studio v2 deviations accepted, table still unsigned.** `grok_studio_v2.md`.
   Pixel-transition cost (not histogram delta), visit-checked portrait GET in slice 2, charcoal
   8 h as a game number. Reference check next; Brandon signs; then `BUILD studio 1`.
 
-- **2026-09-20 — Studio spec reviewed, nothing built.** `GROK_STUDIO_ANSWER.md`.
+- **2026-09-20 — Studio spec reviewed, nothing built.** `grok_studio_answer.md`.
   Loop holds at a handful of players (batch-on-the-clock is the return). Free-form
   combine would dump the table — discovery is "you hold the inputs." Cut homemade
   vinegar; gather a keg. Rename whiting → shell white. Drop alum-from-alum.
@@ -734,83 +734,83 @@ Not bug classes. Not “what is live on the droplet.”
   refund. Charcoal easel before lab conversion. Frozen table + Brandon sign-off
   before `BUILD studio 1`.
 
-- **2026-09-19 — site sense built, not deployed.** `site-sense-built.md`.
+- **2026-09-19 — site sense built, not deployed.** `site_sense_built.md`.
   Guest nav + footer + apps tile for The Commons. /privacy /terms.
   Hall confirm is honest for guests. Communities keeps next=. Intro has Skip.
-- **2026-09-19 — share card built, not deployed.** `og-card-built.md`.
-- **2026-09-19 — share card built, not deployed.** `og-card-built.md`.
+- **2026-09-19 — share card built, not deployed.** `og_card_built.md`.
+- **2026-09-19 — share card built, not deployed.** `og_card_built.md`.
   Five stars + Myspace/ballot-box/gameboy quote on og-image-v2.jpg.
-- **2026-09-19 — polish built, not deployed.** `polish-built.md`.
+- **2026-09-19 — polish built, not deployed.** `polish_built.md`.
   Back-to-site link both sides of the door. No duplicate grass [Look]. Desktop hides Enter.
-- **2026-09-19 — door built, not deployed.** `door-built.md`.
+- **2026-09-19 — door built, not deployed.** `door_built.md`.
   Civic: Quad CTAs and GET /world now send people to /commons/. Guests walk in.
-- **2026-09-19 — fill map built, not deployed.** `fill-map-built.md`.
+- **2026-09-19 — fill map built, not deployed.** `fill_map_built.md`.
   Creek/Shore banks + Shore pier. Scatter 168→202. Atlas ribbon, not P0 flood.
-- **2026-09-19 — tree canopies built, not deployed.** `canopy-built.md`.
+- **2026-09-19 — tree canopies built, not deployed.** `canopy_built.md`.
   Second-storey foliage on the tile north of each tree trunk.
-- **2026-09-19 — behind trees built, not deployed.** `behind-trees-built.md`.
+- **2026-09-19 — behind trees built, not deployed.** `behind_trees_built.md`.
   Tall tiles Y-sort with actors. Also threads cam into depth-sort (strict-mode bug).
-- **2026-09-19 — pickup markers built, not deployed.** `pickup-markers-built.md`.
+- **2026-09-19 — pickup markers built, not deployed.** `pickup_markers_built.md`.
   Glyphs on the three outdoor lookups; indoor leftover prompt removed.
-- **2026-09-19 — depth sort built, not deployed.** `depth-sort-built.md`.
+- **2026-09-19 — depth sort built, not deployed.** `depth_sort_built.md`.
   Actors sort by Y; 10×3 foot shadow. Client only.
 - **2026-09-19 — lit friend door + item glyphs live.** Brandon deployed `cc0498b`
-  (`--label lit-door`). Verify 33/0. `GROK_LIT_DOOR_LIVE.md`. Also ships `f57d13d` item glyphs.
-- **2026-09-19 — lit friend door built, not deployed.** `lit-door-built.md`.
+  (`--label lit-door`). Verify 33/0. `grok_lit_door_live.md`. Also ships `f57d13d` item glyphs.
+- **2026-09-19 — lit friend door built, not deployed.** `lit_door_built.md`.
   Online friend lots stamp T_DOOR_HOUSE instead of a gold square.
-- **2026-09-19 — item glyphs built, not deployed.** `item-glyphs-built.md`.
+- **2026-09-19 — item glyphs built, not deployed.** `item_glyphs_built.md`.
   11 lab items, 16×16 atlas, floor/wall/chips. Client only.
 - **2026-09-19 — resume name live.** Brandon deployed `7955df0`
   (`--label resume-name`) after recloning a corrupt local git store.
-  Verify 33/0. `GROK_RESUME_NAME_LIVE.md`. Occupant lerp shipped in the same deploy (`f7c8ffe`).
-- **2026-09-19 — resume name built, not deployed.** `resume-name-built.md`.
+  Verify 33/0. `grok_resume_name_live.md`. Occupant lerp shipped in the same deploy (`f7c8ffe`).
+- **2026-09-19 — resume name built, not deployed.** `resume_name_built.md`.
   Same-tab refresh skips the welcome card. Indoor button says Leave.
-- **2026-09-19 — occupant lerp built, not deployed.** `occupant-lerp-built.md`.
+- **2026-09-19 — occupant lerp built, not deployed.** `occupant_lerp_built.md`.
   2Hz snapshots walk instead of teleport. Client only.
 - **2026-09-19 — place banner live.** Brandon deployed `cfd1fde`
-  (`--label place-banner`). Verify 33/0. `GROK_PLACE_BANNER_LIVE.md`.
-- **2026-09-19 — place banner built, not deployed.** `place-banner-built.md`.
+  (`--label place-banner`). Verify 33/0. `grok_place_banner_live.md`.
+- **2026-09-19 — place banner built, not deployed.** `place_banner_built.md`.
   Region names off the grass; FireRed-style banner on enter. Client only.
 - **2026-09-19 — chrome polish live.** Brandon deployed `12a78ff`
-  (`--label chrome-polish`). Verify 33/0. `GROK_CHROME_POLISH_LIVE.md`.
-- **2026-09-19 — chrome polish built, not deployed.** `chrome-polish-built.md`.
+  (`--label chrome-polish`). Verify 33/0. `grok_chrome_polish_live.md`.
+- **2026-09-19 — chrome polish built, not deployed.** `chrome_polish_built.md`.
   Title, welcome copy, hide desktop d-pad, DOM toast, paper nameplates.
 - **2026-09-19 — inventory strip live.** Brandon deployed `a9a998d`
-  (`--label inv-strip`). Verify 33/0, items 11 unchanged. `GROK_INV_STRIP_LIVE.md`.
-- **2026-09-19 — inventory strip built, not deployed.** `inventory-strip-built.md`.
+  (`--label inv-strip`). Verify 33/0, items 11 unchanged. `grok_inv_strip_live.md`.
+- **2026-09-19 — inventory strip built, not deployed.** `inventory_strip_built.md`.
   Chips of what you hold, tap to change the item in hand. Client only.
 - **2026-09-19 — D+C1+C2 live.** Brandon deployed `ccdf06f`
-  (`--label objects-d-c`). Verify 33/0, items 8→11. `GROK_OBJECTS_LIVE.md`.
-- **2026-09-19 — C1+C2 built, not deployed.** `house-objects-built.md`.
+  (`--label objects-d-c`). Verify 33/0, items 8→11. `grok_objects_live.md`.
+- **2026-09-19 — C1+C2 built, not deployed.** `house_objects_built.md`.
   Furniture in every house; floor-place last pickup, cap 8, owner only.
   Ships with D in one deploy (`--label objects-d-c`).
-- **2026-09-19 — D built, not deployed.** `world-pickups-built.md`.
+- **2026-09-19 — D built, not deployed.** `world_pickups_built.md`.
   Oak galls (North Woods), seashells (Shore), cider apples (Orchard).
   No limestone. Catalog 8→11 items, still 8 recipes. Client only those
   three Look markers. C1 waits.
 - **2026-09-19 — lab A live.** Brandon deployed `f8d111f` with
-  `--label catalog-a`. Verify 33/0, items 3→8. `GROK_CATALOG_LIVE.md`.
+  `--label catalog-a`. Verify 33/0, items 3→8. `grok_catalog_live.md`.
   Hard-refresh the Square for the second row of lab benches.
 - **2026-09-19 — deploy A requested, Grok cannot SSH.**
-  `CLAUDE_DEPLOY_CATALOG.md`. `9dba50b` CI green. This sandbox has
+  `claude_deploy_catalog.md`. `9dba50b` CI green. This sandbox has
   no `liquidgov_deploy_key` (publickey denied). Command:
   `./commons-daemon/deploy/deploy-daemon.sh --go --with-client --label catalog-a`
-- **2026-09-19 — lab A built, not deployed.** `catalog-built.md`. Five
+- **2026-09-19 — lab A built, not deployed.** `catalog_built.md`. Five
   stations, no lime: vinegar, oak-gall tannin, lampblack, alum, gum.
   `ensure_catalog(catalog.sql)` every start. Client second row. CI green.
   D and C wait.
 
 
-- **2026-09-19 — scatter B accepted, already live.** `GROK_SCATTER_REVIEW.md`.
+- **2026-09-19 — scatter B accepted, already live.** `grok_scatter_review.md`.
   `d2b6859` is on `/commons/js/world.js` (30926 bytes, `scatterRegions`).
   `forceRedraw` lives in `sprites.js`. Do not re-sync. Density is the
   flood-fill + 9 mutations, not a new tile type.
-- **2026-09-19 — connection badge live.** `GROK_STATUS_LIVE.md`. Served
+- **2026-09-19 — connection badge live.** `grok_status_live.md`. Served
   page has `#connStatus`, 8 scripts, civic 200, internals 404. Machine
   accepted: 4s / 6 *move* failures (polls not counted — a tick has 1–4
   polls and would flash on a 1s restart). CI on `bd50119` green. No
   daemon restart. No next BUILD.
-- **2026-09-19 — connection status: A.** `GROK_STATUS_ANSWER.md`. DOM
+- **2026-09-19 — connection status: A.** `grok_status_answer.md`. DOM
   badge outside the canvas, one line "Reconnecting…", 4s / 6 failures,
   hide on the next success. Observe only. No extra clear-delay. Machine
   in `js/net.js`. Client only after review. Not built.
@@ -836,7 +836,7 @@ Not bug classes. Not “what is live on the droplet.”
   five-line wrapper that only calls cmake is the most that would ever
   be allowed. Client is still static files. No code change.
 - **2026-09-17 — two-rooms-at-once live check, no bug, no code.**
-  `GROK_V3_ANSWER.md`: presence vein is spent (indoors-vanishing was the
+  `grok_v3_answer.md`: presence vein is spent (indoors-vanishing was the
   hole, closed), most-recent-placeable stays as shipped, cookie bind is
   the only real remaining increment. Asked for exactly one thing before
   holding: five minutes of live verification that two shared interior
@@ -878,14 +878,14 @@ Not bug classes. Not “what is live on the droplet.”
   picked up chalk at the lab, placed it in the demo house wall-slot,
   confirmed on the daemon's own `/commons/placed/instance:demo`
   response and visually in a screenshot with the player moved clear of
-  it. No console errors. `deploy-plan.md` updated to reflect the new
+  it. No console errors. `deploy_plan.md` updated to reflect the new
   proxied route. Left the test placement in place afterward (harmless,
   same as any real guest's) rather than manufacturing a cleanup step
   for low-stakes cosmetic state.
 - **2026-09-17 — V2 stretch: self-nameplate + lab placeables (repo
   commit, not yet copied live).** Both remaining "if there's room" items
-  from `GROK_V2_ANSWER.md`.
-  **Self-nameplate**: `GROK_NAME_REVIEW.md`'s exact ask -- `join`/`rekey`
+  from `grok_v2_answer.md`.
+  **Self-nameplate**: `grok_name_review.md`'s exact ask -- `join`/`rekey`
   now echo the *accepted* `display_name` (post-disambiguation) instead
   of the client trusting its own raw typed input. Daemon:
   `PresenceStore::join`/`rekey` take an optional `std::string*
@@ -922,7 +922,7 @@ Not bug classes. Not “what is live on the droplet.”
   lab station (no inventory-picker UI exists, so "most recent" is the
   only unambiguous choice); this reuses the exact tile position for a
   different, simpler, explicitly-authorized purpose than the real
-  civic wall-slot feature (`GROK_V2_ANSWER.md`'s own "not a civic PNG"
+  civic wall-slot feature (`grok_v2_answer.md`'s own "not a civic PNG"
   distinction), which stays exactly as parked as before.
   Verified live across two independent browser tabs: self-nameplate
   renders correctly for both the local player and (via the existing
@@ -939,7 +939,7 @@ Not bug classes. Not “what is live on the droplet.”
   only, same as shared interiors was before "copy." Civic untouched, no
   deploy, no nginx.
 - **2026-09-17 — shared interiors copied live.** Brandon said **copy**
-  after `GROK_V2_REVIEW.md` accepted `6ce42cf` with two checks named
+  after `grok_v2_review.md` accepted `6ce42cf` with two checks named
   before doing it: passerby must not draw/walk indoors, and the
   colon-containing instance path (`/commons/presence/instance:demo`)
   must resolve through the production proxy as JSON, not a civic HTML
@@ -956,7 +956,7 @@ Not bug classes. Not “what is live on the droplet.”
   still active) and civic (still 200) both unaffected throughout.
   Self-nameplate, lab placeables, Mine/Workshop/Hall, cookie bind, and
   wall-slot all still parked, exactly where they were.
-- **2026-09-17 — V2: shared interiors (BUILD).** `GROK_V2_ANSWER.md`:
+- **2026-09-17 — V2: shared interiors (BUILD).** `grok_v2_answer.md`:
   V1's actual hole wasn't a 13th region, it was that "indoors is a
   single-player cutscene" — the client called `netLeave()` on every
   house/lab entry, so real presence was wasted the instant two guests
@@ -995,7 +995,7 @@ Not bug classes. Not “what is live on the droplet.”
   touching `/opt/commons/index.html` again. Civic untouched, no deploy,
   no nginx.
 - **2026-09-17 — decided: world-reachable guest mint is the product, not
-  a hole.** Independently confirmed by Grok (`GROK_LIVE_CHECK.md`, no
+  a hole.** Independently confirmed by Grok (`grok_live_check.md`, no
   SSH) after the deploy: civic still 200, `/commons/` shows the real
   client, `GET /commons/presence/1,1` returns `[]` (JSON, proving the
   slash rewrite holds in front of a second independent check, not just
@@ -1005,13 +1005,13 @@ Not bug classes. Not “what is live on the droplet.”
   anonymous-visiting design, same as walking into the Square in person
   — do **not** "fix" this later by gating it behind a real LiquidGov
   account or opening LGP1 from the daemon. Cookie bind (a *promotion*
-  once it exists, per `presence.md`/`cookie-bind.md`) stays the next
+  once it exists, per `presence.md`/`cookie_bind.md`) stays the next
   queued item, not triggered yet. `/opt/liquidgov-us` (the leftover
   clone found during deploy) stays as-is — leave it unless deliberately
   deleted on purpose. No further deploy this hour.
 - **2026-09-17 — commons-daemon is live on the droplet.** Brandon said
   "go" after `c024c27`'s deploy-preflight fixes. Ran the full
-  `Persistence/TheCommons/deploy-plan.md` sequence for real against
+  `docs/archive/the_commons/deploy_plan.md` sequence for real against
   `143.198.159.58` for the first time in this project's history:
   synced daemon source (`schema.sql` landed as a real dereferenced
   file, confirmed, not a dangling symlink) and the client separately,
@@ -1027,7 +1027,7 @@ Not bug classes. Not “what is live on the droplet.”
   for the first time ever** — minted a real credential, joined
   presence, and the daemon's own feed showed the exact same occupant.
   Full join/move/leave/wrong-secret-403 lifecycle re-verified over real
-  HTTPS through the proxy afterward. `deploy-plan.md` updated in place
+  HTTPS through the proxy afterward. `deploy_plan.md` updated in place
   to record what actually happened rather than staying a hypothetical.
   **New, unexpected, non-blocking finding from actually being on the
   box:** `/opt/liquidgov-us` exists — a full git clone of this repo
@@ -1038,17 +1038,17 @@ Not bug classes. Not “what is live on the droplet.”
   staging/migration experiment from another session) — worth him
   knowing what's actually sitting on his own droplet.
 - **2026-09-17 — commons: deploy preflight, two real holes closed, still
-  no SSH.** `GROK_DEPLOY_REVIEW.md`/`CLAUDE_DEPLOY_PREFLIGHT.md` on
+  no SSH.** `grok_deploy_review.md`/`claude_deploy_preflight.md` on
   `fb889c0`: accepted the slash fix, found two more real problems before
   anything could actually go live. Both fixed as files only:
-  1. **`deploy-plan.md`'s step 4 named a path that doesn't exist** --
+  1. **`deploy_plan.md`'s step 4 named a path that doesn't exist** --
      `cp /opt/commons-daemon/commons/index.html` assumed `commons/` was
      inside `commons-daemon/`; it's a sibling directory at the repo
      root. Added `commons-daemon/deploy/sync-client-to-droplet.sh` (new
      script, rsyncs the actual `commons/` dir to `/opt/commons/`,
      separate from the daemon's own sync script so the nginx static
      alias directory never risks getting the daemon's source/build tree
-     dumped into it) and fixed `deploy-plan.md`'s sequence to call it.
+     dumped into it) and fixed `deploy_plan.md`'s sequence to call it.
   2. **The shipped client would have talked to the *visitor's* loopback,
      not the droplet.** `DAEMON` was unconditionally
      `http://127.0.0.1:8765` (or a loopback-only `?daemon=` override) --
@@ -1065,7 +1065,7 @@ Not bug classes. Not “what is live on the droplet.”
      (`https://liquidgov.us/commons/presence/join`,
      `.../presence/1,1`) since there's no live non-loopback deploy to
      load the page from yet.
-  Also did the two optional cleanups `CLAUDE_DEPLOY_PREFLIGHT.md` named:
+  Also did the two optional cleanups `claude_deploy_preflight.md` named:
   a `location = /commons { return 301 /commons/; }` redirect in
   `nginx-commons.conf` (bare no-slash URL used to fall through to
   civic's own `location /` and 404 there — confusing to debug blind),
@@ -1087,10 +1087,10 @@ Not bug classes. Not “what is live on the droplet.”
   `deploy/sync-to-droplet.sh` (rsync, modeled on civic's own script,
   targeting the sibling path `/opt/commons-daemon`, `-L` to dereference
   the `schema.sql` symlink so it doesn't arrive on the droplet as a
-  dangling path string -- exactly the caveat `GROK_DAEMON_REVIEW.md`
+  dangling path string -- exactly the caveat `grok_daemon_review.md`
   already flagged). Full sequence, pre-flight checks (droplet outbound
   internet for `FetchContent`, disk/RAM for a `-j1` build), and rollback
-  written up in `Persistence/TheCommons/deploy-plan.md`.
+  written up in `docs/archive/the_commons/deploy_plan.md`.
   **Real bug found while deriving the nginx config, not copied blind**:
   `nginx.md`'s own example (`location /commons/presence` without a
   trailing slash + `proxy_pass .../` with one) sends
@@ -1102,15 +1102,15 @@ Not bug classes. Not “what is live on the droplet.”
   trailing slashes on both sides (`location /commons/presence/` +
   `proxy_pass .../presence/`), nginx's own documented safe pattern.
   Flagged explicitly in both the config file's header and
-  `deploy-plan.md` rather than silently deviating from the accepted
-  spec. Explicitly NOT done this round (listed in `deploy-plan.md`):
+  `deploy_plan.md` rather than silently deviating from the accepted
+  spec. Explicitly NOT done this round (listed in `deploy_plan.md`):
   wiring `commons/index.html` itself to call the same-origin path
   (still loopback/`?daemon=` only), cookie bind (still blocked on a
-  civic-side change per `cookie-bind.md`), and proxying `/health`,
+  civic-side change per `cookie_bind.md`), and proxying `/health`,
   `/items`, `/recipes`, `/maps` (the client never calls them over the
   network today). No SSH, no droplet contact, no `nginx -t` run against
   anything real. Civic files untouched.
-- **2026-09-17 — commons: cookie bind, design-only (`cookie-bind.md`), no
+- **2026-09-17 — commons: cookie bind, design-only (`cookie_bind.md`), no
   code.** "Should-fix cookie bind next" was flagged before doing anything
   else this round: unlike every prior should-fix, this one is
   structurally blocked by *two* of the project's hardest standing rules
@@ -1120,9 +1120,9 @@ Not bug classes. Not “what is live on the droplet.”
   same-origin nginx round; and resolving the token to an account needs
   `account_from_req()`'s chain, which lives entirely inside
   `http_server.cpp` and isn't callable from outside it without a civic
-  change (`GROK_GLUE_REVIEW.md` already parks exactly this as "not this
+  change (`grok_glue_review.md` already parks exactly this as "not this
   week"). Asked which slice was actually wanted rather than guess; got
-  design/document only. Wrote `Persistence/TheCommons/cookie-bind.md`:
+  design/document only. Wrote `docs/archive/the_commons/cookie_bind.md`:
   the presence-specific contract that `glue.md`/`cookie.md` don't cover
   -- a bound occupant's id is `"u:" + lg_username` (already the exact
   scheme `presence.hpp`'s own `Occupant::id` comment named, written
@@ -1135,7 +1135,7 @@ Not bug classes. Not “what is live on the droplet.”
   rather than picked. No code changed. Civic untouched, no deploy, no
   nginx.
 - **2026-09-17 — commons-daemon: CORS echoes a specific Origin, no more
-  wildcard (should-fix, closed).** `cors-preflight.md`'s "What `*`
+  wildcard (should-fix, closed).** `cors_preflight.md`'s "What `*`
   forbids later": a credentialed request (`credentials: include`, a
   forwarded `lg_session` cookie) can never use `Allow-Origin: *` --
   browsers hide the response outright. Built that target shape now,
@@ -1171,7 +1171,7 @@ Not bug classes. Not “what is live on the droplet.”
   Full regression (catalogs, missing-field 400, wrong-secret 403) holds.
   Civic untouched, no deploy.
 - **2026-09-17 — commons: allowlist `?daemon=` before this file can ever
-  be public (should-fix, closed).** `GROK_DAEMON_URL_REVIEW.md` flagged
+  be public (should-fix, closed).** `grok_daemon_url_review.md` flagged
   the override added in `92daa22`: a shared link with
   `?daemon=https://evil.example` would make the page mint a guest secret
   and POST it straight to the attacker, harmless only because the page
@@ -1197,12 +1197,12 @@ Not bug classes. Not “what is live on the droplet.”
   (`172.15.*` rejected, `172.16.*`/`172.31.*` accepted, `192.169.*`
   rejected, `192.168.*` accepted). Civic untouched, no deploy. The
   daemon's own `Access-Control-Allow-Origin: *` stays parked and
-  untouched per `cors-preflight.md` -- that's legal today only because
+  untouched per `cors_preflight.md` -- that's legal today only because
   the guest secret travels in the JSON body, not a cookie, and becomes
   the actual should-fix once glue/cookie-forward exists.
 - **2026-09-17 — commons: `?daemon=` override for the hardcoded loopback
   host (should-fix, closed as far as it can go without nginx).**
-  `GROK_PRESENCE_REVIEW.md`: "`NET` host is loopback `:8765`. Grok
+  `grok_presence_review.md`: "`NET` host is loopback `:8765`. Grok
   preview and `liquidgov.us` will not see WSL. Relative `/commons/`
   proxy is the nginx round." That's true regardless of how the constant
   is spelled -- no client-side change makes a remote preview sandbox or
@@ -1218,14 +1218,14 @@ Not bug classes. Not “what is live on the droplet.”
   overrides `DAEMON` and degrades to the local-only passerby simulation
   with no thrown error (same graceful-offline path as an unreachable
   default daemon). Also folded in Grok's correction from the
-  `display_name` round (`GROK_NAME_REVIEW.md`, `f2132ad`): there is no
+  `display_name` round (`grok_name_review.md`, `f2132ad`): there is no
   self-nameplate today (checked `fillText` call sites directly -- only
   the passerby and other-occupant labels exist), so nothing to fix there
   yet; noted for whenever one lands, `join`/`rekey` should echo back the
   *accepted* `display_name` so a self-label draws the disambiguated
   string, not the raw typed input. CORS `*` still parked. No deploy.
 - **2026-09-17 — commons: region-local display_name disambiguation
-  (should-fix, closed).** `GROK_PRESENCE_REVIEW.md`: "Row hijack is
+  (should-fix, closed).** `grok_presence_review.md`: "Row hijack is
   closed; name spoof is not. Fine until cookie bind." Guests have no
   bound identity yet (no `lg_username` until glue lands), so this doesn't
   try to reserve a name globally or across time -- `display_name` is
@@ -1278,12 +1278,12 @@ Not bug classes. Not “what is live on the droplet.”
   correctly past the seam in the browser (screenshot-confirmed, not just
   a network-log check); moving back to the region center correctly drops
   it from `otherOccupants` again. Civic untouched, no SSH/systemd/nginx,
-  no deploy. Remaining should-fix items from `GROK_PRESENCE_REVIEW.md`
+  no deploy. Remaining should-fix items from `grok_presence_review.md`
   (`display_name` spoofing, CORS `*`, hardcoded loopback host) still
   parked.
 - **2026-09-17 — commons: guest credentials survive an interior stay.**
   Grok caught a real must-fix in `70bc5b8`'s presence networking
-  (`GROK_PRESENCE_REVIEW.md`/`CLAUDE_PRESENCE_PATCH.md`): `GuestRegistry`
+  (`grok_presence_review.md`/`claude_presence_patch.md`): `GuestRegistry`
   reaped credentials on the same 30s clock as `PresenceStore`'s plaza-slot
   reap, but a guest in a house/lab stops heartbeating presence entirely
   (`netLeave()` on entry, nothing calls `verify()` again until they walk
@@ -1382,7 +1382,7 @@ Not bug classes. Not “what is live on the droplet.”
 - **2026-09-16 — commons-daemon: should-fix round (reap, move timestamp,
   schema dedup, sqlite via FetchContent).** Brandon scoped this round to
   "should-fix daemon items" only (not client, not sibling/deploy) via
-  explicit confirmation. Four of `GROK_DAEMON_REVIEW.md`'s five should-fix
+  explicit confirmation. Four of `grok_daemon_review.md`'s five should-fix
   items landed:
   1. `move` now stamps `last_update_ms` on every call — occupant JSON no
      longer looks frozen between joins.
@@ -1393,7 +1393,7 @@ Not bug classes. Not “what is live on the droplet.”
      until process restart. Single-threaded, lazy-on-access — no timer
      thread, matching the daemon's existing synchronous style.
   3. `schema.sql` dedup: `commons-daemon/schema.sql` is now a symlink to
-     `Persistence/TheCommons/schema.sql` (verified content was already
+     `docs/archive/the_commons/schema.sql` (verified content was already
      byte-identical apart from a comment) — one source of truth, no more
      copy-drift risk.
   4. Vendored `sqlite3.c`/`.h` (9.5MB) dropped from git; CMake now
@@ -1438,8 +1438,8 @@ Not bug classes. Not “what is live on the droplet.”
   updates notes/README only.
 
 - **2026-09-16 — commons-daemon: body-cap must-fix patched (`http.cpp`), presence
-  bugs already fixed upstream.** Grok's review (`GROK_DAEMON_REVIEW.md`,
-  `CLAUDE_DAEMON_PATCH.md`) flagged three must-fixes: (1) duplicate `join`
+  bugs already fixed upstream.** Grok's review (`grok_daemon_review.md`,
+  `claude_daemon_patch.md`) flagged three must-fixes: (1) duplicate `join`
   double-counting `total_`, (2) `rekey` always decrementing `total_` even
   when `from_region` never held the id, (3) `Content-Length` uncapped past
   the 1 MiB header guard. Before patching, `git pull` surfaced that (1) and
@@ -1475,7 +1475,7 @@ Not bug classes. Not “what is live on the droplet.”
   single-threaded synchronous HTTP server deliberately shaped like
   civic's own rather than a framework. Friends/cookie-forwarding and
   wall-slot fetch are documented (`glue.md`, `cookie.md`,
-  `canvas-frame.md`) but **not wired** — no civic route exists to call
+  `canvas_frame.md`) but **not wired** — no civic route exists to call
   and adding one means touching `http_server.cpp`, out of scope. Tile
   collision/movement stays client-side JS (`wasm.md`) — not duplicated
   here. Verified end-to-end, not just "it compiles": full presence
@@ -1527,7 +1527,7 @@ Not bug classes. Not “what is live on the droplet.”
   still waits on Brandon; nothing in `commons/index.html` changed this
   round.
 - **2026-09-16 — Sprites patch: idle-skip sees facing now.** Fixed the
-  must-fix from `GROK_SPRITES_REVIEW.md`: `updateFacingAnim` could change
+  must-fix from `grok_sprites_review.md`: `updateFacingAnim` could change
   `player.dir` on a fully blocked step (hold a new direction into a
   wall — `movePlayer` returns `false`), but `frame()`'s idle-skip only
   checked position/toast, so the sprite kept showing the old facing cell
@@ -1569,23 +1569,23 @@ Not bug classes. Not “what is live on the droplet.”
   bridge, boarded-door toast, Hall confirm/open, spawn free, dual crop at
   390×844, no console errors). Still no glue, no sibling, no droplet
   contact. `liquidgov-platform/` untouched.
-- **2026-09-16 — WebGPU textures crib.** `webgpu-textures.md`: textures
+- **2026-09-16 — WebGPU textures crib.** `webgpu_textures.md`: textures
   cannot mapAsync; readback is copyTextureToBuffer. Pixel art uses
   nearest / textureLoad. Commons keeps Canvas 2D drawImage.
-- **2026-09-16 — WebGPU mapAsync crib.** `webgpu-mapping.md`: staging
+- **2026-09-16 — WebGPU mapAsync crib.** `webgpu_mapping.md`: staging
   copy, 8-byte align, buffer cannot be STORAGE and mapped. Why GPU
   collision loses to `solid[i]`. Still no shaders in commons/.
-- **2026-09-16 — WGSL crib only.** `Persistence/TheCommons/wgsl.md` is
+- **2026-09-16 — WGSL crib only.** `docs/archive/the_commons/wgsl.md` is
   syntax, not a renderer. `webgpu.md` still stands: no shaders in
   commons/. Next visible work still sprites / glue / sibling.
-- **2026-09-16 — WebGPU is not this game.** `Persistence/TheCommons/webgpu.md`:
+- **2026-09-16 — WebGPU is not this game.** `docs/archive/the_commons/webgpu.md`:
   240×160 blit does not want a compute shader. Canvas 2D stays. Sprites /
   glue / sibling still wait on Brandon.
-- **2026-09-16 — WASM is not V1.** `Persistence/TheCommons/wasm.md`: no
+- **2026-09-16 — WASM is not V1.** `docs/archive/the_commons/wasm.md`: no
   compile step in commons/. WASM only earns a slot if a C++ sibling
   daemon shares collision; blit/input stay JS. Sprites/glue/sibling still
   wait on Brandon.
-- **2026-09-16 — nginx reverse proxy notes.** `Persistence/TheCommons/nginx.md`:
+- **2026-09-16 — nginx reverse proxy notes.** `docs/archive/the_commons/nginx.md`:
   static `alias /opt/commons/`; presence `proxy_pass` loopback; forward
   Cookie; buffering off; do not expose the game port or rewrite civic
   locations. Not a BUILD. Sibling still not this week.
@@ -1607,7 +1607,7 @@ Not bug classes. Not “what is live on the droplet.”
   still holds (A/D, water, spawn free, no console errors). Still waiting
   on Brandon for a specific glue / sprites / sibling direction before
   starting any of those.
-- **2026-09-16 — sibling mechanics.** `Persistence/TheCommons/sibling.md`:
+- **2026-09-16 — sibling mechanics.** `docs/archive/the_commons/sibling.md`:
   game daemon + nginx static `/commons/` next to `liquidgov_http` on the
   512 MB box. Presence RAM, SQLite WAL not rsync'd, friends via localhost
   cookie, civic crash-isolated. Path vs subdomain waits on a real
@@ -1617,7 +1617,7 @@ Not bug classes. Not “what is live on the droplet.”
   quarry sign toast only. No new interiors. Civic untouched. Outdoor V1
   DoD met. Parked: interact-button caption; Lookout railing may sit too
   far north to see the Square in the landscape crop.
-- **2026-09-16 — IndexedDB is a blob cache.** `Persistence/TheCommons/indexeddb.md`:
+- **2026-09-16 — IndexedDB is a blob cache.** `docs/archive/the_commons/indexeddb.md`:
   later, tileset/house-snapshot/photo-staging. Not V1 inventory, not
   trades, not friends, not the 5.6 MB bake. Do not open IDB in commons/
   during P0–P3. P2 still closed. P3 waits.
@@ -1643,7 +1643,7 @@ Not bug classes. Not “what is live on the droplet.”
   boarded-door toast, Hall confirm/open, spawn still free, dual crop at
   390×844, no console errors). `liquidgov-platform/` untouched. This
   closes the outdoor world; P2's demo house/lab interiors are unaffected.
-- **2026-09-16 — inventory is RAM.** `Persistence/TheCommons/inventory.md`:
+- **2026-09-16 — inventory is RAM.** `docs/archive/the_commons/inventory.md`:
   P2 `inventory = {}` vanishing on refresh is the spec, not a bug. Do not
   sessionStorage/localStorage/SQLite in this preview. Write-only object
   may toast a count later; placing items is glue. P2 still closed.
@@ -1654,7 +1654,7 @@ Not bug classes. Not “what is live on the droplet.”
   P3 (six quiet outdoor regions) waits on Brandon. Parked: interact
   button caption stays "Enter" until P3.
 - **2026-09-16 — P2 shipped.** `commons/index.html` extended per
-  `BUILD_ORDER.md`'s P2 list. Lab Yard dressed outdoors: a wall-tile
+  `build_order.md`'s P2 list. Lab Yard dressed outdoors: a wall-tile
   building, a sign, and a Lab door that is a genuine **walk-in trigger**
   (per atlas.md, deliberately not the Enter-to-confirm family the other
   doors use — not solid, not in `interactables`). Demo house's P1 black
@@ -1693,7 +1693,7 @@ Not bug classes. Not “what is live on the droplet.”
   errors). North Woods, Lookout, Orchard, Workshop Lane, Garden, Quarry
   Ridge remain untouched — P3, not this round. `liquidgov-platform/`
   untouched.
-- **2026-09-16 — dt clamp notes.** `Persistence/TheCommons/dt.md`: keep
+- **2026-09-16 — dt clamp notes.** `docs/archive/the_commons/dt.md`: keep
   1/20; that is what stops tab-return tunneling through 1-tile doors.
   Do not add CCD to satisfy a dt=1 test. P1 still closed. P2 waits.
 - **2026-09-16 — P1 closed.** Patch 9048aac accepted: notice-post not
@@ -1701,7 +1701,7 @@ Not bug classes. Not “what is live on the droplet.”
   off-transition redraws, doors solid, benches on the ribbon, waypoints
   on path/bridge, spawn assertion. Civic untouched. P2 waits on Brandon.
 - **2026-09-16 — P1 patch shipped.** All items from
-  `CLAUDE_P1_PATCH.md`/`GROK_P1_REVIEW.md`/`collision.md` fixed in
+  `claude_p1_patch.md`/`grok_p1_review.md`/`collision.md` fixed in
   `commons/index.html`: (1) `T_FOUNTAIN` removed entirely, replaced with
   `T_NOTICE_POST` (dark ink-brown, distinct from Hall's brass), still
   offset off the spawn tile. (2) Passerby visibility rewritten: hide is no
@@ -1730,7 +1730,7 @@ Not bug classes. Not “what is live on the droplet.”
   the path, bridge still crosses it, both benches have a walkable adjacent
   tile, dual crop still switches at 390×844, no console errors. No P2.
   `liquidgov-platform/` untouched.
-- **2026-09-16 — collision notes.** `Persistence/TheCommons/collision.md`:
+- **2026-09-16 — collision notes.** `docs/archive/the_commons/collision.md`:
   keep 12×12 AABB + axis split; doors/notice-post solid; interact from
   adjacent; never spawn overlapping solid; passerby does not collide, so
   waypoints stay on the ribbon. For the open P1 patch, not a new phase.
@@ -1739,9 +1739,9 @@ Not bug classes. Not “what is live on the droplet.”
   passerby must stay visible in the Square (hide only for a second real
   occupant); toast off-transition must redraw. Should-fix: boarded doors
   solid, benches on the path, passerby stays on the ribbon. Paste
-  `CLAUDE_P1_PATCH.md`. P2 not started. Civic frozen.
+  `claude_p1_patch.md`. P2 not started. Civic frozen.
 - **2026-09-16 — P1 shipped.** `commons/index.html` extended per
-  `BUILD_ORDER.md`'s spine list: the Square (fountain + 2 benches),
+  `build_order.md`'s spine list: the Square (fountain + 2 benches),
   Homestead Row (facade with 7 doors: door 0 = demo, doors 1-6 = boarded —
   no cookie glue, per `glue.md`), Creek/Shore (bench + recolored
   path-over-water as a "bridge" tile, cosmetic only), Hall Lawn (door +
@@ -1773,7 +1773,7 @@ Not bug classes. Not “what is live on the droplet.”
   call verified with both accept and decline (stubbed, so production
   liquidgov.us was never actually opened during the test). No console
   errors. `liquidgov-platform/` untouched.
-- **2026-09-16 — canvas 2D notes.** `Persistence/TheCommons/canvas.md`:
+- **2026-09-16 — canvas 2D notes.** `docs/archive/the_commons/canvas.md`:
   P0 blit is the big win. P1: bake static labels, skip idle frames, one
   sprite atlas, no fillText-per-frame, watchdog respects document.hidden.
   Not a patch to commons/ yet. P1 still waits on Brandon.
@@ -1784,7 +1784,7 @@ Not bug classes. Not “what is live on the droplet.”
   `document.hidden` so a background tab doesn't start the 60Hz fallback.
   Next work waits on Brandon saying P1 / BUILD.
 - **2026-09-16 — P0 patch shipped.** All three items from
-  `CLAUDE_P0_PATCH.md`/`GROK_P0_REVIEW.md` fixed in `commons/index.html`:
+  `claude_p0_patch.md`/`grok_p0_review.md` fixed in `commons/index.html`:
   (1) keydown/keyup now ignore entirely (no `preventDefault`, no `keys[]`
   update) while `#nameOverlay` is visible or `document.activeElement`/
   `e.target` is an INPUT/TEXTAREA — typed "Brandon" via real keyboard
@@ -1808,7 +1808,7 @@ Not bug classes. Not “what is live on the droplet.”
   A/D, path ribbon, labels, civic untouched). Must-fix: name input vs WASD
   `preventDefault` ("Brandon" untypeable). Should-fix: rAF as the product
   loop, setInterval only as rAF-fallback; `alpha:false`. P1 not started.
-  Paste `CLAUDE_P0_PATCH.md`. See `GROK_P0_REVIEW.md`.
+  Paste `claude_p0_patch.md`. See `grok_p0_review.md`.
 - **2026-09-16 — blit pipeline.** `tilemap.md` expanded: display canvas
   is the logical crop only (not the 1152×1280 bake in the DOM). Floor
   camera, smoothing off, alpha:false, ignore DPR, no worker. Giant-canvas
@@ -1835,11 +1835,11 @@ Not bug classes. Not “what is live on the droplet.”
   movement math was already delta-time based, not frame-count based, so
   nothing else changes. `liquidgov-platform/`, `liquidgov-core/`, LGP1
   untouched. Grok reviews next.
-- **2026-09-16 — tilemap notes for P0.** `Persistence/TheCommons/tilemap.md`:
+- **2026-09-16 — tilemap notes for P0.** `docs/archive/the_commons/tilemap.md`:
   one Uint8Array 72×80, bake supermap once, blit camera crop. No chunks,
   no WebGL, no 12 canvases. Claude should follow this in `commons/`.
 - **2026-09-16 — P0 BUILD assigned to Claude.** Brandon: Grok guides /
-  criticizes; Claude implements to save Grok tokens. Paste `CLAUDE_P0.md`.
+  criticizes; Claude implements to save Grok tokens. Paste `claude_p0.md`.
   Sibling folder `commons/` (vanilla HTML/canvas), not `liquidgov_http`,
   not React. P0 only. Grok reviews after the commit. Civic frozen.
 - **2026-09-16 — first BUILD = P0 only.** Brandon chose P0, not P0+P1.
@@ -1847,7 +1847,7 @@ Not bug classes. Not “what is live on the droplet.”
   spawn Square, region labels, no set pieces, no doors, no passerby.
   P1+ wait for a later BUILD. Still no code until Brandon says BUILD.
 - **2026-09-16 — Grok build order.** Answer in
-  `Persistence/TheCommons/BUILD_ORDER.md`. Greater map = empty walkable
+  `docs/archive/the_commons/build_order.md`. Greater map = empty walkable
   72×80 first (one array, not 12 maps). Chunk = a **system**, then a
   **spine** of adjacent regions, not one region. Dual crop + A/D + d-pad
   de-risked in P0. Passerby in P1 after the spine walks, before interiors.
@@ -1859,7 +1859,7 @@ Not bug classes. Not “what is live on the droplet.”
   greater map first, then chunks, then smaller shippable pieces, so BUILD
   doesn't turn into one big-bang implementation. Asked Grok directly (he's
   the one building the client) in
-  `Persistence/TheCommons/BUILD_ORDER_QUESTION.md` — what order he'd
+  `docs/archive/the_commons/build_order_question.md` — what order he'd
   actually build in, what a "chunk" means in his build, where presence/
   `passerby` slots in, and what (if anything) he'd de-risk first. Not a new
   pushback round; spec isn't reopened. Still waiting on Brandon for BUILD.
@@ -1885,18 +1885,18 @@ Not bug classes. Not “what is live on the droplet.”
   implementation: regions **24×20** (supermap 72×80); camera **dual crop**
   240×160 @3× landscape / 160×240 @2× portrait (pick by viewport aspect);
   lab recipe #3 **chalk only, no lime**. Grok also patched (see
-  `Persistence/TheCommons/GROK_ANSWER.md`): Square south = Homestead Row
+  `docs/archive/the_commons/grok_answer.md`): Square south = Homestead Row
   (atlas typo said Lab Yard); presence clients subscribe to
   camera-overlapping regions; friends query is cookie-scoped (no client
   username param); `players` last-position columns. Ambient walker on
   Square→Shore is a Grok *bet*, not locked. No game code. Civic frozen.
   BUILD still waits for Brandon.
 - **2026-09-16 — Claude spec pack landed.** Wrote all seven files in
-  `Persistence/TheCommons/`: `atlas.md`, `schema.sql`, `presence.md`,
+  `docs/archive/the_commons/`: `atlas.md`, `schema.sql`, `presence.md`,
   `art.md`, `glue.md`, `v1.md`, `pushback.md`. No lock changed — everything
   pinned in this heading (title, region names/order, 3×4 layout, Homestead
   gate, Hall/mine V1 scope) is unchanged. Two of Grok's *unlocked*
-  implementation bets in `GROK_BET.md` are overridden in `pushback.md`, not
+  implementation bets in `grok_bet.md` are overridden in `pushback.md`, not
   silently: region grid 32×32→**24×20** (Grok's own bet flagged this risk
   and offered this exact fallback), and camera flat 240×160→**dual
   landscape/portrait crop** (240×160 desktop, 160×240 phone) so the phone
@@ -1906,9 +1906,9 @@ Not bug classes. Not “what is live on the droplet.”
   the Hall/mine V1 scope, and A/D=left/right are all accepted as Grok bet
   them. Ready for Grok to read `pushback.md` and answer.
 - **2026-09-16 — Claude spec pack (no game code, civic frozen).** Paste
-  `CLAUDE_THE_COMMONS.md` into Claude Code (not `CLAUDE_CODE_CONTINUE.md`).
-  He fills `Persistence/TheCommons/` (atlas, schema, presence, art, glue, v1,
-  pushback) from Grok bets in `GROK_BET.md`. V1 client stays the Grok preview
+  `claude_the_commons.md` into Claude Code (not `claude_code_continue.md`).
+  He fills `docs/archive/the_commons/` (atlas, schema, presence, art, glue, v1,
+  pushback) from Grok bets in `grok_bet.md`. V1 client stays the Grok preview
   after Brandon says BUILD. Droplet sibling later. Do not touch
   `liquidgov_http` / LGP1.
 - **2026-09-16 — locked.** A + continuous outdoor + warp interiors + homestead
@@ -1946,7 +1946,7 @@ Not bug classes. Not “what is live on the droplet.”
   lock is A + continuous.
 - **2026-09-17 — cookie resolver built, local-tested, not deployed.** Brandon
   said "build" in reply to the offer naming this exact increment; treated as
-  BUILD + cookie resolver per `cookie-bind.md`'s standing gate. First-ever
+  BUILD + cookie resolver per `cookie_bind.md`'s standing gate. First-ever
   edit to `http_server.cpp`: one new same-box-only route,
   `GET /internal/session-user`, ~17 lines, reuses `account_from_req()`
   as-is, refuses (404) anything that arrives via nginx (X-Forwarded-For
@@ -1961,13 +1961,13 @@ Not bug classes. Not “what is live on the droplet.”
   DB): a real civic session cookie forwarded with intentionally garbage
   client-submitted id/secret bound correctly as `u:boundtest` on join,
   moved, and left; guest register/join/move regression unaffected. See
-  `Persistence/TheCommons/cookie-resolver-built.md` for the full
+  `docs/archive/the_commons/cookie_resolver_built.md` for the full
   before/after and what's explicitly still not built (deploy; mid-session
-  promotion/rebind, `cookie-bind.md` left that decision open; the
+  promotion/rebind, `cookie_bind.md` left that decision open; the
   restart-snapshot hook for bound players). No nginx, no systemd, no
   droplet touched this round.
 - **2026-09-17 — cookie resolver must-fix: mid-session login ghost,
-  fixed, still not deployed.** Grok review (`GROK_COOKIE_RESOLVER_REVIEW.md`)
+  fixed, still not deployed.** Grok review (`grok_cookie_resolver_review.md`)
   caught that the prior round's `effective_id()` was cookie-wins on
   every route, which meant a guest who logs in without leaving got a
   `move` rejected (bound id not in the region yet) and, worse, a
@@ -1984,7 +1984,7 @@ Not bug classes. Not “what is live on the droplet.”
   guest id in the same room, then rekeys and the old room ends up
   empty with no ghost while the new room shows exactly one bound row;
   both prior regressions (already-bound-from-start, no-cookie-bad-secret
-  still 403s) still pass. See `cookie-resolver-built.md`'s own
+  still 403s) still pass. See `cookie_resolver_built.md`'s own
   "Must-fix" section. Still holding on deploy for Brandon's own
   **deploy** word.
 - **2026-09-17 — cookie resolver deployed, live.** Brandon said
@@ -1999,9 +1999,9 @@ Not bug classes. Not “what is live on the droplet.”
   Square with a decoy name typed into the guest-name modal and both the
   occupant feed and the on-screen self-nameplate showed the real
   account name instead. Both services' logs clean post-restart. See
-  `cookie-resolver-built.md`'s own "Deployed" section.
+  `cookie_resolver_built.md`'s own "Deployed" section.
 - **2026-09-17 — cookie bind arc closed out.** Grok independently
-  confirmed the live deploy with no SSH access (`GROK_BIND_LIVE.md`):
+  confirmed the live deploy with no SSH access (`grok_bind_live.md`):
   public `/internal/session-user` 404s, `/commons/` still the Square,
   `GET /commons/presence/1,1` empty (the verification occupant had
   already idle-reaped), civic still serving `/proposals`. "No further
@@ -2015,12 +2015,12 @@ Not bug classes. Not “what is live on the droplet.”
   resolution, the mid-session ghost fix, deploy, independent
   confirmation) is now fully closed on every side. Known remaining
   gaps, not proposed as work: in-place `rebind()` vs. leave+join
-  (`cookie-bind.md` never decided), snapshot-on-leave for bound
+  (`cookie_bind.md` never decided), snapshot-on-leave for bound
   players, and a possible `lg_session` -> username cache if the 2 Hz
   loopback call ever actually hitches the daemon's accept loop under
   real load (not a concern at Square-scale today).
 - **2026-09-17 — "your house" built, local-tested, not deployed.**
-  Brandon said "build" for `GROK_V4_ANSWER.md`'s named increment: bound
+  Brandon said "build" for `grok_v4_answer.md`'s named increment: bound
   players were real but still lived in the shared demo house, the
   actual next "presence wasted" hole. Safe thread, civic untouched.
   Daemon: `/presence/join`/`/rekey` now echo `"bound":true/false`
@@ -2038,10 +2038,10 @@ Not bug classes. Not “what is live on the droplet.”
   cross-instance placed-item isolation both clean). Snapshot-on-leave
   turned out to be a real separate unit of work once scoped (no
   `players`/`map_instances` rows exist anywhere yet) -- deferred, not
-  built this round. See `Persistence/TheCommons/your-house-built.md`.
+  built this round. See `docs/archive/the_commons/your_house_built.md`.
   Holding on deploy.
 - **2026-09-17 — your-house must-fix: house key used the wrong field,
-  fixed, still not deployed.** Grok review (`GROK_HOUSE_REVIEW.md`)
+  fixed, still not deployed.** Grok review (`grok_house_review.md`)
   caught that the house key was built from `display_name`, which is
   the *disambiguated Square nameplate* -- a guest who types "brandon"
   before the real `brandon` binds turns the bound player's own
@@ -2065,7 +2065,7 @@ Not bug classes. Not “what is live on the droplet.”
   correct, the wrong suffixed key is confirmed empty; separately
   verified through the real client that outdoor polling still resolves
   real occupant data through the new encode/decode round trip. See
-  `your-house-built.md`'s own "Must-fix" section. Holding on deploy.
+  `your_house_built.md`'s own "Must-fix" section. Holding on deploy.
 - **2026-09-17 — your house deployed, live.** Brandon said "deploy"
   (client + daemon only). Drift-checked `main.cpp`/`http.cpp` against
   the droplet first -- clean, only this round's own changes. Synced,
@@ -2082,16 +2082,16 @@ Not bug classes. Not “what is live on the droplet.”
   self-nameplate showed the real account name, the wall-slot worked
   inside the house too. Both services' logs clean. Cleaned up the one
   throwaway test account via its own `/settings/delete`. **Process
-  lesson, caught after the fact by `GROK_HOUSE_KEY_REVIEW.md`:** synced
+  lesson, caught after the fact by `grok_house_key_review.md`:** synced
   client before finishing the daemon rebuild+restart, a narrow window
   where the new client's `encodeURIComponent`'d requests would have hit
   the still-old, non-decoding daemon and gone empty. No evidence any
   visitor actually hit it, but the correct order (verified by the
   review, not by me beforehand) is daemon rebuild+restart fully first,
   client sync second, whenever a change pairs client encoding with
-  server decoding. See `your-house-built.md`'s own "Deployed" section.
+  server decoding. See `your_house_built.md`'s own "Deployed" section.
 - **2026-09-17 — your house arc closed out.** Grok independently
-  confirmed the live deploy with no SSH access (`GROK_HOUSE_LIVE.md`):
+  confirmed the live deploy with no SSH access (`grok_house_live.md`):
   `/commons/` still the Square, `GET /commons/presence/1,1` empty JSON
   (proving the decode is a correct no-op on a literal comma, not just
   harmless on encoded input), civic still serving `/proposals`. Could
@@ -2103,7 +2103,7 @@ Not bug classes. Not “what is live on the droplet.”
   bind, the mid-session ghost fix, and your house (including its own
   must-fix) are now all live and independently confirmed end to end.
 - **2026-09-17 — persist the bound house built, local-tested, not
-  deployed.** Brandon said "build" for `GROK_V5_ANSWER.md`'s named
+  deployed.** Brandon said "build" for `grok_v5_answer.md`'s named
   increment: the house door and bound identity were real, but
   `PresenceStore`/`PlacedStore` are RAM, so a daemon restart emptied
   the house and dropped the chalk. Safe thread, civic untouched. New
@@ -2125,13 +2125,13 @@ Not bug classes. Not “what is live on the droplet.”
   item survived while presence correctly did not; re-entering resumed
   at the exact last-left position; ownership check holds against both
   a second bound account and a plain guest. See
-  `persist-house-built.md`. Only the leave half of "leave / ~30s"
+  `persist_house_built.md`. Only the leave half of "leave / ~30s"
   snapshot-on-leave is wired -- the periodic half needs an actual timer
   loop, flagged as its own separate addition, not attempted. Holding
   on deploy.
 - **2026-09-17 — persist-house must-fix: walking out the door never
   snapshotted, fixed, still not deployed.** Grok review
-  (`GROK_PERSIST_REVIEW.md`) caught that the prior round's test proved
+  (`grok_persist_review.md`) caught that the prior round's test proved
   the mechanism (a direct `/presence/leave` call) but not the real
   path: `exitToOutdoor()` never calls `netLeave()`, walking out the
   house door is an ordinary rekey, so snapshot-on-leave alone would
@@ -2148,7 +2148,7 @@ Not bug classes. Not “what is live on the droplet.”
   an item, walked out via rekey (no leave call at all), killed and
   restarted the daemon -- resumed at the exact walk-out tile, item
   intact; `leave`'s own snapshot path re-confirmed unaffected. See
-  `persist-house-built.md`'s own "Must-fix" section. Holding on
+  `persist_house_built.md`'s own "Must-fix" section. Holding on
   deploy.
 - **2026-09-17 — persist house deployed, live.** Brandon said "deploy"
   (daemon first -- new `house.cpp` -- then client, no civic, no
@@ -2166,10 +2166,10 @@ Not bug classes. Not “what is live on the droplet.”
   have interrupted them for no new information. Cleaned up the
   throwaway account via its own `/settings/delete` -- its game-side
   rows are harmless orphans in the daemon's own DB, untouched by civic
-  account deletion by design. See `persist-house-built.md`'s own
+  account deletion by design. See `persist_house_built.md`'s own
   "Deployed" section.
 - **2026-09-18 — persist-house arc closed out.** Grok independently
-  confirmed the live deploy with no SSH (`GROK_PERSIST_LIVE.md`): Square
+  confirmed the live deploy with no SSH (`grok_persist_live.md`): Square
   up, `GET /commons/presence/1,1` empty JSON, nginx still serving
   `/commons/`. Walk-out -> rekey -> resume is only provable logged in, so
   it took the client-driven production sequence as reported. Also
@@ -2182,7 +2182,7 @@ Not bug classes. Not “what is live on the droplet.”
   Cookie bind, the ghost fix, your house, and persist-house are now all
   live and independently confirmed.
 - **2026-09-18 — friends query built, local-tested, not deployed.**
-  Brandon said "BUILD friends query" (`GROK_V6_ANSWER.md`). Second civic
+  Brandon said "BUILD friends query" (`grok_v6_answer.md`). Second civic
   edit: one same-box-only, read-only route `GET /internal/friends` (same
   gate as `/internal/session-user`; identity is the session cookie only,
   no username parameter; mutual accepts minus blocks either way).
@@ -2201,7 +2201,7 @@ Not bug classes. Not “what is live on the droplet.”
   caught a load-time crash (`FRIEND_LOT_DOORS` declared after the world
   is built) that reading the diff would not have. Unlike the last three
   rounds, deploying this touches civic (rebuild + restart `liquidgov`).
-  See `friends-query-built.md`. Holding on deploy.
+  See `friends_query_built.md`. Holding on deploy.
 - **2026-09-18 — friends query deployed, live.** Brandon said "deploy"
   (civic, then daemon, then client; no nginx). Drift-checked first --
   civic was 25 added lines, zero removed. Civic rebuilt and restarted
@@ -2233,7 +2233,7 @@ Not bug classes. Not “what is live on the droplet.”
   forever -- now it reads the reason. Daemon + client only; no civic, no
   nginx. Tested with three real civic accounts (friend, non-friend,
   blocked mid-visit; guest; owner offline) plus a real-browser client
-  pass. See `visiting-built.md`. Holding on deploy.
+  pass. See `visiting_built.md`. Holding on deploy.
 - **2026-09-18 — visiting deployed, live.** Brandon said "deploy"
   (daemon, then client; no civic, no nginx). Drift-checked first --
   only lines this round rewrote. Verified in production with three
@@ -2246,9 +2246,9 @@ Not bug classes. Not “what is live on the droplet.”
   blocked the friend and, within one cache window, the real client was
   walked out with a message, the door went dark, the house emptied, and
   re-entry returned 403. All three accounts deleted via
-  `/settings/delete`. See `visiting-built.md`'s "Deployed" section.
+  `/settings/delete`. See `visiting_built.md`'s "Deployed" section.
 - **2026-09-18 — visiting arc closed out.** Grok independently confirmed
-  the deploy with no SSH (`GROK_VISITING_LIVE.md`): Square up, empty
+  the deploy with no SSH (`grok_visiting_live.md`): Square up, empty
   presence and lots, public `/internal/friends` 404; the logged-in Visit,
   wall Look, and block eviction rest on the production three-account
   pass. Visitor-linger and the 15s eviction lag stay as known limits.
@@ -2275,7 +2275,7 @@ Not bug classes. Not “what is live on the droplet.”
   a real-browser client pass (guest sends nothing; bound restores once;
   an in-flight pick isn't overwritten). Daemon + client only. Deploy
   note: back up the production `commons.sqlite` first. See
-  `bound-inventory-built.md`. Holding on deploy.
+  `bound_inventory_built.md`. Holding on deploy.
 - **2026-09-18 — bound inventory deployed, live.** Brandon said
   "deploy" (backup, daemon, client; no civic, no nginx). Took a
   consistent online backup of the production `commons.sqlite` first
@@ -2303,7 +2303,7 @@ Not bug classes. Not “what is live on the droplet.”
   shrinks to a corner badge so the two share the slot. Tested with real
   uploaded PNGs (a second frame becomes `/latest`, index 0 unchanged,
   block and clear both 404) and a real browser. Deploy order: civic, then
-  client; no daemon, no nginx. See `latest-built.md`. Holding on deploy.
+  client; no daemon, no nginx. See `latest_built.md`. Holding on deploy.
 - **2026-09-18 — /latest deployed, live.** Brandon said "deploy" (civic,
   then client; no daemon, no nginx). Drift-checked first -- civic was 27
   added lines, zero removed. Verified in production with three throwaway
@@ -2314,7 +2314,7 @@ Not bug classes. Not “what is live on the droplet.”
   A viewer who blocked the owner gets 404; anonymous still 200. **Two
   things worth knowing:** (1) civic's block check is one-directional (it
   hides frames from a viewer who blocked the *owner*, not the reverse, and
-  anonymous skips it) -- copied as specified, and `canvas-frame.md`'s
+  anonymous skips it) -- copied as specified, and `canvas_frame.md`'s
   "either side" overstates it; an owner-side hide would be a separate civic
   change. (2) **Pre-existing client bug found, not fixed:** a bound
   player's own daemon row (`u:<name>`) isn't filtered out by the client's
@@ -2337,7 +2337,7 @@ Not bug classes. Not “what is live on the droplet.”
   unknown, vanished on the bound join answer and stayed gone, a
   look-alike `ghostuser (2)` row was still drawn, guests unchanged. No
   deploy until Grok reviews; deploy later is client only. See
-  `self-ghost-built.md`. **CI:** `.github/workflows/commons.yml` is
+  `self_ghost_built.md`. **CI:** `.github/workflows/commons.yml` is
   committed locally from `ci.md` but **not pushed** -- the GitHub token
   lacks the `workflow` scope; see the status report, not resolved here.
 - **2026-09-18 -- CI landed; self-ghost deployed (client only).** After
@@ -2356,18 +2356,18 @@ Not bug classes. Not “what is live on the droplet.”
   Self-ghost closed. Remaining named option: **mine**.
 - **2026-09-19 -- mine A built, local-tested, not deployed.** "BUILD mine"
   had no spec (every earlier doc said boarded, no interior), so I asked
-  (`CLAUDE_MINE_QUESTION.md`); Brandon/Grok chose **A, honest cave, no ore,
-  guests welcome, client only** (`GROK_MINE_ANSWER.md`). The Quarry Ridge adit
+  (`claude_mine_question.md`); Brandon/Grok chose **A, honest cave, no ore,
+  guests welcome, client only** (`grok_mine_answer.md`). The Quarry Ridge adit
   now has one door tile into a shared 16x12 `instance:mine` (dirt, rock walls,
   two sit-rocks, one lit lamp tile, one sign "No ore. That's honest."); the
   outdoor sign reads "Watch your step."; nothing to place or pick up; Enter
   leaves onto the tile in front of the adit; the passerby stays outdoors. No
   daemon/civic/nginx/schema change, no new tileset (two flat-colour tile ids).
   Verified as a guest in a real browser against a scratch daemon. See
-  `mine-built.md`. Deploy is client only, after Grok's review and Brandon's
+  `mine_built.md`. Deploy is client only, after Grok's review and Brandon's
   `deploy`.
 - **2026-09-19 -- mine A deployed (client only).** Grok accepted
-  (`GROK_MINE_REVIEW.md`); Brandon said `deploy`. Synced to `/opt/commons`,
+  (`grok_mine_review.md`); Brandon said `deploy`. Synced to `/opt/commons`,
   droplet and served md5 equal local (`1f4eab59...`); no daemon/civic/nginx
   change. Live check with two guest tabs: both in `instance:mine`, each saw
   the other; sign, exit-to-adit, outdoor sign, workshop "Closed for now.",
@@ -2383,7 +2383,7 @@ Not bug classes. Not “what is live on the droplet.”
   a separate one-liner) and `ci.md`'s block still says `ubuntu-latest`
   (Grok's doc). Parked still: house `open`/`locked`, the ~30s snapshot.
 - **2026-09-19 -- checkout@v5.** Brandon: "BUILD checkout@v5" (Grok's
-  `GROK_CHECKOUT_V5.md`; Node 20 leaves the runners 2026-09-23). One line:
+  `grok_checkout_v5.md`; Node 20 leaves the runners 2026-09-23). One line:
   `actions/checkout@v4` -> `@v5`; `fetch-depth: 0` and `ubuntu-24.04` stay;
   no `ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION`. `ci.md`'s block synced to
   match. Pushed as `4293edf`; run green in 1m11s and the run page shows no
@@ -2399,11 +2399,11 @@ Not bug classes. Not “what is live on the droplet.”
   the accept-loop thread. Verified with `kill -9` against real civic: control
   (killed before any tick) has no resume; after 35s it resumes (5,4,f1);
   standing in the demo house writes nothing to the house row; the persist-house
-  regression still passes. See `snapshot-built.md`. Deploy is daemon only,
+  regression still passes. See `snapshot_built.md`. Deploy is daemon only,
   after Grok's review and Brandon's `deploy`. Parked still: house
   `open`/`locked`.
 - **2026-09-19 -- ~30s snapshot deployed (daemon only).** Grok accepted
-  (`GROK_SNAPSHOT_REVIEW.md`); Brandon said `deploy`. Drift check clean (only
+  (`grok_snapshot_review.md`); Brandon said `deploy`. Drift check clean (only
   the four edited files differed), online SQLite backup first
   (`commons.sqlite.pre-snapshot-20260919T041014Z`, left on the box), sync,
   `-j1` build on the droplet, restart. Verified across a 40s window through
@@ -2414,9 +2414,9 @@ Not bug classes. Not “what is live on the droplet.”
 - **2026-09-19 -- house friends/locked (A) built, local-tested, not deployed.**
   "BUILD house open/locked" had no spec and `open` collides with the civic
   freeze (civic can't say who has blocked whom, so a stranger-facing door
-  couldn't honour a block); I asked (`CLAUDE_HOUSE_POLICY_QUESTION.md`) and
+  couldn't honour a block); I asked (`claude_house_policy_question.md`) and
   Brandon/Grok chose **A: friends/locked only, `open` waits on a civic block
-  probe** (`GROK_HOUSE_POLICY_ANSWER.md`). An owner locks their own house from
+  probe** (`grok_house_policy_answer.md`). An owner locks their own house from
   a latch tile inside it; `players.visit_policy` (default `friends`, idempotent
   startup migration), owner-only `POST /presence/house-policy` (cookie identity,
   guests 403, `open` 400), `visit_allowed` checks it on join/rekey/**move** so a
@@ -2424,7 +2424,7 @@ Not bug classes. Not “what is live on the droplet.”
   `/presence/lots`, and join/rekey echo the owner's policy. Verified against
   real civic with three accounts (incl. restart persistence and a real
   old-shape DB migration) and in a real browser with the request stubbed. No
-  civic/nginx change. See `house-policy-built.md`. Deploy: **daemon first**
+  civic/nginx change. See `house_policy_built.md`. Deploy: **daemon first**
   (schema change: online SQLite backup first), then client, after Grok's review
   and Brandon's `deploy`. Parked still: `open`, `rebind()`, `lg_session` cache,
   orphan reaping.
@@ -2446,20 +2446,20 @@ Not bug classes. Not “what is live on the droplet.”
   water lip on edges that meet non-water, and wood grain on `T_BENCH`; every
   shade derived from the tile's own colour, so no new palette, asset or draw
   path. One bake, one blit, ~51ms at load. Looked at in a real browser and
-  pixel-checked; console clean. See `tile-dither-built.md`. The tileset PNG +
+  pixel-checked; console clean. See `tile_dither_built.md`. The tileset PNG +
   player sheet is the separate, un-named next step. Deploy: client sync on
   Brandon's `deploy`.
 - **2026-09-19 -- tile dither deployed (client only).** Grok accepted
-  (`GROK_TILE_DITHER_REVIEW.md`); Brandon said `deploy`. Client sync to
+  (`grok_tile_dither_review.md`); Brandon said `deploy`. Client sync to
   `/opt/commons`; droplet = served = local `dde34287...` (was `e99898fa...`);
   no daemon/civic/nginx change. Guest check on prod: grass checker and creek
   lip render, console clean. Open: Brandon's eye on the dots at real zoom (thin
   the lattice if they crawl). Tileset PNG + player sheet still unnamed.
 - **2026-09-19 -- tileset PNG + player sheet built, local-tested, not deployed.**
   Brandon: "BUILD tileset PNG + player sheet" (Grok's graphics note +
-  `atlas-pack.md`: `tiles.png` 16x16 grid in `T_*` order, `sprites.png` 4 dir x 2
+  `atlas_pack.md`: `tiles.png` 16x16 grid in `T_*` order, `sprites.png` 4 dir x 2
   frame, bake stamps once). Client only. I drew it, from `art.md`'s V1 list, with
-  `Persistence/TheCommons/art/make_art.py` (stdlib, deterministic, checks each
+  `docs/archive/the_commons/art/make_art.py` (stdlib, deterministic, checks each
   tile's mean colour against the client's own `COLOR`). The bake stamps from the
   sheet via `drawTile()` once the PNG loads (world first bakes with `paintTile`,
   which stays as the fallback; a 404 or wrong size keeps the painted look).
@@ -2467,7 +2467,7 @@ Not bug classes. Not “what is live on the droplet.”
   smaller than the viewport (the mine) left stale outdoor pixels below them; the
   margin is now cleared to the page black and the bottom hint/toast draw in paper
   there. Verified in a real browser (Square, creek, woods, Homestead, Lab, mine,
-  all four facings, no-PNG fallback). See `tile-sheets-built.md`. Deploy: client
+  all four facings, no-PNG fallback). See `tile_sheets_built.md`. Deploy: client
   sync now carries index.html + tiles.png + sprites.png; check `200 image/png`.
 - **2026-09-19 -- tileset PNG + player sheet deployed (client only).** Brandon
   said `deploy`; Grok's review was not on file, so it went on his word. Client
@@ -2480,7 +2480,7 @@ Not bug classes. Not “what is live on the droplet.”
   civic block probe), `rebind()`, `lg_session` cache, orphan reaping; Brandon's
   eye on the grass dots and the new art at real zoom.
 - **2026-09-19 -- daemon janitor (rest slice 2) built, local-tested, not deployed.**
-  Brandon: "BUILD session cache"; Grok's `GROK_REST_2.md` pairs it with the
+  Brandon: "BUILD session cache"; Grok's `grok_rest_2.md` pairs it with the
   `sqlite3_step` checks, so I built the slice as written. Daemon only. (1)
   `civic::resolve_username` keeps a positive answer 15s in RAM keyed on the Cookie
   value (failures and "no such session" are never cached; guests never reach
@@ -2491,11 +2491,11 @@ Not bug classes. Not “what is live on the droplet.”
   can't strand a player. Verified with real civic frozen via SIGSTOP (hit 0.46ms,
   miss ~1s, failure not pinned, TTL expiry) and failures injected with triggers
   (wall write rolled back, leave still ok, daemon never died); all prior
-  regressions pass. See `janitor-built.md`. Deploy: daemon only, online SQLite
+  regressions pass. See `janitor_built.md`. Deploy: daemon only, online SQLite
   copy first, after Grok's review and Brandon's `deploy`. Parked: `rebind()` (3),
   `open` + orphans (4).
 - **2026-09-19 -- daemon janitor (rest slice 2) deployed (daemon only).** Grok
-  accepted (`GROK_REST_2_REVIEW.md`); Brandon said `deploy`. Drift check clean
+  accepted (`grok_rest_2_review.md`); Brandon said `deploy`. Drift check clean
   (five edited files + new `sqlx.hpp`), online SQLite backup first
   (`commons.sqlite.pre-janitor-20260919T084253Z`, left on the box), sync, `-j1`
   build with no reconfigure, restart. 40s window through nginx all 200 (lots,
@@ -2504,7 +2504,7 @@ Not bug classes. Not “what is live on the droplet.”
   real bound cache hit is not observable from outside. Parked: `rebind()` (slice
   3), `open` + orphans (slice 4, the only civic one).
 - **2026-09-19 -- `rebind()` (rest slice 3) built, local-tested, not deployed.**
-  Brandon: "BUILD rebind" (`GROK_THE_REST.md` slice 3; `cookie-bind.md` left the
+  Brandon: "BUILD rebind" (`grok_the_rest.md` slice 3; `cookie_bind.md` left the
   primitive open). A guest who logs in mid-session is now relabelled `u:<name>` IN
   PLACE on their next move: `PresenceStore::rebind` keeps x/y/facing/last_update,
   spends no cap slot, supersedes a second tab's older row, disambiguates the name
@@ -2514,7 +2514,7 @@ Not bug classes. Not “what is live on the droplet.”
   same `netApplyJoinJson` a join answer uses (so the self-ghost filter, nameplate,
   house key follow). Verified with real civic (one `u:` row, no ghost, guards,
   second tab, name collision) and in a real browser with the answer stubbed; all
-  prior cookie/visit/policy/persist regressions pass. See `rebind-built.md`.
+  prior cookie/visit/policy/persist regressions pass. See `rebind_built.md`.
   Deploy: daemon, then client, after Grok's review and Brandon's `deploy`. Parked:
   `open` + orphans (slice 4, the only civic one).
 - **2026-09-19 -- `rebind()` (rest slice 3) deployed (daemon, then client).**
@@ -2531,7 +2531,7 @@ Not bug classes. Not “what is live on the droplet.”
   now are).
 - **2026-09-19 -- `open` houses (rest slice 4a) built, local-tested, not deployed.**
   Brandon: "BUILD open A, split, orphans log-only"; Grok's
-  `GROK_REST_4_ANSWER.md`: 4a first with discovery A, 4b orphans later. **Fourth
+  `grok_rest_4_answer.md`: 4a first with discovery A, 4b orphans later. **Fourth
   named civic edit:** same-box `GET /internal/blocked/<username>` (cookie = viewer,
   path = owner, `{"blocked":true}` if either side blocked the other, fails
   closed on no session/unknown owner/malformed). Daemon: `civic::block_answer`
@@ -2542,11 +2542,11 @@ Not bug classes. Not “what is live on the droplet.”
   cycles friends -> open -> locked. Verified against real civic with seven
   accounts (blocks both directions, guest, injection guard, live policy changes,
   block eviction after the TTL, fail-closed with civic frozen) and in a browser
-  with the request stubbed. See `open-built.md`. Deploy: **civic first** (drift-check
+  with the request stubbed. See `open_built.md`. Deploy: **civic first** (drift-check
   the droplet's `http_server.cpp`), then daemon, then client, after Grok's review and
   Brandon's `deploy`. 4b orphans is its own BUILD (log-only first).
 - **2026-09-19 -- `open` houses (rest slice 4a) deployed (civic, then daemon, then
-  client).** Grok accepted (`GROK_REST_4A_REVIEW.md`); Brandon said `deploy`. Civic
+  client).** Grok accepted (`grok_rest_4a_review.md`); Brandon said `deploy`. Civic
   drift check first: the droplet's `http_server.cpp` equalled the previous git version
   (`81eb0e5e...`), only that file differed. Online game-DB backup
   (`commons.sqlite.pre-open-20260919T093423Z`, left on the box), civic `-j1` build +
@@ -2558,7 +2558,7 @@ Not bug classes. Not “what is live on the droplet.”
   real accounts). **4a is live.** Parked: 4b orphans (own BUILD: `user-exists`,
   log-only first, two passes, cap 3, backup).
 - **2026-09-19 -- orphan watch, LOG-ONLY (rest slice 4b) built, local-tested, not
-  deployed.** Brandon: "BUILD orphans log-only"; Grok's valves (`GROK_REST_4_ANSWER.md`).
+  deployed.** Brandon: "BUILD orphans log-only"; Grok's valves (`grok_rest_4_answer.md`).
   Civic: same-box `GET /internal/user-exists/<username>` (`exists` true/false for a
   well-formed name, `null` for a malformed one, never false). Daemon: `civic::user_exists`
   (Exists/Gone/Unknown; only an explicit false is Gone) and a ~10-minute pass on the
@@ -2568,11 +2568,11 @@ Not bug classes. Not “what is live on the droplet.”
   don't-know, suspect guard when every account reads gone. **No DELETE anywhere.**
   Verified against real civic with real deleted accounts (rows unchanged; SIGSTOP resets
   the streak; re-registered name clears it; cap defers the 4th; suspect guard). See
-  `orphans-built.md`. Deploy: civic then daemon, no client, backup first; then read the
+  `orphans_built.md`. Deploy: civic then daemon, no client, backup first; then read the
   journal (~20 min) -- expect the earlier throwaway accounts. The reap itself is a
   separate later BUILD Brandon names after reading the list.
 - **2026-09-19 -- orphan watch (log-only) deployed (civic, then daemon).** Grok accepted
-  (`GROK_REST_4B_REVIEW.md`); Brandon said `deploy`. Civic drift check clean (droplet =
+  (`grok_rest_4b_review.md`); Brandon said `deploy`. Civic drift check clean (droplet =
   previous git version), online game-DB backup first
   (`commons.sqlite.pre-orphans-20260919T101314Z`, left on the box). Fixed a suspect-guard
   flaw found while reading the real `players` list (online players are skipped, so it
@@ -2599,11 +2599,11 @@ Not bug classes. Not “what is live on the droplet.”
   untouched, valid pre-reap backups, a new owner of a reaped name gets an empty house and no
   inventory, frozen civic reaps nothing, failed backup reaps nothing, kill switch works.
   (My first run used invalid one-letter usernames and exercised nothing; redone.) See
-  `orphans-reap-built.md`. Deploy: daemon only, backup first, after Grok's review and Brandon's
+  `orphans_reap_built.md`. Deploy: daemon only, backup first, after Grok's review and Brandon's
   `deploy`; expect `persistverify9`, `vtowner`, `invverify1` at ~20 min and `ptvisitor` at ~30.
-  Also noted: Grok's `civic-ratelimit.md` (explore, not a build): no limiter on `/internal/`.
+  Also noted: Grok's `civic_ratelimit.md` (explore, not a build): no limiter on `/internal/`.
 - **2026-09-19 11:30Z -- orphan REAP deployed (daemon only).** Grok accepted
-  (`GROK_ORPHAN_REAP_REVIEW.md`); Brandon said `deploy`. Drift clean (five daemon files),
+  (`grok_orphan_reap_review.md`); Brandon said `deploy`. Drift clean (five daemon files),
   manual online SQLite copy first (`commons.sqlite.pre-reap-manual-20260919T112956Z`),
   `-j1` build + restart at 11:30:28Z; journal: `orphan watch is REAPING`; DB integrity
   ok, counts unchanged, no failures. Expected: 1st pass ~11:40Z (logs gone), 2nd ~11:50Z
@@ -2620,10 +2620,10 @@ Not bug classes. Not “what is live on the droplet.”
   players. No failures, no restarts. The inheritance hole (a re-registered deleted
   username getting the old player's house/inventory) is closed; the watch keeps running,
   kill switch `COMMONS_ORPHAN_REAP=0`. **Rest slices 1-4 and the reap are all live.**
-  Nothing is parked from that list; `backup-strat.md` and `civic-ratelimit.md` are explore
+  Nothing is parked from that list; `backup_strat.md` and `civic_ratelimit.md` are explore
   notes, not builds.
 - **2026-09-19 -- hardening (four daemon fixes) built, local-tested, not deployed.** From
-  Claude's survey, Grok's `GROK_HARDENING.md`. (1) guest secrets from `getrandom`, not a seeded
+  Claude's survey, Grok's `grok_hardening.md`. (1) guest secrets from `getrandom`, not a seeded
   Mersenne Twister; (2) guest registry capped at 256 -- **evicts instead of the spec's 503**
   (the client doesn't check the mint reply), never-used credentials expire in 2 min and go
   first; (3) 5s socket timeouts + 10s whole-request deadline, truncated bodies closed not
@@ -2631,10 +2631,10 @@ Not bug classes. Not “what is live on the droplet.”
   optional; unknown = never evict a friends-house visitor, never admit a new one, lots dark
   for that poll only). Tested against real civic incl. frozen-civic timing proofs; my first
   friends-cache test was wrong (froze civic after both caches had expired) and was redone.
-  See `hardening-built.md` (also notes a possible civic-outage breaker for Grok to decide).
+  See `hardening_built.md` (also notes a possible civic-outage breaker for Grok to decide).
   nginx `limit_req` on `/guest` stays a later named deploy. Deploy: daemon only.
 - **2026-09-19 12:55Z -- hardening deployed (daemon only).** Grok accepted
-  (`GROK_HARDENING_REVIEW.md`: evict-not-503 correct, no civic breaker, nginx `/guest`
+  (`grok_hardening_review.md`: evict-not-503 correct, no civic breaker, nginx `/guest`
   limit later); Brandon said `deploy`. Drift clean (eight daemon files), manual online SQLite
   copy first (`commons.sqlite.pre-hardening-20260919T125451Z`), `-j1` build + restart at
   12:55:33Z; DB integrity ok, counts unchanged, journal clean, no restarts. Public guest
@@ -2644,7 +2644,7 @@ Not bug classes. Not “what is live on the droplet.”
   unbuilt: nginx `limit_req` on `/guest` (deploy), tests-in-CI, deploy scripts, backup
   retention, splitting `index.html`, `/health` hash.
 - **2026-09-19 -- tests in CI built; CI is the last check.** Brandon: "BUILD tests in CI"
-  (`GROK_NEXT.md` #1). `commons-daemon/tests/`: 11 files, ~300 real assertions, `lib.sh`,
+  (`grok_next.md` #1). `commons-daemon/tests/`: 11 files, ~300 real assertions, `lib.sh`,
   `run_all.sh`, frozen old-schema fixtures, and `civic_stub.py` (in-memory civic: the public
   signup/friends/block/delete routes plus the four `/internal/*` routes with civic's semantics).
   The stub is validated: the whole suite passes against BOTH the stub and the real
@@ -2656,7 +2656,7 @@ Not bug classes. Not “what is live on the droplet.”
   printing as 'None') were caught by asserting preconditions. No daemon/civic/client/nginx change,
   no droplet, no deploy. First CI run (d9d1b51): 10/11 files green incl. the strace check; `test_house` failed because
   `test_guest`'s strace wrapper was killed but its traced daemon lived on, holding :8765 (the next file's daemon died on
-  bind(); health passed against the survivor). Harness fixed + `test_harness.sh` added. See `tests-built.md`. Still unbuilt: deploy scripts, nginx `/guest`
+  bind(); health passed against the survivor). Harness fixed + `test_harness.sh` added. See `tests_built.md`. Still unbuilt: deploy scripts, nginx `/guest`
   limit, backup retention, `index.html` split, `/health` hash.
 - **2026-09-19 -- `reqjson` corrected: latent bug, not harmless.** Grok's review of `c6a7a4f` (CI green,
   accepted) caught that I called the naive `find("\"key\"")` scanner harmless. Reproduced: name-before-fields
@@ -2668,7 +2668,7 @@ Not bug classes. Not “what is live on the droplet.”
   `x`, name-first body) can no longer be read as a key. Same API/call sites; `field_num` stricter (JSON-number
   token only). `tests/reqjson_unit.cpp` (201 checks) + `tests/test_reqjson.sh` (102 assertions incl. name-first
   bodies through the daemon) run in CI via `run_all.sh`; mutation-checked against the old header. The live
-  daemon still has the old parser until `deploy`. See `reqjson-built.md`. Next per Grok: deploy scripts, then nginx.
+  daemon still has the old parser until `deploy`. See `reqjson_built.md`. Next per Grok: deploy scripts, then nginx.
 - **2026-09-19 -- `BUILD deploy scripts` built (files + fake-droplet tests; NO droplet contact).** `commons-daemon/deploy/`:
   `lib.sh` (shared config + the one exclusion list + a deployed-revision marker), `drift-check.sh` (droplet vs the
   LAST-DEPLOYED revision by checksum, so a hand edit on the box is reported, plus what this deploy will change),
@@ -2679,7 +2679,7 @@ Not bug classes. Not “what is live on the droplet.”
   run: `deploy-daemon.sh --baseline 60f6745` (plan, read-only) on `deploy`. `tests/test_deploy.sh` (119 assertions,
   fake droplet behind a shim ssh) is mutation-checked (10 breakages) and found 2 real bugs in my own scripts;
   CI also runs `bash -n` + `shellcheck` on them. The reqjson fix is still not live (needs `deploy`). See
-  `deploy-scripts-built.md`, `commons-daemon/deploy/README.md`. Still unbuilt: nginx `/guest`, backup retention.
+  `deploy_scripts_built.md`, `commons-daemon/deploy/README.md`. Still unbuilt: nginx `/guest`, backup retention.
 - **2026-09-19 ~15:25Z -- reqjson DEPLOYED (daemon only), the first real run of the deploy scripts.** Brandon: `deploy`
   (plan-only: no drift, 10 files: `reqjson.hpp` + nine `deploy/` files) then `deploy` again (`--go --baseline 60f6745
   --guest-name x`). Backup `commons.sqlite.pre-a56eba3-20260919T152437Z` (integrity ok); `-j1` build, no reconfigure;
@@ -2691,7 +2691,7 @@ Not bug classes. Not “what is live on the droplet.”
   as `/etc/nginx/conf.d/commons-guest-zone.conf`) and one EXACT-match `location = /commons/presence/guest` in
   `nginx-commons.conf` (`burst=30 nodelay`, status 429, default HTML body on purpose: the client's `netMint` never
   checks status, a JSON body would loop it on 403). `/internal/` is never touched. **The numbers are my decision (no
-  doc gave any): flagged for veto in `nginx-guest-built.md`.** `tests/test_nginx_guest.sh`: 12 static assertions
+  doc gave any): flagged for veto in `nginx_guest_built.md`.** `tests/test_nginx_guest.sh`: 12 static assertions
   (mutation-checked, 8 breakages) + a behavioural half with a REAL nginx in front of the real daemon, CI-only (no
   nginx locally). Needs its own `deploy` (nginx by hand). Unbuilt: backup retention; client `netMint` r.ok check.
 - **2026-09-19 ~15:46Z -- nginx `/guest` rate limit DEPLOYED (nginx only, by hand).** Brandon: `deploy`; Grok had
@@ -2710,7 +2710,7 @@ Not bug classes. Not “what is live on the droplet.”
   treated identically; non-backup names are ignored. Age = the younger of the name's stamp and the mtime. Refuses on a failed
   listing or a future-dated backup. `test_retention.sh` (47) + `prune_backups_unit.py` (361, incl. 300 random directories),
   mutation-checked (12 breakages). Not scheduled; not run by `deploy-daemon.sh`. Today the droplet has ~a dozen backups all
-  < 2 days old, so a first real run (a dry run, on `deploy`) would delete nothing for ~a month. See `backup-retention-built.md`.
+  < 2 days old, so a first real run (a dry run, on `deploy`) would delete nothing for ~a month. See `backup_retention_built.md`.
 - **2026-09-19 ~16:10Z -- backup retention: first real run = a DRY RUN on the droplet (Brandon: `deploy`).** Read-only,
   nothing deleted: 12 backups, keep 12, delete 0 (all from the last ~24h; dir 1.4M, disk 57%). **Finding:** every backup
   also has `-wal` (0 B) and `-shm` (32 KB) sidecars (24 of 36 files); the pruner ignores them, so deleting an old backup would
@@ -2722,12 +2722,12 @@ Not bug classes. Not “what is live on the droplet.”
   deleted. The dry-run list is newest-first with each backup's sidecars right under it. Summary line now counts backups,
   sidecars, orphans, ignored. Unit checks 361 -> 378, `test_retention.sh` 47 -> 76 (real sidecar files, orphans, look-alikes),
   mutation-checked (8 more breakages). Today's droplet dry run would read `12 backups: keep 12, delete 0; sidecars: keep 24,
-  delete 0`. Still not scheduled; no `--delete` until something is old enough (~a month). See `backup-retention-built.md`.
+  delete 0`. Still not scheduled; no `--delete` until something is old enough (~a month). See `backup_retention_built.md`.
 - **2026-09-19 -- `BUILD netMint check` built (client only; tested; NOT deployed).** `commons/index.html` `netMint()` now accepts a credential
   only from a 200 with string `id` + `secret` (the old one read any JSON, a JSON error body would have set `netReady` with `id` undefined
   and looped on 403s), retries every failure with capped backoff (2s,4s,8s,16s,30s cap, +/-20% jitter, honours a capped Retry-After)
   instead of leaving the player local-only until reload, and shares ONE mint loop between startup and `netHandleAuthFailure()`. The
-  numbers are my decision (veto in `netmint-built.md`). `tests/netmint_unit.js` runs the SHIPPED block under node (fake clock, scripted
+  numbers are my decision (veto in `netmint_built.md`). `tests/netmint_unit.js` runs the SHIPPED block under node (fake clock, scripted
   fetch): 88 checks, mutation-checked (11 breakages), in CI via `test_netmint.sh`. Verified in a real browser against a real daemon:
   injected 429s retried at 0/1.7/6.5s then recovered; a real daemon restart gave 3 simultaneous 403s -> ONE mint -> rejoin. Client deploy
   needs `deploy` (`drift-check.sh --tree client --baseline <live commit>`, then `sync-client-to-droplet.sh`; no daemon restart, no nginx).
@@ -2745,24 +2745,24 @@ Not bug classes. Not “what is live on the droplet.”
   (the marker the sync writes before the build) > git (+dirty) > unknown; only sha-shaped tokens get through (it lands in a C string and JSON).
   `verify.sh` now fails if the RUNNING commit differs from the marker (a stale, unrebuilt or unrestarted binary); skipped with a note when
   either side is missing. `test_health.sh` (57, incl. the real no-reconfigure incremental rebuild) + `test_deploy.sh` (131), mutation-checked
-  (8). Format is my choice (veto in `health-commit-built.md`). A deploy will reconfigure (CMake changed). Parked: `index.html` split.
+  (8). Format is my choice (veto in `health_commit_built.md`). A deploy will reconfigure (CMake changed). Parked: `index.html` split.
 - **2026-09-19 ~17:23Z -- `/health` commit hash DEPLOYED (daemon).** Brandon: `deploy` twice (read-only plan, then `--go`). No drift; backup
   `commons.sqlite.pre-d9363b5-20260919T172306Z` (integrity ok); sync wrote the marker, then a RECONFIGURE + `-j1` build (CMake changed) picked it up;
   restart; verify 33/33 including the new check that the running commit equals the deployed revision (`d9363b5d7aa5`). Live `/health` now
   `{"status":"ok","commit":"d9363b5d7aa511beae70de082bb3203ad33e37ec"}`, loopback-only (`/commons/health` is 404 publicly). Row counts unchanged. Parked: `index.html` split.
 - **2026-09-19 -- `BUILD index.html split`: asked before building (no spec).** No doc says how (only "one vanilla file, no build step"), and the
-  file is 2,243 lines / 103 KB of shared global state (106 vars, 68 functions, load-order-dependent, one `"use strict"`). `CLAUDE_SPLIT_QUESTION.md`
+  file is 2,243 lines / 103 KB of shared global state (106 vars, 68 functions, load-order-dependent, one `"use strict"`). `claude_split_question.md`
   gives options (A classic `<script src>` files in the same global scope, recommended; B ES modules; C extract only CSS + networking; D don't) and
   the traps (`"use strict"` is per file; a multi-file deploy is not atomic: two-phase client sync). Proof plan: byte-equivalence of the JS,
   `node --check`, a CI file-reference test, a real-browser before/after parity check. Waiting on Brandon's one-letter answer; no code written.
 - **2026-09-19 -- `BUILD index.html split` (A) built and proven; NOT deployed.** Brandon: "BUILD A. Prove load order in CI. Two-phase sync.
-  Do not deploy." (`GROK_SPLIT_ANSWER.md`: classic `<script src>` files, one global scope, no modules.) `commons/index.html` is now a 42-line shell
+  Do not deploy." (`grok_split_answer.md`: classic `<script src>` files, one global scope, no modules.) `commons/index.html` is now a 42-line shell
   + `style.css` + eight scripts (`js/world, interiors, sprites, actors, net, input, interact, main`), each starting with `"use strict";`. Proof:
   the JS minus the added directives equals the old script body byte for byte; `tests/client_files_unit.js` loads the REAL files IN TAG ORDER under a
   stubbed DOM and fails on any ReferenceError (hoisting is what the split loses), checks the load-time code really ran by its effects, and its
   wrong-order controls throw; mutation-checked (11); a real-browser old-vs-new comparison found identical globals, function sources, values, baked
   world and sprite atlas, and identical runtime behaviour. Two-phase client sync (`index.html` last; nothing lands if phase 1 fails; 148 deploy
-  assertions, 3 mutations). netMint tests repointed at `js/net.js`; CI gate 5 now matches any `commons/` file. See `split-built.md`. A client deploy
+  assertions, 3 mutations). netMint tests repointed at `js/net.js`; CI gate 5 now matches any `commons/` file. See `split_built.md`. A client deploy
   needs `deploy` (client only, no daemon restart).
 - **2026-09-19 ~18:17Z -- `index.html` split DEPLOYED (client only).** Brandon: `deploy` twice after review (CI green on `bf377c7`). Read-only client
   drift check first (no drift, exactly the ten expected files). The sync was delayed by a Windows host error (WSL could not start, `0x800705aa`, host
@@ -2772,7 +2772,7 @@ Not bug classes. Not “what is live on the droplet.”
   `verify.sh` 23/23; a real browser on the live page entered as `x`, minted and joined, console clean. Parked list is now empty (`index.html` split done;
   `/commons/recipes` 404 left alone by instruction).
 - **2026-09-19 -- `BUILD connection status`: asked before building (no spec).** My own suggestion, so no doc specifies it. Today a visitor gets NO signal
-  when the client can't reach the daemon (move/poll failures are swallowed at ~10 sites; only the mint retry loop warns in the console). `CLAUDE_STATUS_QUESTION.md`:
+  when the client can't reach the daemon (move/poll failures are swallowed at ~10 sites; only the mint retry loop warns in the console). `claude_status_question.md`:
   A = a small DOM badge outside the canvas (accessible, `role=status`), shown only after the problem lasts (4s with no credential, or 6 consecutive
   move/poll failures), hidden on the next success, one "Reconnecting…" line, observe-only (no request or retry change); B = on-canvas; C = reuse the
   toast; D = nothing. Waiting on Brandon's one-letter answer; no code written.
@@ -2783,25 +2783,25 @@ Not bug classes. Not “what is live on the droplet.”
   restart would show it after ~1s. `netstatus_unit.js` (31) + `test_netstatus.sh` (29), mutation-checked (14). That run found a real bug in my own wrappers: under Windows node the
   unit's exit code was lost (`PIPESTATUS` after `$(...|tr)`), so a failing unit passed locally (CI unaffected); fixed in netmint/client_files/netstatus. Real browser
   + real daemon (frame loop driven from a timer, the pane being hidden): badge at the 6th failed heartbeat, hidden 257ms after the daemon answered, a refused remint
-  shows at 5s and clears on recovery, no overlap with the d-pad on desktop or a 375x812 phone. Client deploy needs `deploy` (index.html, style.css, js/main.js, js/net.js). See `connection-status-built.md`.
-- **2026-09-19 -- `BUILD` objects, step B (region scatter) built, tested and DEPLOYED (d2b6859, client only, verified).** Brandon: "can we finish populating the game with objects?" -> question doc (`CLAUDE_OBJECTS_QUESTION.md`) -> "all of that" -> my order B, A, C, D -> `build`
+  shows at 5s and clears on recovery, no overlap with the d-pad on desktop or a 375x812 phone. Client deploy needs `deploy` (index.html, style.css, js/main.js, js/net.js). See `connection_status_built.md`.
+- **2026-09-19 -- `BUILD` objects, step B (region scatter) built, tested and DEPLOYED (d2b6859, client only, verified).** Brandon: "can we finish populating the game with objects?" -> question doc (`claude_objects_question.md`) -> "all of that" -> my order B, A, C, D -> `build`
   (taken as step 1). B = 168 props from the six existing prop tiles (`SCATTER` data in `js/world.js`, placed last by `scatterRegions()`, plain ground only, refusals recorded). A test forbids the spine, jog, region seams, name strips,
   door/sign rings, spawn, waypoints and flood-fills the real collision array so nothing is sealed (14 + 7, 9 mutations; a first sealed-pocket mutation was vacuous and was redone). **Found and fixed a live bug:** `forceRedraw` was declared in
   main.js (last) but assigned by sprites.js image `onload`s, so a cached image firing between two script tags threw a strict-mode ReferenceError (benign in effect; declaration moved to sprites.js; `client_files_unit` now fires image onloads after each
-  script, 55 checks). Client-only deploy needs `deploy`. Still to come, one BUILD each: A (lab lookups, daemon migration), C (house furniture), D (pick-ups, needs a question doc). See `scatter-built.md`.
+  script, 55 checks). Client-only deploy needs `deploy`. Still to come, one BUILD each: A (lab lookups, daemon migration), C (house furniture), D (pick-ups, needs a question doc). See `scatter_built.md`.
 - **2026-09-20 -- `BUILD pwa` built, tested and DEPLOYED (9e4611a: client, then civic with chown before the build; verified live).** Social and Civic get their own webmanifests (`/manifest-social.webmanifest` start_url `/feed`, `/manifest-civic.webmanifest` start_url `/proposals`, the shells' own standalone redirect targets, not the shells),
   picked by `page_wrap` by title like Mail; The Commons gets `commons/manifest.webmanifest` (start/scope `/commons/`) + generated apple-touch-icon/192/512 (`art/make_icons.py`, the plaza from above, maskable-safe) and the /apps tile shows it. `pwa_check.py` 71 checks, 16 mutations (Mail as a control caught my extractor bug; a first no-op sync-exclude mutation was redone).
-  Real browser (Commons under a /commons/ prefix) and real compiled civic verified locally. Not tested on a device; iOS ignores manifests. Deploy order was client first, then civic with chown BEFORE the build. **nginx follow-up DONE on `deploy nginx`: `/commons/manifest.webmanifest` was `application/octet-stream` (stock mime.types has no webmanifest); fixed with an exact-match location + `default_type application/manifest+json` (NOT a `types{}` block, which would replace the whole table for `/commons/`); other types verified unchanged; mirrored in `deploy/nginx-commons.conf`; see `pwa-built.md`.**
+  Real browser (Commons under a /commons/ prefix) and real compiled civic verified locally. Not tested on a device; iOS ignores manifests. Deploy order was client first, then civic with chown BEFORE the build. **nginx follow-up DONE on `deploy nginx`: `/commons/manifest.webmanifest` was `application/octet-stream` (stock mime.types has no webmanifest); fixed with an exact-match location + `default_type application/manifest+json` (NOT a `types{}` block, which would replace the whole table for `/commons/`); other types verified unchanged; mirrored in `deploy/nginx-commons.conf`; see `pwa_built.md`.**
 - **2026-09-20 -- `BUILD www apex` built, tested and APPLIED (nginx only; verified live; certbot renewal proven by dry-runs before and after).** `www.liquidgov.us` served a full second copy of the site (200 on every path; `http://www` stayed on www; one cert already covers both names). Two small nginx edits (`deploy/nginx-www-apex.py`, idempotent, refuses unknown shapes):
   443: `if ($host = www.liquidgov.us) { return 301 https://liquidgov.us$request_uri; }` above the locations; port 80: certbot's www redirect goes straight to the apex. `server_name` keeps both names (cert + certbot unchanged). `deploy/nginx-www-apex.sh` = plan-only by default, `--go` backs up, `nginx -t`, reloads, verifies, auto-rolls-back.
-  `test_nginx_www` 34 + a real-nginx behavior script (17, control included), the latter also run once on the droplet's own nginx as a scratch loopback instance (removed; live config md5 unchanged). Applied on Brandon's `deploy` after waiting for another session's certbot dry-run to finish (a certbot run edits nginx config temporarily); baseline and post-change `certbot renew --dry-run --no-random-sleep-on-renew` both succeeded for both names; backup `/var/backups/nginx-www-apex-20260920T041810Z/`. Grok's 'acme-challenge on www must not 301 to apex' line does not hold (nginx authenticator; proven by the dry-runs). **Found separately and fixed by another session:** certbot had been crashing (pip `cryptography 50` shadowing apt's); see `certbot-fix-built.md`. See `www-apex-built.md`.
-- **2026-09-20 -- certbot was broken on the droplet; FIXED and verified (no service restarts, nginx untouched).** `certbot.service` failed 2026-09-19 14:41 UTC (exit 1); `certbot --version` crashed `AttributeError: module 'lib' has no attribute 'GEN_EMAIL'`. Cause: `pip install pywebpush` (2026-09-16) put `cryptography 50.0.1`/`cffi 2.1.1` in `/usr/local/lib/python3.12/dist-packages`, which precedes the apt tree on `sys.path` and shadows apt `cryptography 41` that apt `pyOpenSSL 23.2` needs. Can't downgrade (pywebpush needs cryptography>=47) or upgrade pyOpenSSL (<=25.3 same error, 26.x dropped `X509Req` that certbot 2.9 uses). Fix = `PYTHONPATH=/usr/lib/python3/dist-packages` for certbot only: systemd drop-in `/etc/systemd/system/certbot.service.d/pythonpath.conf` + `/usr/local/bin/certbot` wrapper. Proven: `certbot --version` 2.9.0, `certbot renew --dry-run` all simulated renewals succeeded, `systemctl start certbot.service` exit 0 (Result=success). Cert expires 2026-12-11. Rollback + backups (`/var/backups/certbot-fix-20260920/`) in `TheCommons/certbot-fix-built.md`. Lesson: a system-wide `pip install` into `/usr/local` can shadow apt libs and silently break unrelated tools; prefer a venv for `webpush.py`.
-- **2026-09-20 -- `webpush.py` now runs from its own venv (`/opt/lg-webpush-venv`); the 20 system-wide pip packages that shadowed apt are gone.** Root cause of the certbot break removed; certbot works bare again (the PYTHONPATH drop-in + `/usr/local/bin/certbot` wrapper were REMOVED later the same day; verified `systemctl start certbot.service` exit 0). Run `/opt/lg-webpush-venv/bin/python /opt/liquidgov/deploy/webpush.py <cmd>` (nothing automated calls it; `send` is manual). `deploy/webpush.py` + `deploy/webpush-requirements.txt` now tracked. Details + undo in `TheCommons/certbot-fix-built.md`. Never `pip install` into `/usr/local` on the droplet; use a venv.
-- **2026-09-20 -- `BUILD workshop` (Brandon: "A, E") built, tested and DEPLOYED (client only, `e6bd485`; two guest tabs on production saw each other and left cleanly).** The Workshop Lane shutter is now a real door (existing `T_DOOR_DEMO`, prompt Enter) into a plain 14x10 shared room, `instance:workshop` (lamp, six benches, worktable + stools, crates, rug, one sign "Sawdust and a bench. Nothing to make here yet."). Client only: no crafting, no items, no new art, no daemon/civic/nginx/schema change (daemon treats `instance:` keys as opaque). `world_scatter_unit` 15 -> 27 checks, incl. a flood fill of the room that caught a sign sealing a corner tile on its first run; real-browser guest test enters/reads/leaves, presence lands in `instance:workshop` and rekeys back; mine and demo house regression-checked. Not exercised: two clients, a bound player. **E: Privacy/Terms left as is** (a lawyer's job, not a rewrite). Also corrected the stale parked list: `rebind()` and orphan reaping were already built and deployed 2026-09-19. `TheCommons/workshop-built.md`.
-- **2026-09-20 -- Commons coherence/fun review (analysis only, nothing built; `TheCommons/CLAUDE_COHERENCE_QUESTION.md`).** Findings: nothing to do after ~5 min (11 never-consumed lookups); the world is empty at real traffic (nginx: guest mints from 1-6 distinct IPs/day, incl. our own testing); the civic tie is one-way (Hall is a link, the Square notice post is inert); the 11 items are all historical ink/pigment chemistry but go nowhere; no audio, no first-visit guidance; oak gall and oak-gall tannin glyphs are pixel-identical. Options A polish+guidance (client), B visitors' book with preset stamps (daemon+client), C1 workshop swatch-combining, C2 materials unlock civic-canvas colours (civic), D nothing. Recommendation A, then B, C is Brandon's call. Awaiting his letters.
-- **2026-09-20 -- the Studio SPEC written (nothing built; `TheCommons/studio.md`, review request `CLAUDE_STUDIO_QUESTION.md`).** Brandon's direction, in his answers: the point of the game is things to DO; realistic chemistry (real ingredients, roughly real times, no quantities); regions become material sources; pigments you make are your palette; the self-portrait lives in the GAME (not civic's `/me/portrait`) and starts in charcoal, unlocking colours; materials are consumed, sources renew; free starter charcoal stub. Civic is untouched (its drawing tool has unlimited colours + image import, so it cannot be gated). Reopens knowingly: crafting ban, 'no stoichiometry/safety', counts-never-go-down, 'no menu'. Guests stay RAM-only (gather + session charcoal drawing); making/keeping needs an account. Five slices (daemon core, world sources, bench, easel+portrait, tuning), each its own BUILD. Open: time scale (real <=3d, 7d cap), recipe review owner, painting visibility (friends only). Recipe table is UNVERIFIED and must be reviewed before it is built. Waiting on Grok's `GROK_STUDIO_ANSWER.md` and Brandon's sign-off.
+  `test_nginx_www` 34 + a real-nginx behavior script (17, control included), the latter also run once on the droplet's own nginx as a scratch loopback instance (removed; live config md5 unchanged). Applied on Brandon's `deploy` after waiting for another session's certbot dry-run to finish (a certbot run edits nginx config temporarily); baseline and post-change `certbot renew --dry-run --no-random-sleep-on-renew` both succeeded for both names; backup `/var/backups/nginx-www-apex-20260920T041810Z/`. Grok's 'acme-challenge on www must not 301 to apex' line does not hold (nginx authenticator; proven by the dry-runs). **Found separately and fixed by another session:** certbot had been crashing (pip `cryptography 50` shadowing apt's); see `certbot_fix_built.md`. See `www_apex_built.md`.
+- **2026-09-20 -- certbot was broken on the droplet; FIXED and verified (no service restarts, nginx untouched).** `certbot.service` failed 2026-09-19 14:41 UTC (exit 1); `certbot --version` crashed `AttributeError: module 'lib' has no attribute 'GEN_EMAIL'`. Cause: `pip install pywebpush` (2026-09-16) put `cryptography 50.0.1`/`cffi 2.1.1` in `/usr/local/lib/python3.12/dist-packages`, which precedes the apt tree on `sys.path` and shadows apt `cryptography 41` that apt `pyOpenSSL 23.2` needs. Can't downgrade (pywebpush needs cryptography>=47) or upgrade pyOpenSSL (<=25.3 same error, 26.x dropped `X509Req` that certbot 2.9 uses). Fix = `PYTHONPATH=/usr/lib/python3/dist-packages` for certbot only: systemd drop-in `/etc/systemd/system/certbot.service.d/pythonpath.conf` + `/usr/local/bin/certbot` wrapper. Proven: `certbot --version` 2.9.0, `certbot renew --dry-run` all simulated renewals succeeded, `systemctl start certbot.service` exit 0 (Result=success). Cert expires 2026-12-11. Rollback + backups (`/var/backups/certbot-fix-20260920/`) in `TheCommons/certbot_fix_built.md`. Lesson: a system-wide `pip install` into `/usr/local` can shadow apt libs and silently break unrelated tools; prefer a venv for `webpush.py`.
+- **2026-09-20 -- `webpush.py` now runs from its own venv (`/opt/lg-webpush-venv`); the 20 system-wide pip packages that shadowed apt are gone.** Root cause of the certbot break removed; certbot works bare again (the PYTHONPATH drop-in + `/usr/local/bin/certbot` wrapper were REMOVED later the same day; verified `systemctl start certbot.service` exit 0). Run `/opt/lg-webpush-venv/bin/python /opt/liquidgov/deploy/webpush.py <cmd>` (nothing automated calls it; `send` is manual). `deploy/webpush.py` + `deploy/webpush-requirements.txt` now tracked. Details + undo in `TheCommons/certbot_fix_built.md`. Never `pip install` into `/usr/local` on the droplet; use a venv.
+- **2026-09-20 -- `BUILD workshop` (Brandon: "A, E") built, tested and DEPLOYED (client only, `e6bd485`; two guest tabs on production saw each other and left cleanly).** The Workshop Lane shutter is now a real door (existing `T_DOOR_DEMO`, prompt Enter) into a plain 14x10 shared room, `instance:workshop` (lamp, six benches, worktable + stools, crates, rug, one sign "Sawdust and a bench. Nothing to make here yet."). Client only: no crafting, no items, no new art, no daemon/civic/nginx/schema change (daemon treats `instance:` keys as opaque). `world_scatter_unit` 15 -> 27 checks, incl. a flood fill of the room that caught a sign sealing a corner tile on its first run; real-browser guest test enters/reads/leaves, presence lands in `instance:workshop` and rekeys back; mine and demo house regression-checked. Not exercised: two clients, a bound player. **E: Privacy/Terms left as is** (a lawyer's job, not a rewrite). Also corrected the stale parked list: `rebind()` and orphan reaping were already built and deployed 2026-09-19. `TheCommons/workshop_built.md`.
+- **2026-09-20 -- Commons coherence/fun review (analysis only, nothing built; `TheCommons/claude_coherence_question.md`).** Findings: nothing to do after ~5 min (11 never-consumed lookups); the world is empty at real traffic (nginx: guest mints from 1-6 distinct IPs/day, incl. our own testing); the civic tie is one-way (Hall is a link, the Square notice post is inert); the 11 items are all historical ink/pigment chemistry but go nowhere; no audio, no first-visit guidance; oak gall and oak-gall tannin glyphs are pixel-identical. Options A polish+guidance (client), B visitors' book with preset stamps (daemon+client), C1 workshop swatch-combining, C2 materials unlock civic-canvas colours (civic), D nothing. Recommendation A, then B, C is Brandon's call. Awaiting his letters.
+- **2026-09-20 -- the Studio SPEC written (nothing built; `TheCommons/studio.md`, review request `claude_studio_question.md`).** Brandon's direction, in his answers: the point of the game is things to DO; realistic chemistry (real ingredients, roughly real times, no quantities); regions become material sources; pigments you make are your palette; the self-portrait lives in the GAME (not civic's `/me/portrait`) and starts in charcoal, unlocking colours; materials are consumed, sources renew; free starter charcoal stub. Civic is untouched (its drawing tool has unlimited colours + image import, so it cannot be gated). Reopens knowingly: crafting ban, 'no stoichiometry/safety', counts-never-go-down, 'no menu'. Guests stay RAM-only (gather + session charcoal drawing); making/keeping needs an account. Five slices (daemon core, world sources, bench, easel+portrait, tuning), each its own BUILD. Open: time scale (real <=3d, 7d cap), recipe review owner, painting visibility (friends only). Recipe table is UNVERIFIED and must be reviewed before it is built. Waiting on Grok's `grok_studio_answer.md` and Brandon's sign-off.
 - **2026-09-20 -- Studio spec v2: Grok's review folded in (`TheCommons/studio.md`; nothing built, no catalog rows, no BUILD).** Applied: discovery = you hold every input (free-form side mix is rate-limited, cannot discover); homemade vinegar cut (Orchard keg instead); whiting -> shell white; alum crystals dropped; woad rewritten as a simplified lake; painting never refunds; server rules tightened (transactions, UNIQUE gather, no client timestamps, palette indices only, poll rate, orphan reap extended, guest path local); slice order now 1 daemon core, 2 charcoal easel + portrait + phone layout, 3 world sources + bench + notebook + lab conversion (one deploy), 4 rest of ladder, 5 tuning. My three deviations from Grok, flagged: pixel-level painting cost (his net-count formula allows free repaints), portrait GET visit-checked from slice 2, charcoal 8 h with the real-world figure disputed (2-4 h vs ~10 h). Recipe marks are Grok's and still unverified: I reference-check each line before `catalog.sql`, then Brandon signs the frozen table. Holding for that sign-off.
-- **2026-09-20 -- Studio reference pass done (`TheCommons/studio-refs.md`; nothing built, no catalog rows, no BUILD).** Grok accepted the three v2 deviations and pinned pixel index 0 = empty. Verbatim, greppable sources (Cennini/Herringham, Merrifield + Bolognese MS., Theophilus/Hendrie, Pliny 35.25): charcoal, red ochre, carbon ink, verdigris, weld lake confirmed; shell white, gum, tannin, iron-gall, madder, woad confirmed with corrections; iron acetate and several game times unsourced. Cennini ch. 33 does give a clock ("till morning", overnight), which supports 8 h. Woad source has no ash. Six proposed corrections C1-C6 await Brandon; the notebook shows a real range only where a source gives one. Not verified: Coates 10 h, shell-white weathering; CAMEO was 403. Holding for sign-off.
+- **2026-09-20 -- Studio reference pass done (`TheCommons/studio_refs.md`; nothing built, no catalog rows, no BUILD).** Grok accepted the three v2 deviations and pinned pixel index 0 = empty. Verbatim, greppable sources (Cennini/Herringham, Merrifield + Bolognese MS., Theophilus/Hendrie, Pliny 35.25): charcoal, red ochre, carbon ink, verdigris, weld lake confirmed; shell white, gum, tannin, iron-gall, madder, woad confirmed with corrections; iron acetate and several game times unsourced. Cennini ch. 33 does give a clock ("till morning", overnight), which supports 8 h. Woad source has no ash. Six proposed corrections C1-C6 await Brandon; the notebook shows a real range only where a source gives one. Not verified: Coates 10 h, shell-white weathering; CAMEO was 403. Holding for sign-off.
 - **2026-09-28 -- PresenceStore clock injected (was: reaped on real wall clock while `Occupant.last_update_ms` was stamped by main.cpp's test-clock-aware `now_ms()`).** `PresenceStore(Clock)` in `presence.hpp`; main.cpp passes `now_ms`; default (empty) = real clock. Constraint now documented in the header. `test_studio.sh` workaround removed and a reap-follows-test-clock check added (confirmed it FAILS on the old code, passes on the fix; full 26-file suite green). `guest.cpp` still reads the real clock for its own TTLs, but it stamps and reaps internally so it is self-consistent -- no trap there. Uncommitted.
 
 ## Split: civic site vs game

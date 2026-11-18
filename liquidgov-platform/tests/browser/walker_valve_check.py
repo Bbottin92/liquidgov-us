@@ -1,4 +1,4 @@
-"""Spatial step 6 (SPATIAL_EVOLUTION.md): every map box has a valve, Open by default, and the walker's step onto a box
+"""Spatial step 6 (spatial_evolution.md): every map box has a valve, Open by default, and the walker's step onto a box
 (the entry path) goes through it. The regression check: every box on the map can still be entered.
 2026-11-15 (Brandon's OK): free walking. A box that turns you away leaves you at its edge, in no box (data-at ''),
 where one push used to leave you standing on the box you came from.

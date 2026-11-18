@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Spatial step 9 (SPATIAL_EVOLUTION.md): an instance can carry an eject rule. The rule is the server's: LIQUIDGOV_HERE_EJECT
+# Spatial step 9 (spatial_evolution.md): an instance can carry an eject rule. The rule is the server's: LIQUIDGOV_HERE_EJECT
 # = "<instance>:<x0>,<y0>,<x1>,<y1>" is a hazard region (the room's 0..1 page coordinates) in that instance. After every
 # move the server puts a dot that is in that instance and inside the region back in its parent, the room's own instance,
 # so the next presence snapshot shows it there and the others in the instance no longer see it.

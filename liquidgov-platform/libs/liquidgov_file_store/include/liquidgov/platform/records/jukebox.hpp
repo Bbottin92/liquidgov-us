@@ -13,7 +13,7 @@
 
 namespace liquidgov::platform {
 
-// Page-local jukebox queue entry for a profile (design: LIQUIDGOV_CONTEXT_HANDOFF.md
+// Page-local jukebox queue entry for a profile (design: liquidgov_context_handoff.md
 // "Jukebox", navigation option A — MPA, no site-wide SPA, stop on navigate away).
 // The owner always curates their own queue; depending on the owner's
 // JukeboxPolicy, friends or anyone else may also queue a track (see

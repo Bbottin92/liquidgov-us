@@ -2,7 +2,7 @@
 rem Launches the real C++ site (liquidgov_http) inside WSL Ubuntu — not
 rem preview.py. preview.py is a disconnected toy: no auth, no FileStore,
 rem no jukebox/avatar/mail-attachment work. This assumes the canonical
-rem WSL layout, ~/lg/liquidgov-platform (see BUILD.txt).
+rem WSL layout, ~/lg/liquidgov-platform (see build.txt).
 
 where wsl >nul 2>nul
 if errorlevel 1 (

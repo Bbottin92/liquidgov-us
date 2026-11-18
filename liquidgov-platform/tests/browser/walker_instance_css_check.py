@@ -1,4 +1,4 @@
-"""Spatial step 10 (SPATIAL_EVOLUTION.md): scoped admin CSS for an instance. An operator sets CSS for a map box through
+"""Spatial step 10 (spatial_evolution.md): scoped admin CSS for an instance. An operator sets CSS for a map box through
 POST /map/instance-css (the one edit path; operators only); the server delivers it with the box (it must pass the same
 filter as profile CSS); the walker injects it as text, nested under the side panel, only while it is Inside that box.
 New file: no committed check is edited.

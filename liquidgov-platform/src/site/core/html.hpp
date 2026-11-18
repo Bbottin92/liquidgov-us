@@ -15,7 +15,7 @@ bool visible_to(Visibility v, bool is_owner, bool viewer_signed_in, bool is_frie
 
 
 // Author CSS for /u/<username>/theme. This is a deliberately narrow v1 of
-// the "Author CSS isolation" design in LIQUIDGOV_CONTEXT_HANDOFF.md, not
+// the "Author CSS isolation" design in liquidgov_context_handoff.md, not
 // the full spec (no CSSOM-walking parser, no compute budget, no gallery) --
 // see that doc's "Still open on this layer" note. What this v1 keeps from
 // the spec, because skipping it would be a real hole, not a shortcut:

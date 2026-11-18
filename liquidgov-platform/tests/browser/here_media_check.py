@@ -1,4 +1,4 @@
-"""Spatial step 11 (SPATIAL_EVOLUTION.md): proximity voice and video between dots on a profile page. Two real browsers (Bbottin
+"""Spatial step 11 (spatial_evolution.md): proximity voice and video between dots on a profile page. Two real browsers (Bbottin
 and pal) with a fake microphone and camera, on the REAL server (phone_serve.sh's throwaway store, as ci_phone_check.py).
 Media is off until each turns it on; then, in the same instance and within range, a direct connection carries it and the
 volume of what you hear grows as the dots come closer; apart, or in different instances, it stops. New file.

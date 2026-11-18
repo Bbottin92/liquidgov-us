@@ -1,4 +1,4 @@
-"""Spatial step 3 (SPATIAL_EVOLUTION.md): the map walker's instanceId. Walking onto a box sets it to that box; back at
+"""Spatial step 3 (spatial_evolution.md): the map walker's instanceId. Walking onto a box sets it to that box; back at
 your own pool it is user:<you> (your own place, 2026-11-15); between boxes it is the shared "mainstream".
 
 Real headless Chromium at phone size (the touchpad can push straight at any box), NO C++ server: walker_controls_check.py's stdlib server and fake graph (the real lgmap.js,

@@ -12,7 +12,7 @@ namespace liquidgov::site {
 // currently loaded.
 //
 // Honest limitation, not hidden: this site is deliberately a multi-page
-// app (LIQUIDGOV_CONTEXT_HANDOFF.md's Jukebox section — no site-wide SPA).
+// app (liquidgov_context_handoff.md's Jukebox section — no site-wide SPA).
 // Navigating to a different page resets local playback; the widget
 // reconnects and re-syncs to the live community track next time it's
 // opened. True across-navigation persistence would need the browser's

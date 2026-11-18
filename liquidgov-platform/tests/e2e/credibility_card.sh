@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Credibility, first slice (2026-11-15; Persistence/TheCommons/CLAUDE_CREDIBILITY_QUESTION.md): Settings shows you your
+# Credibility, first slice (2026-11-15; docs/archive/the_commons/claude_credibility_question.md): Settings shows you your
 # own Contribution, computed from what the site keeps: how many different people replied to, voted on or reacted to what
 # you made. The anti-sabotage rules are what this checks: a person counts once however often they reply; your own
 # replies do not count; someone who is not your friend is counted as beyond your friends; someone you blocked does not

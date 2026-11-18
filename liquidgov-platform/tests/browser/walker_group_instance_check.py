@@ -1,4 +1,4 @@
-"""Spatial step 8 (SPATIAL_EVOLUTION.md): a new group is a new instance. Brandon's decision (2026-11-14): derive it from
+"""Spatial step 8 (spatial_evolution.md): a new group is a new instance. Brandon's decision (2026-11-14): derive it from
 the existing group box, no new record type. A group made on the real server appears on the map as a box; that box is
 the instance, with a region (Step 2) and a copy of its parent's valve (Step 7), walkable, and its creator can enter it.
 New file: no committed check is edited.

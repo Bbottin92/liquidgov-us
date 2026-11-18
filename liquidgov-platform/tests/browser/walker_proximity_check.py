@@ -1,4 +1,4 @@
-"""Spatial step 4 (SPATIAL_EVOLUTION.md): the proximity filter on the map. Zoomed in (the walking zoom), only the box
+"""Spatial step 4 (spatial_evolution.md): the proximity filter on the map. Zoomed in (the walking zoom), only the box
 the walker is at (Inside) and the boxes connected to it (Near) are shown; every other box (Far) and its connectors are
 hidden. Zoom out yourself and the full map shows again.
 

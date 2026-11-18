@@ -1,7 +1,7 @@
 #pragma once
 // credibility.hpp: credibility, first slice (Brandon 2026-11-15: "a good, fair way to allow people to earn more
 // credibility ... but i want to make sure that one person cant sabotage anothers credibility";
-// Persistence/TheCommons/CLAUDE_CREDIBILITY_QUESTION.md). Contribution only, computed from what the site already keeps
+// docs/archive/the_commons/claude_credibility_question.md). Contribution only, computed from what the site already keeps
 // (nothing new is stored), and shown only to the person it is about (Settings), until Brandon decides how it shows.
 #include "site/common.hpp"
 

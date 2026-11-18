@@ -222,6 +222,23 @@ html.lgm-sheet-open,html.lgm-sheet-open body{overflow:hidden}
 #lgmap[data-pools] .lge-mark-body{paint-order:stroke;stroke:rgba(8,30,45,.8);stroke-width:2.2px;stroke-linejoin:round}
 #lgmap[data-pools] .lge-mark-detail{fill:rgba(8,30,45,.85);stroke:rgba(8,30,45,.85);stroke-width:2.6px;stroke-linecap:round;stroke-linejoin:round}
 #lgmap[data-pools] path.lge-mark-detail{fill:none}
+/* Map clarity (Brandon 2026-11-17): the MAINstream's subtitle, the lock on a pool the walker is refused at (lgmap_walk.js
+   lockMarks; the key draws the same one), and the "?" key button and its panel (buildKey) */
+#lgmap[data-pools] .lgn text.lgn-pool-sub{font-weight:600;fill:#cfe9f5;opacity:.92;letter-spacing:.02em}
+#lgmap .lgn-lock{pointer-events:none}
+#lgmap .lgn-lock-shackle{fill:none;stroke:#eef9ff;stroke-width:2.6;stroke-linecap:round;paint-order:stroke}
+#lgmap .lgn-lock-body{fill:#eef9ff;stroke:rgba(8,30,45,.85);stroke-width:1.6;stroke-linejoin:round}
+#lgmap .lgn-lock-hole{fill:rgba(8,30,45,.85)}
+#lgm-keybtn{position:absolute;left:.6rem;top:3.2rem;z-index:7;width:44px;height:44px;padding:0;border-radius:50%;cursor:pointer;
+  font:800 1.25rem/1 system-ui,sans-serif;color:#eef9ff;background:rgba(8,30,45,.82);border:1px solid rgba(170,225,245,.65);box-shadow:0 2px 8px rgba(0,0,0,.35)}
+#lgm-keybtn:focus-visible{outline:3px solid #f3d48f;outline-offset:2px}
+#lgm-key{position:absolute;left:.6rem;top:6.4rem;z-index:7;box-sizing:border-box;width:min(19rem,calc(100% - 1.2rem));max-height:calc(100% - 7.4rem);overflow:auto;
+  padding:.7rem .85rem;border-radius:12px;color:#eef9ff;background:rgba(8,30,45,.95);border:1px solid rgba(170,225,245,.4);box-shadow:0 8px 24px rgba(0,0,0,.45);font-size:.9rem}
+#lgm-key[hidden]{display:none}
+#lgm-key .lgm-key-title{margin:0 0 .45rem;font-weight:800}
+#lgm-key .lgm-key-row{display:flex;align-items:center;gap:.6rem;padding:.18rem 0}
+#lgm-key .lgm-key-row svg{flex:none;width:24px;height:24px;overflow:visible}
+#lgm-key .lgm-key-note{margin:.5rem 0 0;color:#a9cfe0;font-size:.82rem}
 #lgmap[data-pools] .lge-flow{stroke-width:7px}
 /* The map fills the screen (Brandon 2026-11-15: "the mainstream map should be like fullscreen besides the liquidgov
    title and notifications and mail and profile pic and juketube"). This file is only on the map page, so these rules

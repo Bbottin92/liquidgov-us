@@ -334,7 +334,7 @@
       return { cx: n.x + W / 2, cy: n.y + H / 2, hw: (n.w || W) * k / 2, hh: H * k / 2 }; } });
     var s = sizeOf(n), ox = (W - n.w) / 2;
     var g = el('g', { 'class': 'lgn lgn-' + n.kind + ' lgn-new', tabindex: '0', role: 'button', 'data-id': n.id, 'data-valve': n.valve.type,
-      'data-valve-owner': n.valve.owner || '', 'data-valve-invite': (n.valve.invite || []).join(','),
+      'data-valve-owner': n.valve.owner || '', 'data-valve-invite': (n.valve.invite || []).join(','), 'data-label': n.label || '',
       transform: 'translate(' + (n.x + W / 2 * (1 - s)) + ',' + (n.y + H / 2 * (1 - s)) + ') scale(' + s + ')' });
     var shape = POOLS ? el('ellipse', { cx: W / 2, cy: H / 2, rx: poolR(n), ry: poolR(n) * POOL_Y, 'class': 'lgs' }) : shapeEl(n.kind, n.w, H);
     if (ox) shape.setAttribute('transform', 'translate(' + ox + ',0)');
@@ -371,6 +371,14 @@
       pt.style.fontSize = fs + 'px';
       pt.textContent = fitText(poolLabel(n), '700 ' + fs + 'px', R * 1.6);
       g.appendChild(pt);
+      // the MAINstream says what it is (Brandon 2026-11-17, from the two map reviews: the name alone does not tell a first-time
+      // visitor): a small line under its name
+      if (n.id === 'root') {
+        var sfs = Math.max(11, Math.round(fs * 0.42)), sub = el('text', { x: W / 2, y: H / 2 + fs * 0.3 + sfs * 1.5, 'class': 'lgn-pool-sub' });
+        sub.style.fontSize = sfs + 'px';
+        sub.textContent = fitText('everything site-wide', '600 ' + sfs + 'px', R * 1.6);
+        g.appendChild(sub);
+      }
       // The page symbol (Brandon 2026-11-16: the sample page "should only show up when you walk over a page symbol"; there was
       // none, "i think we should invent one"): a small sheet with a folded corner on the pool's lower water, only on a pool
       // that has a page (not your own: its button is the marker). The walker shows the sample (lgmap_walk.js) only while the drop

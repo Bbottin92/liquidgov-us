@@ -60,6 +60,27 @@
     }
     return 'no';   // closed, request, and any type this file does not know
   }
+  // A box that turns you away says so (Brandon 2026-11-17, "silent refused entry"): one sentence in the map's status line
+  // while you push against it, naming the box and why; it goes when you walk freely again. The box also wears a lock
+  // (lockMarks, below). `refusedId` is the box the push just now was refused by.
+  var refusedId = '', told = '';
+  function refusalText(id) {
+    var el = box(id), type = (el && el.getAttribute('data-valve')) || '', name = (el && el.getAttribute('data-label')) || 'That place';
+    if (type === 'closed') return name + ' is closed: nobody can go in.';
+    if (type === 'private') return name + ' is private: only its owner can go in.';
+    if (type === 'invite') return name + ' is invite-only, and you are not on its list.';
+    if (type === 'request') return name + ' asks first: your request to come in was sent to its owner.';
+    return name + ' is not open to you.';
+  }
+  function tellRefused(id) {
+    var s = document.getElementById('lgm-status'), t = refusalText(id);
+    if (s && s.textContent !== t) { s.textContent = t; told = t; }
+  }
+  function clearRefused() {
+    var s = document.getElementById('lgm-status');
+    if (told && s && s.textContent === told) s.textContent = '';
+    told = '';
+  }
   // is the point in the region? The same rule as assets/spatial.js isInside (spatial step 2, the edge counts as
   // inside); that file is not served to pages, so the one line is repeated here.
   function isInside(p, r) {
@@ -342,7 +363,7 @@
     if (!inWater(all, p) && inWater(all, me)) return false;   // the shore: dry land stops you
     var was = holding(all, me).map(function (b) { return b.id; }), ok = true;
     holding(all, p).forEach(function (b) {
-      if (was.indexOf(b.id) < 0 && entry(b.id, true) === 'no') ok = false;
+      if (was.indexOf(b.id) < 0 && entry(b.id, true) === 'no') { ok = false; refusedId = b.id; }
     });
     return ok;
   }
@@ -350,13 +371,16 @@
     var step = C.maxSpeed / MAP.view().scale;   // the same speed on the screen at any zoom
     var nx = me.x + v.x * step, ny = me.y + v.y * step;
     var tries = [{ x: nx, y: ny }, { x: nx, y: me.y }, { x: me.x, y: ny }];   // blocked: slide along the edge
+    refusedId = '';
     for (var i = 0; i < tries.length; i++) {
       if ((tries[i].x !== me.x || tries[i].y !== me.y) && allowed(all, tries[i])) {
         me = tries[i];
+        if (refusedId) tellRefused(refusedId); else clearRefused();   // pushing at a box that refuses (even sliding along it) says why
         if (i === 0) asked = '';   // walking freely again: the next time a request box turns you away, it is asked again
         return true;
       }
     }
+    if (refusedId) tellRefused(refusedId);
     // the banks guide you: in a channel, a push that is blocked slides you along the channel the way you pushed (keys only
     // go straight across or up and down; channels run any way)
     var best = null;
@@ -544,11 +568,15 @@
     // (mine:<name>) -> symbol; a kind or list not named has no symbol (Events, "+N more"). "named": the home pool names every
     // mouth (so the symbols are learned); the kinds in "always" are named in every pool.
     var KINDS = /*KINDS-BEGIN*/{
-      "colours": { "person": "#f2c94c", "heads": "#b392f0", "ticked": "#ff7f6e", "bubble": "#3fd0c4", "pin": "#5fd068", "star": "#ff7eb6", "house": "#ffffff" },
-      "kinds": { "you": "house", "root": "house", "person": "person", "group": "heads", "prop": "ticked", "sitewide": "ticked", "pain": "ticked",
-        "feed": "bubble", "post": "bubble", "comment": "bubble", "message": "bubble", "city": "pin", "interest": "star", "dept": "star" },
-      "mine": { "friends": "person", "groups": "heads", "politics": "ticked", "problems": "ticked", "feeds": "bubble", "places": "pin", "interests": "star" },
-      "named": { "home": "you", "always": ["person"] }
+      "colours": { "person": "#f2c94c", "heads": "#b392f0", "ticked": "#ff7f6e", "globe": "#4f8cff", "warn": "#ffa63d", "bubble": "#3fd0c4",
+        "envelope": "#8fe3ff", "pin": "#5fd068", "star": "#ff7eb6", "office": "#c9976a", "house": "#ffffff" },
+      "kinds": { "you": "house", "root": "house", "person": "person", "group": "heads", "prop": "ticked", "sitewide": "globe", "pain": "warn",
+        "feed": "bubble", "post": "bubble", "comment": "bubble", "message": "envelope", "city": "pin", "interest": "star", "dept": "office" },
+      "mine": { "friends": "person", "groups": "heads", "politics": "ticked", "problems": "warn", "feeds": "bubble", "places": "pin", "interests": "star" },
+      "named": { "home": "you", "always": ["person"] },
+      "labels": { "person": "a person", "heads": "a group", "ticked": "a proposal", "globe": "a site-wide vote", "warn": "a problem",
+        "bubble": "a feed, post or comment", "envelope": "a message", "pin": "a place", "star": "an interest", "office": "an office",
+        "house": "back to you, or the MAINstream" }
     }/*KINDS-END*/;
     // each symbol's drawing: [[tag, attrs, isDetail] ...] on a 24-unit grid centred on 0 (a detail is drawn dark); its colour is KINDS.colours
     var MARKS = {
@@ -558,6 +586,10 @@
       bubble: [['path', { d: 'M-10 -8.5H10Q12 -8.5 12 -6.5V3.5Q12 5.5 10 5.5H0L-6 11V5.5H-10Q-12 5.5 -12 3.5V-6.5Q-12 -8.5 -10 -8.5Z' }]],
       pin: [['path', { d: 'M0 11.5C-7.5 2 -9 -1 -9 -4A9 9 0 0 1 9 -4C9 -1 7.5 2 0 11.5Z' }], ['circle', { cx: 0, cy: -4, r: 3.2 }, 1]],
       star: [['path', { d: STAR }]],
+      globe: [['circle', { cx: 0, cy: 0, r: 10.5 }], ['path', { d: 'M-10.5 0H10.5M0 -10.5C-5.5 -4 -5.5 4 0 10.5' }, 1]],
+      warn: [['path', { d: 'M0 -11.5L12 9.5H-12Z' }], ['path', { d: 'M0 -3.5V3' }, 1], ['circle', { cx: 0, cy: 6.2, r: 1.2 }, 1]],
+      envelope: [['rect', { x: -11.5, y: -7.5, width: 23, height: 15, rx: 2 }], ['path', { d: 'M-10 -6L0 2L10 -6' }, 1]],
+      office: [['path', { d: 'M-8.5 11V-10.5H3V-4.5H8.5V11Z' }], ['path', { d: 'M-4.5 -6.5H-0.5M-4.5 -1.5H-0.5M-4.5 3.5H-0.5' }, 1]],
       house: [['path', { d: 'M0 -11L-11.5 -1H-8.5V10H-2.2V3H2.2V10H8.5V-1H11.5Z' }]]
     };
     function kindOf(id) {
@@ -572,19 +604,23 @@
     // the home pool names every mouth; the kinds the table lists as always named keep their name in every pool; every other
     // pool's mouths are symbol-only
     function wantsName(from, to) { return from === KINDS.named.home || KINDS.named.always.indexOf(kindOf(to)) >= 0; }
+    // a symbol's parts into group `mg` (the mouth symbols and the "?" key draw it the same way)
+    function fillMark(mg, which) {
+      MARKS[which].forEach(function (c) {
+        var n = document.createElementNS(NS, c[0]);
+        Object.keys(c[1]).forEach(function (k) { n.setAttribute(k, c[1][k]); });
+        n.setAttribute('class', c[2] ? 'lge-mark-detail' : 'lge-mark-body');
+        if (!c[2]) n.setAttribute('fill', KINDS.colours[which]);
+        mg.appendChild(n);
+      });
+    }
     function drawMark(g, mk, which, x, y, size) {
       var mg = g.querySelector('.lge-mark[data-for="' + mk + '"]');
       if (!which) { if (mg) mg.remove(); return null; }
       if (mg && mg.getAttribute('data-sym') !== which) { mg.remove(); mg = null; }
       if (!mg) {
         mg = document.createElementNS(NS, 'g'); mg.setAttribute('class', 'lge-mark'); mg.setAttribute('data-for', mk); mg.setAttribute('data-sym', which);
-        MARKS[which].forEach(function (c) {
-          var n = document.createElementNS(NS, c[0]);
-          Object.keys(c[1]).forEach(function (k) { n.setAttribute(k, c[1][k]); });
-          n.setAttribute('class', c[2] ? 'lge-mark-detail' : 'lge-mark-body');
-          if (!c[2]) n.setAttribute('fill', KINDS.colours[which]);
-          mg.appendChild(n);
-        });
+        fillMark(mg, which);
         g.appendChild(mg);
       }
       var tr = 'translate(' + x.toFixed(1) + ' ' + y.toFixed(1) + ') scale(' + (size / 24).toFixed(3) + ')';
@@ -696,6 +732,61 @@
         else if (g.style.getPropertyValue('--kind')) g.style.removeProperty('--kind');
       });
     }
+    // a closed pool, a private one that is not yours, an invite-only one you are not on, a request one: a small padlock above
+    // the pool's name, so the map shows what the walker will refuse (Brandon 2026-11-17; the message says why when you push).
+    // Open and conduit pools, and a private pool that is yours, wear none. The lock drawing lives here, in one place; the key
+    // (buildKey) draws the same one.
+    function lockParts(into) {
+      [['path', { d: 'M-4.5 -1V-4.8A4.5 4.5 0 0 1 4.5 -4.8V-1', 'class': 'lgn-lock-shackle' }],
+       ['rect', { x: -7, y: -1, width: 14, height: 11, rx: 2.2, 'class': 'lgn-lock-body' }],
+       ['circle', { cx: 0, cy: 4, r: 1.7, 'class': 'lgn-lock-hole' }]].forEach(function (c) {
+        var n = document.createElementNS(NS, c[0]);
+        Object.keys(c[1]).forEach(function (k) { n.setAttribute(k, c[1][k]); });
+        into.appendChild(n);
+      });
+    }
+    function lockMarks() {
+      Array.prototype.forEach.call(nodeLayer.querySelectorAll('.lgn[data-id]'), function (g) {
+        var id = g.getAttribute('data-id'), type = g.getAttribute('data-valve') || 'open', sh = g.querySelector('.lgs');
+        var locked = !!sh && type !== 'open' && type !== 'conduit' && entry(id, false) !== 'in';
+        var lk = g.querySelector('.lgn-lock');
+        if (!locked) { if (lk) lk.remove(); return; }
+        if (!lk) {
+          lk = document.createElementNS(NS, 'g'); lk.setAttribute('class', 'lgn-lock'); lk.setAttribute('aria-hidden', 'true');
+          lockParts(lk); g.appendChild(lk);
+        }
+        var tr = 'translate(' + (+sh.getAttribute('cx')).toFixed(1) + ' ' + (+sh.getAttribute('cy') - +sh.getAttribute('ry') * 0.5).toFixed(1) + ') scale(1.5)';
+        if (lk.getAttribute('transform') !== tr) lk.setAttribute('transform', tr);
+      });
+    }
+    // The "?" key (Brandon 2026-11-17, from both map reviews): in the full-screen map the legend under the map is hidden, and
+    // the symbols are learned only from your own pool. A small round button over the map's top left opens a panel naming each
+    // symbol, drawn from the same table and drawings as the map (KINDS, MARKS), and the lock. Built once.
+    function buildKey() {
+      var host = document.getElementById('lgmap');
+      if (!host || document.getElementById('lgm-keybtn')) return;
+      var btn = document.createElement('button'), panel = document.createElement('div');
+      btn.type = 'button'; btn.id = 'lgm-keybtn'; btn.textContent = '?';
+      btn.setAttribute('aria-label', 'Key to the map symbols'); btn.setAttribute('aria-expanded', 'false'); btn.setAttribute('aria-controls', 'lgm-key');
+      panel.id = 'lgm-key'; panel.hidden = true; panel.setAttribute('role', 'region'); panel.setAttribute('aria-label', 'Map key');
+      var h = document.createElement('p'); h.className = 'lgm-key-title'; h.textContent = 'What the symbols mean'; panel.appendChild(h);
+      function row(drawing, text, cls) {
+        var r = document.createElement('div'), s = document.createElementNS(NS, 'svg'), g = document.createElementNS(NS, 'g'), t = document.createElement('span');
+        r.className = 'lgm-key-row' + (cls ? ' ' + cls : '');
+        s.setAttribute('viewBox', '-14 -14 28 28'); s.setAttribute('width', '24'); s.setAttribute('height', '24'); s.setAttribute('aria-hidden', 'true');
+        drawing(g); s.appendChild(g); t.textContent = text; r.appendChild(s); r.appendChild(t); panel.appendChild(r);
+      }
+      Object.keys(KINDS.colours).forEach(function (which) {
+        row(function (g) { g.setAttribute('class', 'lge-mark'); fillMark(g, which); }, KINDS.labels[which] || which);
+      });
+      row(function (g) { g.setAttribute('class', 'lgn-lock'); g.setAttribute('transform', 'scale(1.2)'); lockParts(g); },
+          'a place you cannot walk into: closed, private, or invite-only', 'lgm-key-lock');
+      var n = document.createElement('p'); n.className = 'lgm-key-note'; n.textContent = 'Bigger, brighter pools are closer to you.'; panel.appendChild(n);
+      function show(on) { panel.hidden = !on; btn.setAttribute('aria-expanded', on ? 'true' : 'false'); }
+      btn.addEventListener('click', function () { show(panel.hidden); });
+      document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !panel.hidden) show(false); });
+      host.appendChild(btn); host.appendChild(panel);
+    }
     // The stream you are in is drawn over the others where they cross (Brandon 2026-11-16: "whatever stream youre on should be
     // on the topmost layer"): its shore, water and shimmer are drawn again in #lgm-top, above every stream and below the pools,
     // their signs and symbols. Out of a stream (in a pool) the layer is empty and the order is as it was.
@@ -733,7 +824,7 @@
       if (POOLS) Array.prototype.slice.call(nodeLayer.querySelectorAll('.lge-mouth,.lge-sign,.lge-mark')).forEach(function (x) {
         if (x.getAttribute('data-keep')) x.removeAttribute('data-keep'); else x.remove();
       });
-      if (POOLS) { placePages(); tintShores(); raiseStream(); }
+      if (POOLS) { placePages(); tintShores(); lockMarks(); raiseStream(); buildKey(); }
     };
     setInterval(water, 400);
   })();

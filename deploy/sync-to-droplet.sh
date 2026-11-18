@@ -147,6 +147,8 @@ rsync -az --no-times --checksum "${DRY[@]}" -e "$SSH_CMD" \
     --exclude '*.lgp.*' \
     --exclude 'liquidgov_blobs/' \
     --exclude '.env.local' \
+    --exclude '__pycache__' \
+    --exclude '*.pyc' \
     "$SRC" "$DEST"
 
 # Record what was just synced for the next deploy's rollback guard: this commit first, the previous newest second.

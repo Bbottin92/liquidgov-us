@@ -49,6 +49,11 @@ linux_only="$("$PY" "$ROOT/scripts/affected_checks.py" "$ROOT" --linux-only 2>/d
 # above still needs them (a `git commit -a` index is in GIT_INDEX_FILE), so they are dropped only here, after it.
 # Every GIT_* goes, the same as scripts/run_hook_checks.py does for CI (hook_git_env_check.py).
 for v in $(env | sed -n 's/^\(GIT_[A-Za-z0-9_]*\)=.*/\1/p'); do unset "$v"; done
+# The hook's own control variable goes too (q97, 2026-11-17): pre-commit sets LG_CHECK_MODE=--staged for the selector above,
+# and a check that builds a throwaway repo with these hooks (hook_linux_only_skip_check.py) ran ITS hooks in staged mode:
+# no staged file, "0 changed file(s)", the failing check never selected, two cases failed, and only inside a real commit
+# that changed scripts/affected_checks.py (every check runs). Tested by hook_check_mode_env_check.py.
+unset LG_CHECK_MODE
 for check in $checks; do
   case " $linux_only " in *" $check "*)
     echo "SKIPPED (Linux-only): $check  (not passed; GitHub's hook-checks run runs it)"; continue;;

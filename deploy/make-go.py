@@ -90,6 +90,15 @@ for part in ("go", "remote"):
             sys.exit("no allow-list block in " + src_path)
         out = out[:m.start()] + "allow = {" + nl + "".join('    "%s",%s' % (f, nl) for f in files) + "}" + out[m.end():]
         out = re.sub(r"^# Put .*? on liquidgov\.us\.", lambda _m: "# Put " + purpose + " on liquidgov.us.", out, count=1, flags=re.M)
+        # the live check after the deploy (q88, 2026-11-17): the template compared the live juketube.js/css with the local
+        # ones, whatever this deploy ships (mapclarity1 shipped lgmap*.js/css and the hashes were checked by hand). Its list
+        # becomes the asset files in the allow-list (served at /assets/<path>); a deploy with no asset file (tests only)
+        # and a template with no such loop (the restarting pairs) are left as they are
+        served = [f[len("assets/"):] for f in files if re.fullmatch(r"assets/[A-Za-z0-9._/-]+", f)]
+        post_loop = re.compile(r"^for f in [A-Za-z0-9._/ -]+; do$", re.M)
+        if served and len(post_loop.findall(out)) == 1:
+            out = post_loop.sub(lambda _m: "for f in " + " ".join(served) + "; do", out, count=1)
+            print("post-check: the live hash check covers " + " ".join(served))
         # dry mode: accept "dry" as well as "go", and stop right after the allow-list check passes
         if DRY_LINE not in out:
             gate = 'if [ "${1:-}" != "go" ]; then'

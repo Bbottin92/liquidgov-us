@@ -1,5 +1,5 @@
 """Post drawings are sharp at full width (Brandon 2026-11-11 5:49 PM, Brief 6 item 5): the post canvas
-(/feed/canvas, /me/post/canvas, /c/<slug>/canvas) draws on a 1280 x 960 bitmap (4:3), while a brush, shape, smudge
+(/feed/canvas, /c/<slug>/canvas) draws on a 1280 x 960 bitmap (4:3), while a brush, shape, smudge
 or text box of a given size still looks the same size on screen as on the old 640 x 480 bitmap; the server takes the
 bigger PNG, even a worst case (every pixel random), and drawings already stored at 640 x 480 still show full width.
 

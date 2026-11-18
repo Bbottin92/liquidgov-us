@@ -4,7 +4,7 @@
 
 namespace liquidgov::site {
 
-// Shared by every post composer (/me/post, /feed, /c/<slug>): pulls the
+// Shared by every post composer (/feed, /c/<slug>): pulls the
 // text field and an optional media file out of either a multipart or
 // urlencoded body, and -- if a file was attached -- ingests it through the
 // exact same pipeline as a mail attachment (content-sniffed, malware

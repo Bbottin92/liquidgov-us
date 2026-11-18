@@ -263,6 +263,8 @@ std::string page_wrap(const std::string& title, const std::string& navhtml, cons
            "<footer class=\"site\"><a href=\"/\">Genesis</a> · <a href=\"/laws\">Laws</a> · "
            "<a href=\"/install\">Install this as an app</a> · "
            "<a href=\"/privacy\">Privacy</a> · "
+           // /terms had no link anywhere (site inventory 2026-11-17, q104): it sits beside Privacy, its sibling page
+           "<a href=\"/terms\">Terms</a> · "
            "<details style=\"display:inline-block\"><summary class=\"muted\" style=\"cursor:pointer;display:inline\">Disclaimer</summary> "
            "<a href=\"/control\">Who holds control</a></details><br>"
            "Not a government. A platform account is not a citizen identity. "

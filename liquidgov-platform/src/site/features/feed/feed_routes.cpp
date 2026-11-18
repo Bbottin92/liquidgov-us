@@ -92,16 +92,6 @@ std::optional<std::string> feed_routes(Route& r) {
             return http_code("404 Not Found", wrap("Not found", user, unread, "<div class=\"card\"><p>No such post.</p></div>"));
         return pg("Post", "<div class=\"card\">" + post_block(*p, user) + "</div>");
     }
-    if(method=="POST"&&path=="/me/post") {
-        if(!acc) return need_login();
-        auto hdr_end = req.find("\r\n\r\n");
-        std::string hdrs = hdr_end==std::string::npos ? req : req.substr(0, hdr_end);
-        auto c = read_composer_post(hdrs, body);
-        if (!c.ok) return http_redir(std::string("/me?err=")+c.err);
-        if (!c.text.empty() || !c.attachment_blob_id.empty())
-            g_store.add_post(user, c.text, "", "", 0, c.attachment_blob_id, c.attachment_mime);
-        return http_redir("/me");
-    }
     if(method=="POST"&&path=="/me/repost") {
         if(!acc) return need_login();
         auto f = parse_form(body);

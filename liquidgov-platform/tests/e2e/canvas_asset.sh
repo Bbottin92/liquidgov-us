@@ -43,7 +43,8 @@ bar() { python3 -c 'import re,sys; t=open(sys.argv[1],encoding="utf-8").read(); 
 start
 post $PAL /communities -d slug=tower --data-urlencode "name=Tower" -d category=3 -d subcategory=x --data-urlencode "about=x" >/dev/null
 cfg() { grep -o 'window.LG_CANVAS={[^<]*}' "$W/$1"; }
-for spec in "/me/canvas frames ''" "/me/portrait portrait ''" "/feed/canvas post /feed" "/me/post/canvas post /me/post" "/c/tower/canvas post /c/tower"; do
+# /me/post/canvas was deleted 2026-11-17 (q104: no page linked it since e015d27; tests/e2e/unreachable_routes.sh)
+for spec in "/me/canvas frames ''" "/me/portrait portrait ''" "/feed/canvas post /feed" "/c/tower/canvas post /c/tower"; do
     set -- $spec; path=$1; mode=$2; target=$3; [ "$target" = "''" ] && target=""
     f=$(echo "$path" | tr '/' '_').html
     r=$(page $PAL "$path" "$f")

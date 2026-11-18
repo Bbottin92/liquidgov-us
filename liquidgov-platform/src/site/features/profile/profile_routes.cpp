@@ -28,6 +28,11 @@ std::optional<std::string> profile_routes(Route& r) {
             html_escape(fmt_time(acc->created_at))+"</p></div></div>"+err+
             "<p class=\"muted\">Self-portrait &mdash; draw one with the same tools as the "
             "<a href=\"/me/portrait\">portrait tool</a>.</p>";
+        // Remove portrait (back 2026-11-17, q104): the form left /me in 6c4291e while POST /me/avatar/clear stayed, so a
+        // member could not take their own portrait down. Shown only when there is one to remove.
+        if (g_store.get(acc->id))
+            html += "<form method=\"POST\" action=\"/me/avatar/clear\" class=\"row\">"
+                    "<button type=\"submit\" class=\"ghost\">Remove portrait</button></form>";
         html += "<p class=\"muted\">A platform account is not a citizen identity.</p></div>";
         {
             auto prof = g_store.profile_of(user);

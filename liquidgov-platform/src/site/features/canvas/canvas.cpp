@@ -27,11 +27,11 @@ namespace liquidgov::site {
 //   portrait=true -- /me/portrait, the self-portrait tool. No frame
 //     history needed (an avatar isn't a sequence): Save just flattens the
 //     current layers and POSTs the one image straight to /me/avatar.
-//   post_target non-empty -- a post composer (/me/post/canvas, /feed/canvas,
+//   post_target non-empty -- a post composer (/feed/canvas,
 //     /c/<slug>/canvas): the canvas itself IS the post's photo/video editor.
 //     No frame history either; Save flattens the layers, pairs the image
 //     with the caption textarea, and POSTs both as one multipart request
-//     straight to post_target (/me/post, /feed, or /c/<slug>) -- the exact
+//     straight to post_target (/feed or /c/<slug>) -- the exact
 //     same read_composer_post()-backed route a plain file-upload composer
 //     already posts to, so no new backend ingestion path was needed for
 //     this at all, only a richer way to produce the "media" file first.

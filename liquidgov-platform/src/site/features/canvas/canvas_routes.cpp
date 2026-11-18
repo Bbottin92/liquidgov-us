@@ -18,10 +18,6 @@ std::optional<std::string> canvas_routes(Route& r) {
         if(!acc) return need_login();
         return pg("Self-portrait", canvas_tool_page(user, flash_error(qs), true));
     }
-    if(method=="GET"&&path=="/me/post/canvas") {
-        if(!acc) return need_login();
-        return pg("Compose a post", canvas_tool_page(user, "", false, "/me/post"));
-    }
     if(method=="GET"&&path=="/feed/canvas") {
         if(!acc) return need_login();
         return pg("Compose a post", canvas_tool_page(user, "", false, "/feed"));

@@ -41,6 +41,7 @@ CHECKS = {
     "ci_gate_check.py": DEPLOY,
     "sync_gate_check.py": DEPLOY,
     "sync_bytecode_exclude_check.py": DEPLOY,
+    "live_base_check.py": DEPLOY,
     "make_go_postcheck_check.py": DEPLOY,
     "ci_gate_interop_check.py": DEPLOY,
     "rollback_guard_check.py": DEPLOY + ["liquidgov-platform/libs/liquidgov_file_store/*"],

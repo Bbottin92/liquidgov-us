@@ -18,7 +18,7 @@ and deploy it. This file is the map: what each folder is for, and where a new fi
 | `scripts/` | Developer tools: local checks (`lgcheck.sh`, `local_ci.py`), the affected-check runner, worktree tidy, release build | a tool run on a developer machine |
 | `tests/repo/` | Checks on the repo and its tooling: naming, deploy gate, store-format consistency, git hooks | a check about the repo itself |
 | `.githooks/` | The repo's git hooks (pre-commit, commit-msg, pre-push) | |
-| `docs/` | Design notes; `docs/archive/` holds finished or retired work (`docs/archive/the_commons/` is the retired game) | a design note or decision record |
+| `docs/` | Design notes; `docs/site_inventory/` is the map of every page, route and script on the site (refresh: `python scripts/site_inventory/update.py <commit>`); `docs/archive/` holds finished or retired work (`docs/archive/the_commons/` is the retired game) | a design note or decision record |
 | `Persistence/` | `notes.md`, the shared, dated decision log (newest first under each heading) | a dated decision bullet, not a file |
 
 ## Naming

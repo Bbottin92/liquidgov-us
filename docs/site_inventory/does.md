@@ -1,0 +1,398 @@
+- `/` GET: button id=- '(function(){var btn=document.querySelector('.listen-pulse');'
+- `/` GET: script (inline)
+- `/` GET: script tip.js
+- `/` GET: script walker.js
+- `/` GET: script home_drop.js
+- `/` GET: button id=lgm-main 'MAINstream Turn on alerts Click a box to grow its connection'
+- `/` GET: form action=/search method=get
+- `/` GET: button id=lgm-edit 'Edit Expand # Open page <button type="button" id='
+- `/` GET: button id=lgm-expand 'Expand # Open page &times; <iframe id="lgm-frame"'
+- `/` GET: button id=lgm-close '&times; <span class="lgm-sc'
+- `/` GET: button id=lgm-forget 'Forget my visits peop'
+- `/` GET: script lgmap.js
+- `/` GET: script lgmap_walk.js
+- `/` GET: form action=/friends method=post
+- `/` GET: button id=- 'Add friend /friends More people' [submit]
+- `/admin/accounts` GET: form action=/admin/accounts method=get
+- `/admin/accounts` GET: button id=- 'Filter No accounts match. Username Created Locke' [submit]
+- `/admin/accounts` GET: form action=/admin/accounts/unlocklock method=post
+- `/admin/accounts` GET: button id=- 'UnlockLock <button class="g' [submit]
+- `/admin/accounts` GET: form action=/admin/accounts/logout-all method=post
+- `/admin/accounts` GET: button id=- 'Sign out all devices Delete&hellip;' [submit]
+- `/admin/accounts` GET: form action=/admin/accounts/delete method=post
+- `/admin/accounts` GET: button id=- 'Delete account' [submit]
+- `/admin/comments` GET: form action=/admin/comments/delete method=post
+- `/admin/comments` GET: button id=- 'Delete' [submit]
+- `/admin/comments` GET: form action=(same page) method=get
+- `/admin/comments` GET: button id=- 'Search' [submit]
+- `/admin/communities` GET: form action=/admin/communities/delete method=post
+- `/admin/communities` GET: button id=- 'Delete group Posts already made here keep their room name bu' [submit]
+- `/admin/departments` GET: form action=/admin/departments/delete method=post
+- `/admin/departments` GET: button id=- 'Delete' [submit]
+- `/admin/departments` GET: form action=(same page) method=get
+- `/admin/departments` GET: button id=- 'Search' [submit]
+- `/admin/posts` GET: form action=/admin/posts/delete method=post
+- `/admin/posts` GET: button id=- 'Delete' [submit]
+- `/admin/posts` GET: form action=(same page) method=get
+- `/admin/posts` GET: button id=- 'Search' [submit]
+- `/admin/preview` GET: form action=/admin/preview method=post
+- `/admin/preview` GET: button id=- 'Save the words Picture 1200 \xC3\x97 630 pixels works best. '
+- `/admin/preview` GET: form action=/admin/preview/image method=post
+- `/admin/preview` GET: button id=- 'Upload the picture Remove the pictu'
+- `/admin/preview` GET: form action=/admin/preview/image-remove method=post
+- `/admin/preview` GET: button id=- 'Remove the picture (use the built-in one) Reset e'
+- `/admin/preview` GET: form action=/admin/preview/reset method=post
+- `/admin/preview` GET: button id=- 'Reset everything to the built-in preview'
+- `/admin/proposals` GET: form action=/admin/proposals/edit method=post
+- `/admin/proposals` GET: button id=- 'Save <form method="POST" action="/admin/proposals/delete" on' [submit]
+- `/admin/proposals` GET: form action=/admin/proposals/delete method=post
+- `/admin/proposals` GET: button id=- 'Delete' [submit]
+- `/admin/styles` GET: form action=/admin/styles/takedown method=post
+- `/admin/styles` GET: button id=- 'Take down <button class="ghost" type="s' [submit]
+- `/admin/styles` GET: form action=/admin/styles/dismiss method=post
+- `/admin/styles` GET: button id=- 'Dismiss reports' [submit]
+- `/c/*` GET: button id=- '<button type="button" class="ghost'
+- `/c/*` GET: button id=- '<button type="button" class="ghost to'
+- `/c/*` GET: button id=- '<span class="toolgrou'
+- `/c/*` GET: button id=- '<button type="button" class="ghost toolbtn" data-tool="line"'
+- `/c/*` GET: button id=- '<span class="toolgroup-sep" aria-hi'
+- `/c/*` GET: button id=- '<button type="button" class="ghost toolbtn" data-tool="bucke'
+- `/c/*` GET: button id=- '<div class="ctgroup cprops" role='
+- `/c/*` GET: button id=- '<div class="row" style="flex-wrap:wrap;gap:.4rem 1rem;align-'
+- `/c/*` GET: button id=cglow '<button type="button" class='
+- `/c/*` GET: button id=csymmetry '<div class="row" id="c'
+- `/c/*` GET: button id=cfill '<select id="cfont" style="widt'
+- `/c/*` GET: button id=cbold 'B I <button ty'
+- `/c/*` GET: button id=citalic 'I U</but'
+- `/c/*` GET: button id=cunderline 'U <input type="color" i'
+- `/c/*` GET: button id=ctextbg '<'
+- `/c/*` GET: button id=- '<div style="di'
+- `/c/*` GET: button id=- 'what the'
+- `/c/*` GET: button id=cundo '&#8617; &#8618; Clear layer'
+- `/c/*` GET: button id=credo '&#8618; Clear layer <button type="button"'
+- `/c/*` GET: button id=cclear 'Clear layer <button type="button" class="ghost" id="ccopy" t'
+- `/c/*` GET: button id=ccopy '<button type="button" class="ghost" id="cpast'
+- `/c/*` GET: button id=ccut '<button type="button" class="ghost" id="ccrop" titl'
+- `/c/*` GET: button id=cpaste '<div class="ccanvasrow'
+- `/c/*` GET: button id=ccrop '<div id="ccanvaswrap" style="position:relative;flex:1;min-wi'
+- `/c/*` GET: button id=- 'Hatch Plain Was'
+- `/c/*` GET: button id=- 'Plain Wash Ruled </'
+- `/c/*` GET: button id=- 'Wash Ruled /24 frame'
+- `/c/*` GET: button id=- 'Ruled /24 frames captured <input type='
+- `/c/*` GET: button id=csave 'window.LG_CANVAS={"px":,"frames":,"user":"","mode":"portrait'
+- `/c/*` GET: script (inline)
+- `/c/*` GET: script canvas.js
+- `/c/*` GET: button id=- '/p'
+- `/c/*` GET: form action=/me/portrait/old/delete method=post
+- `/c/*` GET: button id=- 'Delete <input type="checkbox" name="on" value="1"' [submit]
+- `/c/*` GET: form action=/me/portrait/old/share method=post
+- `/c/*` GET: button id=- 'Save this choice' [submit]
+- `/c/*` GET: form action=/c//join method=post
+- `/c/*` GET: button id=- 'Join this group Leave <form method="POST" action="/c//delete'
+- `/c/*` GET: form action=/c//leave method=post
+- `/c/*` GET: button id=- 'Leave Delete group</'
+- `/c/*` GET: form action=/c//delete method=post
+- `/c/*` GET: button id=- 'Delete group Add a cityChange city <form method="POST" actio'
+- `/c/*` GET: form action=/c//city method=post
+- `/c/*` GET: button id=- 'Save Groups that name the same city are listed together so p'
+- `/c/*` GET: form action=/c/ method=post
+- `/c/*` GET: form action=/friends method=post
+- `/c/*` GET: button id=- 'Add friend Invite by account name <inpu' [submit]
+- `/c/*` GET: form action=/c//invite method=post
+- `/c/*` GET: button id=- 'Invite'
+- `/c/*` GET: button id=- 'Post' [submit]
+- `/city` GET: form action=/city//tag method=post
+- `/city` GET: button id=- 'Add Join a group in this city to add one. None named yet. /c'
+- `/city` GET: form action=/city//list method=post
+- `/city` GET: button id=- 'Stop listing meList me here Join a group in this city to be '
+- `/city` GET: form action=/friends method=post
+- `/city` GET: button id=- 'Add friend Start a group in Anyone can start one' [submit]
+- `/city/*` GET: form action=/city//tag method=post
+- `/city/*` GET: button id=- 'Add Join a group in this city to add one. None named yet. /c'
+- `/city/*` GET: form action=/city//list method=post
+- `/city/*` GET: button id=- 'Stop listing meList me here Join a group in this city to be '
+- `/city/*` GET: form action=/friends method=post
+- `/city/*` GET: button id=- 'Add friend Start a group in Anyone can start one' [submit]
+- `/communities` GET: form action=/communities method=post
+- `/communities` GET: button id=- 'Create (function(){var SUB=;var sel=document.getElementById('
+- `/communities` GET: script (inline)
+- `/feed` GET: button id=- 'vis-groupsGroups Which groups <p class="muted" style="margin'
+- `/feed` GET: form action=/feed method=post
+- `/feed` GET: script (inline)
+- `/feed` GET: button id=feedattachbtn 'Post <p class="muted" id="feedfilena'
+- `/feed` GET: button id=- 'Post <p class="muted" id="feedfilename" style="margin:.3rem ' [submit]
+- `/feed/canvas` GET: button id=- '<button type="button" class="ghost'
+- `/feed/canvas` GET: button id=- '<button type="button" class="ghost to'
+- `/feed/canvas` GET: button id=- '<span class="toolgrou'
+- `/feed/canvas` GET: button id=- '<button type="button" class="ghost toolbtn" data-tool="line"'
+- `/feed/canvas` GET: button id=- '<span class="toolgroup-sep" aria-hi'
+- `/feed/canvas` GET: button id=- '<button type="button" class="ghost toolbtn" data-tool="bucke'
+- `/feed/canvas` GET: button id=- '<div class="ctgroup cprops" role='
+- `/feed/canvas` GET: button id=- '<div class="row" style="flex-wrap:wrap;gap:.4rem 1rem;align-'
+- `/feed/canvas` GET: button id=cglow '<button type="button" class='
+- `/feed/canvas` GET: button id=csymmetry '<div class="row" id="c'
+- `/feed/canvas` GET: button id=cfill '<select id="cfont" style="widt'
+- `/feed/canvas` GET: button id=cbold 'B I <button ty'
+- `/feed/canvas` GET: button id=citalic 'I U</but'
+- `/feed/canvas` GET: button id=cunderline 'U <input type="color" i'
+- `/feed/canvas` GET: button id=ctextbg '<'
+- `/feed/canvas` GET: button id=- '<div style="di'
+- `/feed/canvas` GET: button id=- 'what the'
+- `/feed/canvas` GET: button id=cundo '&#8617; &#8618; Clear layer'
+- `/feed/canvas` GET: button id=credo '&#8618; Clear layer <button type="button"'
+- `/feed/canvas` GET: button id=cclear 'Clear layer <button type="button" class="ghost" id="ccopy" t'
+- `/feed/canvas` GET: button id=ccopy '<button type="button" class="ghost" id="cpast'
+- `/feed/canvas` GET: button id=ccut '<button type="button" class="ghost" id="ccrop" titl'
+- `/feed/canvas` GET: button id=cpaste '<div class="ccanvasrow'
+- `/feed/canvas` GET: button id=ccrop '<div id="ccanvaswrap" style="position:relative;flex:1;min-wi'
+- `/feed/canvas` GET: button id=- 'Hatch Plain Was'
+- `/feed/canvas` GET: button id=- 'Plain Wash Ruled </'
+- `/feed/canvas` GET: button id=- 'Wash Ruled /24 frame'
+- `/feed/canvas` GET: button id=- 'Ruled /24 frames captured <input type='
+- `/feed/canvas` GET: button id=csave 'window.LG_CANVAS={"px":,"frames":,"user":"","mode":"portrait'
+- `/feed/canvas` GET: script (inline)
+- `/feed/canvas` GET: script canvas.js
+- `/feed/canvas` GET: button id=- '/p'
+- `/feed/canvas` GET: form action=/me/portrait/old/delete method=post
+- `/feed/canvas` GET: button id=- 'Delete <input type="checkbox" name="on" value="1"' [submit]
+- `/feed/canvas` GET: form action=/me/portrait/old/share method=post
+- `/feed/canvas` GET: button id=- 'Save this choice' [submit]
+- `/forgot` GET: form action=/forgot method=post
+- `/forgot` GET: button id=- 'Send reset link Back to log in'
+- `/friends` GET: form action=/search method=get
+- `/friends` GET: button id=- 'Search Friends always appear. Everyone else follows their fi'
+- `/friends` GET: form action=/friends method=post
+- `/friends` GET: button id=- 'Send request Friends friend friends &middot; inner No friend'
+- `/friends` GET: form action=/friends/inner-remove method=post
+- `/friends` GET: button id=- 'From inner <button class="ghost" type="submit' [submit]
+- `/friends` GET: form action=/friends/inner method=post
+- `/friends` GET: button id=- 'Inner circle <form class="inline" method="POST" action="/fri' [submit]
+- `/friends` GET: form action=/friends/unfriend method=post
+- `/friends` GET: button id=- 'Unfriend <button class="danger" type="submit"' [submit]
+- `/friends` GET: form action=/friends/block method=post
+- `/friends` GET: button id=- 'Block Inner circle is up to twelve people. Everyone else you' [submit]
+- `/friends` GET: form action=/friends/accept method=post
+- `/friends` GET: button id=- 'Accept' [submit]
+- `/friends` GET: form action=/friends/decline method=post
+- `/friends` GET: button id=- 'Decline Outgoing If someone does not accept, you will not ge' [submit]
+- `/friends` GET: button id=- 'Add friend /friends More people' [submit]
+- `/jukebox/channel` GET: button id=jbtab-community 'Stations Search <button type="button" class="ghos'
+- `/jukebox/channel` GET: button id=jbtab-search 'Search Float above <button type="button" class='
+- `/jukebox/channel` GET: button id=jbfloat 'Float above \xE2\x9C\x95 <div id="jbplayer" style="margin-to'
+- `/jukebox/channel` GET: button id=jbclose '\xE2\x9C\x95 <div class="row" s'
+- `/jukebox/channel` GET: button id=jbplaypause 'Play Mute <d'
+- `/jukebox/channel` GET: button id=jbmute 'Mute on the phone<p class="muted" style="ma'
+- `/jukebox/channel` GET: button id=jbfollowbtn 'Follow Connecting&helli'
+- `/jukebox/meta` GET: button id=jbtab-community 'Stations Search <button type="button" class="ghos'
+- `/jukebox/meta` GET: button id=jbtab-search 'Search Float above <button type="button" class='
+- `/jukebox/meta` GET: button id=jbfloat 'Float above \xE2\x9C\x95 <div id="jbplayer" style="margin-to'
+- `/jukebox/meta` GET: button id=jbclose '\xE2\x9C\x95 <div class="row" s'
+- `/jukebox/meta` GET: button id=jbplaypause 'Play Mute <d'
+- `/jukebox/meta` GET: button id=jbmute 'Mute on the phone<p class="muted" style="ma'
+- `/jukebox/meta` GET: button id=jbfollowbtn 'Follow Connecting&helli'
+- `/jukebox/oembed` GET: button id=jbtab-community 'Stations Search <button type="button" class="ghos'
+- `/jukebox/oembed` GET: button id=jbtab-search 'Search Float above <button type="button" class='
+- `/jukebox/oembed` GET: button id=jbfloat 'Float above \xE2\x9C\x95 <div id="jbplayer" style="margin-to'
+- `/jukebox/oembed` GET: button id=jbclose '\xE2\x9C\x95 <div class="row" s'
+- `/jukebox/oembed` GET: button id=jbplaypause 'Play Mute <d'
+- `/jukebox/oembed` GET: button id=jbmute 'Mute on the phone<p class="muted" style="ma'
+- `/jukebox/oembed` GET: button id=jbfollowbtn 'Follow Connecting&helli'
+- `/jukebox/people` GET: button id=jbtab-community 'Stations Search <button type="button" class="ghos'
+- `/jukebox/people` GET: button id=jbtab-search 'Search Float above <button type="button" class='
+- `/jukebox/people` GET: button id=jbfloat 'Float above \xE2\x9C\x95 <div id="jbplayer" style="margin-to'
+- `/jukebox/people` GET: button id=jbclose '\xE2\x9C\x95 <div class="row" s'
+- `/jukebox/people` GET: button id=jbplaypause 'Play Mute <d'
+- `/jukebox/people` GET: button id=jbmute 'Mute on the phone<p class="muted" style="ma'
+- `/jukebox/people` GET: button id=jbfollowbtn 'Follow Connecting&helli'
+- `/jukebox/search` GET: button id=jbtab-community 'Stations Search <button type="button" class="ghos'
+- `/jukebox/search` GET: button id=jbtab-search 'Search Float above <button type="button" class='
+- `/jukebox/search` GET: button id=jbfloat 'Float above \xE2\x9C\x95 <div id="jbplayer" style="margin-to'
+- `/jukebox/search` GET: button id=jbclose '\xE2\x9C\x95 <div class="row" s'
+- `/jukebox/search` GET: button id=jbplaypause 'Play Mute <d'
+- `/jukebox/search` GET: button id=jbmute 'Mute on the phone<p class="muted" style="ma'
+- `/jukebox/search` GET: button id=jbfollowbtn 'Follow Connecting&helli'
+- `/laws` GET: button id=narrbtn '&#9654; Listen to this chapter'
+- `/laws` GET: script (inline)
+- `/laws/*` GET: button id=narrbtn '&#9654; Listen to this chapter'
+- `/laws/*` GET: script (inline)
+- `/listen` GET: button id=jbtab-community 'Stations Search <button type="button" class="ghos'
+- `/listen` GET: button id=jbtab-search 'Search Float above <button type="button" class='
+- `/listen` GET: button id=jbfloat 'Float above \xE2\x9C\x95 <div id="jbplayer" style="margin-to'
+- `/listen` GET: button id=jbclose '\xE2\x9C\x95 <div class="row" s'
+- `/listen` GET: button id=jbplaypause 'Play Mute <d'
+- `/listen` GET: button id=jbmute 'Mute on the phone<p class="muted" style="ma'
+- `/listen` GET: button id=jbfollowbtn 'Follow Connecting&helli'
+- `/login` GET: form action=/login method=post
+- `/login` GET: button id=- 'Continue Forgot password? &middot; New here? Create an accou'
+- `/login` GET: script https://accounts.google.com/gsi/client
+- `/mail` GET: form action=/mail method=post
+- `/mail` GET: button id=- 'Send it shouldnt say that you can send programs or have // i' [submit]
+- `/mail` GET: script (inline)
+- `/mail/g/*` GET: form action=/accept method=post
+- `/mail/g/*` GET: button id=- 'Accept Decline <div class="msglist" id="msglist"'
+- `/mail/g/*` GET: form action=/leave method=post
+- `/mail/g/*` GET: button id=- 'Decline <strong'
+- `/mail/g/*` GET: form action=/send method=post
+- `/mail/g/*` GET: button id=- 'Send it shouldnt say that you can send programs or // have i' [submit]
+- `/mail/g/*` GET: form action=/invite method=post
+- `/mail/g/*` GET: button id=- 'Invite Group name <butto'
+- `/mail/g/*` GET: form action=/title method=post
+- `/mail/g/*` GET: button id=- 'Save name <button class='
+- `/mail/g/*` GET: button id=- 'Leave group (function(){var list=document.getElementById('ms'
+- `/mail/g/*` GET: script (inline)
+- `/mail/panel` GET: form action=/mail method=post
+- `/mail/panel` GET: button id=- 'Send it shouldnt say that you can send programs or have // i' [submit]
+- `/mail/panel` GET: script (inline)
+- `/map` GET: button id=lgm-main 'MAINstream Turn on alerts Click a box to grow its connection'
+- `/map` GET: form action=/search method=get
+- `/map` GET: button id=lgm-edit 'Edit Expand # Open page <button type="button" id='
+- `/map` GET: button id=lgm-expand 'Expand # Open page &times; <iframe id="lgm-frame"'
+- `/map` GET: button id=lgm-close '&times; <span class="lgm-sc'
+- `/map` GET: button id=lgm-forget 'Forget my visits peop'
+- `/map` GET: script lgmap.js
+- `/map` GET: script walker.js
+- `/map` GET: script lgmap_walk.js
+- `/map` GET: form action=/friends method=post
+- `/map` GET: button id=- 'Add friend /friends More people' [submit]
+- `/me` GET: form action=/me/avatar/clear method=post
+- `/me` GET: button id=- 'Remove portrait A platform account is not a citizen identity' [submit]
+- `/me` GET: form action=/me/profile method=post
+- `/me` GET: form action=/me/css method=post
+- `/me` GET: form action=/me/jukebox/play-settings method=post
+- `/me` GET: form action=/styles/publish method=post
+- `/me` GET: button id=- 'Publish Publishing shares a copy of your CSS as it is now, w' [submit]
+- `/me/canvas` GET: button id=- '<button type="button" class="ghost'
+- `/me/canvas` GET: button id=- '<button type="button" class="ghost to'
+- `/me/canvas` GET: button id=- '<span class="toolgrou'
+- `/me/canvas` GET: button id=- '<button type="button" class="ghost toolbtn" data-tool="line"'
+- `/me/canvas` GET: button id=- '<span class="toolgroup-sep" aria-hi'
+- `/me/canvas` GET: button id=- '<button type="button" class="ghost toolbtn" data-tool="bucke'
+- `/me/canvas` GET: button id=- '<div class="ctgroup cprops" role='
+- `/me/canvas` GET: button id=- '<div class="row" style="flex-wrap:wrap;gap:.4rem 1rem;align-'
+- `/me/canvas` GET: button id=cglow '<button type="button" class='
+- `/me/canvas` GET: button id=csymmetry '<div class="row" id="c'
+- `/me/canvas` GET: button id=cfill '<select id="cfont" style="widt'
+- `/me/canvas` GET: button id=cbold 'B I <button ty'
+- `/me/canvas` GET: button id=citalic 'I U</but'
+- `/me/canvas` GET: button id=cunderline 'U <input type="color" i'
+- `/me/canvas` GET: button id=ctextbg '<'
+- `/me/canvas` GET: button id=- '<div style="di'
+- `/me/canvas` GET: button id=- 'what the'
+- `/me/canvas` GET: button id=cundo '&#8617; &#8618; Clear layer'
+- `/me/canvas` GET: button id=credo '&#8618; Clear layer <button type="button"'
+- `/me/canvas` GET: button id=cclear 'Clear layer <button type="button" class="ghost" id="ccopy" t'
+- `/me/canvas` GET: button id=ccopy '<button type="button" class="ghost" id="cpast'
+- `/me/canvas` GET: button id=ccut '<button type="button" class="ghost" id="ccrop" titl'
+- `/me/canvas` GET: button id=cpaste '<div class="ccanvasrow'
+- `/me/canvas` GET: button id=ccrop '<div id="ccanvaswrap" style="position:relative;flex:1;min-wi'
+- `/me/canvas` GET: button id=- 'Hatch Plain Was'
+- `/me/canvas` GET: button id=- 'Plain Wash Ruled </'
+- `/me/canvas` GET: button id=- 'Wash Ruled /24 frame'
+- `/me/canvas` GET: button id=- 'Ruled /24 frames captured <input type='
+- `/me/canvas` GET: button id=csave 'window.LG_CANVAS={"px":,"frames":,"user":"","mode":"portrait'
+- `/me/canvas` GET: script (inline)
+- `/me/canvas` GET: script canvas.js
+- `/me/canvas` GET: button id=- '/p'
+- `/me/canvas` GET: form action=/me/portrait/old/delete method=post
+- `/me/canvas` GET: button id=- 'Delete <input type="checkbox" name="on" value="1"' [submit]
+- `/me/canvas` GET: form action=/me/portrait/old/share method=post
+- `/me/canvas` GET: button id=- 'Save this choice' [submit]
+- `/me/portrait` GET: button id=- '<button type="button" class="ghost'
+- `/me/portrait` GET: button id=- '<button type="button" class="ghost to'
+- `/me/portrait` GET: button id=- '<span class="toolgrou'
+- `/me/portrait` GET: button id=- '<button type="button" class="ghost toolbtn" data-tool="line"'
+- `/me/portrait` GET: button id=- '<span class="toolgroup-sep" aria-hi'
+- `/me/portrait` GET: button id=- '<button type="button" class="ghost toolbtn" data-tool="bucke'
+- `/me/portrait` GET: button id=- '<div class="ctgroup cprops" role='
+- `/me/portrait` GET: button id=- '<div class="row" style="flex-wrap:wrap;gap:.4rem 1rem;align-'
+- `/me/portrait` GET: button id=cglow '<button type="button" class='
+- `/me/portrait` GET: button id=csymmetry '<div class="row" id="c'
+- `/me/portrait` GET: button id=cfill '<select id="cfont" style="widt'
+- `/me/portrait` GET: button id=cbold 'B I <button ty'
+- `/me/portrait` GET: button id=citalic 'I U</but'
+- `/me/portrait` GET: button id=cunderline 'U <input type="color" i'
+- `/me/portrait` GET: button id=ctextbg '<'
+- `/me/portrait` GET: button id=- '<div style="di'
+- `/me/portrait` GET: button id=- 'what the'
+- `/me/portrait` GET: button id=cundo '&#8617; &#8618; Clear layer'
+- `/me/portrait` GET: button id=credo '&#8618; Clear layer <button type="button"'
+- `/me/portrait` GET: button id=cclear 'Clear layer <button type="button" class="ghost" id="ccopy" t'
+- `/me/portrait` GET: button id=ccopy '<button type="button" class="ghost" id="cpast'
+- `/me/portrait` GET: button id=ccut '<button type="button" class="ghost" id="ccrop" titl'
+- `/me/portrait` GET: button id=cpaste '<div class="ccanvasrow'
+- `/me/portrait` GET: button id=ccrop '<div id="ccanvaswrap" style="position:relative;flex:1;min-wi'
+- `/me/portrait` GET: button id=- 'Hatch Plain Was'
+- `/me/portrait` GET: button id=- 'Plain Wash Ruled </'
+- `/me/portrait` GET: button id=- 'Wash Ruled /24 frame'
+- `/me/portrait` GET: button id=- 'Ruled /24 frames captured <input type='
+- `/me/portrait` GET: button id=csave 'window.LG_CANVAS={"px":,"frames":,"user":"","mode":"portrait'
+- `/me/portrait` GET: script (inline)
+- `/me/portrait` GET: script canvas.js
+- `/me/portrait` GET: button id=- '/p'
+- `/me/portrait` GET: form action=/me/portrait/old/delete method=post
+- `/me/portrait` GET: button id=- 'Delete <input type="checkbox" name="on" value="1"' [submit]
+- `/me/portrait` GET: form action=/me/portrait/old/share method=post
+- `/me/portrait` GET: button id=- 'Save this choice' [submit]
+- `/notices` GET: form action=/friends/accept method=post
+- `/notices` GET: button id=- 'Accept A declined friend request does not send a notice.' [submit]
+- `/notices/panel` GET: form action=/friends/accept method=post
+- `/notices/panel` GET: button id=- 'Accept A declined friend request does not send a notice.' [submit]
+- `/officials` GET: form action=/officials method=post
+- `/officials` GET: button id=- 'Open race Log in to vote or open a race. Officials Officials' [submit]
+- `/officials` GET: form action=/proposals/vote method=post
+- `/officials` GET: button id=- '· &#10003; · None of these · Skip / no preference None of th' [submit]
+- `/officials` GET: form action=/proposals/option method=post
+- `/officials` GET: button id=- 'Add You already added a on this one.' [submit]
+- `/officials` GET: button id=- '&#10003;' [submit]
+- `/problems` GET: form action=/problems/look method=post
+- `/problems` GET: button id=- 'Look at what I've written This reads posts, proposals, propo' [submit]
+- `/problems` GET: form action=/problems/ method=post
+- `/problems` GET: button id=- 'keepKeepforgetForget <p class'
+- `/proposals` GET: form action=/proposals method=post
+- `/proposals` GET: button id=- 'Publish (function(){var s=document.getElementById('bkind');i'
+- `/proposals` GET: script (inline)
+- `/reset` GET: form action=/reset method=post
+- `/reset` GET: button id=- 'Set password'
+- `/search` GET: form action=/search method=get
+- `/search` GET: button id=- 'Search Friends always appear. Everyone else follows their fi'
+- `/search` GET: form action=/friends/accept method=post
+- `/search` GET: button id=- 'Accept Request sent <inpu' [submit]
+- `/search` GET: form action=/friends method=post
+- `/search` GET: button id=- 'Add friend Message <button class="ghost" type="button" disab' [submit]
+- `/search` GET: button id=- 'Message Profile sm </span'
+- `/settings` GET: form action=/settings/revoke method=post
+- `/settings` GET: button id=- 'Revoke None. <button class="danger" type="sub' [submit]
+- `/settings` GET: form action=/settings/logout-all method=post
+- `/settings` GET: button id=- 'Log out other devices and you can choose to hide it if you w' [submit]
+- `/settings` GET: form action=/settings/map method=post
+- `/settings` GET: button id=- 'Save map settings Privacy Who can find you</la'
+- `/settings` GET: form action=/settings/privacy method=post
+- `/settings` GET: button id=- 'Save privacy Block list member members &middot; not visible '
+- `/settings` GET: form action=/settings/unblock method=post
+- `/settings` GET: button id=- 'Unblock <input name="who" placeholder="account name'
+- `/settings` GET: form action=/settings/block method=post
+- `/settings` GET: button id=- 'Add block its not appropriate checked<h2 id="jukebox"' [submit]
+- `/settings` GET: form action=/me/jukebox/policy method=post
+- `/settings` GET: button id=- 'Save Identity No civic identity is linked to this account. V'
+- `/settings` GET: form action=/settings/delete method=post
+- `/settings` GET: button id=- 'Delete account Sessions end immediately. Mail you sent is sh'
+- `/settings` GET: form action=/settings/notify method=post
+- `/settings` GET: button id=- 'Save notifications Settings'
+- `/settings` GET: form action=/here/choice method=post
+- `/settings` GET: button id=- 'Save' [submit]
+- `/settings/password` GET: form action=/settings/password method=post
+- `/settings/password` GET: button id=- 'Change password Change password'
+- `/signup` GET: form action=/signup method=post
+- `/signup` GET: button id=- 'Continue'
+- `/signup` GET: script https://accounts.google.com/gsi/client
+- `/styles` GET: form action=/styles/use method=post
+- `/styles` GET: button id=- 'Use this style <form class="inline" method="POST" action="/s' [submit]
+- `/styles` GET: form action=/styles/remove method=post
+- `/styles` GET: button id=- 'Remove Report <input type="hidden" name="id"' [submit]
+- `/styles` GET: form action=/styles/report method=post
+- `/styles` GET: button id=- 'Send report' [submit]
+- `/u/*` GET: form action=/friends/unfriend method=post
+- `/u/*` GET: button id=- 'Unfriend Send friend request Play' [submit]
+- `/u/*` GET: form action=/friends method=post
+- `/u/*` GET: button id=- 'Send friend request Play my Juketube when someone opens my p'
+- `/u/*` GET: script (inline)

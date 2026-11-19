@@ -94,6 +94,15 @@ try:
     # precondition: the fake rsync is the one the script finds, and a plain call reaches it
     rc, out, called = sync(["1 %s completed success" % head], dry=True)
     check("precondition: a dry run reaches the fake rsync (instrument works)", rc == 0 and called, (rc, out[-300:]))
+    # Python bytecode never ships (2026-11-12 and 2026-11-18: a local test or CI run left tests/browser/__pycache__/*.pyc in the
+    # working tree, git ignores them, rsync copied them, and the go script's allow-list refused 25 unexpected files). The fix is
+    # here, in the one script every go script syncs through, not in each go script's allow-list.
+    args = open(marker, encoding="utf-8").read() if os.path.exists(marker) else ""
+    check("rsync is told to exclude __pycache__ folders", "--exclude __pycache__/" in args, args[-400:])
+    check("rsync is told to exclude *.pyc files", "--exclude *.pyc" in args, args[-400:])
+    check("the older exclusions are still there (build, .git, *.lgp, blobs, .env.local)",
+          all(e in args for e in ("--exclude build", "--exclude .git", "--exclude *.lgp", "--exclude liquidgov_blobs/", "--exclude .env.local")),
+          args[-400:])
 
     rc, out, called = sync(["2 %s completed failure" % head])
     check("real sync, CI red -> refused before rsync", rc != 0 and not called and "CI_GATE_REFUSED" in out, (rc, called, out[-300:]))

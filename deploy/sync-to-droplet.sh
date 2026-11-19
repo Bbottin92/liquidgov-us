@@ -135,7 +135,10 @@ else
     exit 5
 fi
 
-echo "Syncing $SRC -> $DEST (excluding build/.git/data files)${DRY:+ [dry run]}"
+# Python bytecode never ships (2026-11-12, 2026-11-18): a local test or CI run leaves tests/**/__pycache__/*.pyc in the working
+# tree, git ignores them (so the clean-tree check cannot see them) and rsync copied them, so every go script's allow-list refused
+# 25 unexpected files. Excluded here, once, for every go script (tests/repo/sync_gate_check.py).
+echo "Syncing $SRC -> $DEST (excluding build/.git/data files and Python bytecode)${DRY:+ [dry run]}"
 # --no-times (2026-11-08): -a includes -t, which set every UNCHANGED file's modification time to the local checkout's,
 # so a fresh worktree made the next server build recompile everything (the 14:22 PT deploy rebuilt the whole tree for
 # one changed .cpp). Without -t, unchanged files keep their server times and a changed file gets "now", so make
@@ -147,6 +150,8 @@ rsync -az --no-times --checksum "${DRY[@]}" -e "$SSH_CMD" \
     --exclude '*.lgp.*' \
     --exclude 'liquidgov_blobs/' \
     --exclude '.env.local' \
+    --exclude '__pycache__/' \
+    --exclude '*.pyc' \
     "$SRC" "$DEST"
 
 # Record what was just synced for the next deploy's rollback guard: this commit first, the previous newest second.

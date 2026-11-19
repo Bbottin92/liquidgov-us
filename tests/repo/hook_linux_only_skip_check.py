@@ -22,10 +22,11 @@ import tempfile
 
 ROOT = sys.argv[1] if len(sys.argv) > 1 else os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 checks = failed = 0
-# LG_CHECK_MODE too (2026-11-19): pre-commit runs pre-push with LG_CHECK_MODE=--staged, and the fake repo's pushes below inherited it,
-# so they picked checks by staged files (0) instead of "every check" and L4 failed in every commit that selected this file
-CLEAN = {k: v for k, v in os.environ.items() if not k.startswith("GIT_") and k != "LG_CHECK_MODE"}
-CLEAN["PYTHONDONTWRITEBYTECODE"] = "1"
+# GIT_* and LG_CHECK_MODE dropped by the shared helper (2026-11-19: an inherited LG_CHECK_MODE=--staged made the fake
+# repo's pushes pick checks by staged files (0) instead of every check, and L4 failed under the hook only)
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "scripts"))
+from hook_env import clean_env  # noqa: E402  (scripts/hook_env.py)
+CLEAN = clean_env()
 NAME = "prebuilt_check.py"
 BROKEN = ("import os\nopen(os.environ['LG_RAN'], 'a').write('ran\\n')\n"
           "print(\"FAIL no release run -> refused  :: (127, '')\")\nprint('prebuilt_check: 1 checks, 1 failed')\nraise SystemExit(1)\n")

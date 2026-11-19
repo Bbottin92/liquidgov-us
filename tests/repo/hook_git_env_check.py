@@ -23,8 +23,10 @@ import tempfile
 
 ROOT = sys.argv[1] if len(sys.argv) > 1 else os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 checks = failed = 0
-CLEAN = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
-CLEAN["PYTHONDONTWRITEBYTECODE"] = "1"  # the hook loads run_hook_checks.py: no scripts/__pycache__ in the throwaway tree
+# GIT_*, LG_CHECK_MODE and bytecode handled by the shared helper (hook_env_isolation_check.py keeps it that way)
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "scripts"))
+from hook_env import clean_env  # noqa: E402  (scripts/hook_env.py)
+CLEAN = clean_env()
 
 PROBE = r'''#!/usr/bin/env python3
 """probe: records the GIT_* variables a check is given, then builds a throwaway repo the way prebuilt_check.py does."""

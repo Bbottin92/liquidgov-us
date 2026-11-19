@@ -9,11 +9,12 @@ name: platform
 # Not covered here: city_undo (lgcheck skips it; it needs an old binary) and the "new suite must fail on the previous
 # build" step (lgcheck's extra arguments; done locally).
 
-# Manual only (Brandon 2026-11-15: "can we skip github if it costs money now?"): the repo is private and Actions
-# minutes cost money, so pushes no longer start this. scripts/local_ci.py runs these same steps instead, and
-# deploy/ci-gate.sh and scripts/ship.py accept its deploy/ci-pass record. Run it here by hand (Actions tab, Run
-# workflow) only if Actions is paid for again; the push/pull_request triggers it had are in git history.
+# Runs on every push to master and wip/** and on every pull request again (2026-11-19: the repo is public, so
+# Actions minutes are free; Brandon lifted no-github-ci). It was manual-only 2026-11-15..19 to save paid minutes.
 on:
+  push:
+    branches: [master, "wip/**"]
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -241,6 +242,28 @@ jobs:
           set -uo pipefail
           export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
           python3 liquidgov-platform/tests/browser/ci_profile_css_contain_check.py "$RUNNER_TEMP/lg" "$PWD/liquidgov-platform" ci "$RUNNER_TEMP/phone"
+
+      # canvas_import_check and portrait_history_check need a running server and seeded sessions (they had no CI step
+      # while CI was off, 2026-11-15..19): a throwaway store from liquidgov_e2e_seed (Bbottin, pal, stranger), port 18190.
+      - name: canvas import and portrait history against a seeded server (canvas_import_check, portrait_history_check) (browser, report-only)
+        if: always()
+        timeout-minutes: 10
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
+          W="$RUNNER_TEMP/seeded"; rm -rf "$W"; mkdir -p "$W/blobs"
+          "$RUNNER_TEMP/lg/liquidgov_e2e_seed" "$W/store.lgp" > "$W/sessions.txt"
+          sid() { awk -v n="$1" '$1==n{print $2}' "$W/sessions.txt"; }
+          (cd liquidgov-platform && exec env LIQUIDGOV_STORE="$W/store.lgp" LIQUIDGOV_BLOBS="$W/blobs" LIQUIDGOV_PORT=18190 \
+            "$RUNNER_TEMP/lg/liquidgov_http") > "$W/server.log" 2>&1 &
+          SERVER=$!
+          for i in $(seq 50); do curl -s -o /dev/null --max-time 1 http://127.0.0.1:18190/ && break; sleep 0.2; done
+          rc=0
+          python3 liquidgov-platform/tests/browser/canvas_import_check.py http://127.0.0.1:18190 "$(sid pal)" || rc=1
+          python3 liquidgov-platform/tests/browser/portrait_history_check.py http://127.0.0.1:18190 "$(sid pal)" pal "$(sid stranger)" || rc=1
+          kill "$SERVER" 2>/dev/null
+          exit $rc
 
       - name: style library preview isolation check (browser, report-only)
         if: always()
@@ -523,6 +546,96 @@ jobs:
           set -uo pipefail
           export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
           python3 liquidgov-platform/tests/browser/walker_controls_check.py "$PWD/liquidgov-platform" "$RUNNER_TEMP/phone"
+
+      - name: walker kind marks (walker_kind_marks_check) (browser, report-only)
+        if: always()
+        timeout-minutes: 5
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
+          python3 liquidgov-platform/tests/browser/walker_kind_marks_check.py "$PWD/liquidgov-platform" "$RUNNER_TEMP/phone"
+
+      - name: walker kind table (walker_kind_table_check) (browser, report-only)
+        if: always()
+        timeout-minutes: 5
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
+          python3 liquidgov-platform/tests/browser/walker_kind_table_check.py "$PWD/liquidgov-platform" "$RUNNER_TEMP/phone"
+
+      - name: walker map clarity (walker_map_clarity_check) (browser, report-only)
+        if: always()
+        timeout-minutes: 5
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
+          python3 liquidgov-platform/tests/browser/walker_map_clarity_check.py "$PWD/liquidgov-platform" "$RUNNER_TEMP/phone"
+
+      - name: walker page icon clear (walker_page_icon_clear_check) (browser, report-only)
+        if: always()
+        timeout-minutes: 5
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
+          python3 liquidgov-platform/tests/browser/walker_page_icon_clear_check.py "$PWD/liquidgov-platform" "$RUNNER_TEMP/phone"
+
+      - name: walker page slot (walker_page_slot_check) (browser, report-only)
+        if: always()
+        timeout-minutes: 5
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
+          python3 liquidgov-platform/tests/browser/walker_page_slot_check.py "$PWD/liquidgov-platform" "$RUNNER_TEMP/phone"
+
+      - name: walker page symbol (walker_page_symbol_check) (browser, report-only)
+        if: always()
+        timeout-minutes: 5
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
+          python3 liquidgov-platform/tests/browser/walker_page_symbol_check.py "$PWD/liquidgov-platform" "$RUNNER_TEMP/phone"
+
+      - name: walker shore colour (walker_shore_colour_check) (browser, report-only)
+        if: always()
+        timeout-minutes: 5
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
+          python3 liquidgov-platform/tests/browser/walker_shore_colour_check.py "$PWD/liquidgov-platform" "$RUNNER_TEMP/phone"
+
+      - name: walker signs (walker_signs_check) (browser, report-only)
+        if: always()
+        timeout-minutes: 5
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
+          python3 liquidgov-platform/tests/browser/walker_signs_check.py "$PWD/liquidgov-platform" "$RUNNER_TEMP/phone"
+
+      - name: walker signs spread (walker_signs_spread_check) (browser, report-only)
+        if: always()
+        timeout-minutes: 5
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
+          python3 liquidgov-platform/tests/browser/walker_signs_spread_check.py "$PWD/liquidgov-platform" "$RUNNER_TEMP/phone"
+
+      - name: walker stream crossing (walker_stream_crossing_check) (browser, report-only)
+        if: always()
+        timeout-minutes: 5
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
+          python3 liquidgov-platform/tests/browser/walker_stream_crossing_check.py "$PWD/liquidgov-platform" "$RUNNER_TEMP/phone"
 
       - name: map walker instanceId, spatial step 3 (walker_instance_check) (browser, report-only)
         if: always()

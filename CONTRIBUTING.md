@@ -9,10 +9,14 @@ You need `g++` with C++17, CMake 3.16 or newer, `pkg-config` and libsodium:
 
 ```sh
 sudo apt-get install -y g++ cmake pkg-config libsodium-dev
-cmake -S liquidgov-platform -B build -DCMAKE_BUILD_TYPE=Debug
-cmake --build build -j2
-cd liquidgov-platform && ../build/liquidgov_http     # then open http://127.0.0.1:8080
+cd liquidgov-platform
+cmake --preset dev && cmake --build --preset dev     # builds into ../build/dev
+../build/dev/liquidgov_http                           # then open http://127.0.0.1:8080
 ```
+
+Presets (`liquidgov-platform/CMakePresets.json`): `dev` (debug), `release` (the deploy binary, static C++ runtime),
+`asan` (address and undefined-behavior sanitizers). A build folder is reused, so later builds only recompile what
+changed; install `ccache` and switching branches stays fast too.
 
 The server keeps its data in `./liquidgov_accounts.lgp` and `./liquidgov_blobs/` unless `LIQUIDGOV_STORE` and
 `LIQUIDGOV_BLOBS` say otherwise. Run it from `liquidgov-platform/` so it finds `assets/`.
@@ -20,7 +24,7 @@ The server keeps its data in `./liquidgov_accounts.lgp` and `./liquidgov_blobs/`
 ## Run the checks
 
 - One end-to-end suite (each starts its own throwaway server and store, on its own port):
-  `cd liquidgov-platform && bash tests/e2e/<suite>.sh ../build/liquidgov_http ../build/liquidgov_e2e_seed`
+  `cd liquidgov-platform && bash tests/e2e/<suite>.sh ../build/dev/liquidgov_http ../build/dev/liquidgov_e2e_seed`
 - Everything the site's CI runs: `bash scripts/lgcheck.sh <liquidgov-platform dir> <build dir> <previous build dir>`
 - The repo's own checks (naming, hooks, deploy tooling): `python3 scripts/run_hook_checks.py .`
 

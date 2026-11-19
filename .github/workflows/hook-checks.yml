@@ -7,11 +7,12 @@ name: hook-checks
 # No paths: filter on purpose: the checks read deploy/, scripts/, naming.toml, src/ and more, take seconds, and need
 # no build, droplet or secret. tests/repo/ci_runs_checks_check.py keeps this file wired.
 
-# Manual only (Brandon 2026-11-15: "can we skip github if it costs money now?"): the repo is private and Actions
-# minutes cost money, so pushes no longer start this. scripts/local_ci.py runs these same steps instead, and
-# deploy/ci-gate.sh and scripts/ship.py accept its deploy/ci-pass record. Run it here by hand (Actions tab, Run
-# workflow) only if Actions is paid for again; the push/pull_request triggers it had are in git history.
+# Runs on every push to master and wip/** and on every pull request again (2026-11-19: the repo is public, so
+# Actions minutes are free; Brandon lifted no-github-ci). It was manual-only 2026-11-15..19 to save paid minutes.
 on:
+  push:
+    branches: [master, "wip/**"]
+  pull_request:
   workflow_dispatch:
 
 permissions:

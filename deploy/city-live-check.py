@@ -55,7 +55,9 @@ def location_is(headers, path):
 
 def main():
     status, headers, _body = fetch("/map")
-    check("map", status == 303 and location_is(headers, "/login?next=%2Fmap") and not framed(headers),
+    # every response carries the anti-framing headers since sechead1 (2026-11-19; before, only framed loads did and
+    # this check asserted `not framed`, the same flip as tests/e2e/map_graph.sh:237, Brandon "ok flip 237")
+    check("map", status == 303 and location_is(headers, "/login?next=%2Fmap") and framed(headers),
           "status=%s loc=%s" % (status, header(headers, "Location")))
 
     status, headers, _body = fetch("/map", dest="iframe")
@@ -102,7 +104,7 @@ def main():
 
     status, headers, body = fetch("/")
     text = body.decode("utf-8", "replace")
-    check("home", status == 200 and not framed(headers) and "Walk in" not in text and 'href="/commons' not in text,
+    check("home", status == 200 and framed(headers) and "Walk in" not in text and 'href="/commons' not in text,
           "status=%s" % status)
 
     status, headers, _body = fetch("/", dest="iframe")

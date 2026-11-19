@@ -14,6 +14,14 @@ run (the layout is CSS and markup). NO C++ server. Widths 390, 768 and 1280.
       wholly above the drawing surface
   C4  the toolbar's groups (.ctgroup), in order: tools | properties | layers | edit (undo, clipboard)
   C5  no sideways clipping: the page has no sideways scroll and every control is inside the window
+Studio look (Brandon 2026-11-19: "more esthetic and professional"; picked "Studio, same warm palette", toolbar and canvas
+card only; q232). Same page, same widths; these fail on the pre-studio markup and CSS:
+  S1  every tool button (.toolbtn) is round: corner radius at least half its height (and there are 11 of them)
+  S2  the toolbar is one soft bar: corner radius at least 16 px and a filled background
+  S3  size and opacity have range sliders (#csizer, #copacityr) that are shown, and the two wheel pairs are not
+  S4  the drawing surface has soft corners: radius at least 12 px
+  S5  390, with the real assets/canvas.js run on the page: moving a slider sets its number box (#csize, #copacity), and typing
+      in a number box moves its slider (the number boxes stay: they are what canvas.js reads)
 Usage: LG_BROWSER=$(command -v google-chrome) python3 canvas_layout_check.py [<liquidgov-platform dir>] [<out dir>]
 Prints "VERDICT canvas-layout: ALL-PASS" or the failed cases. Exit 1 on a FAIL. New file; committed checks unchanged."""
 import base64
@@ -93,9 +101,35 @@ PROBE = r"""(() => {
 })()"""
 
 
+PROBE_S = r"""(() => {
+  const rad = e => { const b = e.getBoundingClientRect(); return {r: parseFloat(getComputedStyle(e).borderTopLeftRadius) || 0, h: b.height, w: b.width}; };
+  const slider = id => { const e = document.getElementById(id); return e ? {type: e.type, shown: e.getClientRects().length > 0} : null; };
+  const bar = document.querySelector('.canvas-frame [role=toolbar]');
+  return {tools: [...document.querySelectorAll('.canvas-frame .toolbtn')].map(rad),
+          bar: bar ? Object.assign(rad(bar), {bg: getComputedStyle(bar).backgroundColor}) : null,
+          size: slider('csizer'), op: slider('copacityr'),
+          wheelsShown: [...document.querySelectorAll('.canvas-frame .wheel')].some(e => e.getClientRects().length > 0),
+          wrap: rad(document.getElementById('ccanvaswrap'))};
+})()"""
+
+SYNC_JS = r"""(() => {
+  window.LG_CANVAS = {px: 1, frames: 0, user: 't', mode: 'portrait', postTarget: ''};
+  if (!document.getElementById('csave')) { const b = document.createElement('button'); b.id = 'csave'; document.body.appendChild(b); }
+  %s
+  const fire = (e, v) => { e.value = v; e.dispatchEvent(new Event('input', {bubbles: true})); };
+  const g = id => document.getElementById(id), out = {};
+  fire(g('csizer'), 20); out.sizeFromSlider = g('csize').value;
+  fire(g('csize'), 12); out.sliderFromSize = g('csizer').value;
+  fire(g('copacityr'), 55); out.opFromSlider = g('copacity').value;
+  fire(g('copacity'), 70); out.sliderFromOp = g('copacityr').value;
+  return out;
+})()"""
+
+
 class Run:
     def __init__(self, base, out):
         self.base, self.out, self.fails, self.n = base, out, [], 0
+        self.platform = PLATFORM
 
     def check(self, name, ok, detail):
         self.n += 1
@@ -123,10 +157,33 @@ class Run:
                        p["groups"] == ["tools", "props", "layers", "edit"], p["groups"])
             self.check("C5 %d: nothing is cut off sideways" % w, p["sw"] <= p["W"] and not p["outside"],
                        {"sw": p["sw"], "W": p["W"], "outside": p["outside"][:8]})
+            s = json.loads(cdp.js(self.ws, "JSON.stringify(%s)" % PROBE_S))
+            self.check("S1 %d: all 11 tool buttons are round" % w,
+                       len(s["tools"]) == 11 and all(t["r"] >= t["h"] / 2 - 0.5 for t in s["tools"]), s["tools"][:3])
+            self.check("S2 %d: the toolbar is one soft, filled bar" % w,
+                       s["bar"] is not None and s["bar"]["r"] >= 16 and s["bar"]["bg"] not in ("rgba(0, 0, 0, 0)", "transparent"), s["bar"])
+            self.check("S3 %d: size and opacity are range sliders and the wheels are gone" % w,
+                       bool(s["size"] and s["size"]["type"] == "range" and s["size"]["shown"] and s["op"] and s["op"]["type"] == "range"
+                            and s["op"]["shown"]) and not s["wheelsShown"], {"size": s["size"], "op": s["op"], "wheels": s["wheelsShown"]})
+            self.check("S4 %d: the drawing surface has soft corners" % w, s["wrap"]["r"] >= 12, s["wrap"])
+            if w == 390:
+                src = open(os.path.join(self.platform, "assets", "canvas.js"), encoding="utf-8").read()
+                try:
+                    y = json.loads(cdp.js(self.ws, "JSON.stringify(" + (SYNC_JS % src) + ")"))
+                except Exception as e:  # the script threw or a slider is missing: the case fails with the reason, never skipped
+                    y = {"error": "%s: %s" % (type(e).__name__, e)}
+                self.check("S5 390: sliders and number boxes follow each other",
+                           y.get("sizeFromSlider") == "20" and y.get("sliderFromSize") == "12" and y.get("opFromSlider") == "55"
+                           and y.get("sliderFromOp") == "70", y)
+
+
+PLATFORM = os.path.dirname(os.path.dirname(HERE))
 
 
 def main(argv):
+    global PLATFORM
     platform = os.path.abspath(argv[0]) if argv else os.path.dirname(os.path.dirname(HERE))
+    PLATFORM = platform
     out = argv[1] if len(argv) > 1 else os.path.join("/tmp" if os.name != "nt" else os.environ.get("TEMP", "."), "lg-canvas-layout")
     os.makedirs(out, exist_ok=True)
     srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), make_handler(page(platform)))

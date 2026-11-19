@@ -66,10 +66,11 @@ struct AccountPrefs {
     JukeboxPolicy jukebox_policy = JukeboxPolicy::OwnerOnly;
     Visibility profile_visibility = Visibility::Public;
     Visibility posts_visibility = Visibility::Public;
-    // Off by default: the landing intro plays once per browser (see
-    // intro_overlay_html), tracked client-side in localStorage. Turning
-    // this on makes it play on every visit instead.
-    bool intro_every_visit = false;
+    // On by default (Brandon 2026-11-13: the landing intro plays on every
+    // visit; Settings > Intro video turns it off). The name is the site's
+    // kIntroPref (shell.hpp). A record saved before this change keeps its
+    // stored bit (0 unless that account had turned the old opt-in on).
+    bool intro_every_visit = true;
 };
 
 }  // namespace liquidgov::platform

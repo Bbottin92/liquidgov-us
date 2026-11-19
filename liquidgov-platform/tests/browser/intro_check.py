@@ -19,6 +19,10 @@ Cases (390x844 phone):
       brings it back
   I5  signed in (data-mode="account": the server already checked the account's pref): this browser's '0' does not
       stop it
+  I6  every screen (Brandon 5:46 AM): at 390x844, 844x390, 820x1180, 1280x800 and 2560x1080 the intro fills the
+      viewport, the clip is contained (object-fit: contain, never stretched or cropped: its drawn picture lies inside
+      the viewport at the clip's own aspect ratio), and Skip and the first-visit line are on screen, apart, and on top
+      (a tap at their middle lands on them); one screenshot per size
 Usage: LG_BROWSER=... python3 intro_check.py [<liquidgov-platform dir>] [<out dir>]
 Prints "VERDICT intro: ALL-PASS" or the failed cases; screenshots in <out>. Exit 1 on a FAIL."""
 import base64
@@ -74,6 +78,9 @@ def intro_pieces(platform):
     return build(ret, "browser"), build(ret, "account"), build(head) + build(tail.replace("return html +", "", 1)), pref
 
 
+intro_pieces_pref = [None]
+
+
 def with_intro(home, overlay):
     return home.replace("<body>", "<body>" + overlay, 1)
 
@@ -92,6 +99,8 @@ def make_handler(platform):
             path = self.path.split("?")[0]
             if path in pages:
                 return self.reply(200, "text/html", pages[path].encode())
+            if path == "/assets/intro.mp4":
+                return self.reply(200, "video/mp4", open(os.path.join(platform, "assets", "intro.mp4"), "rb").read())
             return base.do_GET(self)
     return H
 
@@ -105,7 +114,43 @@ STATE = r"""(() => { const q = s => document.querySelector(s), box = e => { if (
     store: (() => { try { return Object.assign({}, localStorage); } catch (e) { return null; } })()}); })()"""
 
 
+FIT = r"""(() => { const vw = innerWidth, vh = innerHeight, q = s => document.querySelector(s), el = q('#lgintro'), v = q('#lgintrovid');
+  if (!el) return JSON.stringify(null);
+  const box = e => { if (!e || e.hidden) return null; const r = e.getBoundingClientRect(); return {l: r.left, t: r.top, r: r.right, b: r.bottom}; };
+  const on = e => { const b = box(e); if (!b) return false; const h = document.elementFromPoint((b.l + b.r) / 2, (b.t + b.b) / 2); return !!h && (h === e || e.contains(h)); };
+  const o = box(el), vb = box(v), iw = v.videoWidth, ih = v.videoHeight;
+  let pic = null;
+  if (iw && ih) { const k = Math.min((vb.r - vb.l) / iw, (vb.b - vb.t) / ih), w = iw * k, h = ih * k, cx = (vb.l + vb.r) / 2, cy = (vb.t + vb.b) / 2;
+    pic = {l: cx - w / 2, t: cy - h / 2, r: cx + w / 2, b: cy + h / 2, aspect: w / h, own: iw / ih}; }
+  return JSON.stringify({vw: vw, vh: vh, overlay: o, video: vb, fit: getComputedStyle(v).objectFit, pic: pic,
+    skip: box(q('#lgintroskip')), note: box(q('#lgintronote')), skipOn: on(q('#lgintroskip')), noteOn: on(q('#lgintronote'))}); })()"""
+SIZES = [(390, 844, True), (844, 390, True), (820, 1180, True), (1280, 800, False), (2560, 1080, False)]
+
+
+def inside(b, vw, vh, slack=1):
+    return bool(b) and b["l"] >= -slack and b["t"] >= -slack and b["r"] <= vw + slack and b["b"] <= vh + slack
+
+
 class Run(w.Run):
+    def fits(self):
+        for vw, vh, mobile in SIZES:
+            self.size(vw, vh, mobile)
+            self.load("/")
+            self.j("(localStorage.removeItem('liquidgov.intro.noted'), localStorage.removeItem('liquidgov.%s'), '1')"
+                   % intro_pieces_pref[0])
+            self.load("/")
+            self.wait("document.getElementById('lgintrovid') && document.getElementById('lgintrovid').videoWidth > 0", 5)
+            f = self.j(FIT) or {}
+            tag = "%dx%d" % (vw, vh)
+            self.shot("fit-" + tag)
+            o, p, sk, nt = f.get("overlay"), f.get("pic"), f.get("skip"), f.get("note")
+            full = bool(o) and abs(o["l"]) <= 1 and abs(o["t"]) <= 1 and abs(o["r"] - vw) <= 1 and abs(o["b"] - vh) <= 1
+            self.check("I6 %s: the intro fills the viewport, the clip is contained (inside the viewport, its own aspect, "
+                       "not stretched or cropped), Skip and the first-visit line on screen, apart and on top" % tag,
+                       full and f.get("fit") == "contain" and bool(p) and inside(p, vw, vh)
+                       and abs(p["aspect"] - p["own"]) < 0.01 and inside(sk, vw, vh) and inside(nt, vw, vh)
+                       and not w.overlaps(sk, nt) and f.get("skipOn") is True and f.get("noteOn") is True, f)
+
     def shot(self, name, clip=None):
         args = {"format": "png"}
         if clip:
@@ -184,7 +229,9 @@ def main(argv):
         proc, r.ws = cdp.launch_edge("lg-intro-")
         for d in ("Page.enable", "Runtime.enable"):
             r.ws.call(d)
-        r.intro(intro_pieces(platform)[3])
+        intro_pieces_pref[0] = intro_pieces(platform)[3]
+        r.intro(intro_pieces_pref[0])
+        r.fits()
     except Exception as e:  # a crash mid-run is a failed run, said with its traceback, never a quiet pass
         traceback.print_exc()
         r.check("run finished without an exception", False, "%s: %s" % (type(e).__name__, e))

@@ -13,24 +13,21 @@ namespace liquidgov::site {
 // 5:04 AM; it used to be the first visit only). Skippable; ends by fading out and removing itself, revealing the
 // page underneath (already rendered, not reloaded). Its script is assets/intro.js, loaded synchronously right after
 // it so a browser that turned it off drops it before the first paint. The first visit (per browser) shows the line
-// "Plays every visit. Turn off in Settings" (#lgintronote).
+// "Plays every visit. Turn off in Settings" (#lgintronote). Its look is site.css .lg-intro (Brandon 5:46 AM: fits every
+// screen): the whole viewport (dvh, safe-area insets for Skip and the line), the clip contained, never stretched or
+// cropped, on its own background color.
 //
 // account_mode: the signed-in landing; the server already checked the account's pref (wrap()/pages_routes) and only
 // renders this when it is on, so there is no local gate. Otherwise (logged out) intro.js reads this browser's pref
 // (localStorage 'liquidgov.' + kIntroPref, on unless set to '0'). Only reachable when show_intro is true (the
 // landing page -- see page_wrap), so this never fires on an internal page.
 std::string intro_overlay_html(bool account_mode) {
-    return std::string("<div id=\"lgintro\" data-mode=\"") + (account_mode ? "account" : "browser") +
-           "\" data-pref=\"" + kIntroPref + "\" style=\"position:fixed;inset:0;z-index:999;background:#14120f;"
-           "display:flex;align-items:center;justify-content:center;overflow:hidden;cursor:pointer\">"
-           "<video id=\"lgintrovid\" autoplay muted playsinline "
-           "style=\"width:100%;height:100%;object-fit:cover\" src=\"/assets/intro.mp4?v=2\"></video>"
+    return std::string("<div id=\"lgintro\" class=\"lg-intro\" data-mode=\"") + (account_mode ? "account" : "browser") +
+           "\" data-pref=\"" + kIntroPref + "\">"
+           "<video id=\"lgintrovid\" autoplay muted playsinline src=\"/assets/intro.mp4?v=2\"></video>"
            "<p id=\"lgintronote\" class=\"lg-intro-note\" hidden>Plays every visit. "
            "<a href=\"/settings/intro\">Turn off in Settings</a></p>"
-           "<button type=\"button\" id=\"lgintroskip\" style=\"position:absolute;right:1rem;bottom:1rem;"
-           "z-index:1;min-height:44px;padding:.5rem 1rem;border:1px solid rgba(242,234,216,.35);"
-           "border-radius:8px;background:rgba(20,18,15,.7);color:#f2ead8;font:600 .9rem system-ui,sans-serif;"
-           "cursor:pointer\">Skip</button>"
+           "<button type=\"button\" id=\"lgintroskip\" class=\"lg-intro-skip\">Skip</button>"
            "</div>"
            "<script src=\"" + asset_url("intro.js") + "\"></script>";
 }

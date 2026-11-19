@@ -95,6 +95,26 @@ import sys
 allow = {
     "assets/jukebox.js",
     "tests/jukebox_ended_check.py",
+    # 17 comment-only files from the docs-rename tidy (f7203b8): a doc filename in a comment lowercased, one doc path
+    # moved. No behaviour change; the running program is not rebuilt, so the server only gets the new comment text
+    # (Brandon 2026-11-18 "allow them").
+    "start.bat",
+    "assets/here_media.js",
+    "assets/spatial.js",
+    "libs/liquidgov_file_store/include/liquidgov/platform/records/jukebox.hpp",
+    "src/site/core/html.hpp",
+    "src/site/features/credibility/credibility.hpp",
+    "src/site/features/jukebox/jukebox_script.cpp",
+    "tests/browser/here_media_check.py",
+    "tests/browser/walker_group_instance_check.py",
+    "tests/browser/walker_instance_check.py",
+    "tests/browser/walker_instance_css_check.py",
+    "tests/browser/walker_proximity_check.py",
+    "tests/browser/walker_valve_check.py",
+    "tests/browser/walker_valve_types_check.py",
+    "tests/e2e/credibility_card.sh",
+    "tests/e2e/here_eject.sh",
+    "tests/e2e/here_instance_presence.sh",
 }
 bad = []
 content = []

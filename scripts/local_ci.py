@@ -41,6 +41,69 @@ def git(*args):
     return subprocess.run(["git", "-C", REPO] + list(args), check=True, capture_output=True, text=True).stdout.strip()
 
 
+def windows_worktree_gitdir(repo, linux=None):
+    """The `C:/...` gitdir a Windows-made worktree's .git FILE names, when this runs on Linux; else None (q47, 2026-11-19).
+    WSL git cannot read that path, so every git call here would die with exit 128."""
+    if linux is None:
+        linux = os.name == "posix"
+    dotgit = os.path.join(repo, ".git")
+    if not linux or not os.path.isfile(dotgit):
+        return None
+    try:
+        with open(dotgit, encoding="utf-8") as f:
+            first = f.readline().strip()
+    except OSError:
+        return None
+    m = re.match(r"gitdir:\s*([A-Za-z]:[\\/].*)$", first)
+    return m.group(1) if m else None
+
+
+def wsl_path(p):
+    """C:/Users/B/x or C:\\Users\\B\\x -> /mnt/c/Users/B/x; anything else unchanged."""
+    m = re.match(r"^([A-Za-z]):[\\/](.*)$", p)
+    return "/mnt/%s/%s" % (m.group(1).lower(), m.group(2).replace("\\", "/")) if m else p
+
+
+def native_clone_plan(gitdir):
+    """(main repo as a WSL path, the worktree's own gitdir as a WSL path) from `C:/.../repo/.git/worktrees/<name>`."""
+    g = gitdir.replace("\\", "/")
+    return wsl_path(g.split("/.git/worktrees/")[0]), wsl_path(g)
+
+
+def worktree_branch(head_text):
+    """The branch named in a worktree's HEAD file ('ref: refs/heads/wip/x' -> 'wip/x'), None for a detached sha."""
+    m = re.match(r"ref:\s*refs/heads/(\S+)", head_text.strip())
+    return m.group(1) if m else None
+
+
+def rerun_in_native_clone(gitdir, argv):
+    """Run this same script from a WSL-native LOCAL clone of the main repo at the worktree's branch and commit (no GitHub:
+    the clone's origin is the main repo's folder). Returns the exit code; every failure is printed, never swallowed."""
+    main_repo, wt_gitdir = native_clone_plan(gitdir)
+    cache = os.path.expanduser("~/.cache/liquidgov-local-ci/clone")
+
+    def g(*a):
+        return subprocess.run(["git"] + list(a), check=True, capture_output=True, text=True).stdout.strip()
+    try:
+        with open(os.path.join(wt_gitdir, "HEAD"), encoding="utf-8") as f:
+            head = f.read()
+        branch = worktree_branch(head)
+        sha = g("-C", main_repo, "rev-parse", branch or head.strip())
+        if os.path.isdir(os.path.join(cache, ".git")):
+            g("-C", cache, "fetch", "-q", "origin")           # origin is the local main repo folder
+        else:
+            os.makedirs(os.path.dirname(cache), exist_ok=True)
+            g("clone", "-q", "--no-hardlinks", main_repo, cache)
+        g("-C", cache, "checkout", "-q", "-B", branch, sha) if branch else g("-C", cache, "checkout", "-q", "--detach", sha)
+    except (subprocess.CalledProcessError, OSError) as e:
+        print("LOCAL_CI_FAIL this is a Windows-made worktree (.git names %s) and the WSL-native clone could not be set up: %s"
+              % (gitdir, (getattr(e, "stderr", "") or str(e)).strip()[-200:]))
+        return 1
+    print("LOCAL_CI_NOTE Windows-made worktree (.git names %s): WSL git cannot read it, so this runs from a WSL-native clone at %s "
+          "(a local clone of %s, no GitHub) at %s on %s" % (gitdir, cache, main_repo, sha[:7], branch or "a detached head"))
+    return subprocess.run([sys.executable, os.path.join(cache, "scripts", "local_ci.py")] + list(argv)).returncode
+
+
 def expand(text, workspace):
     # GitHub's ${{ }} expressions, as a push to a branch would fill them
     def one(m):
@@ -68,6 +131,9 @@ def main():
         else:
             print(__doc__)
             return 2
+    wt = windows_worktree_gitdir(REPO)
+    if wt:
+        return rerun_in_native_clone(wt, sys.argv[1:])   # q47: before any git call, which would die with exit 128 here
     if git("status", "--porcelain"):
         print("LOCAL_CI_FAIL uncommitted changes: commit first, so the record describes a commit")
         return 1

@@ -33,7 +33,7 @@ CHECKS = {
     "restart_bypass_check.py": DEPLOY + ["liquidgov-platform/tests/e2e/*"],
     "make_go_check.py": DEPLOY,
     "tidy_worktrees_check.py": ["scripts/*"],
-    "next_port_check.py": ["scripts/*", "naming.toml", "liquidgov-platform/tests/e2e/*"],
+    "next_port_check.py": ["scripts/*", "naming.toml", "liquidgov-platform/tests/*.sh"],
     "make_go_records_check.py": DEPLOY,
     "tidy_cwd_check.py": ["scripts/*"],
     "tidy_in_use_check.py": ["scripts/*"],

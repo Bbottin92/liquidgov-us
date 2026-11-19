@@ -1,10 +1,9 @@
 """Next free e2e port for a new liquidgov test suite (Brandon OK'd 2026-11-08: "Ports + worktree tidy tool").
 On 2026-11-08 city_moderation.sh took 18098, the last free port in naming.toml's 18080-18099, found by hand.
 Reads the same rules naming_check.py enforces (its parse_toml and port_of, so they cannot drift apart): the first port
-in [port_min, port_max] that no tests/e2e/*.sh uses. When the range is full it says so (exit 3); with --widen it raises
+in [port_min, port_max] that no *.sh under liquidgov-platform/tests (e2e/, rollback/, ...) uses. When the range is full it says so (exit 3); with --widen it raises
 port_max by 20 in naming.toml (the one line, whole-token match, verified by reading it back) and prints the new port.
 Usage: python scripts/next_port.py [--widen]"""
-import os
 import re
 import sys
 from pathlib import Path
@@ -18,8 +17,10 @@ def state():
     cfg = nc.load(str(ROOT))  # naming_check.load(<repo root>) reads <root>/naming.toml
     e2e = cfg["e2e"]
     lo, hi = int(e2e["port_min"]), int(e2e["port_max"])
-    d = ROOT / e2e["root"]
-    used = {nc.port_of(str(d / n)) for n in os.listdir(d) if n.endswith(".sh")} - {None}
+    # every suite under liquidgov-platform/tests (e2e/, rollback/, ...): on 2026-11-19 reading e2e/ only offered 18143,
+    # which tests/rollback/portraits_undo.sh already used
+    d = (ROOT / e2e["root"]).parent
+    used = {nc.port_of(str(p)) for p in d.rglob("*.sh")} - {None}
     return lo, hi, used
 
 

@@ -41,6 +41,12 @@ try:
         (e2e / ("s_%d.sh" % port)).write_text("PORT=%d; URL=x\n" % port)
     rc, out, err = run()
     check("the first gap is offered (lo+2)", rc == 0 and out == str(lo + 2), (rc, out, err))
+    # 2026-11-19: it offered 18143 while tests/rollback/portraits_undo.sh already used it (only e2e/ was read)
+    rb = tmp / "liquidgov-platform" / "tests" / "rollback"
+    rb.mkdir()
+    (rb / "r.sh").write_text("PORT=%d; URL=x\n" % (lo + 2))
+    rc, out, err = run()
+    check("a port a suite outside e2e/ uses (tests/rollback) is skipped (lo+4)", rc == 0 and out == str(lo + 4), (rc, out, err))
     for port in range(lo, hi + 1):
         (e2e / ("s_%d.sh" % port)).write_text("PORT=%d; URL=x\n" % port)
     before = (tmp / "naming.toml").read_bytes().decode("utf-8")

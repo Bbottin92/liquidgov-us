@@ -40,6 +40,9 @@ if [ -n "${GITHUB_ACTIONS:-}" ]; then
 fi
 ln -sfn "$SRC/assets" "$TREE/assets"
 [ -d "$TREE/assets" ] || { echo "EXIT=assets-link-broken"; exit 1; }
+# live_check_local.sh runs the deploy's live checker (<tree>/../deploy/city-live-check.py) against this build
+ln -sfn "$SRC/../deploy" "$OUT/deploy"
+[ -f "$OUT/deploy/city-live-check.py" ] || { echo "EXIT=deploy-link-broken"; exit 1; }
 fail=0
 echo "== unit tests"
 n=0

@@ -3,12 +3,18 @@
 
 Run with Python on either Windows or WSL. It does not shell out to curl, so a
 WSL path and a Windows curl.exe never have to agree.
+Usage: python3 deploy/city-live-check.py [base URL]   (default https://liquidgov.us)
+A local base (tests/e2e/live_check_local.sh runs it against a fresh build, 2026-11-19) skips the checks nginx answers,
+not the program (the Commons closed page), and says so on a SKIPPED line. Why: on the sechead1 go this checker still
+asserted the old framing behavior; run on the build first, a stale assertion fails before any deploy.
 """
 import sys
 import urllib.error
 import urllib.request
 
-BASE = "https://liquidgov.us"
+LIVE = "https://liquidgov.us"
+BASE = (sys.argv[1] if len(sys.argv) > 1 else LIVE).rstrip("/")
+NGINX_ONLY = ("commons", "commons-post")  # deploy/commons-closed.html, served by nginx
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -111,13 +117,16 @@ def main():
     check("home-frame", status == 200 and framed(headers),
           "status=%s frame=%s" % (status, header(headers, "X-Frame-Options")))
 
-    status, _headers, body = fetch("/commons/")
-    text = body.decode("utf-8", "replace")
-    check("commons", status == 200 and "The Commons is closed" in text, "status=%s" % status)
+    if BASE != LIVE:
+        print("SKIPPED %s (nginx serves them, not the program; base %s)" % (", ".join(NGINX_ONLY), BASE))
+    else:
+        status, _headers, body = fetch("/commons/")
+        text = body.decode("utf-8", "replace")
+        check("commons", status == 200 and "The Commons is closed" in text, "status=%s" % status)
 
-    status, _headers, body = fetch("/commons/presence/guest", method="POST")
-    text = body.decode("utf-8", "replace")
-    check("commons-post", status == 200 and "The Commons is closed" in text, "status=%s" % status)
+        status, _headers, body = fetch("/commons/presence/guest", method="POST")
+        text = body.decode("utf-8", "replace")
+        check("commons-post", status == 200 and "The Commons is closed" in text, "status=%s" % status)
 
     print("FAILS", len(FAILS))
     return 1 if FAILS else 0

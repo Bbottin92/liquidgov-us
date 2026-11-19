@@ -22,7 +22,9 @@ import tempfile
 
 ROOT = sys.argv[1] if len(sys.argv) > 1 else os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 checks = failed = 0
-CLEAN = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+# LG_CHECK_MODE too (2026-11-19): pre-commit runs pre-push with LG_CHECK_MODE=--staged, and the fake repo's pushes below inherited it,
+# so they picked checks by staged files (0) instead of "every check" and L4 failed in every commit that selected this file
+CLEAN = {k: v for k, v in os.environ.items() if not k.startswith("GIT_") and k != "LG_CHECK_MODE"}
 CLEAN["PYTHONDONTWRITEBYTECODE"] = "1"
 NAME = "prebuilt_check.py"
 BROKEN = ("import os\nopen(os.environ['LG_RAN'], 'a').write('ran\\n')\n"

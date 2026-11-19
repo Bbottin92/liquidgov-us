@@ -78,7 +78,8 @@ def main():
     branch = git("rev-parse", "--abbrev-ref", "HEAD")
     tree = git("rev-parse", "HEAD:liquidgov-platform")
     runner = tempfile.mkdtemp(prefix="lg-local-ci-")
-    os.makedirs(os.path.dirname(build), exist_ok=True)
+    os.makedirs(build, exist_ok=True)   # the build folder itself, not just its parent: on a fresh machine the symlink below
+    #                                     would dangle and cmake could not create CMakeFiles through it (q49, 2026-11-19)
     os.symlink(build, os.path.join(runner, "lg"))   # $RUNNER_TEMP/lg is the build, kept between runs
     env = dict(os.environ, RUNNER_TEMP=runner, GITHUB_WORKSPACE=REPO, CI="true",
                GIT_AUTHOR_NAME=os.environ.get("GIT_AUTHOR_NAME", "local-ci"), GIT_AUTHOR_EMAIL="local-ci@localhost",

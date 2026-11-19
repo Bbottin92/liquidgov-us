@@ -53,6 +53,7 @@ CHECKS = {
     "ship_workflows_check.py": ["scripts/ship.py"],
     "ship_fixes_check.py": ["scripts/ship.py"] + DEPLOY,
     "ship_recheck_check.py": ["scripts/ship.py"],
+    "local_ci_build_dir_check.py": ["scripts/local_ci.py"],
     "affected_checks_check.py": [],
     "affected_checks_master_check.py": [],
     "ci_runs_checks_check.py": [".github/workflows/*", "scripts/run_hook_checks.py", "tests/repo/*"],

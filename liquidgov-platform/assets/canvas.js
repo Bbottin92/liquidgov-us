@@ -69,12 +69,12 @@ var st=document.getElementById('cstatus');
 if(st&&window.MutationObserver){var showToast=function(){toast.classList.toggle('on',!!(st.textContent||'').trim());};new MutationObserver(showToast).observe(st,{childList:true,characterData:true,subtree:true});showToast();}
 /* the view: the canvas is laid out to fit the free area, then zoomed and panned by a transform; pointer maths already reads the
    transformed rectangle, so drawing stays under the finger at any zoom */
-var s=1,tx=0,ty=0,PADT=66,PADB=86,MINS=.5,MAXS=12;
+var s=1,tx=0,ty=0,fx0=0,fy0=0,ff=1,PADT=66,PADB=86,MINS=.5,MAXS=12;
 function apply(){wrap.style.transform='translate('+tx+'px,'+ty+'px) scale('+s+')';}
 function fit(){var cv=layers[0].cv,vw=row.clientWidth||window.innerWidth,vh=row.clientHeight||window.innerHeight;
   var f=Math.min((vw-16)/cv.width,(vh-PADT-PADB)/cv.height);if(!(f>0))return;
   wrap.style.maxWidth='none';wrap.style.aspectRatio='auto';wrap.style.width=Math.round(cv.width*f)+'px';wrap.style.height=Math.round(cv.height*f)+'px';
-  s=1;tx=(vw-cv.width*f)/2;ty=PADT+((vh-PADT-PADB)-cv.height*f)/2;apply();}
+  s=1;tx=(vw-cv.width*f)/2;ty=PADT+((vh-PADT-PADB)-cv.height*f)/2;fx0=tx;fy0=ty;ff=f;apply();}
 fit();window.addEventListener('resize',fit);window.addEventListener('orientationchange',fit);
 if(window.MutationObserver)new MutationObserver(fit).observe(layers[0].cv,{attributes:true,attributeFilter:['width','height']});
 /* gestures: one finger draws (the existing handlers); a second finger cancels that stroke and turns the pair into zoom and pan */
@@ -107,6 +107,38 @@ function lift(e){
   if(g){e.stopPropagation();if(Object.keys(ptrs).length<2)g=null;}
 }
 row.addEventListener('pointerup',lift,true);row.addEventListener('pointercancel',lift,true);
+/* Dive (Brandon 2026-11-19, q231): with Dive on, a stroke that is down keeps the picture zooming IN around the pen tip, like an infinite fractal
+   zoom (inward only). The zoom is a view transform, baked into the layers at 2x (the visible window is cropped and scaled up, the view goes back
+   to "fit", undo is cleared), so it can go on for ever. The brush is scaled down as the view zooms so ink keeps its size on screen. */
+var dive={on:false,speed:30},penX=0,penY=0,diving=false,diveLast=0,total=1,bakes=0;
+try{var sv=JSON.parse(localStorage.getItem('lg-dive'));if(sv&&typeof sv==='object'){dive.on=!!sv.on;dive.speed=Math.max(1,Math.min(100,parseInt(sv.speed,10)||30));}}catch(err){}
+function saveDive(){try{localStorage.setItem('lg-dive',JSON.stringify({on:dive.on,speed:dive.speed}));}catch(err){}}
+var dRow=el('div','cdive-row'),dBtn=el('button','ghost cdive-btn','Dive'),dSlider=el('input','cslider');
+dBtn.type='button';dBtn.id='cdive';dBtn.setAttribute('aria-pressed','false');
+dSlider.type='range';dSlider.id='cdivespeed';dSlider.min='1';dSlider.max='100';dSlider.value=String(dive.speed);dSlider.setAttribute('aria-label','Dive speed');
+function showDive(){dBtn.classList.toggle('on',dive.on);dBtn.setAttribute('aria-pressed',dive.on?'true':'false');}
+showDive();
+dBtn.addEventListener('click',function(){dive.on=!dive.on;showDive();saveDive();});
+dSlider.addEventListener('input',function(){dive.speed=parseInt(dSlider.value,10)||30;saveDive();});
+dRow.appendChild(dBtn);dRow.appendChild(dSlider);(props||pp).appendChild(dRow);
+function penCanvas(){var r=overlay.getBoundingClientRect();return{x:(penX-r.left)*overlay.width/r.width,y:(penY-r.top)*overlay.height/r.height};}
+function bake(){
+  var W=layers[0].cv.width,H=layers[0].cv.height,sx=(fx0-tx)/(s*ff),sy=(fy0-ty)/(s*ff),sw=W/s,sh=H/s,tmp=document.createElement('canvas');
+  tmp.width=W;tmp.height=H;var t=tmp.getContext('2d');t.imageSmoothingEnabled=true;t.imageSmoothingQuality='high';
+  layers.forEach(function(L){t.clearRect(0,0,W,H);t.drawImage(L.cv,sx,sy,sw,sh,0,0,W,H);L.ctx.clearRect(0,0,W,H);L.ctx.drawImage(tmp,0,0);L.undo=[];L.redo=[];});
+  s=1;tx=fx0;ty=fy0;apply();bakes++;wrap.dataset.bakes=String(bakes);
+}
+function diveTick(){
+  if(!(dive.on&&drawing&&!g)){diving=false;PX=C.px;return;}
+  var now=performance.now(),dt=diveLast?Math.min(.05,(now-diveLast)/1000):.016;diveLast=now;
+  var k=Math.exp(dive.speed/100*.6*dt),o=origin(),px=penX-o.x,py=penY-o.y;
+  s*=k;tx=px-(px-tx)*k;ty=py-(py-ty)*k;total*=k;apply();wrap.dataset.dive=total.toFixed(3);PX=C.px/s;
+  var p=penCanvas();if(toolVal()!=='smudge'&&(p.x!==lastX||p.y!==lastY)){strokeAt(lastX,lastY,p.x,p.y);lastX=p.x;lastY=p.y;}
+  if(s>=2){bake();PX=C.px;var q=penCanvas();lastX=q.x;lastY=q.y;}
+  setTimeout(diveTick,16);
+}
+row.addEventListener('pointerdown',function(e){penX=e.clientX;penY=e.clientY;if(dive.on&&drawing&&!g&&!diving){diving=true;diveLast=0;setTimeout(diveTick,16);}});
+row.addEventListener('pointermove',function(e){penX=e.clientX;penY=e.clientY;});
 /* a mouse wheel zooms around the cursor (a narrow desktop window, a trackpad) */
 row.addEventListener('wheel',function(e){e.preventDefault();var o=origin(),mx=e.clientX-o.x,my=e.clientY-o.y,wx=(mx-tx)/s,wy=(my-ty)/s;
   s=Math.max(MINS,Math.min(MAXS,s*Math.exp(-e.deltaY*.0015)));tx=mx-wx*s;ty=my-wy*s;apply();},{passive:false});

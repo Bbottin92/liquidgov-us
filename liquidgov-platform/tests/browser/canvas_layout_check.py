@@ -229,11 +229,53 @@ class Run:
         t = json.loads(cdp.js(self.ws, "JSON.stringify(%s)" % FS_SHEETS))
         self.check("F10 phone: the sliders button opens size and opacity over the canvas, and closes again",
                    t["opened"] and not t["closed"], t)
+        # Dive (Brandon 2026-11-19, q231: while you draw the picture keeps zooming IN around the pen tip, like an infinite fractal
+        # zoom, with a dive-speed slider; the zoom is baked into the layers so it can go on for ever)
+        v = json.loads(cdp.js(self.ws, "(async () => JSON.stringify(await %s))()" % FS_DIVE))
+        self.check("F11 phone: the props sheet has a Dive toggle and a dive-speed slider (1 to 100)",
+                   v.get("ui") and v.get("min") == "1" and v.get("max") == "100" and v.get("inSheet"), v)
+        self.check("F12 phone: with Dive off, holding the pen down does not zoom", v.get("offZoom", 99) <= 1.01, v)
+        self.check("F13 phone: with Dive on at full speed, holding the pen down zooms in (at least 1.8x) and bakes it into the layers",
+                   v.get("onZoom", 0) >= 1.8 and v.get("bakes", 0) >= 1, v)
+        self.check("F14 phone: after a bake the ink survives, the view scale was reset (under 2x) and the canvas still covers the screen centre",
+                   v.get("ink", 0) > 0 and v.get("viewS", 99) <= 2.05 and v.get("wrapCovers", False), v)
+        self.check("F15 phone: the toggle and the speed are remembered", v.get("saved") == {"on": True, "speed": 100}, v)
+        self.shot("canvas-fullscreen-dive-390.png")
 
     def shot(self, name):
         with open(os.path.join(self.out, name), "wb") as f:
             f.write(base64.b64decode(self.ws.call("Page.captureScreenshot", format="png")["data"]))
 
+
+FS_DIVE = r"""(async () => {
+  const ov = document.getElementById('coverlay'), wrap = document.getElementById('ccanvaswrap'), c0 = document.getElementById('clayer0');
+  const fire = (type, id, x, y) => ov.dispatchEvent(new PointerEvent(type, {pointerId: id, pointerType: 'touch', isPrimary: id === 1,
+    clientX: x, clientY: y, bubbles: true, cancelable: true, button: 0, buttons: type === 'pointerup' ? 0 : 1}));
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  const ink = () => { const d = c0.getContext('2d').getImageData(0, 0, c0.width, c0.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 0) n++; return n; };
+  const wipe = () => { for (let i = 0; i < 3; i++) { const c = document.getElementById('clayer' + i); c.getContext('2d').clearRect(0, 0, c.width, c.height); } };
+  const dive = () => parseFloat(wrap.dataset.dive || '1');
+  const out = {};
+  window.dispatchEvent(new Event('resize'));          // the view back to "fit"
+  await wait(150);
+  const toggle = document.getElementById('cdive'), speed = document.getElementById('cdivespeed');
+  out.ui = !!(toggle && speed); if (!out.ui) return out;
+  out.min = speed.min; out.max = speed.max; out.inSheet = !!speed.closest('.cfs-pp') && !!toggle.closest('.cfs-pp');
+  const hold = async ms => { const b = ov.getBoundingClientRect(), x = b.left + b.width / 2, y = b.top + b.height / 2;
+    fire('pointerdown', 1, x, y); fire('pointermove', 1, x + 3, y + 1); await wait(ms); const z = dive(); fire('pointerup', 1, x + 3, y + 1); return z; };
+  wipe(); out.offZoom = await hold(600);
+  toggle.click(); speed.value = '100'; speed.dispatchEvent(new Event('input', {bubbles: true}));
+  window.dispatchEvent(new Event('resize')); await wait(150); wipe();
+  const before = dive();
+  out.onZoom = (await hold(1500)) / before;
+  out.bakes = parseInt(wrap.dataset.bakes || '0', 10);
+  out.ink = ink();
+  const m = new DOMMatrix(getComputedStyle(wrap).transform); out.viewS = m.a;
+  const r = wrap.getBoundingClientRect();   // the view stays zoomed in after the pen lifts (inward only), so it must still cover the screen centre
+  out.wrapCovers = r.left <= innerWidth / 2 && r.right >= innerWidth / 2 && r.top <= innerHeight / 2 && r.bottom >= innerHeight / 2;
+  try { out.saved = JSON.parse(localStorage.getItem('lg-dive')); } catch (e) { out.saved = null; }
+  return out;
+})()"""
 
 FS_BOOT = r"""(() => {
   window.LG_CANVAS = {px: 1, frames: 0, user: 't', mode: 'portrait', postTarget: ''};

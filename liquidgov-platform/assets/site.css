@@ -85,3 +85,6 @@ html.cfs #cresizehandle{display:none}
 .cfs-toast{display:none;position:absolute;z-index:7;top:calc(66px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);max-width:80%;padding:6px 12px;border-radius:14px;background:rgba(26,24,20,.88);color:#fffdf8;font-size:13px}
 .cfs-toast.on{display:block}
 .cfs-toast p{margin:0}
+.cfs-sheet .cdive-row{display:flex;align-items:center;gap:.7rem;margin-top:.9rem}
+.cfs-sheet .cdive-btn{border-radius:999px;min-height:40px;padding:0 1.1rem;flex:0 0 auto}
+.cfs-sheet .cdive-btn.on{background:var(--accent);color:var(--paper);border-color:var(--accent)}

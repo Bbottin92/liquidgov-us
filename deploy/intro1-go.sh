@@ -85,6 +85,7 @@ done
 python3 - "$DRYLOG" << 'PY'
 import sys
 allow = {
+    "CMakePresets.json",
     "assets/intro.js",
     "assets/site.css",
     "assets/tip.js",

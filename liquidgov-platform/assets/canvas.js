@@ -22,4 +22,105 @@ timer=setTimeout(function(){fail('This video would not open here. Try a picture,
 vid.src=url;}
 else{status.textContent='Loading image\u2026';var reader=new FileReader();reader.onload=function(ev){var img=new Image();img.onload=function(){place(img,img.naturalWidth,img.naturalHeight);};img.onerror=function(){status.textContent='That file is not a usable image.';release();};img.src=ev.target.result;};reader.onerror=function(){status.textContent='Could not read that picture. Try choosing it again.';release();};reader.readAsDataURL(f);}});}function flatten(){var out=document.createElement('canvas');out.width=layers[0].cv.width;out.height=layers[0].cv.height;var octx2=out.getContext('2d');octx2.fillStyle='#fff';octx2.fillRect(0,0,out.width,out.height);for(var i=0;i<layers.length;i++){octx2.globalAlpha=layers[i].opacity;octx2.drawImage(layers[i].cv,0,0);}octx2.globalAlpha=1;return out;}document.getElementById('cundo').addEventListener('click',function(){var L=layers[activeLayer];if(!L.undo.length)return;L.redo.push(L.ctx.getImageData(0,0,L.cv.width,L.cv.height));L.ctx.putImageData(L.undo.pop(),0,0);});document.getElementById('credo').addEventListener('click',function(){var L=layers[activeLayer];if(!L.redo.length)return;L.undo.push(L.ctx.getImageData(0,0,L.cv.width,L.cv.height));L.ctx.putImageData(L.redo.pop(),0,0);});document.getElementById('cclear').addEventListener('click',function(){snap();var L=layers[activeLayer];L.ctx.clearRect(0,0,L.cv.width,L.cv.height);});/* Earlier portraits (portrait page): a click loads that picture into the canvas, replacing the drawing; each layer keeps its undo. */
 document.querySelectorAll('.oldportrait').forEach(function(b){b.addEventListener('click',function(){var status=document.getElementById('cstatus');status.textContent='Loading…';var img=new Image();img.onload=function(){layers.forEach(function(L){L.undo.push(L.ctx.getImageData(0,0,L.cv.width,L.cv.height));if(L.undo.length>20)L.undo.shift();L.redo=[];L.ctx.clearRect(0,0,L.cv.width,L.cv.height);});activeLayer=0;refreshLayerBtns();var cw=layers[0].cv.width,ch=layers[0].cv.height,s=Math.min(cw/img.naturalWidth,ch/img.naturalHeight);var dw=img.naturalWidth*s,dh=img.naturalHeight*s;layers[0].ctx.drawImage(img,(cw-dw)/2,(ch-dh)/2,dw,dh);status.textContent='Loaded. Change it if you like, then Save as self-portrait.';};img.onerror=function(){status.textContent='Could not load that portrait.';};img.src=b.dataset.src;});});
-if(C.mode==='portrait'){function captureFrame(force,done){if(done)done();}document.getElementById('csave').addEventListener('click',function(){var status=document.getElementById('cstatus');status.textContent='Saving\u2026';flatten().toBlob(function(blob){var fd=new FormData();fd.append('photo',blob,'portrait.png');fetch('/me/avatar',{method:'POST',body:fd}).then(function(r){window.location=r.url||'/me';}).catch(function(){status.textContent='Could not save. Try again.';});},'image/png');});}else if(C.mode==='post'){function captureFrame(force,done){if(done)done();}document.getElementById('csave').addEventListener('click',function(){var status=document.getElementById('cstatus');status.textContent='Posting\u2026';flatten().toBlob(function(blob){var fd=new FormData();fd.append('text',document.getElementById('cpcaption').value);fd.append('media',blob,'post.png');fetch(C.postTarget,{method:'POST',body:fd}).then(function(r){window.location=r.url||C.postTarget;}).catch(function(){status.textContent='Could not post. Try again.';});},'image/png');});}else{var clearedOnce=false,frameCount=C.frames;function updateCounter(){document.getElementById('cframecount').textContent=frameCount+'/24 frames captured';}function captureFrame(force,done){if(frameCount>=23&&!force){if(done)done();return;}flatten().toBlob(function(blob){var fd=new FormData();fd.append('frame',blob,'frame.png');function go(){fetch('/me/canvas/frame',{method:'POST',body:fd}).then(function(r){if(r.ok){frameCount++;updateCounter();}if(done)done();}).catch(function(){if(done)done();});}if(!clearedOnce){clearedOnce=true;fetch('/me/canvas/clear',{method:'POST'}).then(go).catch(go);}else{go();}},'image/png');}document.getElementById('csave').addEventListener('click',function(){var status=document.getElementById('cstatus');status.textContent='Saving\u2026';var timelapse=document.getElementById('ctimelapse').checked?'1':'0';captureFrame(true,function(){fetch('/me/canvas/mode',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'timelapse='+timelapse}).then(function(){window.location='/u/'+C.user;});});});}})();
+if(C.mode==='portrait'){function captureFrame(force,done){if(done)done();}document.getElementById('csave').addEventListener('click',function(){var status=document.getElementById('cstatus');status.textContent='Saving\u2026';flatten().toBlob(function(blob){var fd=new FormData();fd.append('photo',blob,'portrait.png');fetch('/me/avatar',{method:'POST',body:fd}).then(function(r){window.location=r.url||'/me';}).catch(function(){status.textContent='Could not save. Try again.';});},'image/png');});}else if(C.mode==='post'){function captureFrame(force,done){if(done)done();}document.getElementById('csave').addEventListener('click',function(){var status=document.getElementById('cstatus');status.textContent='Posting\u2026';flatten().toBlob(function(blob){var fd=new FormData();fd.append('text',document.getElementById('cpcaption').value);fd.append('media',blob,'post.png');fetch(C.postTarget,{method:'POST',body:fd}).then(function(r){window.location=r.url||C.postTarget;}).catch(function(){status.textContent='Could not post. Try again.';});},'image/png');});}else{var clearedOnce=false,frameCount=C.frames;function updateCounter(){document.getElementById('cframecount').textContent=frameCount+'/24 frames captured';}function captureFrame(force,done){if(frameCount>=23&&!force){if(done)done();return;}flatten().toBlob(function(blob){var fd=new FormData();fd.append('frame',blob,'frame.png');function go(){fetch('/me/canvas/frame',{method:'POST',body:fd}).then(function(r){if(r.ok){frameCount++;updateCounter();}if(done)done();}).catch(function(){if(done)done();});}if(!clearedOnce){clearedOnce=true;fetch('/me/canvas/clear',{method:'POST'}).then(go).catch(go);}else{go();}},'image/png');}document.getElementById('csave').addEventListener('click',function(){var status=document.getElementById('cstatus');status.textContent='Saving\u2026';var timelapse=document.getElementById('ctimelapse').checked?'1':'0';captureFrame(true,function(){fetch('/me/canvas/mode',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'timelapse='+timelapse}).then(function(){window.location='/u/'+C.user;});});});}
+/* Fullscreen editor on phones (Brandon 2026-11-19, q236: the canvas fills the screen, the buttons float on top like Sketchbook, pinch zoom and
+   two-finger pan, no scrolling away and no Back by accident). Phone widths only; the tool page keeps its markup, ids and handlers: this block moves
+   the existing groups into a floating top bar, a bottom dock and a sheet, and adds the view (zoom and pan) and the gestures. */
+(function studio(){
+if(!window.matchMedia||!window.matchMedia('(max-width: 820px)').matches)return;
+var card=document.querySelector('.canvascard'),frame=document.querySelector('.canvas-frame'),row=document.querySelector('.ccanvasrow'),wrap=document.getElementById('ccanvaswrap');
+if(!card||!frame||!row||!wrap)return;
+var de=document.documentElement;de.classList.add('cfs');
+function el(tag,cls,html){var e=document.createElement(tag);if(cls)e.className=cls;if(html)e.innerHTML=html;return e;}
+var SV='<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">';
+function btn(id,label,path,cls){var b=el('button','cfs-btn'+(cls?' '+cls:''),SV+path+'</svg>');b.type='button';b.id=id;b.setAttribute('aria-label',label);b.title=label;return b;}
+function click(id){var t=document.getElementById(id);if(t)t.click();}
+/* the pieces that already exist */
+var tools=frame.querySelector('.ctools'),props=frame.querySelector('.cprops'),layersG=frame.querySelector('.clayers'),edit=frame.querySelector('.cedit'),color=document.getElementById('ccolor');
+/* top bar */
+var top=el('div','cfs-top');
+var bClose=btn('cfs-close','Close','<path d="M6 6l12 12M18 6 6 18"/>'),bUndo=btn('cfs-undo','Undo','<path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/>'),
+    bRedo=btn('cfs-redo','Redo','<path d="m15 14 5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/>'),bDone=btn('cfs-done','Done','<path d="M5 12.5 10 17.5 19 7"/>','go');
+top.appendChild(bClose);var mid=el('span','cfs-mid');mid.appendChild(bUndo);mid.appendChild(bRedo);top.appendChild(mid);top.appendChild(bDone);
+/* dock: the tools, the colour, and three buttons that open the sheet */
+var dock=el('div','cfs-dock');
+if(tools)dock.appendChild(tools);
+if(color)dock.appendChild(color);
+var bProps=btn('cfs-props','Size and opacity','<path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>'),
+    bLayers=btn('cfs-layers','Layers','<path d="M12 3 21 8l-9 5-9-5 9-5Z"/><path d="m3 12 9 5 9-5"/><path d="m3 16 9 5 9-5"/>'),
+    bMore=btn('cfs-more','More','<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>');
+dock.appendChild(bProps);dock.appendChild(bLayers);dock.appendChild(bMore);
+/* sheet: size/opacity/effects, layers, everything else the page had */
+var sheet=el('div','cfs-sheet'),pp=el('div','cfs-pp'),pl=el('div','cfs-pl'),pm=el('div','cfs-pm');
+if(props)pp.appendChild(props);if(layersG)pl.appendChild(layersG);if(edit)pm.appendChild(edit);
+var toast=el('div','cfs-toast');
+Array.prototype.slice.call(card.children).forEach(function(n){
+  if(n===frame)return;
+  if(n.id==='cstatus'||n.querySelector&&n.querySelector('#cstatus')){toast.appendChild(n);return;}
+  if(n.tagName==='H1'||(n.tagName==='P'&&n.classList.contains('muted')&&!n.id)){n.classList.add('cfs-hide');return;}
+  pm.appendChild(n);
+});
+sheet.appendChild(pp);sheet.appendChild(pl);sheet.appendChild(pm);
+card.appendChild(top);card.appendChild(sheet);card.appendChild(dock);card.appendChild(toast);
+function openSheet(name){sheet.setAttribute('data-open',sheet.getAttribute('data-open')===name?'':name);[bProps,bLayers,bMore].forEach(function(b){b.classList.toggle('on',sheet.getAttribute('data-open')===(b===bProps?'props':b===bLayers?'layers':'more'));});}
+bProps.addEventListener('click',function(){openSheet('props');});bLayers.addEventListener('click',function(){openSheet('layers');});bMore.addEventListener('click',function(){openSheet('more');});
+bUndo.addEventListener('click',function(){click('cundo');});bRedo.addEventListener('click',function(){click('credo');});bDone.addEventListener('click',function(){click('csave');});
+var st=document.getElementById('cstatus');
+if(st&&window.MutationObserver){var showToast=function(){toast.classList.toggle('on',!!(st.textContent||'').trim());};new MutationObserver(showToast).observe(st,{childList:true,characterData:true,subtree:true});showToast();}
+/* the view: the canvas is laid out to fit the free area, then zoomed and panned by a transform; pointer maths already reads the
+   transformed rectangle, so drawing stays under the finger at any zoom */
+var s=1,tx=0,ty=0,PADT=66,PADB=86,MINS=.5,MAXS=12;
+function apply(){wrap.style.transform='translate('+tx+'px,'+ty+'px) scale('+s+')';}
+function fit(){var cv=layers[0].cv,vw=row.clientWidth||window.innerWidth,vh=row.clientHeight||window.innerHeight;
+  var f=Math.min((vw-16)/cv.width,(vh-PADT-PADB)/cv.height);if(!(f>0))return;
+  wrap.style.maxWidth='none';wrap.style.aspectRatio='auto';wrap.style.width=Math.round(cv.width*f)+'px';wrap.style.height=Math.round(cv.height*f)+'px';
+  s=1;tx=(vw-cv.width*f)/2;ty=PADT+((vh-PADT-PADB)-cv.height*f)/2;apply();}
+fit();window.addEventListener('resize',fit);window.addEventListener('orientationchange',fit);
+if(window.MutationObserver)new MutationObserver(fit).observe(layers[0].cv,{attributes:true,attributeFilter:['width','height']});
+/* gestures: one finger draws (the existing handlers); a second finger cancels that stroke and turns the pair into zoom and pan */
+var ptrs={},g=null;
+function origin(){var r=row.getBoundingClientRect();return{x:r.left,y:r.top};}
+function pair(){var ids=Object.keys(ptrs);return ids.length>=2?[ptrs[ids[0]],ptrs[ids[1]]]:null;}
+function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y);}
+row.addEventListener('pointerdown',function(e){
+  if(e.pointerType==='mouse')return;
+  ptrs[e.pointerId]={x:e.clientX,y:e.clientY};
+  var p=pair();
+  if(p&&!g){
+    if(drawing){drawing=false;var L=layers[activeLayer];if(L.undo.length)L.ctx.putImageData(L.undo.pop(),0,0);}
+    shapeStart=null;clearOverlay();var o=origin();
+    g={d0:dist(p[0],p[1])||1,s0:s,wx:((p[0].x+p[1].x)/2-o.x-tx)/s,wy:((p[0].y+p[1].y)/2-o.y-ty)/s};
+    e.stopPropagation();e.preventDefault();
+  }else if(g){e.stopPropagation();e.preventDefault();}
+},true);
+row.addEventListener('pointermove',function(e){
+  if(e.pointerType==='mouse')return;
+  if(ptrs[e.pointerId]){ptrs[e.pointerId]={x:e.clientX,y:e.clientY};}
+  if(!g)return;
+  var p=pair();if(p){var o=origin(),mx=(p[0].x+p[1].x)/2-o.x,my=(p[0].y+p[1].y)/2-o.y;
+    s=Math.max(MINS,Math.min(MAXS,g.s0*dist(p[0],p[1])/g.d0));tx=mx-g.wx*s;ty=my-g.wy*s;apply();}
+  e.stopPropagation();e.preventDefault();
+},true);
+function lift(e){
+  if(e.pointerType==='mouse')return;
+  delete ptrs[e.pointerId];
+  if(g){e.stopPropagation();if(Object.keys(ptrs).length<2)g=null;}
+}
+row.addEventListener('pointerup',lift,true);row.addEventListener('pointercancel',lift,true);
+/* a mouse wheel zooms around the cursor (a narrow desktop window, a trackpad) */
+row.addEventListener('wheel',function(e){e.preventDefault();var o=origin(),mx=e.clientX-o.x,my=e.clientY-o.y,wx=(mx-tx)/s,wy=(my-ty)/s;
+  s=Math.max(MINS,Math.min(MAXS,s*Math.exp(-e.deltaY*.0015)));tx=mx-wx*s;ty=my-wy*s;apply();},{passive:false});
+/* the page must never scroll or rubber-band under the canvas, and Safari's own pinch must not take the gesture */
+row.addEventListener('touchmove',function(e){e.preventDefault();},{passive:false});
+document.addEventListener('gesturestart',function(e){e.preventDefault();});
+/* leaving: Close and the browser's Back ask first, so a stray swipe cannot throw the drawing away */
+var leaving=false;
+function askLeave(){if(leaving)return;if(window.confirm('Leave the canvas? A drawing you have not saved will be lost.')){leaving=true;history.back();}else{try{history.pushState({cfs:1},'');}catch(err){}}}
+try{history.pushState({cfs:1},'');}catch(err){}
+window.addEventListener('popstate',function(){if(leaving)return;askLeave();});
+/* Close: we sit on the entry pushed above, so two steps back leave the canvas page; if there is nothing behind it, go to the profile */
+bClose.addEventListener('click',function(){if(leaving)return;if(window.confirm('Leave the canvas? A drawing you have not saved will be lost.')){leaving=true;history.go(-2);setTimeout(function(){window.location.href='/me';},500);}});
+/* touching the canvas puts the sheet away */
+row.addEventListener('pointerdown',function(){if(sheet.getAttribute('data-open')){openSheet(sheet.getAttribute('data-open'));}});
+})();
+})();

@@ -43,3 +43,45 @@
 #ccanvaswrap{border-radius:14px!important;border-color:var(--rule)!important;box-shadow:0 1px 3px rgba(60,44,12,.14)}
 .canvas-frame .layeropacity{accent-color:var(--accent);min-height:0;padding:0}
 .canvas-frame .ctgroup{gap:.25rem}
+/* Fullscreen editor on phones (2026-11-19, q236): html.cfs is set by assets/canvas.js on phone widths. The canvas fills the screen, the top bar, the
+   dock and the sheet float on top of it, and the page itself cannot scroll. */
+html.cfs,html.cfs body{height:100%;overflow:hidden;overscroll-behavior:none;touch-action:none}
+html.cfs body{position:fixed;inset:0;width:100%}
+html.cfs .canvascard{position:fixed;inset:0;z-index:1000;margin:0;padding:0;border:0;border-radius:0;max-width:none;width:auto;background:#e6dfce;box-shadow:none;overflow:hidden}
+html.cfs .cfs-hide{display:none!important}
+html.cfs .canvas-frame{position:absolute;inset:0;margin:0;padding:0;border:0;background:none}
+html.cfs .ctoolbar{display:none}
+html.cfs .ccanvasrow{position:absolute!important;inset:0;display:block!important;overflow:hidden;margin:0;touch-action:none}
+html.cfs #ccanvaswrap{position:absolute!important;left:0;top:0;flex:none!important;margin:0;transform-origin:0 0;border-radius:4px!important;box-shadow:0 2px 12px rgba(60,44,12,.28)}
+.cfs-top,.cfs-dock{position:absolute;z-index:6;left:10px;right:10px;background:rgba(239,232,216,.95);border:1px solid var(--rule);display:flex;align-items:center}
+.cfs-top{top:calc(10px + env(safe-area-inset-top));height:48px;border-radius:24px;padding:0 6px;justify-content:space-between}
+.cfs-mid{display:flex;gap:6px}
+.cfs-btn{width:40px;height:40px;min-width:0;min-height:0;padding:0;margin:0;border:0;border-radius:50%;background:transparent;color:var(--ink);display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.cfs-btn.go,.cfs-btn.on{background:var(--accent);color:var(--paper)}
+.cfs-dock{bottom:calc(14px + env(safe-area-inset-bottom));min-height:56px;border-radius:28px;padding:4px 8px;gap:2px}
+.cfs-dock .ctgroup{display:flex;flex-wrap:nowrap;gap:2px;align-items:center;padding:0;border:0;flex:1 1 0;min-width:0;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.cfs-dock .ctgroup::-webkit-scrollbar{display:none}
+html.cfs #cresizehandle{display:none}
+.cfs-dock .toolgroup-sep{background:var(--rule);width:1px;align-self:center;height:22px;margin:0 3px}
+.cfs-dock .toolbtn{width:40px;height:40px;min-width:0;min-height:0;padding:0!important;margin:0;border-radius:50%;border-color:transparent;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.cfs-dock .toolbtn svg{width:22px;height:22px}
+.cfs-dock .toolbtn[style*="var(--rule)"],.cfs-sheet .layerbtn[style*="var(--rule)"],.cfs-sheet .fmtbtn[style*="var(--rule)"]{background:var(--accent)!important;color:var(--paper)!important}
+.cfs-dock #ccolor{width:34px;height:34px;min-height:0;flex:0 0 auto;padding:0;margin:0 4px;border-radius:50%;border:2px solid var(--paper);box-shadow:0 0 0 1px var(--rule);overflow:hidden}
+.cfs-sheet{position:absolute;z-index:5;left:14px;right:14px;bottom:calc(80px + env(safe-area-inset-bottom));max-height:46dvh;overflow:auto;border-radius:22px;background:rgba(243,236,221,.98);border:1px solid var(--rule);padding:12px;display:none}
+.cfs-sheet[data-open="props"],.cfs-sheet[data-open="layers"],.cfs-sheet[data-open="more"]{display:block}
+.cfs-pp,.cfs-pl,.cfs-pm{display:none}
+.cfs-sheet[data-open="props"] .cfs-pp,.cfs-sheet[data-open="layers"] .cfs-pl,.cfs-sheet[data-open="more"] .cfs-pm{display:block}
+.cfs-sheet .wheel{display:none}
+.cfs-sheet .cslider{flex:1 1 auto;width:auto;min-width:0;min-height:0;padding:0;accent-color:var(--accent)}
+.cfs-sheet .cprops>.row{display:flex;flex-wrap:wrap;gap:.7rem .6rem;align-items:center}
+.cfs-sheet .cprops>.row>label{flex:0 0 4.6rem;margin:0}
+.cfs-sheet .cprops>.row>.row{flex:1 1 calc(100% - 5.4rem);display:flex;align-items:center;gap:.6rem}
+.cfs-sheet .cprops>.row>.toolgroup-sep{flex:0 0 100%;height:0;width:auto;background:none;margin:0}
+.cfs-sheet .cprops input[type=number]{width:4rem;flex:0 0 auto}
+.cfs-sheet .ctgroup{border:0;padding:0;display:flex;flex-wrap:wrap;gap:.4rem;align-items:center}
+.cfs-sheet button,.cfs-sheet .ghost{min-height:40px}
+.cfs-sheet .cedit button,.cfs-sheet .fmtbtn,.cfs-sheet .layerbtn{border-radius:999px}
+.cfs-sheet .card{border:0;box-shadow:none;background:none;padding:0;margin:.4rem 0}
+.cfs-toast{display:none;position:absolute;z-index:7;top:calc(66px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);max-width:80%;padding:6px 12px;border-radius:14px;background:rgba(26,24,20,.88);color:#fffdf8;font-size:13px}
+.cfs-toast.on{display:block}
+.cfs-toast p{margin:0}

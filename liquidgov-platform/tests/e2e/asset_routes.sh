@@ -74,7 +74,7 @@ def cache_of(hdrs):
 # 1. routes that honour a ?v= version: (url path, file, content type)
 versioned = [("/assets/" + n, "assets/" + n, JS) for n in (
     "setup.js", "mail_widget.js", "draft_publish.js", "people_search.js", "jukebox.js", "here.js", "canvas.js",
-    "walker.js", "here_media.js", "lgmap_walk.js", "tip.js", "home_drop.js", "video_links.js", "hints.js",
+    "walker.js", "here_media.js", "lgmap_walk.js", "tip.js", "home_drop.js", "intro.js", "video_links.js", "hints.js",
     "juketube.js", "lgmap.js", "push.js")]
 versioned += [("/assets/" + n, "assets/" + n, CSS) for n in ("site.css", "setup.css", "juketube.css", "lgmap.css")]
 for path, rel, ctype in versioned:

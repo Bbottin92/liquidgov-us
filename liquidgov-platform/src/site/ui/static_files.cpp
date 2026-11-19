@@ -48,6 +48,7 @@ const StaticFile kFiles[] = {
     {"/assets/lgmap_walk.js",   "assets/lgmap_walk.js",   JS,  Cache::Versioned},
     {"/assets/tip.js",          "assets/tip.js",          JS,  Cache::Versioned},
     {"/assets/home_drop.js",    "assets/home_drop.js",    JS,  Cache::Versioned},
+    {"/assets/intro.js",        "assets/intro.js",        JS,  Cache::Versioned},
     {"/assets/video_links.js",  "assets/video_links.js",  JS,  Cache::Versioned},
     {"/assets/hints.js",        "assets/hints.js",        JS,  Cache::Versioned},
     {"/assets/juketube.js",     "assets/juketube.js",     JS,  Cache::Versioned},

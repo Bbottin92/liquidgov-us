@@ -60,9 +60,8 @@ std::optional<std::string> pages_routes(Route& r) {
     if(method=="GET"&&path=="/") {
         if(acc) {
             // A returning member's "landing page" is here, not the
-            // logged-out Genesis page below -- so that's where the opted-in
-            // replay actually has to happen for the Settings toggle to mean
-            // anything for someone who can reach Settings at all. Bypasses
+            // logged-out Genesis page below -- so the intro plays here on
+            // every visit while the account's pref is on (Settings > Intro video). Bypasses
             // pg() (which never shows the intro) specifically for this;
             // show_intro is otherwise only ever true for the Genesis path.
             const bool replay_intro = g_store.prefs_of(user).intro_every_visit;

@@ -6,6 +6,7 @@
 #include "site/features/here/here.hpp"
 #include "site/features/credibility/credibility.hpp"
 #include "site/ui/favicon_cookies.hpp"
+#include "site/ui/shell.hpp"
 
 namespace liquidgov::site {
 
@@ -31,7 +32,7 @@ std::optional<std::string> settings_routes(Route& r) {
         std::string html = "<h1>Settings</h1>"
             "<p class=\"muted\">Account, privacy, data, and notifications.</p>"
             // jump links (sweep 2026-11-09): nine sections were one long scroll on a phone
-            "<div class=\"setidx\" role=\"navigation\" aria-label=\"Settings sections\"><a href=\"#security\">Security</a><a href=\"#sessions\">Sessions</a><a href=\"#map\">Map and connections</a><a href=\"#privacy\">Privacy</a><a href=\"#blocks\">Block list</a><a href=\"#jukebox\">Jukebox</a><a href=\"#identity\">Identity</a><a href=\"#data\">Data</a><a href=\"#notifications\">Notifications</a></div>";  // a div: the phone CSS hides every <nav> (nav{display:none} is the mobile menu)
+            "<div class=\"setidx\" role=\"navigation\" aria-label=\"Settings sections\"><a href=\"#security\">Security</a><a href=\"#sessions\">Sessions</a><a href=\"#map\">Map and connections</a><a href=\"#privacy\">Privacy</a><a href=\"#blocks\">Block list</a><a href=\"#jukebox\">Jukebox</a><a href=\"#identity\">Identity</a><a href=\"#data\">Data</a><a href=\"#notifications\">Notifications</a><a href=\"#intro\">Intro video</a></div>";  // a div: the phone CSS hides every <nav> (nav{display:none} is the mobile menu)
         if (qs["ok"]=="password") html += "<p class=\"ok\">Password changed.</p>";
         html += flash_error(qs);
 
@@ -201,10 +202,25 @@ std::optional<std::string> settings_routes(Route& r) {
             + "<p><label><input type=\"checkbox\" name=\"notify_message\" value=\"1\"" + (p.notify_message?" checked":"") + "> New mail</label></p>"
             + "<p><label><input type=\"checkbox\" name=\"notify_group\" value=\"1\"" + (p.notify_group?" checked":"") + "> Group invites</label></p>"
             + "<p class=\"muted\">Login alerts stay on.</p>"
-            + "<p><label><input type=\"checkbox\" name=\"intro_every_visit\" value=\"1\"" + (p.intro_every_visit?" checked":"") + "> Play the landing intro every visit</label></p>"
-            + "<p class=\"muted\">Off plays it just the first time you land on the site, on this browser.</p>"
             + "<button>Save notifications</button></form></div>";
+        html += intro_setting_card(user, p.intro_every_visit);
         return pg("Settings", html);
+    }
+    // The intro video's toggle on its own page (the intro's "Turn off in Settings" link): open to everyone, since a
+    // logged-out visitor's choice is kept on their browser (intro.js); signed in, it is the account's.
+    if(method=="GET"&&path=="/settings/intro") {
+        std::string html = "<h1>Settings</h1>";
+        if (acc) html += "<p class=\"muted\"><a href=\"/settings\">&lsaquo; All settings</a></p>";
+        html += intro_setting_card(acc ? user : std::string(), acc && g_store.prefs_of(user).intro_every_visit);
+        return pg("Settings", html);
+    }
+    if(method=="POST"&&path=="/settings/intro") {
+        if(!acc) return need_login();
+        auto f = parse_form(body);
+        auto p = g_store.prefs_of(user);
+        p.intro_every_visit = f[kIntroPref]=="1";
+        g_store.set_prefs(user, p);
+        return http_redir("/settings#intro");
     }
 
     if(method=="GET"&&path=="/export") {
@@ -337,7 +353,6 @@ std::optional<std::string> settings_routes(Route& r) {
         p.notify_friend = f["notify_friend"]=="1";
         p.notify_message = f["notify_message"]=="1";
         p.notify_group = f["notify_group"]=="1";
-        p.intro_every_visit = f["intro_every_visit"]=="1";
         g_store.set_prefs(user, p);
         return http_redir("/settings");
     }

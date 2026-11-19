@@ -59,5 +59,17 @@ body = m.group(1) if m else ""
 check("workflow: a browser-canvas job runs for canvas-only changes and runs canvas_layout_check",
       "canvas_only == 'true'" in body and "canvas_layout_check.py" in body, body[:200])
 
+try:  # a workflow GitHub cannot parse never starts (2026-11-19: a plain scalar with a colon in the new job did exactly that)
+    import yaml
+    for name in sorted(os.listdir(os.path.dirname(WORKFLOW))):
+        if name.endswith((".yml", ".yaml")):
+            try:
+                yaml.safe_load(open(os.path.join(os.path.dirname(WORKFLOW), name), encoding="utf-8"))
+                check("workflow YAML parses: %s" % name, True)
+            except Exception as exc:  # reported with the parser's own words
+                check("workflow YAML parses: %s" % name, False, exc)
+except ImportError:
+    print("SKIP workflow YAML parse: PyYAML is not installed here (the CI runner has it, so the changes job runs this)")
+
 print("ci_scope_check: %d failure(s)" % fails)
 sys.exit(1 if fails else 0)

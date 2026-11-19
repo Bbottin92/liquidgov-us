@@ -749,4 +749,5 @@ jobs:
           python3 liquidgov-platform/tests/browser/canvas_layout_check.py "$PWD/liquidgov-platform" "$RUNNER_TEMP/phone" | tee "$RUNNER_TEMP/canvas-layout.log"
 
       - name: a canvas-only change needs its layout verdict to be ALL-PASS
-        run: grep -q "VERDICT canvas-layout: ALL-PASS" "$RUNNER_TEMP/canvas-layout.log"
+        run: |
+          grep -q "VERDICT canvas-layout: ALL-PASS" "$RUNNER_TEMP/canvas-layout.log"

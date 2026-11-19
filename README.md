@@ -34,5 +34,15 @@ and deploy it. This file is the map: what each folder is for, and where a new fi
 
 ## Where files do NOT go
 
-Scratch work, logs, builds and one-off outputs stay out of this repo. They go in
-`C:\Users\Brandon\scratch\<YYYY-MM-DD>-<agent>-<task>\` (builds in WSL `~/lg-<name>-check`).
+Scratch work, logs, builds and one-off outputs stay out of this repo: build into a folder outside it (or `build/`,
+which git ignores), and keep notes and logs in your own scratch folder.
+
+## Contributing and security
+
+How to build, run the checks and send a change: `CONTRIBUTING.md`. To report a security problem privately:
+`SECURITY.md`.
+
+## License
+
+GNU Affero General Public License v3.0: see `LICENSE`. If you run a modified copy of this site for others, the AGPL
+asks you to offer them its source.

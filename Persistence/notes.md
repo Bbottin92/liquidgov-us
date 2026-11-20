@@ -137,3 +137,4 @@ Not bug classes. Not “what is live on the droplet.”
 - Friends are mutual accept. No age checkbox. Phone is signup binding, not login.
 - Platform community ≠ AVND locality. No React/Vite/Node UI.
 - Do not put game world state in LGP1 or `http_server.cpp`.
+- **2026-11-19 17:35 PT -- Canvas timelapse (Watch + speed slider) and fine-scrubbing sliders (canvas4) LIVE (commit `f3b5f1b`, PID 951132, public checks FAILS 0).** `assets/finerange.js` loads only in the signed-in wrap (`wrap.cpp`, `!user.empty()`), not on signed-out pages or the global jukebox widget / genesis page; the canvas and Juketube sliders are signed-in, so they have it. Not yet seen on a real phone.

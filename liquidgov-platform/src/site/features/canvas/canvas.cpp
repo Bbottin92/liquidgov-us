@@ -281,6 +281,9 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "<div class=\"wheel\" id=\"csizef\" data-target=\"csize\" data-step=\"1\" title=\"Size, fine (drag or scroll, &plusmn;1)\" "
         "style=\"width:20px;height:20px;border-radius:50%;border:1px solid var(--rule);cursor:ns-resize;"
         "touch-action:none;flex:0 0 auto\">"+kIconDial+"</div>"
+        // Studio look (2026-11-19): a slider beside the number box; the wheels stay in the page for canvas.js but are
+        // hidden by CSS, and canvas.js keeps the slider and the number box in step (the number box is what it reads).
+        "<input type=\"range\" id=\"csizer\" class=\"cslider\" min=\"1\" max=\"48\" value=\"8\" aria-label=\"Size\">"
         "<input type=\"number\" id=\"csize\" min=\"1\" max=\"48\" value=\"8\" style=\"width:4rem\">"
         "</div>"
         "<label>Opacity</label>"
@@ -293,6 +296,7 @@ std::string canvas_tool_page(const std::string& username, const std::string& err
         "title=\"Opacity, fine (drag or scroll, &plusmn;5)\" "
         "style=\"width:20px;height:20px;border-radius:50%;border:1px solid var(--rule);cursor:ns-resize;"
         "touch-action:none;flex:0 0 auto\">"+kIconDial+"</div>"
+        "<input type=\"range\" id=\"copacityr\" class=\"cslider\" min=\"5\" max=\"100\" value=\"100\" aria-label=\"Opacity\">"
         "<input type=\"number\" id=\"copacity\" min=\"5\" max=\"100\" value=\"100\" style=\"width:4rem\">"
         "</div>"
         // Glow/Mirror/Fill are stroke modifiers, not stroke properties,

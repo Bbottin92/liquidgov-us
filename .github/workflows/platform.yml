@@ -33,6 +33,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       platform: ${{ steps.diff.outputs.platform }}
+      canvas_only: ${{ steps.diff.outputs.canvas_only }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -55,6 +56,18 @@ jobs:
             git fetch -q origin master
             files=$(git diff --name-only origin/master...HEAD)
           fi
+          # Run only what the change can reach (Brandon 2026-11-19, "efficiency first, always"): scripts/ci_scope.py says canvas_only=true when
+          # the change is just the canvas script, its layout check, scoped canvas CSS, notes and the deploy pair; then the heavy jobs are
+          # skipped and browser-canvas (below) runs alone. Its own test runs first, so a broken classifier fails the run, not a deploy.
+          python3 tests/repo/ci_scope_check.py
+          if [ "$EVENT" = push ] && [ "$REF" = refs/heads/master ] && [ -n "$BEFORE" ] && [ "$BEFORE" != 0000000000000000000000000000000000000000 ]; then
+            base="$BEFORE"
+          else
+            base=$(git merge-base origin/master HEAD 2>/dev/null || true)
+          fi
+          printf '%s\n' "$files" > "$RUNNER_TEMP/files.txt"
+          if [ -n "$base" ]; then git diff -U0 "$base" HEAD -- liquidgov-platform/assets/site.css > "$RUNNER_TEMP/css.diff"; else : > "$RUNNER_TEMP/css.diff"; fi
+          python3 scripts/ci_scope.py --files "$RUNNER_TEMP/files.txt" --css-diff "$RUNNER_TEMP/css.diff" | tee -a "$GITHUB_OUTPUT"
           if [ "$files" = "new ref" ] || printf '%s\n' "$files" | grep -qE '^(liquidgov-platform/|scripts/lgcheck\.sh$|\.github/workflows/platform\.yml$)'; then
             echo "platform=true" >> "$GITHUB_OUTPUT"; echo "platform changed: full build and tests"
           else
@@ -68,7 +81,7 @@ jobs:
   # the same build the check job does.
   check:
     needs: changes
-    if: needs.changes.outputs.platform == 'true'
+    if: needs.changes.outputs.platform == 'true' && needs.changes.outputs.canvas_only != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     # Compile cache (deploy/ci/platform-ccache.md): CMakeLists.txt uses ccache when present; actions/cache keeps it.
@@ -169,7 +182,7 @@ jobs:
   # Browser checks that start the real server, first half (the phone screenshots among them).
   browser-site-a:
     needs: changes
-    if: needs.changes.outputs.platform == 'true'
+    if: needs.changes.outputs.platform == 'true' && needs.changes.outputs.canvas_only != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
@@ -324,7 +337,7 @@ jobs:
   # Browser checks that start the real server, second half.
   browser-site-b:
     needs: changes
-    if: needs.changes.outputs.platform == 'true'
+    if: needs.changes.outputs.platform == 'true' && needs.changes.outputs.canvas_only != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
@@ -451,7 +464,7 @@ jobs:
   # Browser checks that serve their own pages (no server build).
   browser-pages:
     needs: changes
-    if: needs.changes.outputs.platform == 'true'
+    if: needs.changes.outputs.platform == 'true' && needs.changes.outputs.canvas_only != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -546,6 +559,15 @@ jobs:
           set -uo pipefail
           export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
           python3 liquidgov-platform/tests/browser/walker_controls_check.py "$PWD/liquidgov-platform" "$RUNNER_TEMP/phone"
+
+      - name: the landing intro plays every visit, its first-visit line and Settings toggle (intro_check) (browser, report-only)
+        if: always()
+        timeout-minutes: 5
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
+          python3 liquidgov-platform/tests/browser/intro_check.py "$PWD/liquidgov-platform" "$RUNNER_TEMP/phone"
 
       - name: walker kind marks (walker_kind_marks_check) (browser, report-only)
         if: always()
@@ -692,7 +714,7 @@ jobs:
   # scripts/affected_checks.py mapping it needs. Name its path here again when it lands (workflow_paths_check).
   screenshots:
     needs: [changes, browser-site-a, browser-site-b, browser-pages]
-    if: always() && needs.changes.outputs.platform == 'true'
+    if: always() && needs.changes.outputs.platform == 'true' && needs.changes.outputs.canvas_only != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -704,3 +726,28 @@ jobs:
           name: phone-screenshots
           pattern: phone-shots-*
           delete-merged: true
+
+  # Canvas-only change (scripts/ci_scope.py, Brandon 2026-11-19 "efficiency first, always"): the server build and every suite above are skipped
+  # and only the canvas layout check runs. It needs no C++ server (it cuts the page's markup from the source and serves the real assets), so
+  # this job takes about two minutes instead of fifteen. The check step is report-only like every browser step; the step after it is what
+  # turns the job red, so a canvas change whose layout check does not say ALL-PASS cannot reach deploy/ci-gate.sh as a green run.
+  browser-canvas:
+    needs: changes
+    if: needs.changes.outputs.platform == 'true' && needs.changes.outputs.canvas_only == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: drawing canvas layout (canvas_layout_check) (browser, report-only)
+        if: always()
+        timeout-minutes: 5
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
+          python3 liquidgov-platform/tests/browser/canvas_layout_check.py "$PWD/liquidgov-platform" "$RUNNER_TEMP/phone" | tee "$RUNNER_TEMP/canvas-layout.log"
+
+      - name: a canvas-only change needs its layout verdict to be ALL-PASS
+        run: |
+          grep -q "VERDICT canvas-layout: ALL-PASS" "$RUNNER_TEMP/canvas-layout.log"

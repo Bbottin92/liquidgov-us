@@ -39,6 +39,7 @@ CHECKS = {
     "tidy_in_use_check.py": ["scripts/*"],
     "make_go_dry_label_check.py": DEPLOY,
     "ci_gate_check.py": DEPLOY,
+    "ci_scope_check.py": ["scripts/ci_scope.py", ".github/workflows/*", "tests/repo/ci_scope_check.py"],  # q238: the canvas-only CI scope
     "sync_gate_check.py": DEPLOY,
     "ci_gate_interop_check.py": DEPLOY,
     "rollback_guard_check.py": DEPLOY + ["liquidgov-platform/libs/liquidgov_file_store/*"],

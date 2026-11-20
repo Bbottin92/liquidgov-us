@@ -19,22 +19,33 @@
 namespace liquidgov::site {
 
 namespace {
-// Unread since you last looked (feed filters slice 2, wip/161): the newest post id this browser was shown in the
-// Unread tab, for this account, kept in the lg_feedseen=<user>.<post id> cookie. Nothing is stored on the server, so
-// it is per browser. A cookie for another account (or none) means nothing has been seen yet.
-std::uint64_t feed_seen_of(const std::string& req, const std::string& user) {
+// Unread since you last looked (feed filters slice 2, wip/161): the newest post id and the newest reply id this
+// browser was shown in the Unread tab, for this account, kept in the lg_feedseen=<user>.<post id>.<reply id> cookie.
+// Nothing is stored on the server, so it is per browser. A cookie for another account (or none) means nothing has been
+// seen yet. The older cookie <user>.<post id> (before wip/171) has no reply id: replies count from the next visit.
+struct FeedSeen { std::uint64_t post = 0; std::uint64_t reply = 0; bool has_reply = false; };
+bool seen_number(const std::string& digits, std::uint64_t& out) {
+    if (digits.empty() || digits.size() > 19 || digits.find_first_not_of("0123456789") != std::string::npos) return false;
+    try { out = std::stoull(digits); return true; } catch (...) { return false; }
+}
+FeedSeen feed_seen_of(const std::string& req, const std::string& user) {
     auto pos = req.find("\r\nCookie:"); if (pos == std::string::npos) pos = req.find("\r\ncookie:");
-    if (pos == std::string::npos) return 0;
+    if (pos == std::string::npos) return {};
     const auto end = req.find("\r\n", pos + 2);
     const std::string line = req.substr(pos, end == std::string::npos ? std::string::npos : end - pos);
-    auto k = line.find("lg_feedseen="); if (k == std::string::npos) return 0;
+    auto k = line.find("lg_feedseen="); if (k == std::string::npos) return {};
     k += 12; const auto sc = line.find(';', k);
     const std::string v = line.substr(k, sc == std::string::npos ? std::string::npos : sc - k);
-    const auto dot = v.rfind('.');
-    if (dot == std::string::npos || v.substr(0, dot) != user) return 0;
-    const std::string digits = v.substr(dot + 1);
-    if (digits.empty() || digits.size() > 19 || digits.find_first_not_of("0123456789") != std::string::npos) return 0;
-    try { return std::stoull(digits); } catch (...) { return 0; }
+    if (v.size() <= user.size() + 1 || v.compare(0, user.size(), user) != 0 || v[user.size()] != '.') return {};
+    const std::string rest = v.substr(user.size() + 1);
+    const auto dot = rest.find('.');
+    FeedSeen out;
+    if (!seen_number(rest.substr(0, dot), out.post)) return {};
+    if (dot != std::string::npos) {
+        if (!seen_number(rest.substr(dot + 1), out.reply)) return {};
+        out.has_reply = true;
+    }
+    return out;
 }
 
 // Unfamiliar (feed filters slice 4, wip/163; Brandon 2026-11-20 "New people & groups", no quality bar for now):
@@ -154,12 +165,23 @@ std::optional<std::string> feed_routes(Route& r) {
             const bool active = filter_key == key;
             return "<a class=\"btn"+std::string(active?"\" aria-current=\"page":" ghost")+"\" href=\"/feed?filter="+key+"\">"+label+"</a>";
         };
-        // Unread: the All posts newer than the last one seen in the Unread tab, my own posts left out. The tab says how
-        // many; opening it shows them and marks them seen (the cookie moves to the newest All post).
-        const std::uint64_t seen = feed_seen_of(req, user);
+        // Unread: the All posts newer than the last one seen in the Unread tab, my own posts left out, and older posts
+        // with a reply from someone else newer than the last reply seen there. The tab says how many; opening it shows
+        // them and marks them seen (the cookie moves to the newest All post and the newest reply on them).
+        const FeedSeen seen = feed_seen_of(req, user);
         const auto all_posts = g_store.feed_view(user, 80, FeedFilter::All); // newest first
         std::vector<Post> fresh;
-        for (const auto& p : all_posts) if (p.id > seen && p.author != user) fresh.push_back(p);
+        std::set<std::uint64_t> new_reply_on;   // older posts that are unread only because of a new reply
+        std::uint64_t newest_reply = 0;
+        for (const auto& p : all_posts) {
+            bool replied = false;
+            for (const auto& r : g_store.replies_of(p.id)) {
+                newest_reply = std::max(newest_reply, r.id);
+                if (seen.has_reply && r.id > seen.reply && r.author != user) replied = true;
+            }
+            if (p.id > seen.post && p.author != user) fresh.push_back(p);
+            else if (replied) { fresh.push_back(p); new_reply_on.insert(p.id); }
+        }
         const std::string unread_label = fresh.empty() ? std::string("Unread") : "Unread ("+std::to_string(fresh.size())+")";
         std::string html = "<h1>Feed</h1><p class=\"muted eyebrow\">"+html_escape(fmt_time(now()))+
             " &middot; "+std::to_string(g_store.account_count())+" members</p>"
@@ -192,6 +214,8 @@ std::optional<std::string> feed_routes(Route& r) {
             if (posts.size() > 80) posts.resize(80);
         }
         std::map<std::uint64_t, std::string> reasons; // a one-line "why you see this" above a post
+        if (filter_key == "unread")
+            for (const auto id : new_reply_on) reasons[id] = "New reply since you last looked.";
         if (filter_key == "unfamiliar") {
             posts.clear();
             for (auto& u : unfamiliar_posts(user, 80)) { reasons[u.post.id] = u.reason; posts.push_back(std::move(u.post)); }
@@ -230,8 +254,10 @@ std::optional<std::string> feed_routes(Route& r) {
             html += posts.empty()
                 ? "<div class=\"card\"><p class=\"empty\">Nothing new since you last looked here.</p></div>"
                 : "<p class=\"muted\">New since you last looked here (in this browser). They count as seen now.</p>";
-            if (!all_posts.empty() && all_posts.front().id > seen) {
-                extra = "Set-Cookie: lg_feedseen="+user+"."+std::to_string(all_posts.front().id)+
+            const std::uint64_t newest_post = all_posts.empty() ? 0 : all_posts.front().id;
+            if (newest_post > seen.post || newest_reply > seen.reply || (!seen.has_reply && newest_post > 0)) {
+                extra = "Set-Cookie: lg_feedseen="+user+"."+std::to_string(std::max(newest_post, seen.post))+"."+
+                        std::to_string(std::max(newest_reply, seen.reply))+
                         "; HttpOnly; Path=/; SameSite=Lax; Max-Age=31536000";
                 if (g_https) extra += "; Secure";
                 extra += "\r\n";

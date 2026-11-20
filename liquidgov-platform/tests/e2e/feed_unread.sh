@@ -2,7 +2,8 @@
 # Feed filters, slice 2: Unread since you last looked (Brandon 2026-11-16 "Feed filters"; wip/161).
 #   /feed?filter=unread shows the All posts newer than the last one this browser was shown in the Unread tab, without
 #   my own posts, and marks them seen: the lg_feedseen=<user>.<post id> cookie (per browser; nothing stored on the
-#   server). The tab reads "Unread (N)" while N > 0. Opening another tab marks nothing seen. A cookie for another
+#   server). wip/171: an older post with a new reply from someone else is unread again (cookie
+#   <user>.<post id>.<reply id>; the older <user>.<post id> cookie counts replies from the next visit). The tab reads "Unread (N)" while N > 0. Opening another tab marks nothing seen. A cookie for another
 #   account, or a garbled one, counts as nothing seen.
 # Usage: bash feed_unread.sh <path to liquidgov_http> <path to liquidgov_e2e_seed>
 # Throwaway store, port 18147. Never touches the live site.
@@ -69,7 +70,7 @@ check "Unread answers 200" '[ "$r" = 200 ]' "$r"
 check "Unread shows pal's two posts, newest first, not mine" '[ "$(order u1.html)" = "F-pal-two F-pal-one" ]' "$(order u1.html)"
 check "Unread is the current tab" 'tabs u1.html | grep -q "aria-current=\"page\" href=\"/feed?filter=unread\">Unread"' "$(tabs u1.html)"
 check "opening Unread sets the seen cookie for this account (HttpOnly)" \
-    'grep -qi "^Set-Cookie: lg_feedseen=Bbottin\.[0-9]*; HttpOnly" "$W/u1.html.h"' "$(grep -i set-cookie "$W/u1.html.h")"
+    'grep -qi "^Set-Cookie: lg_feedseen=Bbottin\.[0-9]*\.[0-9]*; HttpOnly" "$W/u1.html.h"' "$(grep -i set-cookie "$W/u1.html.h")"
 
 browse "/feed?filter=unread" u2.html; r=$R
 check "looking again: nothing new" '[ -z "$(order u2.html)" ] && grep -q "Nothing new since you last looked here" "$W/u2.html"' "$(order u2.html)"
@@ -85,6 +86,24 @@ check "All still shows every post, unchanged" \
 browse "/feed?filter=unread" u3.html; r=$R
 check "Unread shows only pal's new post" '[ "$(order u3.html)" = "F-pal-three" ]' "$(order u3.html)"
 
+pid()   { python3 -c 'import re,sys; m=re.search(r"id=\"post-(\d+)\"(?:(?!</article>).)*?<p>"+re.escape(sys.argv[2])+"</p>", open(sys.argv[1]).read(), re.S); print(m.group(1) if m else "")' "$W/$1" "$2"; }
+ONE=$(pid u3.html F-pal-one 2>/dev/null); [ -n "$ONE" ] || ONE=$(pid a2.html F-pal-one)
+post $PAL /post/$ONE/reply -d "text=a reply from pal" >/dev/null
+browse "/feed?filter=all" a3.html; r=$R
+check "pal replies to an old post: the tab counts 1" 'tabs a3.html | grep -q "filter=unread\">Unread (1)<"' "$(tabs a3.html)"
+browse "/feed?filter=unread" u4.html; r=$R
+check "Unread shows the old post again" '[ "$(order u4.html)" = "F-pal-one" ]' "$(order u4.html)"
+check "... with the reason: a new reply" 'grep -q "New reply since you last looked." "$W/u4.html"' ""
+browse "/feed?filter=unread" u5.html; r=$R
+check "looking again after the reply: nothing new" '[ -z "$(order u5.html)" ]' "$(order u5.html)"
+post $ME /post/$ONE/reply -d "text=my own reply" >/dev/null
+browse "/feed?filter=all" a4.html; r=$R
+check "my own reply does not make a post unread" 'tabs a4.html | grep -q "filter=unread\">Unread<"' "$(tabs a4.html)"
+OLDSEEN=${SEEN%.*}   # the older cookie, without the reply id
+post $PAL /post/$ONE/reply -d "text=another reply" >/dev/null
+r=$(get "lg_feedseen=$OLDSEEN" "/feed?filter=unread" old.html)
+check "the older cookie (no reply id): replies do not count yet" '[ -z "$(order old.html)" ]' "$(order old.html)"
+check "... and opening Unread moves it to the new cookie" 'grep -qi "^Set-Cookie: lg_feedseen=Bbottin\.[0-9]*\.[0-9]*;" "$W/old.html.h"' "$(grep -i set-cookie "$W/old.html.h")"
 r=$(get "lg_feedseen=pal.999999" "/feed?filter=all" o.html)
 check "a seen cookie for another account counts as nothing seen" 'tabs o.html | grep -q "Unread (3)<"' "$(tabs o.html)"
 r=$(get "lg_feedseen=Bbottin.12x" "/feed?filter=all" g.html)

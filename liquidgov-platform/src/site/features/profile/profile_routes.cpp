@@ -30,9 +30,15 @@ std::optional<std::string> profile_routes(Route& r) {
             "<a href=\"/me/portrait\">portrait tool</a>.</p>";
         // Remove portrait (back 2026-11-17, q104): the form left /me in 6c4291e while POST /me/avatar/clear stayed, so a
         // member could not take their own portrait down. Shown only when there is one to remove.
+        // 2026-11-20 (Brandon's phone check): one tap removed it for good. Now it asks first, and the portrait moves to
+        // Earlier portraits on /me/portrait, where one tap loads it back.
         if (g_store.get(acc->id))
-            html += "<form method=\"POST\" action=\"/me/avatar/clear\" class=\"row\">"
+            html += "<form method=\"POST\" action=\"/me/avatar/clear\" class=\"row\" "
+                    "onsubmit=\"return confirm('Remove your portrait? It moves to Earlier portraits on the portrait page, "
+                    "where you can bring it back.');\">"
                     "<button type=\"submit\" class=\"ghost\">Remove portrait</button></form>";
+        if (g_store.get(acc->id) || !g_store.portrait_history(acc->id).empty())
+            html += "<p class=\"muted\"><a href=\"/me/portrait#oldportraits\">Earlier portraits</a></p>";
         html += "<p class=\"muted\">A platform account is not a citizen identity.</p></div>";
         {
             auto prof = g_store.profile_of(user);
@@ -327,7 +333,7 @@ std::optional<std::string> profile_routes(Route& r) {
     }
     if(method=="POST"&&path=="/me/avatar/clear") {
         if(!acc) return need_login();
-        clear_avatar(g_blobs, g_store, acc->id);
+        remove_portrait_keeping_history(acc->id);
         return http_redir("/me");
     }
     return std::nullopt;

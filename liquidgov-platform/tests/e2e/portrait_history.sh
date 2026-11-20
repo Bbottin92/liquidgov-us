@@ -122,8 +122,20 @@ get $PAL /me/portrait/old/0 afterrestart.png >/dev/null
 check "...with the same pictures" 'cmp -s $W/beforerestart.png $W/afterrestart.png' "differs"
 
 # The store holds the records the format doc names.
+# Remove portrait (2026-11-20, Brandon's phone check: one tap removed it for good): it now moves into the history
+get $PAL /portrait/pal before_rm.png >/dev/null
+n_before=$(hist_count)
+get $PAL /me me_rm.html >/dev/null
+check "/me asks before removing the portrait" 'grep -q "confirm(.Remove your portrait?" $W/me_rm.html' "no confirm"
+check "/me links to Earlier portraits" 'grep -q "href=\"/me/portrait#oldportraits\"" $W/me_rm.html' "no link"
+check "Remove portrait answers with a redirect" '[ "$(post $PAL /me/avatar/clear -d x=1)" = 303 ]' "not 303"
+check "...the portrait is gone from the profile" '[ "$(get $PAL /portrait/pal after_rm.png)" != 200 ] || ! cmp -s $W/after_rm.png $W/before_rm.png' "still served"
+check "...and it is now the newest earlier portrait, byte for byte" \
+    '[ "$(hist_count)" = $((n_before + 1)) ] && get $PAL /me/portrait/old/$n_before rm_old.png >/dev/null && cmp -s $W/rm_old.png $W/before_rm.png' "$(hist_count) vs $n_before"
+check "removing again with no portrait changes nothing" 'post $PAL /me/avatar/clear -d x=1 >/dev/null; [ "$(hist_count)" = $((n_before + 1)) ]' "$(hist_count)"
 stop
-check "the store has avh rows" '[ "$(grep -c "^avh	" $W/store.lgp)" = 9 ]' "$(grep -c '^avh' $W/store.lgp)"
+# 10: the 9 from saving, plus the one Remove portrait moved in (2026-11-20)
+check "the store has avh rows" '[ "$(grep -c "^avh	" $W/store.lgp)" = 10 ]' "$(grep -c '^avh' $W/store.lgp)"
 
 echo "passes=$passes fails=$fails"
 [ $fails = 0 ]

@@ -51,6 +51,7 @@ CHECKS = {
     "commit_msg_check_check.py": [".githooks/commit-msg", "scripts/commit_msg_check.py"],
     "ship_check.py": ["scripts/ship.py"] + DEPLOY,
     "ship_deploy_check.py": ["scripts/ship.py"] + DEPLOY,
+    "ship_wip_check.py": ["scripts/ship.py"] + DEPLOY,
     "ship_workflows_check.py": ["scripts/ship.py"],
     "ship_fixes_check.py": ["scripts/ship.py"] + DEPLOY,
     "ship_recheck_check.py": ["scripts/ship.py"],

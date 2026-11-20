@@ -37,14 +37,17 @@ Build: `cd liquidgov-platform && cmake --preset dev && cmake --build --preset de
 the previous build; about 15+ minutes with -j1). Run `git config core.hooksPath .githooks` once per clone. Never run a
 deploy `go` script and never contact liquidgov.us. Do not merge PRs: Brandon merges.
 
-**Status 2026-11-20.** (a) PR #7, branch `wip/160-feed-filters`: "Most discussed" and "Friends first" tabs; full
-`lgcheck.sh` passed (67 suites, `EXIT=0`); waiting for Brandon to merge. (b) Branch `wip/161-feed-unread` (built on
-top of wip/160, so merge #7 first): the "Unread" tab; its own test 16/0 (fails 10 on the wip/160 build); full
-`lgcheck.sh` was running when written; then open its PR against master. Next candidates are in the Shared pad entries
-("LATER slices"): Near me needs Brandon's privacy answer first; Most trusted needs thumbs; Unfamiliar / Counter
-preference / the mix-in setting are the big ones.
+**Status 2026-11-20.** Three stacked branches; merge them in order (each PR contains the one before):
+(a) PR #7 `wip/160-feed-filters`: "Most discussed" and "Friends first" tabs; full `lgcheck.sh` passed (67 suites).
+(b) `wip/161-feed-unread`: the "Unread" tab (browser cookie); own test 16/0 (fails 10 on wip/160).
+(c) `wip/162-feed-near`: the "Near me" tab (groups in your city); own test 10/0 (fails 7 on wip/161).
+Check GitHub's Pull requests tab for which have PRs; a branch without one still needs: full `lgcheck.sh` with the
+previous branch's build as the previous build and its new suite named, then a PR against master. Next candidates
+(Shared pad "LATER slices"): Most trusted needs thumbs; Unfamiliar / Counter preference / the mix-in setting.
 
 ## Shared pad
+
+- **2026-11-20 -- Near me: "Groups in my city" (Brandon decided; BUILT on wip/162-feed-near, stacked on wip/161; not merged, not deployed).** Asked what counts as near; Brandon picked Claude's recommendation over "also friends in my city" and "skip". `/feed?filter=near` shows posts in groups whose city matches your own profile's "Where you live now" (same matching as /city/<key>: "fresno ca" = "Fresno, CA"), member or not (any group page already shows its posts to signed-in members), newest first, at most 80; never uses where friends live; posts by someone you blocked or who blocked you are left out (stricter than the group page itself). No city on your profile: the tab says to add one on /me. Test `tests/e2e/feed_near.sh` (port 18148): on the wip/161 build 3 pass / 7 fail, on this branch 10/0; feed_filters, feed_unread, feed_no_drawings pass. NOT checked: a real phone; cities typed differently enough to get different keys ("Fresno" vs "Fresno, CA") do not match.
 
 - **2026-11-20 -- Feed filters slice 2 BUILT: "Unread" tab (wip/161-feed-unread, stacked on wip/160; PR to master; not merged, not deployed).** Brandon: "lets get as much work done as efficiently as possible". `/feed?filter=unread` shows the All posts newer than the last one you were shown in the Unread tab, never your own; the tab reads "Unread (N)" while there are some; opening it marks them seen. Claude's choice: "last looked" is a browser cookie (`lg_feedseen=<user>.<post id>`, HttpOnly, one year), NOT a stored record, so no undo script, no rollback-guard work and nothing about reading habits on the server; the price is that each browser/phone remembers separately (said on the page: "in this browser"). Another account's or a garbled cookie counts as nothing seen. Only opening Unread marks seen (All and the rest do not). Test `tests/e2e/feed_unread.sh` (port 18147): on the wip/160 build 6 pass / 10 fail, on this branch 16/0; feed_filters 15/0, feed_no_drawings 9/0; phone (6 tabs wrap to three rows, all visible) and desktop screenshots looked at. Upgrade path if Brandon wants it across devices: a small stored record per account (then undo script + rollback guard). NOT checked: a real phone; replies to an old post do not make it unread (posts only).
 

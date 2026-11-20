@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <map>
+#include <set>
 #include <vector>
 
 namespace liquidgov::site {
@@ -64,7 +65,8 @@ std::optional<std::string> feed_routes(Route& r) {
         FeedFilter filter = FeedFilter::All;
         if (filter_key == "friends") filter = FeedFilter::Friends;
         else if (filter_key == "committees") filter = FeedFilter::Committees;
-        else if (filter_key != "discussed" && filter_key != "friendsfirst" && filter_key != "unread")
+        else if (filter_key != "discussed" && filter_key != "friendsfirst" && filter_key != "unread" &&
+                 filter_key != "near")
             filter_key = "all"; // anything else, an old ?filter=drawings link included, is All (no Drawings, Brandon 2026-11-10)
         auto tab = [&](const char* key, const std::string& label) {
             const bool active = filter_key == key;
@@ -82,12 +84,30 @@ std::optional<std::string> feed_routes(Route& r) {
             "<div class=\"feedtabs\"><div class=\"segtabs\">"+
             tab("all","All")+tab("friends","Friends")+tab("committees","Groups")+
             tab("discussed","Most discussed")+tab("friendsfirst","Friends first")+
-            tab("unread",unread_label)+
+            tab("unread",unread_label)+tab("near","Near me")+
             "</div></div>"+ // .feedtabs: on a phone the five tabs wrap instead of scrolling the chosen one out of sight
             flash_error(qs)+
             feed_composer_card(user);
         auto posts = filter_key == "unread" ? fresh : filter == FeedFilter::All ? all_posts
                                                 : g_store.feed_view(user, 80, filter); // newest first
+        // Near me (feed filters slice 3, wip/162; Brandon 2026-11-20 "Groups in my city"): posts in groups whose city
+        // is the city you live in (your own profile's "Where you live now"), member or not, as any group page shows
+        // them. Only public group info is used, never where your friends live. Posts by someone you blocked or who
+        // blocked you are left out.
+        std::string near_city;
+        if (filter_key == "near") {
+            posts.clear();
+            near_city = g_store.profile_of(user).living;
+            const std::string key = city_key(near_city);
+            std::set<std::uint64_t> taken;
+            if (!key.empty())
+                for (const auto& c : g_store.communities_in_city(key))
+                    for (const auto& p : g_store.posts_in(c.slug, 80))
+                        if (taken.insert(p.id).second && !g_store.is_blocked(user, p.author) &&
+                            !g_store.is_blocked(p.author, user)) posts.push_back(p);
+            std::sort(posts.begin(), posts.end(), [](const Post& a, const Post& b) { return a.id > b.id; });
+            if (posts.size() > 80) posts.resize(80);
+        }
         if (filter_key == "discussed") {
             std::map<std::uint64_t, std::size_t> replies;
             for (const auto& p : posts) replies[p.id] = g_store.replies_of(p.id).size();
@@ -108,6 +128,15 @@ std::optional<std::string> feed_routes(Route& r) {
                 if (g_https) extra += "; Secure";
                 extra += "\r\n";
             }
+        } else if (filter_key == "near") {
+            if (city_key(near_city).empty())
+                html += "<div class=\"card\"><p class=\"empty\">Near me needs the city you live in.</p>"
+                        "<p class=\"muted\">Add it under \"Where you live now\" on <a href=\"/me\">your profile</a>.</p></div>";
+            else if (posts.empty())
+                html += "<div class=\"card\"><p class=\"empty\">No group posts in "+html_escape(near_city)+" yet.</p>"
+                        "<p class=\"muted\">Groups that name your city show up here. <a href=\"/communities\">Start one</a>.</p></div>";
+            else
+                html += "<p class=\"muted\">Posts in groups in "+html_escape(near_city)+".</p>";
         } else if (posts.empty()) html += "<div class=\"card\"><p class=\"empty\">Nothing in this view yet.</p>"
             "<p class=\"muted\">Write one above, or <a href=\"/friends\">add a friend</a> so theirs show up.</p></div>";
         for (const auto& p : posts) html += "<div class=\"card\">"+post_block(p, user)+"</div>";

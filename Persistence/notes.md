@@ -37,6 +37,14 @@ Build: `cd liquidgov-platform && cmake --preset dev && cmake --build --preset de
 the previous build; about 15+ minutes with -j1). Run `git config core.hooksPath .githooks` once per clone. Never run a
 deploy `go` script and never contact liquidgov.us. Do not merge PRs: Brandon merges.
 
+**Open questions for Brandon live on one page** (Brandon 2026-11-20: multiple choice for every open item, Claude's
+suggestion marked, a line for his own answer, and Claude adds questions as they come up):
+https://claude.ai/artifact/KzfvqmqnpkTpc3pB96F1Ko ("LiquidGov Open Decisions", private to Brandon). Its database:
+collection `questions` (one document per question: group, groupTitle, groupNote, order, q, ctx, rec, options
+[{v,label,desc}], added, closed; only editors may write) and `answers` (one per question id: choice, choiceLabel,
+other, suggested, at). To add a question, write a `questions` document (ArtifactData set); set closed:true once it is
+settled and recorded here. Read `answers` before building anything those questions block.
+
 **Status 2026-11-20.** Three stacked branches; merge them in order (each PR contains the one before):
 (a) PR #7 `wip/160-feed-filters`: "Most discussed" and "Friends first" tabs; full `lgcheck.sh` passed (67 suites).
 (b) PR #8 `wip/161-feed-unread`: the "Unread" tab (browser cookie); own test 16/0 (fails 10 on wip/160); lgcheck 68 suites EXIT=0.

@@ -68,7 +68,7 @@
   // Your drop's menu: id and look of the popup, the accessible name of your drop, the toggles' names, and the drip speed
   // slider (a multiple of maxSpeed, from min to max in steps; store: its localStorage key).
   CONTROLS.menu = { id: 'lg-drop-menu', label: 'Your drop: microphone, camera and speed',
-    toggles: { mic: 'Microphone', cam: 'Camera', hear: 'Hear myself (headphones)' },
+    toggles: { mic: 'Microphone', cam: 'Camera', keep: 'Keep on when I\u2019m alone', hear: 'Hear myself (headphones)' },
     speed: { label: 'Drip speed', min: 0.5, max: 2, step: 0.1, store: 'lg-walker-speed' } };
   // Your camera and microphone (Brandon 2026-11-15: "if you turn on camera and/or microphone, they should stay on
   // everywhere until you make a clear decision to turn them off"; "you should be allowed to see your own camera and hear
@@ -76,7 +76,13 @@
   // (store) and every page with your drop turns them back on as it loads. Your camera shows as a bubble on your own
   // drop; "Hear myself" plays your microphone back to you (off by default: a page cannot tell whether headphones are
   // plugged in, and on speakers it howls). Calls (here_media.js) use this stream through LG_WALKER.media.
-  CONTROLS.media = { store: 'lg-media-on', selfCls: 'lg-media-self',
+  // Only when someone is near (Brandon 2026-11-20: "the camera and microphone only begins streaming when theres another
+  // user nearby unless you have it toggled to stay on so that its visible to you"): Microphone and Camera now mean you are
+  // READY; the camera and microphone actually start when another person who is ready comes within hearing range
+  // (here_media.js calls media.setNear), and stop again offMs after the last one has gone. "Keep on when I'm alone"
+  // (off by default) keeps them running, as before, so you can see yourself. Turning a switch on still asks the browser
+  // for permission at once (then lets go of the camera), so the question never pops up when someone walks up.
+  CONTROLS.media = { store: 'lg-media-on', selfCls: 'lg-media-self', offMs: 10000,
     // Sound ripples (Brandon 2026-11-15: "audiowaves that ripple off of your droplet when you make noises according to
     // the intensity of the noises you make ... roughly anatomically correct"): rings spread from a drop the way sound
     // does. The sound's level (RMS, 0..1) is read about 60 times a second; above floor a ring starts, at most one every
@@ -351,10 +357,11 @@
   }
   // ---- your camera and microphone (CONTROLS.media)
   var mediaOk = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
-  var mwant = { mic: false, cam: false, hear: false }, mstream = null, mfns = [], mtoken = 0, myDrop = null, selfWrap = null, hearEl = null;
+  var mwant = { mic: false, cam: false, keep: false, hear: false }, mstream = null, mfns = [], mtoken = 0, myDrop = null, selfWrap = null, hearEl = null;
+  var mnear = false, mnearTimer = null;   // someone ready is within hearing range (here_media.js says so)
   try {
     var mv = JSON.parse(localStorage.getItem(CONTROLS.media.store) || '{}') || {};
-    ['mic', 'cam', 'hear'].forEach(function (k) { mwant[k] = mv[k] === true; });
+    ['mic', 'cam', 'keep', 'hear'].forEach(function (k) { mwant[k] = mv[k] === true; });
   } catch (e) {} // err-ok: no storage: everything starts off
   function mediaSave() { try { localStorage.setItem(CONTROLS.media.store, JSON.stringify(mwant)); } catch (e) {} } // err-ok: it lasts this page view
   function mediaStop() { if (mstream) mstream.getTracks().forEach(function (t) { t.stop(); }); mstream = null; }
@@ -362,7 +369,7 @@
     selfPaint();
     menuPaint();
     mfns.forEach(function (fn) { try { fn(mstream); } catch (e) { /* a listener's own fault */ } });
-    document.dispatchEvent(new CustomEvent('lg-media-change', { detail: { mic: mwant.mic, cam: mwant.cam, hear: mwant.hear } }));
+    document.dispatchEvent(new CustomEvent('lg-media-change', { detail: { mic: mwant.mic, cam: mwant.cam, keep: mwant.keep, hear: mwant.hear, live: !!mstream } }));
   }
   // (re)open the camera and microphone for what is switched on. by: the switch you just flipped (a refusal turns it
   // back off: that is a decision too), or '' when a page turns them back on as it loads (a refusal then leaves your
@@ -370,6 +377,15 @@
   function mediaApply(by) {
     var token = ++mtoken;
     if (!mediaOk || (!mwant.mic && !mwant.cam)) { mediaStop(); mediaChanged(); return; }
+    var opts = { audio: mwant.mic ? { echoCancellation: true, noiseSuppression: true } : false, video: mwant.cam ? { facingMode: 'user' } : false };
+    if (!mwant.keep && !mnear) {
+      // nobody ready is near: nothing runs. A switch just turned on asks for permission now and lets go at once.
+      mediaStop(); mediaChanged();
+      if (by === 'mic' || by === 'cam')
+        navigator.mediaDevices.getUserMedia(opts).then(function (s) { s.getTracks().forEach(function (t) { t.stop(); }); },
+          function () { if (token !== mtoken) return; mwant[by] = false; mediaSave(); mediaChanged(); });
+      return;
+    }
     navigator.mediaDevices.getUserMedia({ audio: mwant.mic ? { echoCancellation: true, noiseSuppression: true } : false,
       video: mwant.cam ? { facingMode: 'user' } : false }).then(function (s) {
       if (token !== mtoken) { s.getTracks().forEach(function (t) { t.stop(); }); return; }
@@ -385,7 +401,16 @@
     mwant[kind] = !mwant[kind];
     mediaSave();
     if (kind === 'hear') { mediaChanged(); return; }
-    mediaApply(kind);
+    mediaApply(kind === 'keep' ? '' : kind);
+  }
+  // here_media.js: is anyone who is ready within hearing range? Starts at once; stops offMs after the last one leaves.
+  function mediaNear(on) {
+    if (on) {
+      if (mnearTimer) { clearTimeout(mnearTimer); mnearTimer = null; }
+      if (!mnear) { mnear = true; if (!mwant.keep) mediaApply(''); }
+    } else if (mnear && !mnearTimer) {
+      mnearTimer = setTimeout(function () { mnearTimer = null; mnear = false; if (!mwant.keep) mediaApply(''); }, CONTROLS.media.offMs);
+    }
   }
   // ---- sound ripples (CONTROLS.media.ripple). ripples(el, stream): rings spread from el's drop while stream's sound
   // is loud enough; one watcher per element (a new stream replaces the old; no stream stops it). Your own drop gets yours
@@ -561,7 +586,8 @@
   window.LG_WALKER = { CONTROLS: CONTROLS, portrait: portrait, shape: shape, hop: hop, keyAction: keyAction, isDir: isDir, editing: editing,
     pullVector: pullVector, mount: mount, takeHandoff: takeHandoff, nearest: nearest, use: use, velocity: velocity, centerOn: centerOn,
     menu: menu, menuClose: menuClose,
-    media: { state: function () { return { mic: mwant.mic, cam: mwant.cam, hear: mwant.hear }; },
+    media: { state: function () { return { mic: mwant.mic, cam: mwant.cam, keep: mwant.keep, hear: mwant.hear, live: !!mstream, near: mnear }; },
+      setNear: mediaNear,
       stream: function () { return mstream; }, onChange: function (fn) { mfns.push(fn); }, toggle: mediaToggle,
       hearing: function () { return !!(hearEl && hearEl.srcObject && !hearEl.paused); } },
     ripples: ripples,

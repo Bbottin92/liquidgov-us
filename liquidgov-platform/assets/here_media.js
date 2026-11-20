@@ -23,12 +23,15 @@
   document.body.appendChild(held);
   // Your camera and microphone are walker.js's (LG_WALKER.media: the switches in your drop's menu, kept on as you set
   // them across pages, Brandon 2026-11-15). When they change, every call here starts again with the new stream.
-  function sharing() {   // what you are actually sending: the switches, and only what the browser gave
+  // What the server is told: that you are READY (your switches), not whether the camera runs yet (Brandon 2026-11-20:
+  // it only starts when someone ready is near; walker.js). Two ready people in range are let talk (here.cpp); the call
+  // starts once both cameras/microphones are running.
+  function sharing() {
     var st = media.state();
-    return { mic: !!(st.mic && stream && stream.getAudioTracks().length), cam: !!(st.cam && stream && stream.getVideoTracks().length) };
+    return { mic: !!st.mic, cam: !!st.cam };
   }
   // (the next snapshot from the server starts the calls again: it already knows what you share by then)
-  media.onChange(function (s) { closeAll(); stream = s; sendFlags(); });
+  media.onChange(function (s) { if (s === stream) { sendFlags(); return; } closeAll(); stream = s; sendFlags(); onPeople(last); });
 
   function gain(d) { return d <= RANGE.near ? 1 : d >= RANGE.aware ? 0 : (RANGE.aware - d) / (RANGE.aware - RANGE.near); }
   function sendFlags() { api.send(sharing()); }
@@ -142,6 +145,10 @@
     if (!self) return;
     var sh = sharing();
     if (!!self.mic !== sh.mic || !!self.cam !== sh.cam) sendFlags();   // a reconnect forgets what the server was told
+    // someone ready within hearing range: walker.js starts your camera/microphone (if you are ready too)
+    if (media.setNear) media.setNear(people.some(function (p) {
+      return p.u !== cfg.me && (p.mic || p.cam) && Math.hypot(p.x - self.x, p.y - self.y) <= RANGE.aware;
+    }));
     var live = {};
     people.forEach(function (p) {
       if (p.u === cfg.me || !stream || !(p.mic || p.cam)) return;

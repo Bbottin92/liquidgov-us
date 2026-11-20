@@ -46,6 +46,8 @@ ln -sfn "$SRC/../deploy" "$OUT/deploy"
 # No suite may reach the real Wikipedia (the topic search calls it): a dead local port unless a suite sets its own
 # stand-in (outside_wikipedia.sh does). From CI runners it is reachable and made map_search fail now and then.
 export LIQUIDGOV_WIKI_BASE="${LG_WIKI_BASE_FOR_TESTS:-http://127.0.0.1:9/}"
+# The same for city lookups (the map globes call OpenStreetMap Nominatim): map_globes.sh sets its own stand-in.
+export LIQUIDGOV_GEO_BASE="${LG_GEO_BASE_FOR_TESTS:-http://127.0.0.1:9/}"
 fail=0
 echo "== unit tests"
 n=0

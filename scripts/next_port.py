@@ -1,7 +1,7 @@
 """Next free e2e port for a new liquidgov test suite (Brandon OK'd 2026-11-08: "Ports + worktree tidy tool").
 On 2026-11-08 city_moderation.sh took 18098, the last free port in naming.toml's 18080-18099, found by hand.
 Reads the same rules naming_check.py enforces (its parse_toml and port_of, so they cannot drift apart): the first port
-in [port_min, port_max] that no *.sh under liquidgov-platform/tests (e2e/, rollback/, ...) uses. When the range is full it says so (exit 3); with --widen it raises
+in [port_min, port_max] that no *.sh under liquidgov-platform/tests (e2e/, rollback/, ...) mentions (PORT=, FAKE=, any number in the range). When the range is full it says so (exit 3); with --widen it raises
 port_max by 20 in naming.toml (the one line, whole-token match, verified by reading it back) and prints the new port.
 Usage: python scripts/next_port.py [--widen]"""
 import re
@@ -20,8 +20,23 @@ def state():
     # every suite under liquidgov-platform/tests (e2e/, rollback/, ...): on 2026-11-19 reading e2e/ only offered 18143,
     # which tests/rollback/portraits_undo.sh already used
     d = (ROOT / e2e["root"]).parent
-    used = {nc.port_of(str(p)) for p in d.rglob("*.sh")} - {None}
+    used = set()
+    for p in d.rglob("*.sh"):
+        used |= ports_in(p, lo, hi)
     return lo, hi, used
+
+
+def ports_in(path, lo, hi):
+    """Every number in [lo, hi] a suite mentions, not only its PORT= line: on 2026-11-20 reading PORT= alone offered
+    18152, which e2e/outside_wikipedia.sh already binds as FAKE=18152 (its stand-in server). A number in a comment
+    counts too; skipping a port that is merely mentioned is cheaper than two suites binding the same one."""
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return set()
+    found = {int(n) for n in re.findall(r"(?<![0-9])[0-9]+(?![0-9])", text) if lo <= int(n) <= hi}
+    own = nc.port_of(str(path))  # PORT= stays counted whatever the rule above finds (naming_check's own reading)
+    return found | ({own} if own is not None else set())
 
 
 def main(argv):

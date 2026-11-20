@@ -47,6 +47,10 @@ try:
     (rb / "r.sh").write_text("PORT=%d; URL=x\n" % (lo + 2))
     rc, out, err = run()
     check("a port a suite outside e2e/ uses (tests/rollback) is skipped (lo+4)", rc == 0 and out == str(lo + 4), (rc, out, err))
+    # 2026-11-20: it offered 18152 while e2e/outside_wikipedia.sh already bound it as FAKE=18152 (only PORT= was read)
+    (e2e / "s_fake.sh").write_text("PORT=%d; FAKE=%d; URL=x\n" % (lo, lo + 4))
+    rc, out, err = run()
+    check("a port a suite assigns to another name (FAKE=n) is skipped (lo+5)", rc == 0 and out == str(lo + 5), (rc, out, err))
     for port in range(lo, hi + 1):
         (e2e / ("s_%d.sh" % port)).write_text("PORT=%d; URL=x\n" % port)
     before = (tmp / "naming.toml").read_bytes().decode("utf-8")

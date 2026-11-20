@@ -70,8 +70,9 @@ try:
             f.write("".join(l + "\n" for l in runs))
         env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_") and k != "LIQUIDGOV_CI_OVERRIDE"}
         env.update({"LIQUIDGOV_GH": "bash " + fwd(fake), "LIQUIDGOV_GATE_REPO": fwd(repo),
-                    "LIQUIDGOV_CI_GATE_MODE": "block"})   # the default is warn (Brandon 2026-11-16); these cases test the stop
+                    "LIQUIDGOV_CI_GATE_MODE": "block"})   # block is also the default since 2026-11-20; set here so an outer env cannot flip it
         env.update(extra_env or {})
+        env = {k: v for k, v in env.items() if v is not None}   # None in extra_env = leave the variable unset
         # stdin closed and a timeout: a gate that reads stdin must fail fast, never hang the commit hook
         try:
             r = subprocess.run([BASH, fwd(GATE), mode], capture_output=True, text=True, env=env,
@@ -97,7 +98,16 @@ try:
     rc, out = gate("go", [])
     check("no run at all -> refused", rc == 1 and "CI_GATE_REFUSED" in out, (rc, out))
 
-    # warn mode, the default since 2026-11-16 (Brandon: "cool with me"): the same bad results warn loudly and let it through
+    # the default, with LIQUIDGOV_CI_GATE_MODE unset, is block (Brandon 2026-11-20; it was warn from 2026-11-16): a deploy
+    # whose code has no passing CI run stops unless someone opts into warn or writes an override
+    rc, out = gate("go", [], {"LIQUIDGOV_CI_GATE_MODE": None})
+    check("mode unset: no run at all -> refused (block is the default)", rc == 1 and "CI_GATE_REFUSED" in out, (rc, out))
+    rc, out = gate("go", ["12 %s completed failure" % code], {"LIQUIDGOV_CI_GATE_MODE": None})
+    check("mode unset: a red run -> refused", rc == 1 and "CI_GATE_REFUSED" in out, (rc, out))
+    rc, out = gate("go", ["11 %s completed success" % code], {"LIQUIDGOV_CI_GATE_MODE": None})
+    check("mode unset: a green run -> CI_GATE_OK", rc == 0 and out.startswith("CI_GATE_OK"), (rc, out))
+
+    # warn mode, opt-in (the default from 2026-11-16 to 2026-11-20): the same bad results warn loudly and let it through
     rc, out = gate("go", [], {"LIQUIDGOV_CI_GATE_MODE": "warn"})
     check("warn mode: no run at all -> CI_GATE_WARNING, exit 0", rc == 0 and "CI_GATE_WARNING" in out and "REFUSED" not in out, (rc, out))
     rc, out = gate("go", ["12 %s completed failure" % code], {"LIQUIDGOV_CI_GATE_MODE": "warn"})

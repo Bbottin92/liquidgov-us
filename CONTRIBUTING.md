@@ -8,6 +8,7 @@ Thanks for wanting to help. This file says how to build the site, run its checks
 You need `g++` with C++17, CMake 3.16 or newer, `pkg-config` and libsodium:
 
 ```sh
+sudo apt-get update                                   # a fresh machine (e.g. a cloud session) has no package list yet
 sudo apt-get install -y g++ cmake pkg-config libsodium-dev
 cd liquidgov-platform
 cmake --preset dev && cmake --build --preset dev     # builds into ../build/dev

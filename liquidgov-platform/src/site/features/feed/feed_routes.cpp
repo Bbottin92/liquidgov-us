@@ -36,6 +36,46 @@ std::uint64_t feed_seen_of(const std::string& req, const std::string& user) {
     if (digits.empty() || digits.size() > 19 || digits.find_first_not_of("0123456789") != std::string::npos) return 0;
     try { return std::stoull(digits); } catch (...) { return 0; }
 }
+
+// Unfamiliar (feed filters slice 4, wip/163; Brandon 2026-11-20 "New people & groups", no quality bar for now):
+// posts from people you are not friends with and have never replied to or seconded, that are public (Anybody, as the
+// map shows them) or in a group you are not in (as that group's own page shows them). Worked out from your own activity
+// only, on each request; nothing is stored or shared. Each comes with a one-line reason. Looks at the newest 1000
+// posts (recent_posts is unscoped, so every post is checked here before it is used). Never your own, a friend's, a
+// post in one of your groups, or anyone blocked either way.
+struct Unfamiliar { Post post; std::string reason; };
+std::vector<Unfamiliar> unfamiliar_posts(const std::string& user, std::size_t limit) {
+    const auto recent = g_store.recent_posts(1000); // newest first
+    std::set<std::string> familiar{user};
+    for (const auto& p : recent) {
+        if (familiar.count(p.author)) continue;
+        if (g_store.are_friends(user, p.author) || g_store.has_seconded(p.id, user)) { familiar.insert(p.author); continue; }
+        for (const auto& r : g_store.replies_of(p.id))
+            if (r.author == user) { familiar.insert(p.author); break; }
+    }
+    std::set<std::string> mine;
+    for (const auto& c : g_store.communities_of(user)) mine.insert(c.slug);
+    std::vector<Unfamiliar> out;
+    for (const auto& p : recent) {
+        if (familiar.count(p.author) || g_store.is_blocked(user, p.author) || g_store.is_blocked(p.author, user)) continue;
+        std::vector<std::string> groups;
+        if (!p.community.empty()) groups.push_back(p.community);
+        groups.insert(groups.end(), p.extra_groups.begin(), p.extra_groups.end());
+        bool in_mine = false;
+        for (const auto& g : groups) if (mine.count(g)) in_mine = true;
+        if (in_mine) continue;
+        std::string reason;
+        if (!groups.empty()) {
+            const auto c = g_store.community(groups.front());
+            reason = "From a group you're not in: " + (c ? c->name : groups.front());
+        } else if (p.audience == PostAudience::Anybody && map_post_ok(p, user)) {
+            reason = "Public, from someone you're not friends with and haven't replied to yet";
+        } else continue;
+        out.push_back({p, reason});
+        if (out.size() >= limit) break;
+    }
+    return out;
+}
 }  // namespace
 
 std::optional<std::string> feed_routes(Route& r) {
@@ -66,7 +106,7 @@ std::optional<std::string> feed_routes(Route& r) {
         if (filter_key == "friends") filter = FeedFilter::Friends;
         else if (filter_key == "committees") filter = FeedFilter::Committees;
         else if (filter_key != "discussed" && filter_key != "friendsfirst" && filter_key != "unread" &&
-                 filter_key != "near")
+                 filter_key != "near" && filter_key != "unfamiliar")
             filter_key = "all"; // anything else, an old ?filter=drawings link included, is All (no Drawings, Brandon 2026-11-10)
         auto tab = [&](const char* key, const std::string& label) {
             const bool active = filter_key == key;
@@ -84,7 +124,7 @@ std::optional<std::string> feed_routes(Route& r) {
             "<div class=\"feedtabs\"><div class=\"segtabs\">"+
             tab("all","All")+tab("friends","Friends")+tab("committees","Groups")+
             tab("discussed","Most discussed")+tab("friendsfirst","Friends first")+
-            tab("unread",unread_label)+tab("near","Near me")+
+            tab("unread",unread_label)+tab("near","Near me")+tab("unfamiliar","Unfamiliar")+
             "</div></div>"+ // .feedtabs: on a phone the five tabs wrap instead of scrolling the chosen one out of sight
             flash_error(qs)+
             feed_composer_card(user);
@@ -107,6 +147,11 @@ std::optional<std::string> feed_routes(Route& r) {
                             !g_store.is_blocked(p.author, user)) posts.push_back(p);
             std::sort(posts.begin(), posts.end(), [](const Post& a, const Post& b) { return a.id > b.id; });
             if (posts.size() > 80) posts.resize(80);
+        }
+        std::map<std::uint64_t, std::string> reasons; // a one-line "why you see this" above a post
+        if (filter_key == "unfamiliar") {
+            posts.clear();
+            for (auto& u : unfamiliar_posts(user, 80)) { reasons[u.post.id] = u.reason; posts.push_back(std::move(u.post)); }
         }
         if (filter_key == "discussed") {
             std::map<std::uint64_t, std::size_t> replies;
@@ -137,9 +182,19 @@ std::optional<std::string> feed_routes(Route& r) {
                         "<p class=\"muted\">Groups that name your city show up here. <a href=\"/communities\">Start one</a>.</p></div>";
             else
                 html += "<p class=\"muted\">Posts in groups in "+html_escape(near_city)+".</p>";
+        } else if (filter_key == "unfamiliar") {
+            html += posts.empty()
+                ? "<div class=\"card\"><p class=\"empty\">Nothing unfamiliar right now.</p>"
+                  "<p class=\"muted\">Posts from people and groups you haven't met yet show up here.</p></div>"
+                : "<p class=\"muted\">Outside your usual circle: people you haven't talked with and groups you're not in. "
+                  "Worked out from your own activity only; nobody else sees this list.</p>";
         } else if (posts.empty()) html += "<div class=\"card\"><p class=\"empty\">Nothing in this view yet.</p>"
             "<p class=\"muted\">Write one above, or <a href=\"/friends\">add a friend</a> so theirs show up.</p></div>";
-        for (const auto& p : posts) html += "<div class=\"card\">"+post_block(p, user)+"</div>";
+        for (const auto& p : posts) {
+            const auto why = reasons.find(p.id);
+            html += "<div class=\"card\">"+(why == reasons.end() ? std::string()
+                : "<p class=\"muted feedwhy\">"+html_escape(why->second)+"</p>")+post_block(p, user)+"</div>";
+        }
         return http_ok(wrap("Feed", user, unread, html), extra);
     }
 

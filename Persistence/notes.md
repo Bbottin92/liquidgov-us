@@ -39,11 +39,7 @@ deploy `go` script and never contact liquidgov.us. Do not merge PRs: Brandon mer
 
 **Status 2026-11-20 (feed filters slice 1).** Branch `wip/160-feed-filters`, pushed to GitHub. Built and committed:
 "Most discussed" and "Friends first" tabs on /feed (see the Shared pad entry of the same date). Done: test before/after
-(master 10/5, branch 15/0), phone/desktop screenshots, this pad. In progress when written: the full `lgcheck.sh` run
-(48 suites passing, none failing, at the time of writing). Still to do if not visible on GitHub: (1) finish
-`lgcheck.sh` and read its last lines (`EXIT=0`, and feed_filters must FAIL on the master build); (2) open the PR against
-master with `.github/pull_request_template.md`, quoting the before/after lines, lgcheck's last lines and describing
-the screenshots; (3) leave the merge to Brandon. Next slices after that are listed in the Shared pad entry
+(master 10/5, branch 15/0), phone/desktop screenshots, this pad. Full `lgcheck.sh` passed (67 suites, `EXIT=0`; feed_filters fails on the master build with 5 FAIL lines, as it must). PR opened against master (see the Pull requests tab); waiting for Brandon to review and merge. Next slices after that are listed in the Shared pad entry
 ("LATER slices").
 
 ## Shared pad

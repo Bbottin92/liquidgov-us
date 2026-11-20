@@ -2,7 +2,7 @@
 # The full local check for a liquidgov-platform branch (run inside WSL). Replaces the per-task copies
 # (scratch lgcheck-juketube.sh, lgcheck-care.sh: three hand-copies on 2026-11-08, each changing only paths), and the
 # inbox proposal "commit a run-all-e2e script" (2026-11-08 01:07: two hand-written runners each had a flaw).
-#   compile -j1 (7.4 GB laptop; 2026-11-07 lock-up) -> every unit test -> every e2e suite, each judged by its OWN
+#   compile -jN (N from free memory, see JOBS below; 1 on the 7.4 GB laptop: 2026-11-07 lock-up) -> every unit test -> every e2e suite, each judged by its OWN
 #   passes=/fails=/EXIT= line, not only its exit code -> each NEW suite run again on the PREVIOUS build, where it must
 #   FAIL (a check that cannot fail proves nothing).
 # Suites run from CR-stripped copies in <out>/tree/tests/e2e, with <out>/tree/assets linked to the real assets,
@@ -19,9 +19,18 @@ TREE="$OUT/tree"
 [ -x "$OLD/liquidgov_http" ] && [ -x "$OLD/liquidgov_e2e_seed" ] || { echo "EXIT=no-previous-build ($OLD)"; exit 1; }
 for n in "${NEW[@]}"; do [ -f "$SRC/tests/e2e/$n.sh" ] || { echo "EXIT=no-such-suite $n"; exit 1; }; done
 mkdir -p "$OUT" "$TREE/tests/e2e"
-echo "== compile $(date -Is) $SRC"
+# Compile jobs: LG_JOBS if set; else one job per 2 GB of MemAvailable, at most nproc, at least 1. The laptop (under
+# 1 GB free, 2026-11-20) stays at -j1, as before; a 4-core 15 GB cloud session gets -j4 (compile ~2.5 min -> under 1).
+if [ -n "${LG_JOBS:-}" ]; then JOBS=$LG_JOBS
+else
+    avail_kb=$(awk '/^MemAvailable:/{print $2}' /proc/meminfo 2>/dev/null)
+    JOBS=$(( ${avail_kb:-0} / 2097152 )); cores=$(nproc 2>/dev/null || echo 1)
+    [ "$JOBS" -gt "$cores" ] && JOBS=$cores; [ "$JOBS" -lt 1 ] && JOBS=1
+fi
+case "$JOBS" in ''|*[!0-9]*|0) echo "EXIT=bad-LG_JOBS ($JOBS)"; exit 1 ;; esac
+echo "== compile $(date -Is) $SRC (-j$JOBS)"
 cmake -S "$SRC" -B "$OUT" -DCMAKE_BUILD_TYPE=Debug >/dev/null || { echo "EXIT=configure-fail"; exit 1; }
-cmake --build "$OUT" -j1 2>&1 | grep -E "error|warning: unused|Error|\[100%\]" | head -60
+cmake --build "$OUT" -j"$JOBS" 2>&1 | grep -E "error|warning: unused|Error|\[100%\]" | head -60
 [ "${PIPESTATUS[0]}" = 0 ] || { echo "EXIT=compile-fail"; exit 1; }
 BIN="$OUT/liquidgov_http"; SEED="$OUT/liquidgov_e2e_seed"
 [ -x "$BIN" ] && [ -x "$SEED" ] || { echo "EXIT=no-binaries"; exit 1; }

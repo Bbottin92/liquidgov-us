@@ -10,7 +10,10 @@ Usage: python scripts/ship.py check <branch> [--wait MIN] [--out DIR]
   5. phone VERDICT lines from that run's log; ALL-PASS required when site files (src/, assets/) changed
   6. the phone-screenshots artifact downloaded to --out (default ~/scratch/<date>-claude-ship/<branch>), PNGs listed
 Last line: SHIP_READY <branch> or SHIP_NOT_READY <branch>: <reasons>; exit 0 when ready, 1 when not, 2 on bad usage.
-Nothing here merges, pushes or deploys. A gh or git error counts as not ready (fails closed).
+       python scripts/ship.py deploy-wip <name> "<purpose>" [--wait MIN]   (on a pushed wip/ branch: native-clone dry sync ->
+         make-go auto -> pair committed + pushed -> <name>-go.sh dry repeated until the real CI gate says OK; last line
+         SHIP_DRY_DONE <name>)      python scripts/ship.py go-wip <name>   (only on Brandon's go / qwert: go from the native clone)
+Nothing here merges, pushes or deploys (check/merge: merge is only on his word; deploy-wip pushes the pair commit to the branch). A gh or git error counts as not ready (fails closed).
 Test seams: SHIP_GH (JSON list, the gh command), SHIP_REPO (repo root), SHIP_NO_FETCH=1, SHIP_POLL_SECONDS.
 Tests: tests/repo/ship_check.py"""
 import datetime
@@ -415,6 +418,11 @@ def go_live(name):
         return 1
     log = log_path(name, "go")
     rc, text = shell(main, "bash %s go" % go, log)
+    return go_result(name, rc, text, log, go)
+
+
+def go_result(name, rc, text, log, go):
+    """The verdict on a finished go script (shared by go and go-wip)."""
     lines = text.splitlines()
     for l in lines[-15:]:
         print("     " + l)
@@ -436,8 +444,198 @@ def go_live(name):
     return 0
 
 
+# ---- deploy-wip / go-wip (Brandon 2026-11-19 "can you think of ways to polish your workflow ... least friction"): the same
+# steps as deploy/go, but for the branch you are standing on, BEFORE its merge (the flow used for canvas1..canvas5 under his
+# standing "qwert"): dry sync from the NATIVE WSL clone (git on /mnt/c flakes with "accept4 failed 110"), make-go auto,
+# pair committed and pushed on the branch, then <name>-go.sh dry repeated until the real CI gate says OK. go-wip runs the
+# go script from that same native clone with the gate in block mode. ship adds no server logic; the guards stay in the scripts.
+NATIVE = os.environ.get("SHIP_NATIVE") or "~/lg-deploy-src"
+POLL_WIP = float(os.environ.get("SHIP_POLL_SECONDS") or 60)
+
+
+def shpath(p):
+    """A Windows path as the WSL shell sees it (the test shell is plain bash and takes it as is)."""
+    import re
+    m = re.match(r"^([A-Za-z]):[\\/](.*)$", p)
+    return ("/mnt/%s/%s" % (m.group(1).lower(), m.group(2).replace("\\", "/"))) if m and not os.environ.get("SHIP_SH") else p
+
+
+def native_run(repo, branch, tail, log):
+    """Make the native clone hold exactly <branch>'s pushed head, then run `tail` there. Returns (rc, text, head)."""
+    q = __import__("shlex").quote
+    cmd = ("cd %s && git fetch -q %s %s && git checkout -q --detach FETCH_HEAD && echo NATIVE_HEAD=$(git rev-parse HEAD) && %s"
+           % (NATIVE, q(shpath(repo)), q(branch), tail))
+    rc, text = shell(REPO, cmd, log)
+    head = next((l.split("=", 1)[1].strip() for l in text.splitlines() if l.startswith("NATIVE_HEAD=")), "")
+    return rc, text, head
+
+
+def wip_state():
+    """The branch must be pushed, except for a local deploy-pair commit on top (deploy/ and naming.toml only): that commit is
+    deliberately NOT pushed, because it does not change the liquidgov-platform tree and a push would start a second full CI run
+    that becomes the newest run for the tree, the one deploy/ci-gate.sh waits for (2026-11-19 canvas5, ~25 min lost)."""
+    top = git("rev-parse", "--show-toplevel")
+    branch = git("rev-parse", "--abbrev-ref", "HEAD")
+    if not __import__("re").fullmatch(r"wip/[\w.-]+", branch):
+        raise Fail("not on a wip/ branch (on %r): deploy-wip is for the branch you are working on; the master flow is ship.py deploy" % branch)
+    if git("status", "--porcelain"):
+        raise Fail("the working copy is not clean (only committed code goes live)")
+    git("fetch", "-q", "origin")
+    sha = git("rev-parse", "HEAD")
+    try:
+        osha = git("rev-parse", "origin/" + branch)
+    except Fail:
+        osha = ""
+    if osha != sha:
+        only_pair = False
+        if osha:
+            try:
+                git("merge-base", "--is-ancestor", osha, sha)
+                changed = [f for f in git("diff", "--name-only", osha + ".." + sha).splitlines() if f]
+                only_pair = bool(changed) and all(f.startswith("deploy/") or f == "naming.toml" for f in changed)
+            except Fail:
+                only_pair = False
+        if not only_pair:
+            raise Fail("%s is not pushed (local %s, origin %s): push first (only a local deploy-pair commit may be ahead)" % (branch, sha[:7], osha[:7] or "none"))
+    return top, branch, sha
+
+
+def deploy_wip(name, purpose, wait_min):
+    no_overrides()
+    top, branch, sha = wip_state()
+    main = main_checkout()
+    go = "deploy/%s-go.sh" % name
+    print("0. branch %s at %s" % (branch, sha[:7]))
+    if os.path.exists(os.path.join(top, go)):
+        print("1-3. pair %s already committed on %s: reusing it" % (go, branch))
+    else:
+        rc, text, head = native_run(main, branch, "LIQUIDGOV_DEPLOY_DRY_RUN=1 bash deploy/sync-to-droplet.sh", log_path(name, "sync-dry"))
+        if head != sha:
+            raise Fail("the native clone holds %r, not %s (fetch failed?): %s" % (head, sha, text.strip()[-300:]))
+        if rc != 0:
+            raise Fail("the sync dry run failed (exit %d): %s" % (rc, text.strip()[-300:]))
+        files = [m.group(1).strip() for m in map(ITEM.match, text.splitlines()) if m]
+        if not files:
+            raise Fail("nothing differs from live (sync dry run listed no files)")
+        print("1. sync dry run: %d file(s) differ from live:" % len(files))
+        for f in files:
+            print("     " + f)
+        out = run([sys.executable, os.path.join(top, "deploy", "make-go.py"), "auto", name, purpose] + files, "make-go.py")
+        print("2. make-go: " + "; ".join(l for l in out.splitlines() if l.startswith("auto:")))
+        pair = [go, "deploy/%s-remote.sh" % name] + (["naming.toml"] if git("status", "--porcelain", "naming.toml") else [])
+        git("add", *pair)
+        git("commit", "-q", "-m", "deploy: %s pair (%s)\n\nRead: generated by deploy/make-go.py auto from the sync dry run's file list (%s).\n"
+            "Attacker: n/a - a deploy script pair; nothing runs until the go.\nUndo: revert this commit; nothing on the server changed."
+            % (name, purpose, ", ".join(files)))
+        sha = git("rev-parse", "HEAD")
+        print("3. pair committed locally as %s (NOT pushed: it does not change the platform tree, and a push would start a second CI run "
+              "that the gate waits for; push the branch after the go)" % sha[:7])
+    deadline = time.time() + wait_min * 60
+    tries = 0
+    while True:
+        tries += 1
+        log = log_path(name, "dry")
+        rc, text, head = native_run(main, branch, "LIQUIDGOV_CI_GATE_MODE=block bash %s dry" % go, log)
+        if head != sha:
+            raise Fail("the native clone holds %r, not %s" % (head, sha))
+        if "DRY_ONLY_DONE" not in text or rc != 0:
+            raise Fail("the dry run did not finish (exit %d); full log %s: %s" % (rc, log, text.strip()[-300:]))
+        if "CI_GATE_OK" in text:
+            break
+        if "CI_GATE_WOULD_REFUSE" not in text:
+            raise Fail("the dry run printed no CI gate verdict; full log %s" % log)
+        if time.time() >= deadline:
+            raise Fail("CI never went green within %g min (last: %s)" % (wait_min, next(l for l in text.splitlines() if "CI_GATE" in l)))
+        print("4. CI not green yet (look %d): %s" % (tries, next(l for l in text.splitlines() if "CI_GATE" in l)[:160]))
+        time.sleep(POLL_WIP)
+    print("4. %s dry: CI_GATE_OK (full log %s)" % (go, log))
+    for l in text.splitlines():
+        if any(k in l for k in ("DRY_OK", "CONTENT", "SEND", "WARNING")):
+            print("     " + l)
+    print("SHIP_DRY_DONE %s" % name)
+    return 0
+
+
+def go_wip(name):
+    no_overrides()
+    top, branch, sha = wip_state()
+    go = "deploy/%s-go.sh" % name
+    if not os.path.exists(os.path.join(top, go)):
+        print("SHIP_GO_FAILED %s: no %s on this branch (ship.py deploy-wip first)" % (name, go))
+        return 1
+    log = log_path(name, "go")
+    rc, text, head = native_run(main_checkout(), branch, "LIQUIDGOV_CI_GATE_MODE=block bash %s go" % go, log)
+    if head != sha:
+        print("SHIP_GO_FAILED %s: the native clone holds %r, not %s; nothing ran" % (name, head, sha))
+        return 1
+    return go_result(name, rc, text, log, go)
+
+
+def ci_runs():
+    """Brandon 2026-11-19: which platform runs are the SAME liquidgov-platform tree as HEAD (the deploy gate matches by tree), which one
+    to KEEP (the NEWEST: deploy/ci-gate.sh reads the newest run for the tree) and which are DUPLICATEs (older in-flight ones). The state file
+    (~/.claude/state/ci_runs_last.json) is what hooks/cancel_run_guard.py reads: only a DUPLICATE may be cancelled with gh run cancel."""
+    tree = git("rev-parse", "HEAD:liquidgov-platform")
+    out = run(GH + ["run", "list"] + GH_REPO + ["--workflow", "platform.yml", "--limit", "40", "--json",
+                                                "databaseId,headSha,status,conclusion,createdAt,headBranch"], "gh run list")
+    try:
+        runs = json.loads(out or "[]")
+    except ValueError:
+        raise Fail("gh run list printed something that is not JSON: %r" % out[:200])
+    same = []
+    for r in runs:
+        try:
+            t = git("rev-parse", "%s:liquidgov-platform" % r["headSha"])
+        except Fail:
+            continue  # err-ok: a run whose commit this clone lacks cannot be the same tree as HEAD as far as anyone can read
+        if t == tree:
+            same.append(r)
+    # deploy/ci-gate.sh reads the NEWEST platform run for the tree (2026-11-19: a cancelled newest run made the gate refuse although an
+    # older run had passed). So the run to KEEP is the newest; the older in-flight runs for the same tree are the DUPLICATEs.
+    live = [r for r in same if r["status"] != "completed"]
+    keep = max(same, key=lambda r: r["createdAt"]) if same else None
+    dups = [r for r in live if keep is not None and r["databaseId"] != keep["databaseId"]]
+    if keep is not None and keep["status"] == "completed" and keep["conclusion"] not in ("success", None):
+        print("GATE_VIEW: the newest run for this tree (%s) ended %s, so the gate refuses: rerun it (gh run rerun %s)"
+              % (keep["databaseId"], keep["conclusion"], keep["databaseId"]))
+    print("liquidgov-platform tree %s: %d platform run(s) with it" % (tree[:12], len(same)))
+    for r in sorted(same, key=lambda r: r["createdAt"]):
+        tag = "KEEP" if keep and r["databaseId"] == keep["databaseId"] else ("DUPLICATE" if r in dups else "done")
+        print("  %-9s %s %s %s/%s %s" % (tag, r["databaseId"], r["headSha"][:7], r["status"], r["conclusion"] or "-", r["createdAt"]))
+    if keep is None:
+        print("no run for this tree yet: nothing to keep, nothing to cancel")
+    state = os.environ.get("CI_RUNS_STATE") or os.path.join(os.path.expanduser("~"), ".claude", "state", "ci_runs_last.json")
+    try:
+        os.makedirs(os.path.dirname(state), exist_ok=True)
+        with open(state, "w", encoding="utf-8") as f:
+            json.dump({"time": time.time(), "tree": tree, "keep": keep["databaseId"] if keep else None,
+                       "duplicates": [r["databaseId"] for r in dups]}, f)
+    except OSError as e:
+        raise Fail("could not write the ci-runs state %s: %s" % (state, e))
+    print("CI_RUNS_KEEP %s DUPLICATES %s" % (keep["databaseId"] if keep else "none", " ".join(str(r["databaseId"]) for r in dups) or "none"))
+    return 0
+
+
 def main(argv):
     import re
+    if argv == ["ci-runs"]:
+        try:
+            return ci_runs()
+        except Fail as e:
+            print("SHIP_NOT_READY ci-runs: %s" % e)
+            return 1
+    if len(argv) >= 3 and argv[0] == "deploy-wip" or len(argv) == 2 and argv[0] == "go-wip":
+        if not re.fullmatch(r"[a-z][a-z0-9]*", argv[1]):
+            print(__doc__)
+            return 2
+        try:
+            if argv[0] == "go-wip":
+                return go_wip(argv[1])
+            wait = float(argv[4]) if len(argv) == 5 and argv[3] == "--wait" else 25.0
+            return deploy_wip(argv[1], argv[2], wait)
+        except (Fail, ValueError) as e:
+            print(("SHIP_GO_FAILED %s: %s" if argv[0] == "go-wip" else "SHIP_NOT_READY %s: %s") % (argv[1], e))
+            return 1
     if len(argv) >= 2 and argv[0] in ("deploy", "go"):
         if not re.fullmatch(r"[a-z][a-z0-9]*", argv[1]) or (argv[0] == "deploy" and len(argv) != 3):
             print(__doc__)

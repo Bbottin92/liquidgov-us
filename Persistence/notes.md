@@ -63,12 +63,19 @@ proven, q52 closed) was green-pending at the time of writing: check it merged.
 Before a deploy (Brandon starts it): the new record type `fmix` means the rollback guard needs
 `deploy/feedmix-undo.py` (tested 26/0 by tests/rollback/feedmix_undo.sh); the map globes were never seen with real map
 tiles, and whether the droplet can reach nominatim.openstreetmap.org is unchecked; run the phone checklist after.
-**Open PRs not made in this session:** #11 and #13 (`scripts/next_port.py` fixes, wip/165 and wip/166-next-port-fake):
-not reviewed or merged; check whether #13 still needs #11.
+**next_port fix:** #13 merged (14:10, `tests/repo/next_port_fake_check.py`); #11, the other session's version of the
+same fix, was closed unmerged.
 **Waiting on Brandon:** Near me city matching ("Fresno" vs "Fresno, CA"; options A/B/C in the Shared pad, Claude
 suggests C, a picker of the cities groups already name); delete branch `claude/brave-bell-kltzaa` on GitHub (notes
 only, covered by #15; the session's permission check blocked the delete); `wip/158-ship-wip` is parked code, kept.
-Map globes G2-G4 (Market contents, Events, Social) wait on his answers (plan entry).
+Map globes G2-G4 (Market contents, Events, Social): Brandon's answers ARE IN (Shared pad: "Brandon's answers on the
+open-decisions page (first round)", "... second round", "... third round"): Events = anyone, the post audience
+picker, place = city / address / online (his "give options" policy); Market = sell AND looking-to-buy, anyone,
+anywhere with filters, members only, contact chosen by the poster, friends' looking-for list beside the selling list;
+Social = meeting people / shared interests, everyone shown unless they turn it off (said at signup), NO dating until
+ages can be checked. Each needs a new record type (same safety work as fmix: fixture line, round-trip test, undo
+script, rollback test). Note #27: Near me is being redesigned around the droplet on the street map; Events and
+Market "nearest first" should use the same distance once that exists.
 **Open patterns, not acted on (2026-11-20):** notes edits ride on feature branches, so the Handoff on master lags
 until a stack merges (consider notes-only PRs); about 60 one-off deploy pairs in deploy/ keep old template code (only
 care/jbshell/prebuilt carry today's fixes); walker_controls M5 failed once and could not be reproduced in 6 runs

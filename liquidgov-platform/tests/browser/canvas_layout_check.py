@@ -234,13 +234,19 @@ class Run:
         # Dive (Brandon 2026-11-19, q231: while you draw the picture keeps zooming IN around the pen tip, like an infinite fractal
         # zoom, with a dive-speed slider; the zoom is baked into the layers so it can go on for ever)
         v = json.loads(cdp.js(self.ws, "(async () => JSON.stringify(await %s))()" % FS_DIVE))
-        self.check("F11 phone: the props sheet has a Dive toggle and a dive-speed slider (1 to 100)",
-                   v.get("ui") and v.get("min") == "1" and v.get("max") == "100" and v.get("inSheet"), v)
+        self.check("F11 phone: Dive and the timelapse have their own Effects button and sheet: a Dive toggle, a dive-speed slider (1 to 100), Watch; the button opens and closes it",
+                   v.get("ui") and v.get("min") == "1" and v.get("max") == "100" and v.get("inSheet") and v.get("fxBtn")
+                   and v.get("fxOpens") is True and v.get("fxCloses") is True, v)
         self.check("F12 phone: with Dive off, holding the pen down does not zoom", v.get("offZoom", 99) <= 1.01, v)
         self.check("F13 phone: with Dive on at full speed, holding the pen down zooms in (at least 1.8x) and bakes it into the layers",
                    v.get("onZoom", 0) >= 1.8 and v.get("bakes", 0) >= 1, v)
-        self.check("F14 phone: after a bake the ink survives, the view scale was reset (under 2x) and the canvas still covers the screen centre",
-                   v.get("ink", 0) > 0 and v.get("viewS", 99) <= 2.05 and v.get("wrapCovers", False), v)
+        self.check("F14 phone: while Dive runs the frame never changes size or place (before, mid-stroke, after), the page zoom is untouched and the four layers crop together",
+                   v.get("ink", 0) > 0 and v.get("frameStatic") is True and abs(v.get("viewS", 99) - v.get("viewS0", 0)) < 0.001
+                   and v.get("wrapCovers", False) and v.get("childReset") is True, v)
+        self.check("F14b phone: the timelapse logs the Dive crop over time (many view samples, the zoom grows, bakes in order) and the brush size shrinks with it",
+                   v.get("vwSamples", 0) >= 8 and v.get("vwMaxK", 0) >= 1.3 and v.get("vwBakes", 0) >= 1 and 0 < v.get("sizeLast", 0) < 0.8 * v.get("sizeFirst", 0), v)
+        self.check("F14c phone: Watch replays the zoom (at least 1.3x) inside a frame that never changes size",
+                   v.get("replayMaxZoom", 0) >= 1.3 and v.get("replayFrameSame") is True, v)
         self.check("F15 phone: the toggle and the speed are remembered", v.get("saved") == {"on": True, "speed": 100}, v)
         self.shot("canvas-fullscreen-dive-390.png")
         # Timelapse (Brandon 2026-11-19, q239 slice 2a): every action is recorded as an event with its timing and can be watched again; the log
@@ -251,7 +257,7 @@ class Run:
         cdp.js(self.ws, FS_BOOT % src)
         time.sleep(0.4)
         w = json.loads(cdp.js(self.ws, "(async () => JSON.stringify(await %s))()" % FS_LOG))
-        self.check("F16 phone: the More sheet has a Watch button and a 'new timelapse every' choice",
+        self.check("F16 phone: the Effects sheet has a Watch button and a 'new timelapse every' choice",
                    w.get("ui") and w.get("inSheet"), w)
         self.check("F17 phone: drawing records events with their points and timing",
                    w.get("strokes", 0) >= 2 and w.get("firstPts", 0) >= 3 and w.get("firstTool") == "pen", w)
@@ -268,6 +274,16 @@ class Run:
         self.check("F23 phone: at 0 the replay holds still", sv.get("held") is True, sv)
         self.check("F24 phone: dragging the same distance 300 px away from the slider changes the speed far less (finer scrubbing)",
                    sv.get("dragNear", 0) > 5 and abs(sv.get("dragFar", 99)) < 0.35 * sv.get("dragNear", 0), sv)
+        # Loop, trim and bounce (Brandon 2026-11-19: watch a loop, trim the loop, or bounce forward to backward at the ends)
+        md = json.loads(cdp.js(self.ws, "(async () => JSON.stringify(await %s))()" % FS_MODES))
+        self.check("F25 phone: Watch has a Once/Loop/Bounce button and From/To trim sliders over every step",
+                   md.get("ui") and md.get("modes") == ["Once", "Loop", "Bounce"] and md.get("trimMax", 0) >= 10, md)
+        self.check("F26 phone: Loop goes back to the start when it reaches the end, and keeps playing",
+                   md.get("onceEnd", 0) >= md.get("n", 1) - 1 and md.get("loopWrapped") is True, md)
+        self.check("F27 phone: Bounce turns around at the end and plays backward, then forward again at the start",
+                   md.get("bounceFlipped") is True and md.get("bounceBack") is True, md)
+        self.check("F28 phone: a trimmed loop stays between From and To (and the drawing before From is already there)",
+                   md.get("trimMin", -1) >= md.get("tFrom", 99) - 1 and md.get("trimMax2", 99) <= md.get("tTo", 0) + 3 and md.get("trimInk", 0) > 0, md)
         self.ws.call("Page.navigate", url=self.base + "/feed/canvas")
         time.sleep(1.2)
         cdp.js(self.ws, "localStorage.setItem('lg-log-reset','hour'); localStorage.setItem('lg-log', JSON.stringify({v:1,start:Date.now()-2*3600*1000,"
@@ -290,7 +306,7 @@ FS_LOG = r"""(async () => {
   const wait = ms => new Promise(r => setTimeout(r, ms));
   const inkOf = c => { const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 0) n++; return n; };
   const out = {}, watch = q('cwatch'), reset = q('clogreset');
-  out.ui = !!(watch && reset); out.inSheet = !!(watch && watch.closest('.cfs-pm'));
+  out.ui = !!(watch && reset); out.inSheet = !!(watch && watch.closest('.cfs-pf'));
   if (!out.ui) return out;
   window.dispatchEvent(new Event('resize')); await wait(100);
   const b = ov.getBoundingClientRect(), x0 = b.left + 40, y0 = b.top + 40;
@@ -307,6 +323,38 @@ FS_LOG = r"""(async () => {
   out.replayInk = await play();
   q('cfs-undo').click(); await wait(100);
   out.replayInk2 = await play();
+  return out;
+})()"""
+
+FS_MODES = r"""(async () => {
+  const q = id => document.getElementById(id), wait = ms => new Promise(r => setTimeout(r, ms)), out = {};
+  const inkOf = c => { const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 0) n++; return n; };
+  q('cwatch').click(); await wait(150);
+  const sp = q('cwatchspeed'), prog = q('cwatchprogress'), mode = q('cwatchmode'), tIn = q('cwatchin'), tOut = q('cwatchout');
+  out.ui = !!(mode && tIn && tOut); if (!out.ui) return out;
+  out.n = Number(prog.max); out.trimMax = Number(tOut.max);
+  const set = (el, v) => { el.value = String(v); el.dispatchEvent(new Event('input', {bubbles: true})); };
+  const sample = async (ms, step) => { const a = []; for (let t = 0; t < ms; t += step) { a.push([Number(prog.value), parseFloat(sp.dataset.speed)]); await wait(step); } return a; };
+  out.modes = [mode.textContent]; mode.click(); out.modes.push(mode.textContent); mode.click(); out.modes.push(mode.textContent); mode.click();   // back to Once
+  set(sp, 25);                                       // about 0.25x: the whole drawing takes a second or so, so the ends are visible
+  let a = await sample(2500, 25);
+  out.onceEnd = Math.max(...a.map(p => p[0]));       // Once: it reaches the end and stays there
+  set(sp, 0); await wait(50);
+  set(tIn, 0); set(tOut, out.n); mode.click();      // Loop
+  set(sp, 25); a = await sample(2500, 25);
+  out.loopWrapped = a.some((p, i) => i && p[0] < a[i - 1][0] - 3) && a[a.length - 1][0] > 0;
+  mode.click(); set(sp, 0); await wait(50);          // Bounce
+  set(sp, 25); a = await sample(3500, 25);
+  out.bounceFlipped = a.some(p => p[1] < 0);
+  out.bounceBack = a.some((p, i) => p[1] < 0 && i && p[0] < a[i - 1][0]) && a.some((p, i) => i > 1 && p[1] > 0 && p[0] > a[i - 1][0]);
+  set(sp, 0); await wait(50);
+  mode.click();                                      // Once again
+  out.tFrom = Math.floor(out.n / 4); out.tTo = Math.floor(out.n / 2);
+  set(tOut, out.tTo); set(tIn, out.tFrom); set(sp, 25); await wait(150);       // a few ticks to clamp into the range
+  a = await sample(2500, 25);
+  out.trimMin = Math.min(...a.map(p => p[0])); out.trimMax2 = Math.max(...a.map(p => p[0]));
+  out.trimInk = inkOf(q('cwatchcanvas'));
+  q('cwatchclose').click(); await wait(100);
   return out;
 })()"""
 
@@ -344,19 +392,41 @@ FS_DIVE = r"""(async () => {
   await wait(150);
   const toggle = document.getElementById('cdive'), speed = document.getElementById('cdivespeed');
   out.ui = !!(toggle && speed); if (!out.ui) return out;
-  out.min = speed.min; out.max = speed.max; out.inSheet = !!speed.closest('.cfs-pp') && !!toggle.closest('.cfs-pp');
-  const hold = async ms => { const b = ov.getBoundingClientRect(), x = b.left + b.width / 2, y = b.top + b.height / 2;
-    fire('pointerdown', 1, x, y); fire('pointermove', 1, x + 3, y + 1); await wait(ms); const z = dive(); fire('pointerup', 1, x + 3, y + 1); return z; };
+  out.min = speed.min; out.max = speed.max; out.inSheet = !!speed.closest('.cfs-pf') && !!toggle.closest('.cfs-pf');
+  const fx = document.getElementById('cfs-fx'), vis = id => { const e = document.getElementById(id); return !!e && e.offsetParent !== null && e.getBoundingClientRect().height > 0; };
+  out.fxBtn = !!fx; const hid = !vis('cdive'); if (fx) fx.click(); await wait(80);
+  out.fxOpens = hid && vis('cdive') && vis('cdivespeed') && vis('cwatch'); if (fx) fx.click(); await wait(80); out.fxCloses = !vis('cdive');
+  const hold = async (ms, mid) => { const b = ov.getBoundingClientRect(), x = b.left + b.width / 2, y = b.top + b.height / 2;
+    fire('pointerdown', 1, x, y); fire('pointermove', 1, x + 3, y + 1); await wait(ms / 2); if (mid) mid(); await wait(ms / 2); const z = dive(); fire('pointerup', 1, x + 3, y + 1); return z; };
   wipe(); out.offZoom = await hold(600);
   toggle.click(); speed.value = '100'; speed.dispatchEvent(new Event('input', {bubbles: true}));
   window.dispatchEvent(new Event('resize')); await wait(150); wipe();
-  const before = dive();
-  out.onZoom = (await hold(1500)) / before;
+  const before = dive(), r0 = wrap.getBoundingClientRect(), s0 = new DOMMatrix(getComputedStyle(wrap).transform).a;
+  let rMid = null; out.onZoom = (await hold(1500, () => { rMid = wrap.getBoundingClientRect(); })) / before;
+  await wait(120);                                    // the end-of-stroke bake runs on the next tick after the pen lifts
   out.bakes = parseInt(wrap.dataset.bakes || '0', 10);
   out.ink = ink();
-  const m = new DOMMatrix(getComputedStyle(wrap).transform); out.viewS = m.a;
-  const r = wrap.getBoundingClientRect();   // the view stays zoomed in after the pen lifts (inward only), so it must still cover the screen centre
+  const m = new DOMMatrix(getComputedStyle(wrap).transform); out.viewS = m.a; out.viewS0 = s0;
+  const r = wrap.getBoundingClientRect();
   out.wrapCovers = r.left <= innerWidth / 2 && r.right >= innerWidth / 2 && r.top <= innerHeight / 2 && r.bottom >= innerHeight / 2;
+  const same = (a, b) => ['left', 'top', 'width', 'height'].every(k => Math.abs(a[k] - b[k]) < 0.5);
+  out.frameStatic = !!rMid && same(r0, rMid) && same(r0, r);   // Brandon 2026-11-19: the frame's size and place never change while Dive runs
+  out.childReset = ['clayer0', 'clayer1', 'clayer2', 'coverlay'].every(id => document.getElementById(id).style.transform === document.getElementById('clayer0').style.transform);   // all four crop together
+  await wait(350);                                    // the log is saved a moment after the last event
+  try { const lg = JSON.parse(localStorage.getItem('lg-log') || 'null');
+    const sts = (lg ? lg.events : []).filter(e => e.type === 'stroke' && e.vw && e.vw.length);
+    const st = sts.length ? sts[sts.length - 1] : null, vw = st ? st.vw : [], views = vw.filter(w => w[1] !== 'b');
+    out.vwSamples = views.length; out.vwMaxK = views.length ? Math.max(...views.map(w => w[1])) : 0; out.vwBakes = vw.filter(w => w[1] === 'b').length;
+    const sized = st ? st.pts.filter(p => p.length > 3) : [];
+    out.sizeFirst = sized.length ? sized[0][3] : 0; out.sizeLast = sized.length ? Math.min(...sized.map(p => p[3])) : 0;       // the smallest brush in the stroke (just before a bake)
+  } catch (e) { out.logErr = String(e); }
+  // Watch replays the zoom, in a frame that never changes size (Brandon 2026-11-19: it should look like zooming in for ever, the canvas one size)
+  try { q = id => document.getElementById(id); q('cwatch').click(); await wait(150);
+    const wc = q('cwatchcanvas'), sp = q('cwatchspeed'), r1 = wc.getBoundingClientRect(); let maxZ = 1, same = true;
+    sp.value = '60'; sp.dispatchEvent(new Event('input', {bubbles: true}));
+    for (let i = 0; i < 150; i++) { await wait(20); maxZ = Math.max(maxZ, parseFloat(wc.dataset.zoom || '1')); const r2 = wc.getBoundingClientRect(); if (Math.abs(r2.width - r1.width) > 0.5 || Math.abs(r2.height - r1.height) > 0.5) same = false; }
+    out.replayMaxZoom = maxZ; out.replayFrameSame = same; q('cwatchclose').click(); await wait(100);
+  } catch (e) { out.watchErr = String(e); }
   try { out.saved = JSON.parse(localStorage.getItem('lg-dive')); } catch (e) { out.saved = null; }
   return out;
 })()"""

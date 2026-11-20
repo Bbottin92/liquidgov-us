@@ -68,9 +68,10 @@ html.cfs #cresizehandle{display:none}
 .cfs-dock .toolbtn[style*="var(--rule)"],.cfs-sheet .layerbtn[style*="var(--rule)"],.cfs-sheet .fmtbtn[style*="var(--rule)"]{background:var(--accent)!important;color:var(--paper)!important}
 .cfs-dock #ccolor{width:34px;height:34px;min-height:0;flex:0 0 auto;padding:0;margin:0 4px;border-radius:50%;border:2px solid var(--paper);box-shadow:0 0 0 1px var(--rule);overflow:hidden}
 .cfs-sheet{position:absolute;z-index:5;left:14px;right:14px;bottom:calc(80px + env(safe-area-inset-bottom));max-height:46dvh;overflow:auto;border-radius:22px;background:rgba(243,236,221,.98);border:1px solid var(--rule);padding:12px;display:none}
-.cfs-sheet[data-open="props"],.cfs-sheet[data-open="layers"],.cfs-sheet[data-open="more"]{display:block}
-.cfs-pp,.cfs-pl,.cfs-pm{display:none}
-.cfs-sheet[data-open="props"] .cfs-pp,.cfs-sheet[data-open="layers"] .cfs-pl,.cfs-sheet[data-open="more"] .cfs-pm{display:block}
+.cfs-sheet[data-open="props"],.cfs-sheet[data-open="layers"],.cfs-sheet[data-open="fx"],.cfs-sheet[data-open="more"]{display:block}
+.cfs-pp,.cfs-pl,.cfs-pm,.cfs-pf{display:none}
+.cfs-sheet[data-open="props"] .cfs-pp,.cfs-sheet[data-open="layers"] .cfs-pl,.cfs-sheet[data-open="fx"] .cfs-pf,.cfs-sheet[data-open="more"] .cfs-pm{display:block}
+.cfs-pfh{margin:.2rem 0 0;font-size:13px;color:var(--stone)}.cfs-pfh2{margin-top:1.2rem}
 .cfs-sheet .wheel{display:none}
 .cfs-sheet .cslider{flex:1 1 auto;width:auto;min-width:0;min-height:0;padding:0;accent-color:var(--accent)}
 .cfs-sheet .cprops>.row{display:flex;flex-wrap:wrap;gap:.7rem .6rem;align-items:center}
@@ -96,5 +97,9 @@ html.cfs #cresizehandle{display:none}
 .cfs-sheet .cwatch-row{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem;margin-top:.9rem}
 .cfs-sheet .cwatch-btn{border-radius:999px;min-height:40px;padding:0 1.1rem}
 .cfs-watchbar #cwatchspeed{flex:0 0 30%;touch-action:none}
+.cfs-watchtrim{position:absolute;left:10px;right:10px;bottom:calc(78px + env(safe-area-inset-bottom));min-height:44px;border-radius:22px;background:rgba(239,232,216,.95);border:1px solid var(--rule);display:flex;align-items:center;gap:8px;padding:2px 12px}
+.cfs-watchtrim input[type=range]{flex:1 1 auto;min-width:0;min-height:0;padding:0;accent-color:var(--accent);touch-action:none}
+.cfs-watchlab{font-size:12px;color:var(--stone)}
+.cfs-watchmode{min-height:34px;min-width:4.6em;border-radius:17px;border:1px solid var(--rule);background:var(--paper);color:var(--ink);font-size:13px}
 .cfs-watchspeed{min-width:3.4em;text-align:center;font-size:13px;color:var(--stone)}
 input[type=range]{touch-action:none}

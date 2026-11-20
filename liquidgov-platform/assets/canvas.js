@@ -48,10 +48,11 @@ if(tools)dock.appendChild(tools);
 if(color)dock.appendChild(color);
 var bProps=btn('cfs-props','Size and opacity','<path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>'),
     bLayers=btn('cfs-layers','Layers','<path d="M12 3 21 8l-9 5-9-5 9-5Z"/><path d="m3 12 9 5 9-5"/><path d="m3 16 9 5 9-5"/>'),
+    bFx=btn('cfs-fx','Dive and timelapse','<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.4"/>'),
     bMore=btn('cfs-more','More','<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>');
-dock.appendChild(bProps);dock.appendChild(bLayers);dock.appendChild(bMore);
+dock.appendChild(bProps);dock.appendChild(bLayers);dock.appendChild(bFx);dock.appendChild(bMore);
 /* sheet: size/opacity/effects, layers, everything else the page had */
-var sheet=el('div','cfs-sheet'),pp=el('div','cfs-pp'),pl=el('div','cfs-pl'),pm=el('div','cfs-pm');
+var sheet=el('div','cfs-sheet'),pp=el('div','cfs-pp'),pl=el('div','cfs-pl'),pm=el('div','cfs-pm'),pf=el('div','cfs-pf');
 if(props)pp.appendChild(props);if(layersG)pl.appendChild(layersG);if(edit)pm.appendChild(edit);
 var toast=el('div','cfs-toast');
 Array.prototype.slice.call(card.children).forEach(function(n){
@@ -60,10 +61,11 @@ Array.prototype.slice.call(card.children).forEach(function(n){
   if(n.tagName==='H1'||(n.tagName==='P'&&n.classList.contains('muted')&&!n.id)){n.classList.add('cfs-hide');return;}
   pm.appendChild(n);
 });
-sheet.appendChild(pp);sheet.appendChild(pl);sheet.appendChild(pm);
+sheet.appendChild(pp);sheet.appendChild(pl);sheet.appendChild(pf);sheet.appendChild(pm);
 card.appendChild(top);card.appendChild(sheet);card.appendChild(dock);card.appendChild(toast);
-function openSheet(name){sheet.setAttribute('data-open',sheet.getAttribute('data-open')===name?'':name);[bProps,bLayers,bMore].forEach(function(b){b.classList.toggle('on',sheet.getAttribute('data-open')===(b===bProps?'props':b===bLayers?'layers':'more'));});}
-bProps.addEventListener('click',function(){openSheet('props');});bLayers.addEventListener('click',function(){openSheet('layers');});bMore.addEventListener('click',function(){openSheet('more');});
+var sheetBtns={props:bProps,layers:bLayers,fx:bFx,more:bMore};
+function openSheet(name){sheet.setAttribute('data-open',sheet.getAttribute('data-open')===name?'':name);Object.keys(sheetBtns).forEach(function(k){sheetBtns[k].classList.toggle('on',sheet.getAttribute('data-open')===k);});}
+Object.keys(sheetBtns).forEach(function(k){sheetBtns[k].addEventListener('click',function(){openSheet(k);});});
 bUndo.addEventListener('click',function(){click('cundo');});bRedo.addEventListener('click',function(){click('credo');});bDone.addEventListener('click',function(){click('csave');});
 var st=document.getElementById('cstatus');
 if(st&&window.MutationObserver){var showToast=function(){toast.classList.toggle('on',!!(st.textContent||'').trim());};new MutationObserver(showToast).observe(st,{childList:true,characterData:true,subtree:true});showToast();}
@@ -120,21 +122,28 @@ function showDive(){dBtn.classList.toggle('on',dive.on);dBtn.setAttribute('aria-
 showDive();
 dBtn.addEventListener('click',function(){dive.on=!dive.on;showDive();saveDive();});
 dSlider.addEventListener('input',function(){dive.speed=parseInt(dSlider.value,10)||30;saveDive();});
-dRow.appendChild(dBtn);dRow.appendChild(dSlider);(props||pp).appendChild(dRow);
+/* Brandon 2026-11-19: Dive and the timelapse have their own button and sheet (Effects), not buried in the size sheet and More */
+var dHead=el('p','cfs-pfh','Dive: the picture crops in around the pen tip while you draw');dRow.appendChild(dBtn);dRow.appendChild(dSlider);pf.appendChild(dHead);pf.appendChild(dRow);
 function penCanvas(){var r=overlay.getBoundingClientRect();return{x:(penX-r.left)*overlay.width/r.width,y:(penY-r.top)*overlay.height/r.height};}
+/* Brandon 2026-11-19: the frame (the page's width and height, and the user's own pinch zoom s,tx,ty) stays put while Dive runs. The picture INSIDE the
+   frame is cropped and scaled up around the pen tip: ds,dx,dy is that pending crop, applied to the layer canvases only (the frame clips them), and
+   baked into the bitmaps at 2x, which is invisible because the frame never changes size. The timelapse records the same crop over time (recView)
+   and Watch replays it inside a fixed frame, so it looks like the live zoom. */
+var ds=1,dx=0,dy=0,kids=layers.map(function(L){return L.cv;}).concat([overlay]);
+function applyD(){var t=(ds===1&&!dx&&!dy)?'':'translate('+dx+'px,'+dy+'px) scale('+ds+')';kids.forEach(function(c){c.style.transformOrigin='0 0';c.style.transform=t;});}
 function bake(){
-  var W=layers[0].cv.width,H=layers[0].cv.height,sx=(fx0-tx)/(s*ff),sy=(fy0-ty)/(s*ff),sw=W/s,sh=H/s,tmp=document.createElement('canvas');
+  var W=layers[0].cv.width,H=layers[0].cv.height,R=W/(wrap.offsetWidth||W),sx=-dx*R/ds,sy=-dy*R/ds,sw=W/ds,sh=H/ds,tmp=document.createElement('canvas');
   tmp.width=W;tmp.height=H;var t=tmp.getContext('2d');t.imageSmoothingEnabled=true;t.imageSmoothingQuality='high';
   layers.forEach(function(L){t.clearRect(0,0,W,H);t.drawImage(L.cv,sx,sy,sw,sh,0,0,W,H);L.ctx.clearRect(0,0,W,H);L.ctx.drawImage(tmp,0,0);L.undo=[];L.redo=[];});
-  s=1;tx=fx0;ty=fy0;apply();bakes++;wrap.dataset.bakes=String(bakes);
+  ds=1;dx=0;dy=0;applyD();bakes++;wrap.dataset.bakes=String(bakes);
 }
 function diveTick(){
-  if(!(dive.on&&drawing&&!g)){diving=false;PX=C.px;return;}
+  if(!(dive.on&&drawing&&!g)){diving=false;PX=C.px/ds;return;}      /* a pending crop stays (the frame is static, and undo keeps working); the brush keeps its on-screen size */
   var now=performance.now(),dt=diveLast?Math.min(.05,(now-diveLast)/1000):.016;diveLast=now;
-  var k=Math.exp(dive.speed/100*.6*dt),o=origin(),px=penX-o.x,py=penY-o.y;
-  s*=k;tx=px-(px-tx)*k;ty=py-(py-ty)*k;total*=k;apply();wrap.dataset.dive=total.toFixed(3);PX=C.px/s;
+  var k=Math.exp(dive.speed/100*.6*dt),wr=wrap.getBoundingClientRect(),rs=(wr.width/(wrap.offsetWidth||wr.width))||1,lx=(penX-wr.left)/rs,ly=(penY-wr.top)/rs;
+  ds*=k;dx=lx-(lx-dx)*k;dy=ly-(ly-dy)*k;total*=k;applyD();recView();wrap.dataset.dive=total.toFixed(3);PX=C.px/ds;
   var p=penCanvas();if(toolVal()!=='smudge'&&(p.x!==lastX||p.y!==lastY)){strokeAt(lastX,lastY,p.x,p.y);lastX=p.x;lastY=p.y;}
-  if(s>=2){bake();PX=C.px;var q=penCanvas();lastX=q.x;lastY=q.y;}
+  if(ds>=2){bake();PX=C.px;var q=penCanvas();lastX=q.x;lastY=q.y;}
   setTimeout(diveTick,16);
 }
 row.addEventListener('pointerdown',function(e){penX=e.clientX;penY=e.clientY;if(dive.on&&drawing&&!g&&!diving){diving=true;diveLast=0;setTimeout(diveTick,16);}});
@@ -156,15 +165,24 @@ function T(){return Math.round(Date.now()-tlog.start);}
 function rec(e){if(logFull)return;e.t=T();tlog.events.push(e);saveLog();}
 function sty(){var d=function(id){return document.getElementById(id);};return{tool:toolVal(),color:d('ccolor').value,size:Number(d('csize').value),opacity:Number(d('copacity').value)/100,glow:d('cglow').dataset.on==='1',mirror:d('csymmetry').dataset.on==='1',fill:d('cfill').dataset.on==='1',layer:activeLayer};}
 var origStrokeAt=strokeAt;
-strokeAt=function(x0,y0,x1,y1){if(curStroke){var n=T()-curStroke.st;if(!curStroke.pts.length)curStroke.pts.push([Math.round(x0),Math.round(y0),n]);curStroke.pts.push([Math.round(x1),Math.round(y1),n]);}return origStrokeAt(x0,y0,x1,y1);};
-row.addEventListener('pointerdown',function(e){var t=toolVal();if(e.pointerType!=='mouse'&&Object.keys(ptrs).length>1)return;curStroke=(t==='pen'||t==='marker'||t==='spray'||t==='eraser')?Object.assign({type:'stroke',st:T(),pts:[]},sty()):null;},true);
-window.addEventListener('pointerup',function(){if(curStroke){var c=curStroke;curStroke=null;if(c.pts.length)rec(c);}});
+/* The Dive crop is logged with each stroke so Watch can replay the zoom inside a fixed frame (Brandon 2026-11-19: it should look like it zooms in for
+   ever while the canvas stays one size): vw holds view samples [t,k,sx,sy] (the visible window of the bitmap: its left/top in bitmap pixels and the
+   scale) and bakes [t,'b',k,sx,sy], t in ms from the stroke's start. While zoomed, a point carries its brush size as a 4th number. */
+function r2(v){return Math.round(v*100)/100;}
+function viewNow(){var W=layers[0].cv.width,R=W/(wrap.offsetWidth||W);return [+ds.toFixed(4),r2(-dx*R/ds),r2(-dy*R/ds)];}
+var lastView=0;
+function recView(){if(!curStroke)return;var n=T()-curStroke.st;if(curStroke.vw.length&&n-lastView<40)return;lastView=n;curStroke.vw.push([n].concat(viewNow()));}
+strokeAt=function(x0,y0,x1,y1){if(curStroke){var n=T()-curStroke.st,sz=ds!==1?+(Number(document.getElementById('csize').value)/ds).toPrecision(5):0;
+  var pt=function(x,y){var a=[r2(x),r2(y),n];if(sz)a.push(sz);return a;};
+  if(!curStroke.pts.length)curStroke.pts.push(pt(x0,y0));curStroke.pts.push(pt(x1,y1));}return origStrokeAt(x0,y0,x1,y1);};
+row.addEventListener('pointerdown',function(e){var t=toolVal();if(e.pointerType!=='mouse'&&Object.keys(ptrs).length>1)return;lastView=0;curStroke=(t==='pen'||t==='marker'||t==='spray'||t==='eraser')?Object.assign({type:'stroke',st:T(),pts:[],vw:[]},sty()):null;},true);
+window.addEventListener('pointerup',function(){if(curStroke){var c=curStroke;curStroke=null;if(!c.vw.length)delete c.vw;if(c.pts.length)rec(c);}});
 var origDrawShape=drawShape;
-drawShape=function(x0,y0,x1,y1,tc){if(tc===actx()){var q=sty();if(q.tool==='line'||q.tool==='rect'||q.tool==='circle')rec(Object.assign({type:'shape',x0:Math.round(x0),y0:Math.round(y0),x1:Math.round(x1),y1:Math.round(y1)},q));}return origDrawShape.apply(null,arguments);};
+drawShape=function(x0,y0,x1,y1,tc){if(tc===actx()){var q=sty();q.size=q.size/ds;if(q.tool==='line'||q.tool==='rect'||q.tool==='circle')rec(Object.assign({type:'shape',x0:Math.round(x0),y0:Math.round(y0),x1:Math.round(x1),y1:Math.round(y1)},q));}return origDrawShape.apply(null,arguments);};
 var origFill=floodFill;
 floodFill=function(fx,fy){var q=sty();rec({type:'fill',x:Math.round(fx),y:Math.round(fy),color:q.color,opacity:q.opacity,layer:q.layer});return origFill(fx,fy);};
 var origBake=bake;
-bake=function(){rec({type:'bake',k:+s.toFixed(4),sx:+((fx0-tx)/(s*ff)).toFixed(2),sy:+((fy0-ty)/(s*ff)).toFixed(2)});return origBake();};
+bake=function(){if(curStroke)curStroke.vw.push([T()-curStroke.st,'b'].concat(viewNow()));rec({type:'bake',w:1});return origBake();};     /* the stroke's vw carries the crop in order with its points; this event is only the undo barrier (w:1: Watch skips it; an old log's bakes have no w and are still replayed) */
 document.getElementById('cclear').addEventListener('click',function(){rec({type:'clear',layer:activeLayer});},true);
 document.getElementById('cundo').addEventListener('click',function(){if(layers[activeLayer].undo.length)rec({type:'undo',layer:activeLayer});},true);
 document.getElementById('credo').addEventListener('click',function(){if(layers[activeLayer].redo.length)rec({type:'redo',layer:activeLayer});},true);
@@ -209,26 +227,47 @@ function openWatch(){
   sp.type='range';sp.id='cwatchspeed';sp.min='-100';sp.max='100';sp.step='0.1';sp.value='50';sp.setAttribute('aria-label','Playback speed, left is backward, right is forward');
   function speedOf(v){var a=Math.abs(v)/100;return v===0?0:(v<0?-1:1)*0.05*Math.pow(640,a);}
   function showSpeed(){var x=speedOf(Number(sp.value));sp.dataset.speed=x.toFixed(3);sl.textContent=(x===0?'0':(x<0?'−':'')+(Math.abs(x)<1?Math.abs(x).toFixed(2):Math.abs(x).toFixed(1)))+'x';}
-  bar.appendChild(bPlay);bar.appendChild(prog);bar.appendChild(sp);bar.appendChild(sl);bar.appendChild(bX);watchEl.appendChild(disp);watchEl.appendChild(bar);card.appendChild(watchEl);
+  bar.appendChild(bPlay);bar.appendChild(prog);bar.appendChild(sp);bar.appendChild(sl);bar.appendChild(bX);watchEl.appendChild(disp);watchEl.appendChild(bar);
+  /* Brandon 2026-11-19: watch a loop, trim the loop, or bounce (forward to the end, then backward to the start, and so on). The two trim sliders pick the
+     first and last step to play; the drawing before the first step is already on the canvas; the mode button cycles Once, Loop, Bounce. */
+  var trim=el('div','cfs-watchtrim'),tIn=el('input',''),tOut=el('input',''),bMode=el('button','cfs-watchmode','Once'),mode='once',tl1=el('span','cfs-watchlab','From'),tl2=el('span','cfs-watchlab','To');
+  tIn.type='range';tIn.id='cwatchin';tIn.min='0';tIn.value='0';tIn.setAttribute('aria-label','Trim: where the loop starts');
+  tOut.type='range';tOut.id='cwatchout';tOut.min='0';tOut.setAttribute('aria-label','Trim: where the loop ends');
+  bMode.type='button';bMode.id='cwatchmode';bMode.dataset.mode=mode;bMode.setAttribute('aria-label','Playback mode: once, loop, or bounce');
+  trim.appendChild(tl1);trim.appendChild(tIn);trim.appendChild(tl2);trim.appendChild(tOut);trim.appendChild(bMode);watchEl.appendChild(trim);card.appendChild(watchEl);
   /* the steps: a stroke is one step per segment at its recorded time; the rest are one step each; gaps between actions are capped at 400 ms */
-  var ops=[],vt=0,lastT=null;
+  var ops=[],vt=0,lastT=null,view={k:1,sx:0,sy:0};       // view: the Dive crop being shown (the visible window of the bitmaps); the frame itself never changes size
+  function viewF(k,sx,sy){return function(){view.k=k;view.sx=sx;view.sy=sy;};}
+  function bakeF(k,sx,sy){return function(){var tmp=document.createElement('canvas');tmp.width=W;tmp.height=H;var t=tmp.getContext('2d');t.imageSmoothingQuality='high';ctxs.forEach(function(c,i){t.clearRect(0,0,W,H);t.drawImage(offs[i],sx,sy,W/k,H/k,0,0,W,H);c.clearRect(0,0,W,H);c.drawImage(tmp,0,0);});view.k=1;view.sx=0;view.sy=0;};}
   acts.forEach(function(a){var at=a.st!==undefined?a.st:a.t;if(lastT!==null)vt+=Math.min(400,Math.max(0,at-lastT));lastT=a.st!==undefined?a.st:a.t;
-    if(a.type==='stroke'){var pts=a.pts,base=vt;ops.push({vt:base,f:function(a,pts){return function(){var p=pts[0];drawSegOn(ctxs[a.layer||0],a,p[0],p[1],p[0]+.1,p[1]+.1,a.mirror,W);};}(a,pts)});
-      for(var i=1;i<pts.length;i++){ops.push({vt:base+pts[i][2],f:function(a,p0,p1){return function(){drawSegOn(ctxs[a.layer||0],a,p0[0],p0[1],p1[0],p1[1],a.mirror,W);};}(a,pts[i-1],pts[i])});}
-      vt=base+pts[pts.length-1][2];lastT=a.st+pts[pts.length-1][2];}
+    if(a.type==='stroke'){var pts=a.pts,base=vt,list=[];
+      /* a point can carry its own brush size (4th number): it shrinks as a Dive zooms; vw holds the crop over time: view samples [t,k,sx,sy] and bakes [t,'b',k,sx,sy] */
+      list.push({t:0,f:function(a,pts){return function(){var p=pts[0],b=p.length>3?Object.assign({},a,{size:p[3]}):a;drawSegOn(ctxs[a.layer||0],b,p[0],p[1],p[0]+.1,p[1]+.1,a.mirror,W);};}(a,pts)});
+      for(var i=1;i<pts.length;i++){list.push({t:pts[i][2],f:function(a,p0,p1){return function(){var b=p1.length>3?Object.assign({},a,{size:p1[3]}):a;drawSegOn(ctxs[a.layer||0],b,p0[0],p0[1],p1[0],p1[1],a.mirror,W);};}(a,pts[i-1],pts[i])});}
+      var dur=pts[pts.length-1][2];
+      (a.vw||[]).forEach(function(w){dur=Math.max(dur,w[0]);list.push({t:w[0],f:w[1]==='b'?bakeF(w[2],w[3],w[4]):viewF(w[1],w[2],w[3])});});
+      list.map(function(o,j){o.j=j;return o;}).sort(function(p,q){return p.t-q.t||p.j-q.j;}).forEach(function(o){ops.push({vt:base+o.t,f:o.f});});
+      vt=base+dur;lastT=a.st+dur;}
     else if(a.type==='shape'){ops.push({vt:vt,f:function(a){return function(){drawShapeOn(ctxs[a.layer||0],a);};}(a)});}
     else if(a.type==='fill'){ops.push({vt:vt,f:function(a){return function(){var c=ctxs[a.layer||0];ffCtx(c,W,H,a.x,a.y,a.color,a.opacity);};}(a)});}
     else if(a.type==='clear'){ops.push({vt:vt,f:function(a){return function(){ctxs[a.layer||0].clearRect(0,0,W,H);};}(a)});}
-    else if(a.type==='bake'){ops.push({vt:vt,f:function(a){return function(){var tmp=document.createElement('canvas');tmp.width=W;tmp.height=H;var t=tmp.getContext('2d');t.imageSmoothingQuality='high';ctxs.forEach(function(c,i){t.clearRect(0,0,W,H);t.drawImage(offs[i],a.sx,a.sy,W/a.k,H/a.k,0,0,W,H);c.clearRect(0,0,W,H);c.drawImage(tmp,0,0);});};}(a)});}
+    else if(a.type==='bake'&&!a.w){ops.push({vt:vt,f:bakeF(a.k,a.sx,a.sy)});}
   });
-  prog.max=String(ops.length);var idx=0,clock=0,timer=0;
-  function paint(){dctx.clearRect(0,0,W,H);for(var i=0;i<3;i++){dctx.globalAlpha=layers[i].opacity;dctx.drawImage(offs[i],0,0);}dctx.globalAlpha=1;prog.value=String(idx);}
-  function reset(){ctxs.forEach(function(c){c.clearRect(0,0,W,H);});idx=0;clock=0;}
+  prog.max=String(ops.length);tIn.max=tOut.max=String(ops.length);tOut.value=String(ops.length);var idx=0,clock=0,timer=0;
+  function timeAt(i){return i>0&&ops.length?ops[Math.min(i,ops.length)-1].vt:-1;}      // the time of "after i steps"; -1 = before the first
+  function flip(){sp.value=String(-Number(sp.value));showSpeed();}
+  tIn.addEventListener('input',function(){if(Number(tIn.value)>=Number(tOut.value))tIn.value=String(Math.max(0,Number(tOut.value)-1));});
+  tOut.addEventListener('input',function(){if(Number(tOut.value)<=Number(tIn.value))tOut.value=String(Math.min(ops.length,Number(tIn.value)+1));});
+  bMode.addEventListener('click',function(){mode=mode==='once'?'loop':mode==='loop'?'bounce':'once';bMode.dataset.mode=mode;bMode.textContent=mode==='once'?'Once':mode==='loop'?'Loop':'Bounce';});
+  function paint(){dctx.clearRect(0,0,W,H);for(var i=0;i<3;i++){dctx.globalAlpha=layers[i].opacity;if(view.k===1&&!view.sx&&!view.sy)dctx.drawImage(offs[i],0,0);else dctx.drawImage(offs[i],view.sx,view.sy,W/view.k,H/view.k,0,0,W,H);}dctx.globalAlpha=1;disp.dataset.zoom=view.k.toFixed(3);prog.value=String(idx);}
+  function reset(){ctxs.forEach(function(c){c.clearRect(0,0,W,H);});view.k=1;view.sx=0;view.sy=0;idx=0;clock=0;}
   function seek(n){reset();while(idx<n&&idx<ops.length){ops[idx].f();idx++;}clock=idx?ops[idx-1].vt:0;paint();}
   function stop(){if(timer){clearInterval(timer);timer=0;}}
   function tick(){
     var x=speedOf(Number(sp.value));if(x===0)return;
-    clock+=16*x;var end=ops.length?ops[ops.length-1].vt:0;if(clock>end)clock=end;if(clock<-1)clock=-1;       // -1 is "before the first step": backward all the way shows the empty canvas
+    clock+=16*x;var lo=timeAt(Number(tIn.value)),hi=Math.max(lo,timeAt(Number(tOut.value)));       // -1 is "before the first step": backward all the way shows the empty canvas
+    if(clock>hi){if(mode==='loop')clock=lo;else{clock=hi;if(mode==='bounce')flip();}}
+    else if(clock<lo){if(mode==='loop')clock=hi;else{clock=lo;if(mode==='bounce')flip();}}
     var target=0;while(target<ops.length&&ops[target].vt<=clock)target++;     // how many steps have happened by now
     if(target<idx)seek(target);                                              // backward: rebuild up to that step
     else{while(idx<target){ops[idx].f();idx++;}paint();}
@@ -246,7 +285,7 @@ bWatch.type='button';bWatch.id='cwatch';sel.id='clogreset';sel.setAttribute('ari
 ['never','hour','day','week','month'].forEach(function(v){var o=document.createElement('option');o.value=v;o.textContent=v;if(v===period)o.selected=true;sel.appendChild(o);});
 sel.addEventListener('change',function(){period=sel.value;lsPut(LOGRESET,period);});
 bWatch.addEventListener('click',function(){openWatch();});
-wRow.appendChild(bWatch);wRow.appendChild(lab);wRow.appendChild(sel);pm.appendChild(wRow);
+wRow.appendChild(bWatch);wRow.appendChild(lab);wRow.appendChild(sel);pf.appendChild(el('p','cfs-pfh cfs-pfh2','Timelapse: watch your drawing again, as a loop if you like'));pf.appendChild(wRow);
 /* a mouse wheel zooms around the cursor (a narrow desktop window, a trackpad) */
 row.addEventListener('wheel',function(e){e.preventDefault();var o=origin(),mx=e.clientX-o.x,my=e.clientY-o.y,wx=(mx-tx)/s,wy=(my-ty)/s;
   s=Math.max(MINS,Math.min(MAXS,s*Math.exp(-e.deltaY*.0015)));tx=mx-wx*s;ty=my-wy*s;apply();},{passive:false});

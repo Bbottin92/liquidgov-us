@@ -191,14 +191,18 @@ std::optional<GNode> map_gnode(const std::string& id, const std::string& viewer)
     }
     if (type == "mine") {
         if (viewer.empty()) return std::nullopt;
-        if (rest == "friends") return GNode{id, "Friends", "mine", "/friends"};
+        // Map globes (Brandon 2026-11-20): Friends, Events, Market and Social each hold a globe that opens their
+        // street-map page /globe/<kind> (the pool's page symbol is drawn as a globe, lgmap.js).
+        if (rest == "friends") return GNode{id, "Friends", "mine", "/globe/friends"};
         if (rest == "groups") return GNode{id, "Groups", "mine", "/communities"};
         if (rest == "places") return GNode{id, "Places", "mine", ""};
         if (rest == "politics") return GNode{id, "Politics", "mine", "/proposals"};
         if (rest == "problems") return GNode{id, "Problems", "mine", "/problems"};
         // map SPEC phase 1 (Brandon 2026-11-11): Events stays empty until M1.4 (shown anyway, "None yet"), Feeds
         // (never Drawings), Interests from your profile
-        if (rest == "events") return GNode{id, "Events", "mine", ""};
+        if (rest == "events") return GNode{id, "Events", "mine", "/globe/events"};
+        if (rest == "market") return GNode{id, "Market", "mine", "/globe/market"};
+        if (rest == "social") return GNode{id, "Social", "mine", "/globe/social"};
         if (rest == "feeds") return GNode{id, "Feeds", "mine", "/feed"};
         if (rest == "interests") return GNode{id, "Interests", "mine", "/me"};
         return std::nullopt;
@@ -345,8 +349,10 @@ std::vector<GLink> map_links(const std::string& id, const std::string& viewer) {
         // A kind with nothing in it is left off; Places always has the whole site. Clockwise from the top in the order
         // of the map SPEC's mockup A (Brandon's seven kinds, then your own Problems). Events always shows, even empty
         // (Brandon 2026-11-11 4:30 PM decision 1), so people see the map has a place for events before M1.4.
-        for (const char* k : {"politics", "friends", "events", "feeds", "places", "groups", "interests", "problems"}) {
-            bool any = std::string(k) == "events";
+        // Market and Social (map globes, Brandon 2026-11-20 "add all four now") always show too, like Events.
+        for (const char* k : {"politics", "friends", "events", "market", "social", "feeds", "places", "groups", "interests",
+                              "problems"}) {
+            bool any = std::string(k) == "events" || std::string(k) == "market" || std::string(k) == "social";
             map_mine_links(k, viewer, [&](const std::string& to, const std::string&) {
                 if (!any && to != "you" && map_gnode(to, viewer)) any = true;
             });

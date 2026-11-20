@@ -29,4 +29,7 @@ bool outside_topic(const std::string& rest, GNode& out);
 // from /map/node only, never for search results.
 void outside_fill_interests(std::vector<GLink>& links);
 
+// A city as typed -> latitude/longitude (OpenStreetMap Nominatim, cached, one request a second site-wide); see outside.cpp.
+bool outside_city_point(const std::string& city, double& lat, double& lon, bool may_fetch);
+
 }  // namespace liquidgov::site

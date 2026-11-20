@@ -297,3 +297,5 @@ main.wrap>.lgmap .lgmap-canvas{flex:1;min-height:0;height:auto;border-radius:0}
 #lgmap[data-pools] .lgn text.lgn-ava-ch{font-size:11px;font-weight:700;fill:#fff;text-anchor:middle;stroke:none;opacity:.8}
 #lgmap[data-pools] .lgn-ava{opacity:.78}
 #lgmap[data-pools] .lgn text.lgn-out{font-size:15px;font-weight:600;fill:#ffe9a8;text-anchor:start;text-decoration:underline;cursor:pointer;pointer-events:all}
+#lgmap[data-pools] .lgn-globe-ball{fill:rgba(79,140,255,.9);stroke:rgba(8,30,45,.55);stroke-width:2px}
+#lgmap[data-pools] .lgn-globe-line{fill:none;stroke:rgba(238,249,255,.95);stroke-width:2px;stroke-linecap:round}

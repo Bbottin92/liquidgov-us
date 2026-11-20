@@ -385,9 +385,17 @@
       // is over it. Not part of the click target.
       if (n.page && n.kind !== 'you') {
         var ps = pageSpot(n), pg = el('g', { 'class': 'lgn-page', 'aria-hidden': 'true', transform: 'translate(' + (ps.x - n.x) + ',' + (ps.y - n.y) + ')' });
-        pg.appendChild(el('path', { d: 'M-15 -19 H5 L15 -9 V19 H-15 Z', 'class': 'lgn-page-sheet' }));
-        pg.appendChild(el('path', { d: 'M5 -19 V-9 H15', 'class': 'lgn-page-fold' }));
-        pg.appendChild(el('path', { d: 'M-8 0 H8 M-8 7 H8 M-8 14 H3', 'class': 'lgn-page-line' }));
+        if (String(n.page).indexOf('/globe/') === 0) {
+          // Map globes (Brandon 2026-11-20): Friends, Events, Market and Social hold a globe; walk onto it and A opens the
+          // pool's street map (/globe/<kind>), the same way as the page sheet below
+          pg.setAttribute('class', 'lgn-page lgn-globe');
+          pg.appendChild(el('circle', { cx: 0, cy: 0, r: 19, 'class': 'lgn-globe-ball' }));
+          pg.appendChild(el('path', { d: 'M-19 0 H19 M0 -19 C-10 -10 -10 10 0 19 C10 10 10 -10 0 -19 M-16 -10 H16 M-16 10 H16', 'class': 'lgn-globe-line' }));
+        } else {
+          pg.appendChild(el('path', { d: 'M-15 -19 H5 L15 -9 V19 H-15 Z', 'class': 'lgn-page-sheet' }));
+          pg.appendChild(el('path', { d: 'M5 -19 V-9 H15', 'class': 'lgn-page-fold' }));
+          pg.appendChild(el('path', { d: 'M-8 0 H8 M-8 7 H8 M-8 14 H3', 'class': 'lgn-page-line' }));
+        }
         g.appendChild(pg);
       }
     } else if (n.kind === 'you') {

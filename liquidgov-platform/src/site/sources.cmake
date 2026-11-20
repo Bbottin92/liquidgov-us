@@ -56,6 +56,7 @@ set(LG_SITE_SOURCES
   src/site/features/live/live_routes.cpp
   src/site/features/canvas/canvas_routes.cpp
   src/site/features/feed/feed_routes.cpp
+  src/site/features/globe/globe_routes.cpp
   src/site/features/proposals/proposals_routes.cpp
   src/site/features/profile/profile_routes.cpp
   src/site/features/profile/portrait_history.cpp

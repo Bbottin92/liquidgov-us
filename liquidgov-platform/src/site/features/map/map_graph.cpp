@@ -189,7 +189,7 @@ void map_add_sub(GNode& n, const std::string& viewer) {
             if (any) s += (s.empty() ? "" : " \xC2\xB7 ") + std::string(name);
         }
         n.sub = s;
-    } else if (kind == "events") {
+    } else if (kind == "events" || kind == "market" || kind == "social") {
         n.sub = "None yet"; // always on the ring, even empty (Brandon 2026-11-11 4:30 PM decision 1)
     }
 }

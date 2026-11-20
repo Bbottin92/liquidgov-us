@@ -190,7 +190,9 @@ class Run:
         self.ws.call("Emulation.setDeviceMetricsOverride", width=390, height=844, deviceScaleFactor=2, mobile=True)
         self.ws.call("Page.navigate", url=self.base + "/feed/canvas")
         time.sleep(1.2)
-        src = open(os.path.join(self.platform, "assets", "canvas.js"), encoding="utf-8").read()
+        # the page gets assets/finerange.js on every page (wrap.cpp), so the harness runs it before the canvas script
+        src = (open(os.path.join(self.platform, "assets", "finerange.js"), encoding="utf-8").read() + "\n"
+               + open(os.path.join(self.platform, "assets", "canvas.js"), encoding="utf-8").read())
         try:
             cdp.js(self.ws, FS_BOOT % src)
         except Exception as e:  # a script that throws on boot fails every case below with the reason, not a skip
@@ -257,6 +259,15 @@ class Run:
                    w.get("liveInk", 0) > 0 and 0.6 * w.get("liveInk", 1) <= w.get("replayInk", 0) <= 1.6 * w.get("liveInk", 1), w)
         self.check("F19 phone: an undo is part of the log (Watch shows less ink after it)",
                    0 < w.get("replayInk2", 0) < 0.75 * w.get("replayInk", 1), w)
+        # Playback speed (Brandon 2026-11-19: one slider that starts at 0 and slides left for backward, right for forward, with fine control)
+        sv = json.loads(cdp.js(self.ws, "(async () => JSON.stringify(await %s))()" % FS_SPEED))
+        self.check("F21 phone: the speed slider is fine near 0 (under 0.2x at 5), 32x at the ends, symmetric, and 0 at the middle",
+                   0 < sv.get("at5", 0) < 0.2 and 30 <= sv.get("at100", 0) <= 34 and -34 <= sv.get("atM100", 0) <= -30 and sv.get("at0") == 0, sv)
+        self.check("F22 phone: sliding left plays backward (the drawing un-draws back to nothing)",
+                   sv.get("endInk", 0) > 0 and sv.get("backInk", 99999) < 0.1 * max(sv.get("endInk", 1), 1) and sv.get("backIdx") == 0, sv)
+        self.check("F23 phone: at 0 the replay holds still", sv.get("held") is True, sv)
+        self.check("F24 phone: dragging the same distance 300 px away from the slider changes the speed far less (finer scrubbing)",
+                   sv.get("dragNear", 0) > 5 and abs(sv.get("dragFar", 99)) < 0.35 * sv.get("dragNear", 0), sv)
         self.ws.call("Page.navigate", url=self.base + "/feed/canvas")
         time.sleep(1.2)
         cdp.js(self.ws, "localStorage.setItem('lg-log-reset','hour'); localStorage.setItem('lg-log', JSON.stringify({v:1,start:Date.now()-2*3600*1000,"
@@ -290,12 +301,33 @@ FS_LOG = r"""(async () => {
   const log = JSON.parse(localStorage.getItem('lg-log') || 'null') || {events: []};
   const strokes = log.events.filter(e => e.type === 'stroke');
   out.strokes = strokes.length; out.firstPts = strokes[0] ? strokes[0].pts.length : 0; out.firstTool = strokes[0] ? strokes[0].tool : null;
-  const play = async () => { watch.click(); await wait(150); const sp = q('cwatchspeed'); if (sp) { sp.value = sp.options[sp.options.length - 1].value; sp.dispatchEvent(new Event('change', {bubbles: true})); }
+  const play = async () => { watch.click(); await wait(150); const sp = q('cwatchspeed'); if (sp) { sp.value = '100'; sp.dispatchEvent(new Event('input', {bubbles: true})); }
     for (let i = 0; i < 40; i++) { await wait(100); const p = q('cwatchprogress'); if (p && Number(p.value) >= Number(p.max)) break; }
     const wc = q('cwatchcanvas'); const n = wc ? inkOf(wc) : -1; const close = q('cwatchclose'); if (close) close.click(); await wait(100); return n; };
   out.replayInk = await play();
   q('cfs-undo').click(); await wait(100);
   out.replayInk2 = await play();
+  return out;
+})()"""
+
+FS_SPEED = r"""(async () => {
+  const q = id => document.getElementById(id), wait = ms => new Promise(r => setTimeout(r, ms)), out = {};
+  const inkOf = c => { const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 0) n++; return n; };
+  q('cwatch').click(); await wait(150);
+  const sp = q('cwatchspeed'), prog = q('cwatchprogress'), wc = q('cwatchcanvas');
+  const set = v => { sp.value = String(v); sp.dispatchEvent(new Event('input', {bubbles: true})); return parseFloat(sp.dataset.speed); };
+  out.at5 = set(5); out.at100 = set(100); out.atM100 = set(-100); out.at0 = set(0);
+  set(100); for (let i = 0; i < 40 && Number(prog.value) < Number(prog.max); i++) await wait(100);
+  out.endInk = inkOf(wc);
+  set(-100); for (let i = 0; i < 60 && Number(prog.value) > 0; i++) await wait(100);
+  out.backIdx = Number(prog.value); out.backInk = inkOf(wc);
+  set(100); await wait(120); set(0); const at = prog.value; await wait(400); out.held = prog.value === at;
+  // the farther the finger is from the slider (up or down), the finer the adjustment: the same 60 px sideways drag, near and 300 px away
+  const r = sp.getBoundingClientRect(), x0 = r.left + r.width / 2, y0 = r.top + r.height / 2;
+  const fire = (t, x, y) => (t === 'pointerdown' ? sp : document).dispatchEvent(new PointerEvent(t, {pointerId: 7, pointerType: 'touch', clientX: x, clientY: y, bubbles: true, cancelable: true}));
+  const dragBy = async dy => { set(0); fire('pointerdown', x0, y0); for (let i = 1; i <= 6; i++) fire('pointermove', x0 + i * 10, y0 + dy); fire('pointerup', x0 + 60, y0 + dy); await wait(30); return Number(sp.value); };
+  out.dragNear = await dragBy(0); out.dragFar = await dragBy(300);
+  q('cwatchclose').click(); await wait(100);
   return out;
 })()"""
 

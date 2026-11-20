@@ -203,8 +203,13 @@ function openWatch(){
   watchEl=el('div','cfs-watch');
   var disp=el('canvas','');disp.id='cwatchcanvas';disp.width=W;disp.height=H;var dctx=disp.getContext('2d');
   var bar=el('div','cfs-watchbar'),bPlay=btn('cwatchplay','Play or pause','<path d="M7 5v14l11-7z"/>'),prog=el('input','');prog.type='range';prog.id='cwatchprogress';prog.min='0';prog.value='0';prog.setAttribute('aria-label','Position');
-  var sp=el('select',''),bX=btn('cwatchclose','Close','<path d="M6 6l12 12M18 6 6 18"/>');sp.id='cwatchspeed';sp.setAttribute('aria-label','Speed');[1,2,4,8,16,32].forEach(function(v){var o=document.createElement('option');o.value=String(v);o.textContent=v+'x';if(v===4)o.selected=true;sp.appendChild(o);});
-  bar.appendChild(bPlay);bar.appendChild(prog);bar.appendChild(sp);bar.appendChild(bX);watchEl.appendChild(disp);watchEl.appendChild(bar);card.appendChild(watchEl);
+  /* the speed control (Brandon 2026-11-19): ONE slider that starts at 0 (stopped) in the middle; right plays forward, left plays backward; the
+     speed grows exponentially (0.05x just off centre up to 32x at the ends) so small moves give fine control */
+  var sp=el('input',''),sl=el('span','cfs-watchspeed','0x'),bX=btn('cwatchclose','Close','<path d="M6 6l12 12M18 6 6 18"/>');
+  sp.type='range';sp.id='cwatchspeed';sp.min='-100';sp.max='100';sp.step='0.1';sp.value='50';sp.setAttribute('aria-label','Playback speed, left is backward, right is forward');
+  function speedOf(v){var a=Math.abs(v)/100;return v===0?0:(v<0?-1:1)*0.05*Math.pow(640,a);}
+  function showSpeed(){var x=speedOf(Number(sp.value));sp.dataset.speed=x.toFixed(3);sl.textContent=(x===0?'0':(x<0?'−':'')+(Math.abs(x)<1?Math.abs(x).toFixed(2):Math.abs(x).toFixed(1)))+'x';}
+  bar.appendChild(bPlay);bar.appendChild(prog);bar.appendChild(sp);bar.appendChild(sl);bar.appendChild(bX);watchEl.appendChild(disp);watchEl.appendChild(bar);card.appendChild(watchEl);
   /* the steps: a stroke is one step per segment at its recorded time; the rest are one step each; gaps between actions are capped at 400 ms */
   var ops=[],vt=0,lastT=null;
   acts.forEach(function(a){var at=a.st!==undefined?a.st:a.t;if(lastT!==null)vt+=Math.min(400,Math.max(0,at-lastT));lastT=a.st!==undefined?a.st:a.t;
@@ -221,10 +226,18 @@ function openWatch(){
   function reset(){ctxs.forEach(function(c){c.clearRect(0,0,W,H);});idx=0;clock=0;}
   function seek(n){reset();while(idx<n&&idx<ops.length){ops[idx].f();idx++;}clock=idx?ops[idx-1].vt:0;paint();}
   function stop(){if(timer){clearInterval(timer);timer=0;}}
-  function go(){if(timer)return;if(idx>=ops.length)reset();timer=setInterval(function(){clock+=16*Number(sp.value);while(idx<ops.length&&ops[idx].vt<=clock){ops[idx].f();idx++;}paint();if(idx>=ops.length)stop();},16);}
-  bPlay.addEventListener('click',function(){if(timer)stop();else go();});
-  prog.addEventListener('input',function(){stop();seek(Number(prog.value));});
-  sp.addEventListener('change',function(){});
+  function tick(){
+    var x=speedOf(Number(sp.value));if(x===0)return;
+    clock+=16*x;var end=ops.length?ops[ops.length-1].vt:0;if(clock>end)clock=end;if(clock<-1)clock=-1;       // -1 is "before the first step": backward all the way shows the empty canvas
+    var target=0;while(target<ops.length&&ops[target].vt<=clock)target++;     // how many steps have happened by now
+    if(target<idx)seek(target);                                              // backward: rebuild up to that step
+    else{while(idx<target){ops[idx].f();idx++;}paint();}
+  }
+  function go(){if(!timer)timer=setInterval(tick,16);}
+  sp.addEventListener('input',showSpeed);showSpeed();
+  /* the finer-the-farther scrubbing of this slider comes from assets/finerange.js, which every slider on the site gets */
+  bPlay.addEventListener('click',function(){sp.value=Number(sp.value)===0?'50':'0';showSpeed();});
+  prog.addEventListener('input',function(){seek(Number(prog.value));});
   bX.addEventListener('click',function(){stop();if(watchEl&&watchEl.parentNode)watchEl.parentNode.removeChild(watchEl);watchEl=null;});
   go();
 }

@@ -95,3 +95,6 @@ html.cfs #cresizehandle{display:none}
 .cfs-watchbar select{width:auto;min-height:36px}
 .cfs-sheet .cwatch-row{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem;margin-top:.9rem}
 .cfs-sheet .cwatch-btn{border-radius:999px;min-height:40px;padding:0 1.1rem}
+.cfs-watchbar #cwatchspeed{flex:0 0 30%;touch-action:none}
+.cfs-watchspeed{min-width:3.4em;text-align:center;font-size:13px;color:var(--stone)}
+input[type=range]{touch-action:none}

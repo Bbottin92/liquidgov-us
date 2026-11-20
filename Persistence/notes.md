@@ -33,9 +33,14 @@ separate step you start.
 **For the next agent.** Read `CONTRIBUTING.md` (build, tests, commit lines Read/Attacker/Undo) and `naming.toml`.
 Build: `cd liquidgov-platform && cmake --preset dev && cmake --build --preset dev`. One suite:
 `bash tests/e2e/<suite>.sh ../build/dev/liquidgov_http ../build/dev/liquidgov_e2e_seed`. Everything:
-`bash scripts/lgcheck.sh liquidgov-platform <out dir> <previous build dir> [new_suite ...]` (needs a build of master as
-the previous build; about 15+ minutes with -j1). Run `git config core.hooksPath .githooks` once per clone. Never run a
-deploy `go` script and never contact liquidgov.us. Do not merge PRs: Brandon merges.
+`bash scripts/lgcheck.sh liquidgov-platform <out dir> <previous build dir> [new_suite ...]` (needs a build of the
+branch below yours, or master, as the previous build; every named new suite must FAIL there). It now picks compile
+jobs from free memory (one per 2 GB, `LG_JOBS=<n>` overrides; -j1 on the laptop): about 5 minutes in a 4-core cloud
+session. Browser checks in a cloud session: `LG_BROWSER=/opt/pw-browsers/chromium python3 tests/browser/<check>.py
+<liquidgov-platform dir> <out dir>` (cdp.py defaults to the Windows Edge path). Run `git config core.hooksPath .githooks`
+once per clone. Never run a deploy `go` script and never contact liquidgov.us. Do not merge PRs unless Brandon asks
+for that merge in the session (2026-11-20 he did, PR by PR). Before merging a stack, merge it with merge commits (a
+squash breaks every PR above it) and check each PR's CI on its current head.
 
 **Open questions for Brandon live on one page** (Brandon 2026-11-20: multiple choice for every open item, Claude's
 suggestion marked, a line for his own answer, and Claude adds questions as they come up):
@@ -43,21 +48,32 @@ https://claude.ai/artifact/KzfvqmqnpkTpc3pB96F1Ko ("LiquidGov Open Decisions", p
 collection `questions` (one document per question: group, groupTitle, groupNote, order, q, ctx, rec, options
 [{v,label,desc}], added, closed; only editors may write) and `answers` (one per question id: choice, choiceLabel,
 other, suggested, at). To add a question, write a `questions` document (ArtifactData set); set closed:true once it is
-settled and recorded here. Read `answers` before building anything those questions block.
+settled and recorded here. Read `answers` before building anything those questions block. A session on another
+account cannot open it (2026-11-20: "no such artifact, or no access"); then put the question in this pad and ask in
+chat. Phone checklist for what is live (Brandon taps Works/Problem, then pastes the results):
+https://claude.ai/artifact/DQL8JTnLxwivNuDkv1K9vu (22 checks; add the feed tabs and map globes once they are live).
 
-**Status 2026-11-20.** Three stacked branches; merge them in order (each PR contains the one before):
-(a) PR #7 `wip/160-feed-filters`: "Most discussed" and "Friends first" tabs; full `lgcheck.sh` passed (67 suites).
-(b) PR #8 `wip/161-feed-unread`: the "Unread" tab (browser cookie); own test 16/0 (fails 10 on wip/160); lgcheck 68 suites EXIT=0.
-(c) PR #9 `wip/162-feed-near`: the "Near me" tab (groups in your city); own test 10/0 (fails 7 on wip/161); lgcheck 69 suites EXIT=0.
-(d) PR #10 `wip/163-feed-unfamiliar`: the "Unfamiliar" tab; own test 15/0 (fails 12 on wip/162); lgcheck 70 suites EXIT=0.
-(e) PR #12 `wip/164-map-globes`: map globes G1 (Shared pad "Map globes G1 BUILT"); own test 28/0 (fails 24 on
-wip/163); lgcheck 71 suites EXIT=0; browser walker checks pass except walker_page_icon_clear_check, which fails the
-same way on wip/163 (pre-existing). Browser checks in a cloud session: `LG_BROWSER=/opt/pw-browsers/chromium python3
-tests/browser/<check>.py <liquidgov-platform dir> <out dir>` (cdp.py defaults to the Windows Edge path).
-Then G2-G4 (Market contents, Events, Social; each needs Brandon's answers first, see the plan entry). (f) PR #14 `wip/165-feed-mix`: the mix-in setting stored on the account (feed slice 5; record `fmix` + undo script + rollback test); own test 21/0 (fails 10 on wip/164); lgcheck 72 suites EXIT=0 (cloud session 2026-11-20); feedmix_undo.sh 26/0; no screenshots yet.
-Check GitHub's Pull requests tab for which have PRs; a branch without one still needs: full `lgcheck.sh` with the
-previous branch's build as the previous build and its new suite named, then a PR against master. Next candidates
-(Shared pad "LATER slices"): Most trusted needs thumbs; Unfamiliar / Counter preference / the mix-in setting.
+**Status 2026-11-20 (end of day).** Merged into master today: the feed stack #7 Most discussed + Friends first,
+#8 Unread, #9 Near me, #10 Unfamiliar, #12 map globes G1, #14 the mix-in setting (record `fmix`), #19 Unread counts new
+replies; and #16 ship.py stops on a missing CI result, #17 lgcheck compile jobs from free memory, #18 a deploy retry
+reuses its own program copy (q56), #20 e2e suites never reach Wikipedia/OpenStreetMap (the random map_search failure),
+#21 platform CI runs once per commit + the spelling check is green. #15 (two stale walker checks; portrait undo
+proven, q52 closed) was green-pending at the time of writing: check it merged.
+**Live is behind master.** liquidgov.us still runs the canvas5 era (`9ce46c8`); nothing merged today is deployed.
+Before a deploy (Brandon starts it): the new record type `fmix` means the rollback guard needs
+`deploy/feedmix-undo.py` (tested 26/0 by tests/rollback/feedmix_undo.sh); the map globes were never seen with real map
+tiles, and whether the droplet can reach nominatim.openstreetmap.org is unchecked; run the phone checklist after.
+**Open PRs not made in this session:** #11 and #13 (`scripts/next_port.py` fixes, wip/165 and wip/166-next-port-fake):
+not reviewed or merged; check whether #13 still needs #11.
+**Waiting on Brandon:** Near me city matching ("Fresno" vs "Fresno, CA"; options A/B/C in the Shared pad, Claude
+suggests C, a picker of the cities groups already name); delete branch `claude/brave-bell-kltzaa` on GitHub (notes
+only, covered by #15; the session's permission check blocked the delete); `wip/158-ship-wip` is parked code, kept.
+Map globes G2-G4 (Market contents, Events, Social) wait on his answers (plan entry).
+**Open patterns, not acted on (2026-11-20):** notes edits ride on feature branches, so the Handoff on master lags
+until a stack merges (consider notes-only PRs); about 60 one-off deploy pairs in deploy/ keep old template code (only
+care/jbshell/prebuilt carry today's fixes); walker_controls M5 failed once and could not be reproduced in 6 runs
+(look at the wheel-zoom waits if CI catches it). Next build candidates (Shared pad "LATER slices"): Most trusted (needs
+thumbs), "not for me" on an item, Counter preference.
 
 ## Shared pad
 

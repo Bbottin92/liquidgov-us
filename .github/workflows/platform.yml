@@ -148,6 +148,12 @@ jobs:
         timeout-minutes: 5
         run: python3 liquidgov-platform/tests/jukebox_ended_check.py "$PWD/liquidgov-platform"
 
+      # On a phone that will not let a page set volume (iPhone, iPad), the Juketube volume slider gives way to a note
+      # (Brandon's phone check 2026-11-20). The real jukebox.js under node with fake elements; GATING like the one above.
+      - name: juketube volume slider on phones that ignore page volume (jukebox_volume_check)
+        timeout-minutes: 5
+        run: python3 liquidgov-platform/tests/jukebox_volume_check.py "$PWD/liquidgov-platform"
+
       # Static checks (no browser): American spelling in the site's strings, and this file keeping every browser
       # check in a report-only, bounded step.
       - name: site spelling (site_spelling_check, report-only)

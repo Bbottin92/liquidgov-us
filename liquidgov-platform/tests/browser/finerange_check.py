@@ -8,6 +8,8 @@ dispatched by script (touch type), the way a finger would send them.
   R4  input events fire while dragging and one change event fires at the end
   R5  the slider's own step is honoured (a step-5 slider only ever shows multiples of 5)
   R6  a slider added to the page later works too (the script listens on the document)
+  R7  a finger's touchstart on a slider is stopped (iPhone Safari otherwise drags the slider itself and cancels ours:
+      Brandon's phone check 2026-11-20, "doesnt do that"); a touchstart anywhere else is left alone
 Usage: LG_BROWSER=$(command -v google-chrome) python3 finerange_check.py [<liquidgov-platform dir>]
 Prints "VERDICT finerange: ALL-PASS" or the failed cases. Exit 1 on a FAIL. New file."""
 import http.server
@@ -102,6 +104,12 @@ def main(argv):
         r.check("R4 input events fire while dragging and one change event at the end", v.get("events", {}).get("input", 0) >= 2 and v.get("events", {}).get("change") == 1, v)
         r.check("R5 the slider's own step is honoured", v.get("stepOk") is True, v)
         r.check("R6 a slider added later works too", v.get("late", 0) > 10, v)
+        t = json.loads(cdp.js(ws, "(() => { function ts(el) { const t = new Touch({identifier: 1, target: el, clientX: 10, clientY: 10});"
+                                   " const e = new TouchEvent('touchstart', {touches: [t], targetTouches: [t], changedTouches: [t], bubbles: true, cancelable: true});"
+                                   " el.dispatchEvent(e); return e.defaultPrevented; }"
+                                   " return JSON.stringify({slider: ts(document.getElementById('a')), body: ts(document.body)}); })()"))
+        r.check("R7 a touchstart on a slider is stopped (iPhone Safari's own drag), and one elsewhere is not",
+                t.get("slider") is True and t.get("body") is False, t)
     except Exception as e:
         traceback.print_exc()
         r.check("run finished without an exception", False, "%s: %s" % (type(e).__name__, e))

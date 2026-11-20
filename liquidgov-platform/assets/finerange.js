@@ -23,5 +23,9 @@ document.addEventListener('pointermove',function(e){
   drag.r.dataset.fine=f.toFixed(2);setValue(drag.r,drag.v);
 },true);
 function end(){if(!drag)return;var r=drag.r;drag=null;r.dispatchEvent(new Event('change',{bubbles:true}));}
-document.addEventListener('pointerup',end,true);document.addEventListener('pointercancel',end,true);
+document.addEventListener('pointerup',end,true);
+// iPhone Safari (Brandon's phone check 2026-11-20: "doesnt do that"): Safari drags a range slider itself from TOUCH events, which the pointerdown
+// preventDefault above does not stop, so its own drag took over and cancelled ours. Stopping the touch start on a slider leaves the pointer events
+// (and this script) in charge; nothing else on the page is touched.
+document.addEventListener('touchstart',function(e){var r=e.target;if(r&&r.tagName==='INPUT'&&r.type==='range'&&!r.disabled)e.preventDefault();},{capture:true,passive:false});document.addEventListener('pointercancel',end,true);
 })();

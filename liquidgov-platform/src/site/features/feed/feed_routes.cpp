@@ -7,13 +7,35 @@
 #include "site/features/feed/post_block.hpp"
 #include "site/features/map/map_rules.hpp"
 #include "site/features/pains/pains.hpp"
+#include "site/ui/favicon_cookies.hpp"
 #include "site/ui/wrap.hpp"
 
 #include <algorithm>
 #include <cstdint>
 #include <map>
+#include <vector>
 
 namespace liquidgov::site {
+
+namespace {
+// Unread since you last looked (feed filters slice 2, wip/161): the newest post id this browser was shown in the
+// Unread tab, for this account, kept in the lg_feedseen=<user>.<post id> cookie. Nothing is stored on the server, so
+// it is per browser. A cookie for another account (or none) means nothing has been seen yet.
+std::uint64_t feed_seen_of(const std::string& req, const std::string& user) {
+    auto pos = req.find("\r\nCookie:"); if (pos == std::string::npos) pos = req.find("\r\ncookie:");
+    if (pos == std::string::npos) return 0;
+    const auto end = req.find("\r\n", pos + 2);
+    const std::string line = req.substr(pos, end == std::string::npos ? std::string::npos : end - pos);
+    auto k = line.find("lg_feedseen="); if (k == std::string::npos) return 0;
+    k += 12; const auto sc = line.find(';', k);
+    const std::string v = line.substr(k, sc == std::string::npos ? std::string::npos : sc - k);
+    const auto dot = v.rfind('.');
+    if (dot == std::string::npos || v.substr(0, dot) != user) return 0;
+    const std::string digits = v.substr(dot + 1);
+    if (digits.empty() || digits.size() > 19 || digits.find_first_not_of("0123456789") != std::string::npos) return 0;
+    try { return std::stoull(digits); } catch (...) { return 0; }
+}
+}  // namespace
 
 std::optional<std::string> feed_routes(Route& r) {
     LG_ROUTE_LOCALS(r)
@@ -42,21 +64,30 @@ std::optional<std::string> feed_routes(Route& r) {
         FeedFilter filter = FeedFilter::All;
         if (filter_key == "friends") filter = FeedFilter::Friends;
         else if (filter_key == "committees") filter = FeedFilter::Committees;
-        else if (filter_key != "discussed" && filter_key != "friendsfirst")
+        else if (filter_key != "discussed" && filter_key != "friendsfirst" && filter_key != "unread")
             filter_key = "all"; // anything else, an old ?filter=drawings link included, is All (no Drawings, Brandon 2026-11-10)
-        auto tab = [&](const char* key, const char* label) {
+        auto tab = [&](const char* key, const std::string& label) {
             const bool active = filter_key == key;
             return "<a class=\"btn"+std::string(active?"\" aria-current=\"page":" ghost")+"\" href=\"/feed?filter="+key+"\">"+label+"</a>";
         };
+        // Unread: the All posts newer than the last one seen in the Unread tab, my own posts left out. The tab says how
+        // many; opening it shows them and marks them seen (the cookie moves to the newest All post).
+        const std::uint64_t seen = feed_seen_of(req, user);
+        const auto all_posts = g_store.feed_view(user, 80, FeedFilter::All); // newest first
+        std::vector<Post> fresh;
+        for (const auto& p : all_posts) if (p.id > seen && p.author != user) fresh.push_back(p);
+        const std::string unread_label = fresh.empty() ? std::string("Unread") : "Unread ("+std::to_string(fresh.size())+")";
         std::string html = "<h1>Feed</h1><p class=\"muted eyebrow\">"+html_escape(fmt_time(now()))+
             " &middot; "+std::to_string(g_store.account_count())+" members</p>"
             "<div class=\"feedtabs\"><div class=\"segtabs\">"+
             tab("all","All")+tab("friends","Friends")+tab("committees","Groups")+
             tab("discussed","Most discussed")+tab("friendsfirst","Friends first")+
+            tab("unread",unread_label)+
             "</div></div>"+ // .feedtabs: on a phone the five tabs wrap instead of scrolling the chosen one out of sight
             flash_error(qs)+
             feed_composer_card(user);
-        auto posts = g_store.feed_view(user, 80, filter); // newest first
+        auto posts = filter_key == "unread" ? fresh : filter == FeedFilter::All ? all_posts
+                                                : g_store.feed_view(user, 80, filter); // newest first
         if (filter_key == "discussed") {
             std::map<std::uint64_t, std::size_t> replies;
             for (const auto& p : posts) replies[p.id] = g_store.replies_of(p.id).size();
@@ -66,10 +97,21 @@ std::optional<std::string> feed_routes(Route& r) {
             std::stable_partition(posts.begin(), posts.end(),
                 [&](const Post& p) { return p.author == user || g_store.are_friends(user, p.author); });
         }
-        if (posts.empty()) html += "<div class=\"card\"><p class=\"empty\">Nothing in this view yet.</p>"
+        std::string extra;
+        if (filter_key == "unread") {
+            html += posts.empty()
+                ? "<div class=\"card\"><p class=\"empty\">Nothing new since you last looked here.</p></div>"
+                : "<p class=\"muted\">New since you last looked here (in this browser). They count as seen now.</p>";
+            if (!all_posts.empty() && all_posts.front().id > seen) {
+                extra = "Set-Cookie: lg_feedseen="+user+"."+std::to_string(all_posts.front().id)+
+                        "; HttpOnly; Path=/; SameSite=Lax; Max-Age=31536000";
+                if (g_https) extra += "; Secure";
+                extra += "\r\n";
+            }
+        } else if (posts.empty()) html += "<div class=\"card\"><p class=\"empty\">Nothing in this view yet.</p>"
             "<p class=\"muted\">Write one above, or <a href=\"/friends\">add a friend</a> so theirs show up.</p></div>";
         for (const auto& p : posts) html += "<div class=\"card\">"+post_block(p, user)+"</div>";
-        return pg("Feed", html);
+        return http_ok(wrap("Feed", user, unread, html), extra);
     }
 
     // /post-media/<blob_id> -- an image or video attached to a post.

@@ -54,7 +54,7 @@ settled and recorded here. Read `answers` before building anything those questio
 wip/163); lgcheck 71 suites EXIT=0; browser walker checks pass except walker_page_icon_clear_check, which fails the
 same way on wip/163 (pre-existing). Browser checks in a cloud session: `LG_BROWSER=/opt/pw-browsers/chromium python3
 tests/browser/<check>.py <liquidgov-platform dir> <out dir>` (cdp.py defaults to the Windows Edge path).
-Then G2-G4 (Market contents, Events, Social; each needs Brandon's answers first, see the plan entry). (f) The mix-in setting stored on the account (feed slice 5; new record + undo script + rollback test).
+Then G2-G4 (Market contents, Events, Social; each needs Brandon's answers first, see the plan entry). (f) PR #14 `wip/165-feed-mix`: the mix-in setting stored on the account (feed slice 5; record `fmix` + undo script + rollback test); own test 21/0 (fails 10 on wip/164); lgcheck 72 suites EXIT=0 (cloud session 2026-11-20); feedmix_undo.sh 26/0; no screenshots yet.
 Check GitHub's Pull requests tab for which have PRs; a branch without one still needs: full `lgcheck.sh` with the
 previous branch's build as the previous build and its new suite named, then a PR against master. Next candidates
 (Shared pad "LATER slices"): Most trusted needs thumbs; Unfamiliar / Counter preference / the mix-in setting.

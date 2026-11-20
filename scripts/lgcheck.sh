@@ -43,6 +43,9 @@ ln -sfn "$SRC/assets" "$TREE/assets"
 # live_check_local.sh runs the deploy's live checker (<tree>/../deploy/city-live-check.py) against this build
 ln -sfn "$SRC/../deploy" "$OUT/deploy"
 [ -f "$OUT/deploy/city-live-check.py" ] || { echo "EXIT=deploy-link-broken"; exit 1; }
+# No suite may reach the real Wikipedia (the topic search calls it): a dead local port unless a suite sets its own
+# stand-in (outside_wikipedia.sh does). From CI runners it is reachable and made map_search fail now and then.
+export LIQUIDGOV_WIKI_BASE="${LG_WIKI_BASE_FOR_TESTS:-http://127.0.0.1:9/}"
 fail=0
 echo "== unit tests"
 n=0

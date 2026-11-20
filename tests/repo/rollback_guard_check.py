@@ -141,6 +141,11 @@ try:
             src = open(os.path.join(ROOT, "deploy", fn), encoding="utf-8").read()
             um = re.search(r"^[A-Z]+_TAGS\s*=\s*\(([^)]*)\)", src, re.M)
             other |= set(re.findall(r'"([a-z]+)"', um.group(1))) if um else set()
+    # 2026-11-20 (Brandon OK'd the test updates a new feature needs: "Yes, go ahead"): an undo script's types count
+    # only once HEAD writes them. The guard reads HEAD's store code, so on the commit that adds a new record type and
+    # its undo script together (lgp1_consistency.py wants both in that one commit) the guard cannot refuse it yet.
+    if have:
+        other &= set(rg.written(rg.store_text_at(ROOT, "HEAD")))
 
     def refused_types(out):
         return set(re.findall(r"^  ([a-z]+): ", out, re.M))

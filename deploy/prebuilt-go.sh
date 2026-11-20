@@ -64,7 +64,9 @@ while true; do
   echo WSL_PREFLIGHT_RETRY
 done
 if ! grep -q '^ACTIVE=active$' "$PRELOG"; then echo PREFLIGHT_REFUSED; exit 1; fi
-if ! grep -q '^PRE_PREBUILT_ABSENT$' "$PRELOG"; then echo PREFLIGHT_REFUSED; exit 1; fi
+# a leftover copy that is byte-identical to the running program is this deploy's own, from an attempt that stopped
+# after the backup (q56): the backup step reuses it. Any other leftover copy still refuses.
+if ! grep -qE '^PRE_PREBUILT_(ABSENT|SAME_AS_RUNNING)$' "$PRELOG"; then echo PREFLIGHT_REFUSED; exit 1; fi
 if ! grep -q '^PRE_FLOW_PRESENT$' "$PRELOG"; then echo PREFLIGHT_REFUSED; exit 1; fi
 if ! grep -q '^PRE_CITY_PRESENT$' "$PRELOG"; then echo PREFLIGHT_REFUSED; exit 1; fi
 if ! grep -q '^PREFLIGHT_DONE$' "$PRELOG"; then echo PREFLIGHT_REFUSED; exit 1; fi

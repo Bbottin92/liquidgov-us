@@ -103,3 +103,4 @@ html.cfs #cresizehandle{display:none}
 .cfs-watchmode{min-height:34px;min-width:4.6em;border-radius:17px;border:1px solid var(--rule);background:var(--paper);color:var(--ink);font-size:13px}
 .cfs-watchspeed{min-width:3.4em;text-align:center;font-size:13px;color:var(--stone)}
 input[type=range]{touch-action:none}
+.feedtabs .segtabs{flex-wrap:wrap;overflow-x:visible}

@@ -9,6 +9,10 @@
 #include "site/features/pains/pains.hpp"
 #include "site/ui/wrap.hpp"
 
+#include <algorithm>
+#include <cstdint>
+#include <map>
+
 namespace liquidgov::site {
 
 std::optional<std::string> feed_routes(Route& r) {
@@ -30,23 +34,38 @@ std::optional<std::string> feed_routes(Route& r) {
     }
     if(method=="GET"&&path=="/feed") {
         if(!acc) return need_login();
+        // The choice lives only in the address; nothing new is stored (feed filters slice 1, wip/160). The two
+        // orderings take the same posts as All and only change their order: Most discussed by the number of
+        // replies each post shows (a tie keeps newest first), Friends first puts my friends' and my own posts
+        // before the group posts (newest first in each part).
         std::string filter_key = qs.count("filter") ? qs.at("filter") : "all";
         FeedFilter filter = FeedFilter::All;
         if (filter_key == "friends") filter = FeedFilter::Friends;
         else if (filter_key == "committees") filter = FeedFilter::Committees;
-        else filter_key = "all"; // anything else, an old ?filter=drawings link included, is All (no Drawings, Brandon 2026-11-10)
+        else if (filter_key != "discussed" && filter_key != "friendsfirst")
+            filter_key = "all"; // anything else, an old ?filter=drawings link included, is All (no Drawings, Brandon 2026-11-10)
         auto tab = [&](const char* key, const char* label) {
             const bool active = filter_key == key;
             return "<a class=\"btn"+std::string(active?"\" aria-current=\"page":" ghost")+"\" href=\"/feed?filter="+key+"\">"+label+"</a>";
         };
         std::string html = "<h1>Feed</h1><p class=\"muted eyebrow\">"+html_escape(fmt_time(now()))+
             " &middot; "+std::to_string(g_store.account_count())+" members</p>"
-            "<div class=\"segtabs\">"+
+            "<div class=\"feedtabs\"><div class=\"segtabs\">"+
             tab("all","All")+tab("friends","Friends")+tab("committees","Groups")+
-            "</div>"+
+            tab("discussed","Most discussed")+tab("friendsfirst","Friends first")+
+            "</div></div>"+ // .feedtabs: on a phone the five tabs wrap instead of scrolling the chosen one out of sight
             flash_error(qs)+
             feed_composer_card(user);
-        auto posts = g_store.feed_view(user, 80, filter);
+        auto posts = g_store.feed_view(user, 80, filter); // newest first
+        if (filter_key == "discussed") {
+            std::map<std::uint64_t, std::size_t> replies;
+            for (const auto& p : posts) replies[p.id] = g_store.replies_of(p.id).size();
+            std::stable_sort(posts.begin(), posts.end(),
+                [&](const Post& a, const Post& b) { return replies[a.id] > replies[b.id]; });
+        } else if (filter_key == "friendsfirst") {
+            std::stable_partition(posts.begin(), posts.end(),
+                [&](const Post& p) { return p.author == user || g_store.are_friends(user, p.author); });
+        }
         if (posts.empty()) html += "<div class=\"card\"><p class=\"empty\">Nothing in this view yet.</p>"
             "<p class=\"muted\">Write one above, or <a href=\"/friends\">add a friend</a> so theirs show up.</p></div>";
         for (const auto& p : posts) html += "<div class=\"card\">"+post_block(p, user)+"</div>";

@@ -150,7 +150,8 @@ row.addEventListener('pointerdown',function(e){penX=e.clientX;penY=e.clientY;if(
 row.addEventListener('pointermove',function(e){penX=e.clientX;penY=e.clientY;});
 /* Timelapse (Brandon 2026-11-19, q239, slice 2a): every action is logged with its timing (strokes with their points, shapes, fills, clears,
    undo/redo, the dive's bakes) in localStorage 'lg-log', and "Watch" draws the surviving actions again. The log starts fresh when the chosen
-   period (hour, day, week, month) has passed; the old one is kept once as 'lg-log-prev'. Text, pasted pictures and smudges are not logged yet. */
+   period (hour, day, week, month) has passed; the old one is kept once as 'lg-log-prev'. Text and pasted pictures are not logged yet; smudges are
+   (2026-11-20: Watch replayed a drawing with every smudge missing): a smudge is a stroke with tool 'smudge' whose points carry their radius. */
 var LOGKEY='lg-log',LOGPREV='lg-log-prev',LOGRESET='lg-log-reset',LOGMAX=1500000,curStroke=null,logFull=false,saveT=0;
 function lsGet(k){try{return JSON.parse(localStorage.getItem(k));}catch(err){return null;}}
 function lsPut(k,v){try{localStorage.setItem(k,typeof v==='string'?v:JSON.stringify(v));return true;}catch(err){return false;}}
@@ -175,7 +176,10 @@ function recView(){if(!curStroke)return;var n=T()-curStroke.st;if(curStroke.vw.l
 strokeAt=function(x0,y0,x1,y1){if(curStroke){var n=T()-curStroke.st,sz=ds!==1?+(Number(document.getElementById('csize').value)/ds).toPrecision(5):0;
   var pt=function(x,y){var a=[r2(x),r2(y),n];if(sz)a.push(sz);return a;};
   if(!curStroke.pts.length)curStroke.pts.push(pt(x0,y0));curStroke.pts.push(pt(x1,y1));}return origStrokeAt(x0,y0,x1,y1);};
-row.addEventListener('pointerdown',function(e){var t=toolVal();if(e.pointerType!=='mouse'&&Object.keys(ptrs).length>1)return;lastView=0;curStroke=(t==='pen'||t==='marker'||t==='spray'||t==='eraser')?Object.assign({type:'stroke',st:T(),pts:[],vw:[]},sty()):null;},true);
+var origSmudgeAt=smudgeAt;
+smudgeAt=function(x,y){if(curStroke&&curStroke.tool==='smudge'){var n=T()-curStroke.st,r=r2(Math.max(4,Number(document.getElementById('csize').value))/ds);
+  if(!curStroke.pts.length)curStroke.pts.push([r2(lastX),r2(lastY),n,r]);curStroke.pts.push([r2(x),r2(y),n,r]);}return origSmudgeAt(x,y);};
+row.addEventListener('pointerdown',function(e){var t=toolVal();if(e.pointerType!=='mouse'&&Object.keys(ptrs).length>1)return;lastView=0;curStroke=(t==='pen'||t==='marker'||t==='spray'||t==='eraser'||t==='smudge')?Object.assign({type:'stroke',st:T(),pts:[],vw:[]},sty()):null;},true);
 window.addEventListener('pointerup',function(){if(curStroke){var c=curStroke;curStroke=null;if(!c.vw.length)delete c.vw;if(c.pts.length)rec(c);}});
 var origDrawShape=drawShape;
 drawShape=function(x0,y0,x1,y1,tc){if(tc===actx()){var q=sty();q.size=q.size/ds;if(q.tool==='line'||q.tool==='rect'||q.tool==='circle')rec(Object.assign({type:'shape',x0:Math.round(x0),y0:Math.round(y0),x1:Math.round(x1),y1:Math.round(y1)},q));}return origDrawShape.apply(null,arguments);};
@@ -202,7 +206,12 @@ function ffCtx(cx,w,h,fx,fy,hex,op){fx=Math.floor(fx);fy=Math.floor(fy);if(fx<0|
   function m(i){var a=d[i]-tr,b=d[i+1]-tg,c=d[i+2]-tb,e=d[i+3]-ta;return a*a+b*b+c*c+e*e<=tol2;}
   while(st.length){var i=st.pop();d[i]=fr;d[i+1]=fg;d[i+2]=fb;d[i+3]=fa;var p=(i/4)|0,x=p%w,y=(p/w)|0,nb=[[x-1,y],[x+1,y],[x,y-1],[x,y+1]];for(var k=0;k<4;k++){var nx=nb[k][0],ny=nb[k][1];if(nx<0||ny<0||nx>=w||ny>=h)continue;var vi=ny*w+nx;if(vis[vi])continue;if(m(vi*4)){vis[vi]=1;st.push(vi*4);}}}
   cx.putImageData(img,0,0);}
+/* the live smudge (smudgeAt) on a replay layer: copy the disc around the previous point, lay it at 45% over the new one */
+var replayBuf=document.createElement('canvas');
+function smudgeOn(cx,r,x0,y0,x1,y1){var c=cx.canvas,sx=Math.max(0,Math.floor(x0-r)),sy=Math.max(0,Math.floor(y0-r)),sw=Math.min(c.width-sx,r*2),sh=Math.min(c.height-sy,r*2);if(sw<=0||sh<=0)return;
+  replayBuf.width=sw;replayBuf.height=sh;var b=replayBuf.getContext('2d');b.clearRect(0,0,sw,sh);b.drawImage(c,sx,sy,sw,sh,0,0,sw,sh);cx.save();cx.globalAlpha=.45;cx.drawImage(replayBuf,0,0,sw,sh,x1-r,y1-r,sw,sh);cx.restore();}
 function drawSegOn(cx,a,x0,y0,x1,y1,mir,W){
+  if(a.tool==='smudge'){if(Math.abs(x1-x0)+Math.abs(y1-y0)>=0.5)smudgeOn(cx,(a.size||4)*C.px,x0,y0,x1,y1);return;}
   cx.save();var size=a.size*C.px,glow=a.glow;if(glow){cx.shadowColor=a.color;cx.shadowBlur=size*1.4;}
   var seg=function(ax,ay,bx,by){if(a.tool==='eraser'){cx.globalCompositeOperation='destination-out';cx.globalAlpha=1;cx.lineCap='round';cx.lineJoin='round';cx.lineWidth=size*2;cx.beginPath();cx.moveTo(ax,ay);cx.lineTo(bx,by);cx.stroke();}
     else if(a.tool==='spray'){cx.globalAlpha=a.opacity;cx.fillStyle=a.color;var n=Math.max(6,Math.floor(size));for(var i=0;i<n;i++){var an=Math.random()*Math.PI*2,rd=Math.random()*size;cx.beginPath();cx.arc(bx+Math.cos(an)*rd,by+Math.sin(an)*rd,C.px,0,Math.PI*2);cx.fill();}}
@@ -254,14 +263,27 @@ function openWatch(){
     else if(a.type==='bake'&&!a.w){ops.push({vt:vt,f:bakeF(a.k,a.sx,a.sy)});}
   });
   prog.max=String(ops.length);tIn.max=tOut.max=String(ops.length);tOut.value=String(ops.length);var idx=0,clock=0,timer=0;
+  /* Checkpoints (Brandon's phone check 2026-11-20: "bounce messes up. also the trim messes things up"): going backward, and every jump back to the
+     From point of a loop, rebuilt the drawing from the first step, and each Dive bake in it rescales the whole bitmap, so a Dive drawing went
+     backward at under one frame a second. Copies of the three layers are kept at steps spread evenly over the From..To window (as many as about
+     64 MB allows: 4 for a 1280 x 960 post, many more for a portrait), made as playback passes them; a seek restores the nearest one at or before
+     its step and replays only from there. disp.dataset.replayed counts the steps the last seek replayed (canvas_layout_check reads it). */
+  var CKN=Math.max(2,Math.min(32,Math.floor(64e6/(W*H*12)))),cks={},ckWant=[];
+  function ckPlan(){var lo=Number(tIn.value),hi=Number(tOut.value),w=[];for(var i=0;i<CKN;i++)w.push(Math.round(lo+(hi-lo)*i/CKN));ckWant=w;
+    Object.keys(cks).forEach(function(k){if(w.indexOf(Number(k))<0)delete cks[k];});}
+  function ckMaybe(){if(idx>0&&!cks[idx]&&ckWant.indexOf(idx)>=0)cks[idx]={c:offs.map(function(o){var x=document.createElement('canvas');x.width=W;x.height=H;x.getContext('2d').drawImage(o,0,0);return x;}),k:view.k,sx:view.sx,sy:view.sy};}
+  function stepTo(n){var r=0;while(idx<n&&idx<ops.length){ops[idx].f();idx++;r++;ckMaybe();}return r;}
+  ckPlan();
   function timeAt(i){return i>0&&ops.length?ops[Math.min(i,ops.length)-1].vt:-1;}      // the time of "after i steps"; -1 = before the first
   function flip(){sp.value=String(-Number(sp.value));showSpeed();}
-  tIn.addEventListener('input',function(){if(Number(tIn.value)>=Number(tOut.value))tIn.value=String(Math.max(0,Number(tOut.value)-1));});
-  tOut.addEventListener('input',function(){if(Number(tOut.value)<=Number(tIn.value))tOut.value=String(Math.min(ops.length,Number(tIn.value)+1));});
+  tIn.addEventListener('input',function(){if(Number(tIn.value)>=Number(tOut.value))tIn.value=String(Math.max(0,Number(tOut.value)-1));ckPlan();});
+  tOut.addEventListener('input',function(){if(Number(tOut.value)<=Number(tIn.value))tOut.value=String(Math.min(ops.length,Number(tIn.value)+1));ckPlan();});
   bMode.addEventListener('click',function(){mode=mode==='once'?'loop':mode==='loop'?'bounce':'once';bMode.dataset.mode=mode;bMode.textContent=mode==='once'?'Once':mode==='loop'?'Loop':'Bounce';});
   function paint(){dctx.clearRect(0,0,W,H);for(var i=0;i<3;i++){dctx.globalAlpha=layers[i].opacity;if(view.k===1&&!view.sx&&!view.sy)dctx.drawImage(offs[i],0,0);else dctx.drawImage(offs[i],view.sx,view.sy,W/view.k,H/view.k,0,0,W,H);}dctx.globalAlpha=1;disp.dataset.zoom=view.k.toFixed(3);prog.value=String(idx);}
   function reset(){ctxs.forEach(function(c){c.clearRect(0,0,W,H);});view.k=1;view.sx=0;view.sy=0;idx=0;clock=0;}
-  function seek(n){reset();while(idx<n&&idx<ops.length){ops[idx].f();idx++;}clock=idx?ops[idx-1].vt:0;paint();}
+  function seek(n){var best=0;Object.keys(cks).forEach(function(k){k=Number(k);if(k<=n&&k>best)best=k;});
+    if(!(idx<=n&&idx>=best)){if(best){var c=cks[best];ctxs.forEach(function(x,i){x.clearRect(0,0,W,H);x.drawImage(c.c[i],0,0);});view.k=c.k;view.sx=c.sx;view.sy=c.sy;idx=best;clock=0;}else reset();}
+    disp.dataset.replayed=String(stepTo(n));clock=idx?ops[idx-1].vt:0;paint();}
   function stop(){if(timer){clearInterval(timer);timer=0;}}
   function tick(){
     var x=speedOf(Number(sp.value));if(x===0)return;
@@ -270,7 +292,7 @@ function openWatch(){
     else if(clock<lo){if(mode==='loop')clock=hi;else{clock=lo;if(mode==='bounce')flip();}}
     var target=0;while(target<ops.length&&ops[target].vt<=clock)target++;     // how many steps have happened by now
     if(target<idx)seek(target);                                              // backward: rebuild up to that step
-    else{while(idx<target){ops[idx].f();idx++;}paint();}
+    else{stepTo(target);paint();}
   }
   function go(){if(!timer)timer=setInterval(tick,16);}
   sp.addEventListener('input',showSpeed);showSpeed();

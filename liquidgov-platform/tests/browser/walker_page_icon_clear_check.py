@@ -7,9 +7,10 @@ on (pools), ten extra groups under Groups (as walker_signs_check.py) so that poo
 the screen (getBoundingClientRect): the page symbol (.lgn-page) against each mouth symbol (.lge-mark), each SHOWN mouth
 name (.lge-sign), the pool's name and wave, and (your pool) the "Open your page" button.
 
-  P0  precondition: the map loaded, and the pool being measured has a page symbol and at least 3 things to keep clear of
-  P1  your own pool ('you'): the page symbol overlaps none of them (a gap of at least 2 screen px)
-  P2  the Groups pool (crowded: 10+ channels): the same
+  P0  precondition: the map loaded, and the Groups pool has a page symbol and at least 3 things to keep clear of
+  P1  your own pool ('you') shows no page symbol at all (b7218e8, "none in your own pool"; before that commit P1 checked
+      that the symbol in your pool overlapped nothing)
+  P2  the Groups pool (crowded: 10+ channels): the page symbol overlaps none of them (a gap of at least 2 screen px)
   P3  the Friends pool: the same, and the sample still opens only over the symbol: standing on the symbol's own middle
       opens it (the symbol the eye sees is the one the walker uses)
 
@@ -61,18 +62,18 @@ class Run(wps.Run):
         self.map_walking()
         self.j("LG_MAP.goTo('you')")
         time.sleep(2.5)
-        page, others, hits = self.clear_of("you")
+        page_you, _, _ = self.clear_of("you")
         self.shot("page-icon-you")
-        self.check("P0 precondition: the map loaded; your pool has a page symbol and at least 3 things to keep clear of",
-                   ok and page is not None and len(others) >= 3, {"loaded": ok, "page": page, "others": len(others)})
-        if not page:
-            return
-        self.check("P1 your own pool: the page symbol overlaps no mouth symbol or name, no pool name or wave, not \"Open your page\"",
-                   not hits, {"touching": hits})
         self.j("LG_MAP.goTo('mine:groups')")
         time.sleep(2.5)
         page, others, hits = self.clear_of("mine:groups")
         self.shot("page-icon-groups")
+        self.check("P0 precondition: the map loaded; the Groups pool has a page symbol and at least 3 things to keep clear of",
+                   ok and page is not None and len(others) >= 3, {"loaded": ok, "page": page, "others": len(others)})
+        if not page:
+            return
+        self.check("P1 your own pool shows no page symbol (b7218e8: none in your own pool)",
+                   page_you is None, {"page in your pool": page_you})
         self.check("P2 the Groups pool (crowded): the page symbol overlaps nothing",
                    page is not None and len(others) >= 8 and not hits, {"page": page, "others": len(others), "touching": hits})
         st = self.map_go(wps.POOL)

@@ -924,12 +924,12 @@ class Run(m.Run):
 
     def pool_zoom(self, box="you"):
         """The walking zoom lgmap_walk.js should be at: the pool `box` fills the width of the part of the map you can see,
-        or its height when that is the smaller (walkScale)."""
+        or its height when that is the smaller (walkScale; margins 0.90/0.98 since cdee14c, "the pool you stand in is bigger")."""
         return self.j("(() => { const r = LG_MAP.instance(%s).region, s = document.getElementById('lgm-svg').getBoundingClientRect();"
                       " const k = document.querySelector('#lg-here-pad .lg-here-keys'), pt = k && k.getBoundingClientRect().height ? k.getBoundingClientRect().top : Infinity;"
                       " const top = Math.max(s.top, 0), bot = Math.min(s.bottom, innerHeight, pt - 8 > top + 80 ? pt - 8 : Infinity);"
                       " const w = Math.min(s.right, innerWidth) - Math.max(s.left, 0);"
-                      " return Math.max(LG_MAP.ZOOM.min, Math.min(LG_MAP.ZOOM.max, w / (2 * r.hw * 1.04), (bot - top) / (2 * r.hh * 1.12))); })()"
+                      " return Math.max(LG_MAP.ZOOM.min, Math.min(LG_MAP.ZOOM.max, w / (2 * r.hw * 0.90), (bot - top) / (2 * r.hh * 0.98))); })()"
                       % json.dumps(box)) or 0
 
     def map_desktop(self):

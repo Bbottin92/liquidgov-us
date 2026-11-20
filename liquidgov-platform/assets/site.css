@@ -88,3 +88,10 @@ html.cfs #cresizehandle{display:none}
 .cfs-sheet .cdive-row{display:flex;align-items:center;gap:.7rem;margin-top:.9rem}
 .cfs-sheet .cdive-btn{border-radius:999px;min-height:40px;padding:0 1.1rem;flex:0 0 auto}
 .cfs-sheet .cdive-btn.on{background:var(--accent);color:var(--paper);border-color:var(--accent)}
+.cfs-watch{position:absolute;inset:0;z-index:30;background:#e6dfce;display:flex;align-items:center;justify-content:center}
+.cfs-watch canvas{max-width:96vw;max-height:calc(100dvh - 150px);width:auto;height:auto;background:#fff;border-radius:4px;box-shadow:0 2px 12px rgba(60,44,12,.28)}
+.cfs-watchbar{position:absolute;left:10px;right:10px;bottom:calc(14px + env(safe-area-inset-bottom));min-height:56px;border-radius:28px;background:rgba(239,232,216,.95);border:1px solid var(--rule);display:flex;align-items:center;gap:8px;padding:4px 10px}
+.cfs-watchbar input[type=range]{flex:1 1 auto;min-width:0;min-height:0;padding:0;accent-color:var(--accent)}
+.cfs-watchbar select{width:auto;min-height:36px}
+.cfs-sheet .cwatch-row{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem;margin-top:.9rem}
+.cfs-sheet .cwatch-btn{border-radius:999px;min-height:40px;padding:0 1.1rem}

@@ -88,7 +88,7 @@ row.addEventListener('pointerdown',function(e){
   var p=pair();
   if(p&&!g){
     if(drawing){drawing=false;var L=layers[activeLayer];if(L.undo.length)L.ctx.putImageData(L.undo.pop(),0,0);}
-    shapeStart=null;clearOverlay();var o=origin();
+    shapeStart=null;curStroke=null;clearOverlay();var o=origin();
     g={d0:dist(p[0],p[1])||1,s0:s,wx:((p[0].x+p[1].x)/2-o.x-tx)/s,wy:((p[0].y+p[1].y)/2-o.y-ty)/s};
     e.stopPropagation();e.preventDefault();
   }else if(g){e.stopPropagation();e.preventDefault();}
@@ -139,6 +139,101 @@ function diveTick(){
 }
 row.addEventListener('pointerdown',function(e){penX=e.clientX;penY=e.clientY;if(dive.on&&drawing&&!g&&!diving){diving=true;diveLast=0;setTimeout(diveTick,16);}});
 row.addEventListener('pointermove',function(e){penX=e.clientX;penY=e.clientY;});
+/* Timelapse (Brandon 2026-11-19, q239, slice 2a): every action is logged with its timing (strokes with their points, shapes, fills, clears,
+   undo/redo, the dive's bakes) in localStorage 'lg-log', and "Watch" draws the surviving actions again. The log starts fresh when the chosen
+   period (hour, day, week, month) has passed; the old one is kept once as 'lg-log-prev'. Text, pasted pictures and smudges are not logged yet. */
+var LOGKEY='lg-log',LOGPREV='lg-log-prev',LOGRESET='lg-log-reset',LOGMAX=1500000,curStroke=null,logFull=false,saveT=0;
+function lsGet(k){try{return JSON.parse(localStorage.getItem(k));}catch(err){return null;}}
+function lsPut(k,v){try{localStorage.setItem(k,typeof v==='string'?v:JSON.stringify(v));return true;}catch(err){return false;}}
+function periodMs(p){return p==='hour'?3600e3:p==='day'?864e5:p==='week'?6048e5:p==='month'?2592e6:0;}
+var period=(function(){try{return localStorage.getItem(LOGRESET)||'never';}catch(err){return 'never';}})();
+var tlog=lsGet(LOGKEY);
+if(!tlog||!tlog.events){tlog={v:1,start:Date.now(),events:[]};}
+else if(periodMs(period)&&Date.now()-tlog.start>=periodMs(period)){if(tlog.events.length)lsPut(LOGPREV,tlog);tlog={v:1,start:Date.now(),events:[]};}
+function saveLog(){clearTimeout(saveT);saveT=setTimeout(function(){var j=JSON.stringify(tlog);if(j.length>LOGMAX){logFull=true;return;}lsPut(LOGKEY,j);},200);}
+saveLog();
+function T(){return Math.round(Date.now()-tlog.start);}
+function rec(e){if(logFull)return;e.t=T();tlog.events.push(e);saveLog();}
+function sty(){var d=function(id){return document.getElementById(id);};return{tool:toolVal(),color:d('ccolor').value,size:Number(d('csize').value),opacity:Number(d('copacity').value)/100,glow:d('cglow').dataset.on==='1',mirror:d('csymmetry').dataset.on==='1',fill:d('cfill').dataset.on==='1',layer:activeLayer};}
+var origStrokeAt=strokeAt;
+strokeAt=function(x0,y0,x1,y1){if(curStroke){var n=T()-curStroke.st;if(!curStroke.pts.length)curStroke.pts.push([Math.round(x0),Math.round(y0),n]);curStroke.pts.push([Math.round(x1),Math.round(y1),n]);}return origStrokeAt(x0,y0,x1,y1);};
+row.addEventListener('pointerdown',function(e){var t=toolVal();if(e.pointerType!=='mouse'&&Object.keys(ptrs).length>1)return;curStroke=(t==='pen'||t==='marker'||t==='spray'||t==='eraser')?Object.assign({type:'stroke',st:T(),pts:[]},sty()):null;},true);
+window.addEventListener('pointerup',function(){if(curStroke){var c=curStroke;curStroke=null;if(c.pts.length)rec(c);}});
+var origDrawShape=drawShape;
+drawShape=function(x0,y0,x1,y1,tc){if(tc===actx()){var q=sty();if(q.tool==='line'||q.tool==='rect'||q.tool==='circle')rec(Object.assign({type:'shape',x0:Math.round(x0),y0:Math.round(y0),x1:Math.round(x1),y1:Math.round(y1)},q));}return origDrawShape.apply(null,arguments);};
+var origFill=floodFill;
+floodFill=function(fx,fy){var q=sty();rec({type:'fill',x:Math.round(fx),y:Math.round(fy),color:q.color,opacity:q.opacity,layer:q.layer});return origFill(fx,fy);};
+var origBake=bake;
+bake=function(){rec({type:'bake',k:+s.toFixed(4),sx:+((fx0-tx)/(s*ff)).toFixed(2),sy:+((fy0-ty)/(s*ff)).toFixed(2)});return origBake();};
+document.getElementById('cclear').addEventListener('click',function(){rec({type:'clear',layer:activeLayer});},true);
+document.getElementById('cundo').addEventListener('click',function(){if(layers[activeLayer].undo.length)rec({type:'undo',layer:activeLayer});},true);
+document.getElementById('credo').addEventListener('click',function(){if(layers[activeLayer].redo.length)rec({type:'redo',layer:activeLayer});},true);
+/* the actions that survive the undos, in order; a bake is a barrier (undo cannot go back past it, as in the live tool) */
+function surviving(events){
+  var acts=[],stacks=[[],[],[]],redos=[[],[],[]],barrier=-1;
+  events.forEach(function(e){
+    if(e.type==='stroke'||e.type==='shape'||e.type==='fill'||e.type==='clear'){var l=e.layer||0;acts.push({e:e,alive:true});stacks[l].push(acts.length-1);redos[l]=[];}
+    else if(e.type==='bake'){acts.push({e:e,alive:true});barrier=acts.length-1;stacks=[[],[],[]];redos=[[],[],[]];}
+    else if(e.type==='undo'){var l=e.layer||0,i=stacks[l].length?stacks[l][stacks[l].length-1]:-1;if(i>barrier){stacks[l].pop();acts[i].alive=false;redos[l].push(i);}}
+    else if(e.type==='redo'){var l2=e.layer||0;if(redos[l2].length){var j=redos[l2].pop();acts[j].alive=true;stacks[l2].push(j);}}
+  });
+  return acts.filter(function(a){return a.alive;}).map(function(a){return a.e;});
+}
+function ffCtx(cx,w,h,fx,fy,hex,op){fx=Math.floor(fx);fy=Math.floor(fy);if(fx<0||fy<0||fx>=w||fy>=h)return;var img=cx.getImageData(0,0,w,h),d=img.data,si=(fy*w+fx)*4,tr=d[si],tg=d[si+1],tb=d[si+2],ta=d[si+3],fr=parseInt(hex.slice(1,3),16),fg=parseInt(hex.slice(3,5),16),fb=parseInt(hex.slice(5,7),16),fa=Math.round(op*255);
+  if(tr===fr&&tg===fg&&tb===fb&&ta===fa)return;var tol2=32*32*4,vis=new Uint8Array(w*h),st=[si];vis[fy*w+fx]=1;
+  function m(i){var a=d[i]-tr,b=d[i+1]-tg,c=d[i+2]-tb,e=d[i+3]-ta;return a*a+b*b+c*c+e*e<=tol2;}
+  while(st.length){var i=st.pop();d[i]=fr;d[i+1]=fg;d[i+2]=fb;d[i+3]=fa;var p=(i/4)|0,x=p%w,y=(p/w)|0,nb=[[x-1,y],[x+1,y],[x,y-1],[x,y+1]];for(var k=0;k<4;k++){var nx=nb[k][0],ny=nb[k][1];if(nx<0||ny<0||nx>=w||ny>=h)continue;var vi=ny*w+nx;if(vis[vi])continue;if(m(vi*4)){vis[vi]=1;st.push(vi*4);}}}
+  cx.putImageData(img,0,0);}
+function drawSegOn(cx,a,x0,y0,x1,y1,mir,W){
+  cx.save();var size=a.size*C.px,glow=a.glow;if(glow){cx.shadowColor=a.color;cx.shadowBlur=size*1.4;}
+  var seg=function(ax,ay,bx,by){if(a.tool==='eraser'){cx.globalCompositeOperation='destination-out';cx.globalAlpha=1;cx.lineCap='round';cx.lineJoin='round';cx.lineWidth=size*2;cx.beginPath();cx.moveTo(ax,ay);cx.lineTo(bx,by);cx.stroke();}
+    else if(a.tool==='spray'){cx.globalAlpha=a.opacity;cx.fillStyle=a.color;var n=Math.max(6,Math.floor(size));for(var i=0;i<n;i++){var an=Math.random()*Math.PI*2,rd=Math.random()*size;cx.beginPath();cx.arc(bx+Math.cos(an)*rd,by+Math.sin(an)*rd,C.px,0,Math.PI*2);cx.fill();}}
+    else{cx.lineCap='round';cx.lineJoin='round';cx.strokeStyle=a.color;if(a.tool==='marker'){cx.lineWidth=size*1.6;cx.globalAlpha=Math.min(a.opacity,.45);}else{cx.lineWidth=size;cx.globalAlpha=a.opacity;}cx.beginPath();cx.moveTo(ax,ay);cx.lineTo(bx,by);cx.stroke();}};
+  seg(x0,y0,x1,y1);if(mir)seg(W-x0,y0,W-x1,y1);cx.restore();}
+function drawShapeOn(cx,a){cx.save();var size=a.size*C.px;cx.globalAlpha=a.opacity;cx.strokeStyle=a.color;cx.fillStyle=a.color;cx.lineWidth=size;cx.lineCap='round';cx.lineJoin='round';if(a.glow){cx.shadowColor=a.color;cx.shadowBlur=size*1.4;}
+  if(a.tool==='line'){cx.beginPath();cx.moveTo(a.x0,a.y0);cx.lineTo(a.x1,a.y1);cx.stroke();}
+  else if(a.tool==='rect'){var rx=Math.min(a.x0,a.x1),ry=Math.min(a.y0,a.y1),rw=Math.abs(a.x1-a.x0),rh=Math.abs(a.y1-a.y0);if(a.fill)cx.fillRect(rx,ry,rw,rh);else cx.strokeRect(rx,ry,rw,rh);}
+  else if(a.tool==='circle'){cx.beginPath();cx.ellipse((a.x0+a.x1)/2,(a.y0+a.y1)/2,Math.abs(a.x1-a.x0)/2,Math.abs(a.y1-a.y0)/2,0,0,Math.PI*2);if(a.fill)cx.fill();else cx.stroke();}
+  cx.restore();}
+/* Watch: a full-screen replay of the surviving actions (strokes point by point at the recorded pace), 1x to 32x */
+var watchEl=null;
+function openWatch(){
+  if(watchEl)return;
+  var W=layers[0].cv.width,H=layers[0].cv.height,acts=surviving(tlog.events),offs=[0,1,2].map(function(){var c=document.createElement('canvas');c.width=W;c.height=H;return c;}),ctxs=offs.map(function(c){return c.getContext('2d');});
+  watchEl=el('div','cfs-watch');
+  var disp=el('canvas','');disp.id='cwatchcanvas';disp.width=W;disp.height=H;var dctx=disp.getContext('2d');
+  var bar=el('div','cfs-watchbar'),bPlay=btn('cwatchplay','Play or pause','<path d="M7 5v14l11-7z"/>'),prog=el('input','');prog.type='range';prog.id='cwatchprogress';prog.min='0';prog.value='0';prog.setAttribute('aria-label','Position');
+  var sp=el('select',''),bX=btn('cwatchclose','Close','<path d="M6 6l12 12M18 6 6 18"/>');sp.id='cwatchspeed';sp.setAttribute('aria-label','Speed');[1,2,4,8,16,32].forEach(function(v){var o=document.createElement('option');o.value=String(v);o.textContent=v+'x';if(v===4)o.selected=true;sp.appendChild(o);});
+  bar.appendChild(bPlay);bar.appendChild(prog);bar.appendChild(sp);bar.appendChild(bX);watchEl.appendChild(disp);watchEl.appendChild(bar);card.appendChild(watchEl);
+  /* the steps: a stroke is one step per segment at its recorded time; the rest are one step each; gaps between actions are capped at 400 ms */
+  var ops=[],vt=0,lastT=null;
+  acts.forEach(function(a){var at=a.st!==undefined?a.st:a.t;if(lastT!==null)vt+=Math.min(400,Math.max(0,at-lastT));lastT=a.st!==undefined?a.st:a.t;
+    if(a.type==='stroke'){var pts=a.pts,base=vt;ops.push({vt:base,f:function(a,pts){return function(){var p=pts[0];drawSegOn(ctxs[a.layer||0],a,p[0],p[1],p[0]+.1,p[1]+.1,a.mirror,W);};}(a,pts)});
+      for(var i=1;i<pts.length;i++){ops.push({vt:base+pts[i][2],f:function(a,p0,p1){return function(){drawSegOn(ctxs[a.layer||0],a,p0[0],p0[1],p1[0],p1[1],a.mirror,W);};}(a,pts[i-1],pts[i])});}
+      vt=base+pts[pts.length-1][2];lastT=a.st+pts[pts.length-1][2];}
+    else if(a.type==='shape'){ops.push({vt:vt,f:function(a){return function(){drawShapeOn(ctxs[a.layer||0],a);};}(a)});}
+    else if(a.type==='fill'){ops.push({vt:vt,f:function(a){return function(){var c=ctxs[a.layer||0];ffCtx(c,W,H,a.x,a.y,a.color,a.opacity);};}(a)});}
+    else if(a.type==='clear'){ops.push({vt:vt,f:function(a){return function(){ctxs[a.layer||0].clearRect(0,0,W,H);};}(a)});}
+    else if(a.type==='bake'){ops.push({vt:vt,f:function(a){return function(){var tmp=document.createElement('canvas');tmp.width=W;tmp.height=H;var t=tmp.getContext('2d');t.imageSmoothingQuality='high';ctxs.forEach(function(c,i){t.clearRect(0,0,W,H);t.drawImage(offs[i],a.sx,a.sy,W/a.k,H/a.k,0,0,W,H);c.clearRect(0,0,W,H);c.drawImage(tmp,0,0);});};}(a)});}
+  });
+  prog.max=String(ops.length);var idx=0,clock=0,timer=0;
+  function paint(){dctx.clearRect(0,0,W,H);for(var i=0;i<3;i++){dctx.globalAlpha=layers[i].opacity;dctx.drawImage(offs[i],0,0);}dctx.globalAlpha=1;prog.value=String(idx);}
+  function reset(){ctxs.forEach(function(c){c.clearRect(0,0,W,H);});idx=0;clock=0;}
+  function seek(n){reset();while(idx<n&&idx<ops.length){ops[idx].f();idx++;}clock=idx?ops[idx-1].vt:0;paint();}
+  function stop(){if(timer){clearInterval(timer);timer=0;}}
+  function go(){if(timer)return;if(idx>=ops.length)reset();timer=setInterval(function(){clock+=16*Number(sp.value);while(idx<ops.length&&ops[idx].vt<=clock){ops[idx].f();idx++;}paint();if(idx>=ops.length)stop();},16);}
+  bPlay.addEventListener('click',function(){if(timer)stop();else go();});
+  prog.addEventListener('input',function(){stop();seek(Number(prog.value));});
+  sp.addEventListener('change',function(){});
+  bX.addEventListener('click',function(){stop();if(watchEl&&watchEl.parentNode)watchEl.parentNode.removeChild(watchEl);watchEl=null;});
+  go();
+}
+var wRow=el('div','cwatch-row'),bWatch=el('button','ghost cwatch-btn','Watch timelapse'),sel=el('select',''),lab=el('label','','New timelapse every');
+bWatch.type='button';bWatch.id='cwatch';sel.id='clogreset';sel.setAttribute('aria-label','New timelapse every');
+['never','hour','day','week','month'].forEach(function(v){var o=document.createElement('option');o.value=v;o.textContent=v;if(v===period)o.selected=true;sel.appendChild(o);});
+sel.addEventListener('change',function(){period=sel.value;lsPut(LOGRESET,period);});
+bWatch.addEventListener('click',function(){openWatch();});
+wRow.appendChild(bWatch);wRow.appendChild(lab);wRow.appendChild(sel);pm.appendChild(wRow);
 /* a mouse wheel zooms around the cursor (a narrow desktop window, a trackpad) */
 row.addEventListener('wheel',function(e){e.preventDefault();var o=origin(),mx=e.clientX-o.x,my=e.clientY-o.y,wx=(mx-tx)/s,wy=(my-ty)/s;
   s=Math.max(MINS,Math.min(MAXS,s*Math.exp(-e.deltaY*.0015)));tx=mx-wx*s;ty=my-wy*s;apply();},{passive:false});

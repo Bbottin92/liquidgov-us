@@ -241,11 +241,63 @@ class Run:
                    v.get("ink", 0) > 0 and v.get("viewS", 99) <= 2.05 and v.get("wrapCovers", False), v)
         self.check("F15 phone: the toggle and the speed are remembered", v.get("saved") == {"on": True, "speed": 100}, v)
         self.shot("canvas-fullscreen-dive-390.png")
+        # Timelapse (Brandon 2026-11-19, q239 slice 2a): every action is recorded as an event with its timing and can be watched again; the log
+        # starts fresh when the chosen period (hour, day, week, month) has passed
+        self.ws.call("Page.navigate", url=self.base + "/feed/canvas")
+        time.sleep(1.2)
+        cdp.js(self.ws, "localStorage.removeItem('lg-log'); localStorage.removeItem('lg-log-prev'); localStorage.removeItem('lg-log-reset');")
+        cdp.js(self.ws, FS_BOOT % src)
+        time.sleep(0.4)
+        w = json.loads(cdp.js(self.ws, "(async () => JSON.stringify(await %s))()" % FS_LOG))
+        self.check("F16 phone: the More sheet has a Watch button and a 'new timelapse every' choice",
+                   w.get("ui") and w.get("inSheet"), w)
+        self.check("F17 phone: drawing records events with their points and timing",
+                   w.get("strokes", 0) >= 2 and w.get("firstPts", 0) >= 3 and w.get("firstTool") == "pen", w)
+        self.check("F18 phone: Watch draws the log again (about the same ink as the live drawing)",
+                   w.get("liveInk", 0) > 0 and 0.6 * w.get("liveInk", 1) <= w.get("replayInk", 0) <= 1.6 * w.get("liveInk", 1), w)
+        self.check("F19 phone: an undo is part of the log (Watch shows less ink after it)",
+                   0 < w.get("replayInk2", 0) < 0.75 * w.get("replayInk", 1), w)
+        self.ws.call("Page.navigate", url=self.base + "/feed/canvas")
+        time.sleep(1.2)
+        cdp.js(self.ws, "localStorage.setItem('lg-log-reset','hour'); localStorage.setItem('lg-log', JSON.stringify({v:1,start:Date.now()-2*3600*1000,"
+                        "events:[{type:'stroke',t:0,tool:'pen',color:'#000000',size:8,opacity:1,layer:0,pts:[[10,10,0],[20,20,5],[30,30,9]]}]}));")
+        cdp.js(self.ws, FS_BOOT % src)
+        time.sleep(0.4)
+        r = json.loads(cdp.js(self.ws, "JSON.stringify((() => { const cur = JSON.parse(localStorage.getItem('lg-log') || 'null'), prev = JSON.parse(localStorage.getItem('lg-log-prev') || 'null');"
+                                       "return {curFresh: !!cur && Date.now() - cur.start < 120000 && (cur.events || []).length === 0, prevKept: !!prev && (prev.events || []).length === 1}; })())"))
+        self.check("F20 phone: a log older than the chosen period is archived and a fresh one starts", r.get("curFresh") and r.get("prevKept"), r)
 
     def shot(self, name):
         with open(os.path.join(self.out, name), "wb") as f:
             f.write(base64.b64decode(self.ws.call("Page.captureScreenshot", format="png")["data"]))
 
+
+FS_LOG = r"""(async () => {
+  const q = id => document.getElementById(id), ov = q('coverlay'), c0 = q('clayer0');
+  const fire = (type, id, x, y) => ov.dispatchEvent(new PointerEvent(type, {pointerId: id, pointerType: 'touch', isPrimary: id === 1,
+    clientX: x, clientY: y, bubbles: true, cancelable: true, button: 0, buttons: type === 'pointerup' ? 0 : 1}));
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  const inkOf = c => { const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 0) n++; return n; };
+  const out = {}, watch = q('cwatch'), reset = q('clogreset');
+  out.ui = !!(watch && reset); out.inSheet = !!(watch && watch.closest('.cfs-pm'));
+  if (!out.ui) return out;
+  window.dispatchEvent(new Event('resize')); await wait(100);
+  const b = ov.getBoundingClientRect(), x0 = b.left + 40, y0 = b.top + 40;
+  const stroke = async (dx, dy) => { fire('pointerdown', 1, x0 + dx, y0 + dy); for (let i = 1; i <= 8; i++) { fire('pointermove', 1, x0 + dx + i * 14, y0 + dy + i * 6); await wait(8); } fire('pointerup', 1, x0 + dx + 112, y0 + dy + 48); await wait(40); };
+  await stroke(0, 0); await stroke(0, 90);
+  out.liveInk = inkOf(c0);
+  await wait(350);                     // the log is written to localStorage 200 ms after the last action
+  const log = JSON.parse(localStorage.getItem('lg-log') || 'null') || {events: []};
+  const strokes = log.events.filter(e => e.type === 'stroke');
+  out.strokes = strokes.length; out.firstPts = strokes[0] ? strokes[0].pts.length : 0; out.firstTool = strokes[0] ? strokes[0].tool : null;
+  const play = async () => { watch.click(); await wait(150); const sp = q('cwatchspeed'); if (sp) { sp.value = sp.options[sp.options.length - 1].value; sp.dispatchEvent(new Event('change', {bubbles: true})); }
+    for (let i = 0; i < 40; i++) { await wait(100); const p = q('cwatchprogress'); if (p && Number(p.value) >= Number(p.max)) break; }
+    const wc = q('cwatchcanvas'); const n = wc ? inkOf(wc) : -1; const close = q('cwatchclose'); if (close) close.click(); await wait(100); return n; };
+  out.replayInk = await play();
+  q('cfs-undo').click(); await wait(100);
+  out.replayInk2 = await play();
+  return out;
+})()"""
 
 FS_DIVE = r"""(async () => {
   const ov = document.getElementById('coverlay'), wrap = document.getElementById('ccanvaswrap'), c0 = document.getElementById('clayer0');

@@ -5,6 +5,8 @@
 # person is not; one letter finds nothing; signed out is refused.
 # Usage: bash map_search.sh <path to liquidgov_http> <path to liquidgov_e2e_seed>
 # Throwaway store, port 18137. Never touches the live site.
+# Topic lookups go to a dead local port (LIQUIDGOV_WIKI_BASE): the real Wikipedia, reachable from CI runners,
+# added topic results to the exact-match checks now and then (PR #10, run 44720432094).
 set -u
 BIN=$(readlink -f "$1"); SEED=$(readlink -f "$2")
 HERE=$(cd "$(dirname "$0")/../.." && pwd)
@@ -21,7 +23,7 @@ $SEED "$W/store.lgp" > "$W/sessions.txt" || { echo "seed failed"; exit 1; }
 sid() { awk -v n=$1 '$1==n{print $2}' "$W/sessions.txt"; }
 ADMIN=$(sid Bbottin); PAL=$(sid pal); STRANGER=$(sid stranger)
 [ -n "$ADMIN" ] && [ -n "$PAL" ] && [ -n "$STRANGER" ] || { echo "seed gave no sessions"; exit 1; }
-(cd "$HERE" && exec env -u LIQUIDGOV_OPERATORS LIQUIDGOV_STORE=$W/store.lgp LIQUIDGOV_BLOBS=$W/blobs LIQUIDGOV_PORT=$PORT "$BIN") > "$W/server.log" 2>&1 &
+(cd "$HERE" && exec env -u LIQUIDGOV_OPERATORS LIQUIDGOV_WIKI_BASE=http://127.0.0.1:9/ LIQUIDGOV_STORE=$W/store.lgp LIQUIDGOV_BLOBS=$W/blobs LIQUIDGOV_PORT=$PORT "$BIN") > "$W/server.log" 2>&1 &
 SERVER=$!
 trap 'kill $SERVER 2>/dev/null; wait $SERVER 2>/dev/null' EXIT
 for i in $(seq 50); do

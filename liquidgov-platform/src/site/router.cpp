@@ -12,6 +12,7 @@
 #include "site/features/canvas/canvas_routes.hpp"
 #include "site/features/profile/portrait_history.hpp"
 #include "site/features/feed/feed_routes.hpp"
+#include "site/features/globe/globe_routes.hpp"
 #include "site/features/proposals/proposals_routes.hpp"
 #include "site/features/profile/profile_routes.hpp"
 #include "site/features/people/people_routes.hpp"
@@ -97,6 +98,7 @@ std::string handle(const std::string& req, const std::string& peer_ip, std::stri
     if (auto out = canvas_routes(route)) return *out;
     if (auto out = portrait_history_routes(route)) return *out;
     if (auto out = feed_routes(route)) return *out;
+    if (auto out = globe_routes(route)) return *out;
     if (auto out = proposals_routes(route)) return *out;
     if (auto out = profile_routes(route)) return *out;
     if (auto out = here_routes(route)) return *out;

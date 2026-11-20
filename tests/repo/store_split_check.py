@@ -77,7 +77,9 @@ have = set()
 # the first fixture, plus the one for the types added after it (styles, here: tests/store_roundtrip_styles_here_test.cpp)
 for fx in (FIXTURE, FIXTURE.replace("lgp1_roundtrip" + os.sep, "lgp1_roundtrip_styles_here" + os.sep),
            FIXTURE.replace("lgp1_roundtrip" + os.sep, "lgp1_roundtrip_hints" + os.sep),
-           FIXTURE.replace("lgp1_roundtrip" + os.sep, "lgp1_roundtrip_portraits" + os.sep)):
+           FIXTURE.replace("lgp1_roundtrip" + os.sep, "lgp1_roundtrip_portraits" + os.sep),
+           # 2026-11-20 (Brandon OK'd test updates a new feature needs: "Yes, go ahead"): the feed mix-in's fmix
+           FIXTURE.replace("lgp1_roundtrip" + os.sep, "lgp1_roundtrip_feedmix" + os.sep)):
     if os.path.isfile(fx):
         with open(fx, encoding="utf-8", newline="") as f:
             have |= {line.split("\t", 1)[0] for line in f.read().split("\n")[1:] if line}

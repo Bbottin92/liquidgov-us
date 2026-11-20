@@ -9,11 +9,14 @@ name: platform
 # Not covered here: city_undo (lgcheck skips it; it needs an old binary) and the "new suite must fail on the previous
 # build" step (lgcheck's extra arguments; done locally).
 
-# Runs on every push to master and wip/** and on every pull request again (2026-11-19: the repo is public, so
-# Actions minutes are free; Brandon lifted no-github-ci). It was manual-only 2026-11-15..19 to save paid minutes.
+# Runs on every push to master and on every pull request (2026-11-19: the repo is public, so Actions minutes are free;
+# Brandon lifted no-github-ci; manual-only 2026-11-15..19 to save paid minutes). 2026-11-20: no longer on pushes to
+# wip/** too: every wip branch has a PR, so each push ran this twice on the same commit (push + pull_request), and the
+# two could disagree (PR #10, #19). ship.py and deploy/ci-gate.sh look runs up by commit, which a pull_request run
+# carries (head_sha = the branch head). A branch with no PR yet: run it by hand (workflow_dispatch).
 on:
   push:
-    branches: [master, "wip/**"]
+    branches: [master]
   pull_request:
   workflow_dispatch:
 

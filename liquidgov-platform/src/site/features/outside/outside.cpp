@@ -8,6 +8,8 @@
 #include <cstdlib>
 #include <map>
 #include <mutex>
+#include <thread>
+#include <algorithm>
 
 namespace liquidgov::site {
 
@@ -215,6 +217,71 @@ bool outside_topic(const std::string& rest, GNode& out) {
     for (char& c : slug) if (c == ' ') c = '_';
     out = GNode{"topic:" + slug, title, "interest", url, "from Wikipedia"};
     out.body = extract; out.by = "Wikipedia";
+    return true;
+}
+
+
+// ---- City points for the globe pages (map globes G1, Brandon 2026-11-20: "a real street map", "nearest first") ----
+// A city name as people typed it ("Fresno, CA") -> its latitude and longitude, from OpenStreetMap's Nominatim search
+// through the system curl, the same way as the Wikipedia summary above: a generic client name, no cookies, nothing
+// about the visitor; only the city text is sent. Nominatim's rules: at most one request a second for the whole site
+// (a caller waits for its turn, at most about a second), and results are kept (30 days found, 1 hour not found, 2000
+// cities). may_fetch=false answers from the cache only. LIQUIDGOV_GEO_BASE points tests at a local stand-in.
+namespace {
+struct Point { bool ok = false; double lat = 0, lon = 0; std::chrono::steady_clock::time_point exp; };
+std::mutex g_geo_mu;
+std::map<std::string, Point> g_geo;
+std::chrono::steady_clock::time_point g_geo_last{};
+}  // namespace
+
+bool outside_city_point(const std::string& city, double& lat, double& lon, bool may_fetch) {
+    const std::string t = trim_ws(city);
+    if (t.size() < 2 || t.size() > 80) return false;
+    const std::string key = lower(t);
+    {
+        std::lock_guard<std::mutex> lock(g_geo_mu);
+        auto it = g_geo.find(key);
+        if (it != g_geo.end() && it->second.exp > std::chrono::steady_clock::now()) {
+            if (!it->second.ok) return false;
+            lat = it->second.lat; lon = it->second.lon;
+            return true;
+        }
+        if (!may_fetch) return false;
+        // one request a second, site-wide: take the next free second (wait for it below, outside the lock)
+        const auto now = std::chrono::steady_clock::now();
+        const auto slot = std::max(now, g_geo_last + std::chrono::milliseconds(1050));
+        if (slot - now > std::chrono::milliseconds(1100)) return false;   // others are queued: try again on a later visit
+        g_geo_last = slot;
+        if (slot > now) std::this_thread::sleep_until(slot);
+    }
+    const char* base_env = std::getenv("LIQUIDGOV_GEO_BASE");
+    const std::string base = base_env && *base_env ? base_env : "https://nominatim.openstreetmap.org/search";
+    // url_encode leaves only [A-Za-z0-9._~%-], so the city cannot break out of the single-quoted argument
+    const std::string cmd = "curl -sS --max-time 3 --max-filesize 200000 -A 'LiquidGov-Reader/1.0' '" + base +
+                            "?format=jsonv2&limit=1&q=" + url_encode(t) + "' 2>/dev/null";
+    std::string resp;
+    if (FILE* fp = popen(cmd.c_str(), "r")) {
+        char buf[4096]; size_t n;
+        while ((n = fread(buf, 1, sizeof(buf), fp)) > 0 && resp.size() < 300000) resp.append(buf, n);
+        pclose(fp);
+    }
+    Point p;
+    std::string a, o;
+    if (!resp.empty() && resp[0] == '[' && json_string(resp, "lat", a) && json_string(resp, "lon", o)) {
+        try {
+            std::size_t ia = 0, io = 0;
+            p.lat = std::stod(a, &ia); p.lon = std::stod(o, &io);
+            p.ok = ia == a.size() && io == o.size() && p.lat >= -90 && p.lat <= 90 && p.lon >= -180 && p.lon <= 180;
+        } catch (...) { p.ok = false; }
+    }
+    p.exp = std::chrono::steady_clock::now() + (p.ok ? std::chrono::hours(24 * 30) : std::chrono::hours(1));
+    {
+        std::lock_guard<std::mutex> lock(g_geo_mu);
+        if (g_geo.size() >= 2000) g_geo.clear();
+        g_geo[key] = p;
+    }
+    if (!p.ok) return false;
+    lat = p.lat; lon = p.lon;
     return true;
 }
 

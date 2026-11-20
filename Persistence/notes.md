@@ -16,6 +16,36 @@ Not bug classes. Not “what is live on the droplet.”
 
 ---
 
+## Handoff: how to pick this project up (keep current; newest status first)
+
+**Where everything is.** All code, tests and this pad live on GitHub in `Bbottin92/liquidgov-us`. `master` is the
+reviewed code; each piece of work is a branch `wip/<number>-<words>` with a pull request (PR) against master.
+Nothing lives only in a chat or a cloud session: a cloud session's machine is thrown away when it ends, so work counts
+only once it is pushed.
+
+**For Brandon (no coding needed).** To hand work to a new Claude (or Grok) session, start it on this repository
+(claude.ai/code, environment "liquidgov-us", which installs the build tools by itself) and paste:
+"Read Persistence/notes.md, the Handoff section first, then continue the newest open item. Never deploy or touch the
+live server." To see the work yourself: github.com/Bbottin92/liquidgov-us, then the "Pull requests" tab (each PR says
+what changed, how it was tested, and has screenshots). You merge a PR with its green "Merge" button; deploying stays a
+separate step you start.
+
+**For the next agent.** Read `CONTRIBUTING.md` (build, tests, commit lines Read/Attacker/Undo) and `naming.toml`.
+Build: `cd liquidgov-platform && cmake --preset dev && cmake --build --preset dev`. One suite:
+`bash tests/e2e/<suite>.sh ../build/dev/liquidgov_http ../build/dev/liquidgov_e2e_seed`. Everything:
+`bash scripts/lgcheck.sh liquidgov-platform <out dir> <previous build dir> [new_suite ...]` (needs a build of master as
+the previous build; about 15+ minutes with -j1). Run `git config core.hooksPath .githooks` once per clone. Never run a
+deploy `go` script and never contact liquidgov.us. Do not merge PRs: Brandon merges.
+
+**Status 2026-11-20 (feed filters slice 1).** Branch `wip/160-feed-filters`, pushed to GitHub. Built and committed:
+"Most discussed" and "Friends first" tabs on /feed (see the Shared pad entry of the same date). Done: test before/after
+(master 10/5, branch 15/0), phone/desktop screenshots, this pad. In progress when written: the full `lgcheck.sh` run
+(48 suites passing, none failing, at the time of writing). Still to do if not visible on GitHub: (1) finish
+`lgcheck.sh` and read its last lines (`EXIT=0`, and feed_filters must FAIL on the master build); (2) open the PR against
+master with `.github/pull_request_template.md`, quoting the before/after lines, lgcheck's last lines and describing
+the screenshots; (3) leave the merge to Brandon. Next slices after that are listed in the Shared pad entry
+("LATER slices").
+
 ## Shared pad
 
 - **2026-11-20 -- Feed filters slice 1 BUILT: "Most discussed" and "Friends first" (wip/160-feed-filters, PR to master; not merged, not deployed).** Brandon: "just do it all" (slice 1 kept small). Measured first: /feed already had All, Friends and Groups (`?filter=committees`), and Groups IS "from my groups only", so it stays as it is. New, in `feed_routes.cpp` only: `?filter=discussed` (the same posts as All, most replies first, the reply count each post already shows; a tie keeps newest first) and `?filter=friendsfirst` (the same posts as All, friends' and your own first, then group posts; newest first in each). The choice lives only in the address: no new record, no store change, no undo script. Both rank the newest 80 posts the All view already loads, not every post ever. On a phone the five tabs would scroll the chosen one out of sight, so the feed's tab row now wraps (`.feedtabs` in site.css). Test `tests/e2e/feed_filters.sh` (port 18146): master passes=10 fails=5 (the five checks for the new filters), branch 15/0; `feed_no_drawings` 9/0. Phone and desktop screenshots looked at (wrap fix found that way). Setup script: its first real test passed (apt history shows it installed libsodium-dev at session start; g++, cmake, pkg-config were already in the image). NOT checked: a real phone; how ranking feels with real traffic; speed with many replies (it counts replies per post per request, fine at today's size). LATER slices (not built): **Near me** (profiles have a hometown, but filtering by it hints at friends' hometowns: needs a privacy decision first); **Unread since you last looked** (needs a stored "last looked" time: a new record with an undo script and rollback-guard work); **Most trusted** (needs thumbs and the credibility weights, not built); **Unfamiliar** (computed from your own activity only, never shared: needs an activity record of what you read; quality floor; a one-line reason on every injected item; "not for me"); **Counter preference** (its own filter: topics, groups and people you rarely read, never guessed politics); **the mix-in setting** (one global setting with Off, a per-feed override in the feed's corner menu, Friends feed Off by default, low for new accounts and explained once under Hints).

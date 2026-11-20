@@ -293,6 +293,24 @@ class Run:
         r = json.loads(cdp.js(self.ws, "JSON.stringify((() => { const cur = JSON.parse(localStorage.getItem('lg-log') || 'null'), prev = JSON.parse(localStorage.getItem('lg-log-prev') || 'null');"
                                        "return {curFresh: !!cur && Date.now() - cur.start < 120000 && (cur.events || []).length === 0, prevKept: !!prev && (prev.events || []).length === 1}; })())"))
         self.check("F20 phone: a log older than the chosen period is archived and a fresh one starts", r.get("curFresh") and r.get("prevKept"), r)
+        # Brandon's phone check 2026-11-20: smudges were missing from Watch, and Bounce / a trimmed loop
+        # crawled on a Dive drawing (each backward step rebuilt the drawing from the first step)
+        self.ws.call("Page.navigate", url=self.base + "/feed/canvas")
+        time.sleep(1.2)
+        cdp.js(self.ws, "localStorage.removeItem('lg-log'); localStorage.removeItem('lg-log-prev'); localStorage.removeItem('lg-log-reset'); localStorage.removeItem('lg-dive');")
+        cdp.js(self.ws, FS_BOOT % src)
+        time.sleep(0.4)
+        m = json.loads(cdp.js(self.ws, "(async () => JSON.stringify(await %s))()" % FS_SMUDGE))
+        self.ws.call("Page.navigate", url=self.base + "/feed/canvas")      # the long log FS_SMUDGE left is read at boot
+        time.sleep(1.2)
+        cdp.js(self.ws, FS_BOOT % src)
+        time.sleep(0.4)
+        m.update(json.loads(cdp.js(self.ws, "(async () => JSON.stringify(await %s))()" % FS_BACK)))
+        self.check("F29 phone: a smudge is logged (its points carry the radius) and Watch replays it (the replay spreads the ink as the live smudge did)",
+                   m.get("smudged", 0) > m.get("penOnly", 0) and m.get("logged") is True
+                   and m.get("replay", 0) >= m.get("penOnly", 0) + 0.5 * (m.get("smudged", 0) - m.get("penOnly", 0)), m)
+        self.check("F31 phone: going backward in Watch replays only from the nearest checkpoint, not from the first step",
+                   m.get("steps", 0) >= 1000 and 0 <= m.get("replayedBack", -1) < m.get("steps", 0) / 4, m)
 
     def shot(self, name):
         with open(os.path.join(self.out, name), "wb") as f:
@@ -428,6 +446,49 @@ FS_DIVE = r"""(async () => {
     out.replayMaxZoom = maxZ; out.replayFrameSame = same; q('cwatchclose').click(); await wait(100);
   } catch (e) { out.watchErr = String(e); }
   try { out.saved = JSON.parse(localStorage.getItem('lg-dive')); } catch (e) { out.saved = null; }
+  return out;
+})()"""
+
+FS_SMUDGE = r"""(async () => {
+  const q = id => document.getElementById(id), ov = q('coverlay'), wait = ms => new Promise(r => setTimeout(r, ms)), out = {};
+  const fire = (type, x, y) => ov.dispatchEvent(new PointerEvent(type, {pointerId: 1, pointerType: 'touch', isPrimary: true,
+    clientX: x, clientY: y, bubbles: true, cancelable: true, button: 0, buttons: type === 'pointerup' ? 0 : 1}));
+  const ink = () => { let n = 0; for (let l = 0; l < 3; l++) { const c = q('clayer' + l), d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+    for (let i = 3; i < d.length; i += 4) if (d[i] > 0) n++; } return n; };
+  const inkOf = c => { const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 0) n++; return n; };
+  const tool = t => { const b = document.querySelector('[data-tool="' + t + '"]'); if (b) b.click(); };
+  window.dispatchEvent(new Event('resize')); await wait(150);
+  const b = ov.getBoundingClientRect(), cx = b.left + b.width / 2, cy = b.top + b.height / 2;
+  const drag = async (x0, y0, x1, y1) => { fire('pointerdown', x0, y0); for (let i = 1; i <= 12; i++) { fire('pointermove', x0 + (x1 - x0) * i / 12, y0 + (y1 - y0) * i / 12); await wait(10); } fire('pointerup', x1, y1); await wait(40); };
+  // F29: pen line, then a smudge across it; the log carries it and Watch replays it
+  tool('pen'); await drag(cx - 80, cy, cx + 80, cy); out.penOnly = ink();
+  tool('smudge'); await drag(cx, cy - 2, cx, cy + 60); await drag(cx - 30, cy - 2, cx - 30, cy + 60); out.smudged = ink();
+  await wait(350);
+  const lg = JSON.parse(localStorage.getItem('lg-log') || 'null') || {events: []};
+  const sm = lg.events.filter(e => e.type === 'stroke' && e.tool === 'smudge');
+  out.logged = sm.length === 2 && sm.every(e => e.pts.length >= 3 && e.pts.every(p => p.length === 4 && p[3] > 0));
+  q('cwatch').click(); await wait(150);
+  const sp = q('cwatchspeed'), prog = q('cwatchprogress'); sp.value = '100'; sp.dispatchEvent(new Event('input', {bubbles: true}));
+  for (let i = 0; i < 40 && Number(prog.value) < Number(prog.max); i++) await wait(100);
+  out.replay = inkOf(q('cwatchcanvas')); q('cwatchclose').click(); await wait(100);
+  // F31: a long log (60 strokes x 20 points); jump to the end, then a little back: only the steps since the nearest checkpoint are replayed
+  const ev = []; let t = 0;
+  for (let s = 0; s < 60; s++) { const pts = []; for (let i = 0; i < 20; i++) pts.push([20 + i * 15, 20 + s * 6, i * 10]);
+    ev.push({type: 'stroke', st: t, t: t + 200, pts, tool: 'pen', color: '#202020', size: 4, opacity: 1, layer: s % 3}); t += 300; }
+  await wait(350);                                   // let the page's own pending log save land first
+  localStorage.setItem('lg-log', JSON.stringify({v: 1, start: Date.now() - 1e5, events: ev}));
+  return out;
+})()"""
+
+FS_BACK = r"""(async () => {
+  const q = id => document.getElementById(id), wait = ms => new Promise(r => setTimeout(r, ms)), out = {};
+  q('cwatch').click(); await wait(150);
+  const sp = q('cwatchspeed'), prog = q('cwatchprogress'), wc = q('cwatchcanvas');
+  sp.value = '0'; sp.dispatchEvent(new Event('input', {bubbles: true}));
+  const go = n => { prog.value = String(n); prog.dispatchEvent(new Event('input', {bubbles: true})); };
+  out.steps = Number(prog.max); go(out.steps); await wait(50);
+  go(out.steps - 20); await wait(50); out.replayedBack = wc.dataset.replayed === undefined ? -1 : Number(wc.dataset.replayed);
+  q('cwatchclose').click(); await wait(100);
   return out;
 })()"""
 

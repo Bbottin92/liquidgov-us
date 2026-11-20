@@ -15,7 +15,7 @@ import tempfile
 
 ROOT = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(__file__), "..", ".."))
 SHIP = os.path.join(ROOT, "scripts", "ship.py")
-ENV = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+ENV = {k: v for k, v in os.environ.items() if not k.startswith("GIT_") and k != "LIQUIDGOV_CI_GATE_MODE"}
 passes = fails = 0
 
 FAKE_GH = r'''
@@ -125,8 +125,11 @@ try:
     rc, out = ship(tmp, "wip/4-local", ok_state)
     check("unpushed branch: not ready", rc == 1 and "not pushed" in out, out)
     rc, out = ship(tmp, "wip/1-code", {"runs": [None], "log": "", "pngs": False})
-    # 2026-11-16 (Brandon: warn only): a MISSING CI result is a loud warning, not a stop; a failed one still stops (above)
-    check("site change with no CI run: ready, with a WARNING", rc == 0 and "SHIP_READY" in out and "WARNING: no CI run" in out, out)
+    # 2026-11-20 (block is the default, as deploy/ci-gate.sh since wip/159): a MISSING CI result stops a merge too
+    check("site change with no CI run: not ready", rc == 1 and "SHIP_NOT_READY" in out and "no CI run for the head commit" in out, out)
+    rc, out = ship(tmp, "wip/1-code", {"runs": [None], "log": "", "pngs": False}, extra_env={"LIQUIDGOV_CI_GATE_MODE": "warn"})
+    check("site change with no CI run, LIQUIDGOV_CI_GATE_MODE=warn: ready, with a WARNING (the 2026-11-16 behaviour)",
+          rc == 0 and "SHIP_READY" in out and "WARNING: no CI run" in out, out)
     rc, out = ship(tmp, "wip/1-code", dict(ok_state, broken=True))
     check("gh failing: not ready (fails closed)", rc == 1 and "SHIP_NOT_READY" in out and "network down" in out, out)
     rc, out = ship(tmp, "wip/1-code", {"runs": [{"databaseId": 7, "status": "in_progress", "conclusion": ""}],
@@ -156,7 +159,7 @@ try:
     rc, out = ship(tmp, "wip/6-localbad", dict(ok_state, broken=True))
     check("local record whose phone VERDICT is not ALL-PASS: not ready", rc == 1 and "phone VERDICT not ALL-PASS" in out, out)
     rc, out = ship(tmp, "wip/7-notpass", {"runs": [None], "log": "", "pngs": False})
-    check("a record that does not say PASS is ignored: GitHub is asked (no run: ready with a WARNING)", rc == 0 and "WARNING: no CI run" in out, out)
+    check("a record that does not say PASS is ignored: GitHub is asked (no run: not ready)", rc == 1 and "no CI run for the head commit" in out, out)
 
     # ---- merge: only a READY branch moves origin/master, and only by fast-forward
     def merge(branch, state):

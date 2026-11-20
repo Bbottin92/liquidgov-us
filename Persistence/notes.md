@@ -42,7 +42,10 @@ deploy `go` script and never contact liquidgov.us. Do not merge PRs: Brandon mer
 (b) PR #8 `wip/161-feed-unread`: the "Unread" tab (browser cookie); own test 16/0 (fails 10 on wip/160); lgcheck 68 suites EXIT=0.
 (c) PR #9 `wip/162-feed-near`: the "Near me" tab (groups in your city); own test 10/0 (fails 7 on wip/161); lgcheck 69 suites EXIT=0.
 (d) PR #10 `wip/163-feed-unfamiliar`: the "Unfamiliar" tab; own test 15/0 (fails 12 on wip/162); lgcheck 70 suites EXIT=0.
-(e) `wip/164-map-globes`: map globes G1 (Shared pad "Map globes G1 BUILT"); own test 28/0 (fails 24 on wip/163).
+(e) PR #12 `wip/164-map-globes`: map globes G1 (Shared pad "Map globes G1 BUILT"); own test 28/0 (fails 24 on
+wip/163); lgcheck 71 suites EXIT=0; browser walker checks pass except walker_page_icon_clear_check, which fails the
+same way on wip/163 (pre-existing). Browser checks in a cloud session: `LG_BROWSER=/opt/pw-browsers/chromium python3
+tests/browser/<check>.py <liquidgov-platform dir> <out dir>` (cdp.py defaults to the Windows Edge path).
 Then G2-G4 (Market contents, Events, Social; each needs Brandon's answers first, see the plan entry). (f) The mix-in setting stored on the account (feed slice 5; new record + undo script + rollback test).
 Check GitHub's Pull requests tab for which have PRs; a branch without one still needs: full `lgcheck.sh` with the
 previous branch's build as the previous build and its new suite named, then a PR against master. Next candidates

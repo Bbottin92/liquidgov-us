@@ -16,7 +16,7 @@ import tempfile
 
 ROOT = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(__file__), "..", ".."))
 SHIP = os.path.join(ROOT, "scripts", "ship.py")
-ENV = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+ENV = {k: v for k, v in os.environ.items() if not k.startswith("GIT_") and k != "LIQUIDGOV_CI_GATE_MODE"}
 passes = fails = 0
 
 FAKE_GH = r'''
@@ -128,7 +128,8 @@ try:
     check("E3 control: no run ever, no site files: it gives up after a few looks and is ready as before",
           rc == 0 and "SHIP_READY wip/2-ci" in out and 2 <= looks <= 6, (looks, out))
     rc, out, looks = ship(tmp, "wip/1-site", {"runs": [None], "log": ""})
-    check("E4 control: no run ever, site change: ready, with a WARNING (Brandon 2026-11-16)", rc == 0 and "WARNING: no CI run for the head commit" in out, out)
+    check("E4 control: no run ever, site change: not ready (block by default since 2026-11-20)",
+          rc == 1 and "SHIP_NOT_READY wip/1-site" in out and "no CI run for the head commit" in out, out)
     rc, out, looks = ship(tmp, "wip/2-ci", {"runs": [None, GREEN], "log": LOG_OK}, wait="0")
     check("E5 --wait 0 does not look again", looks == 1 and "looking again" not in out, (looks, out))
 finally:

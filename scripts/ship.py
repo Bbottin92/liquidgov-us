@@ -6,7 +6,8 @@ Usage: python scripts/ship.py check <branch> [--wait MIN] [--out DIR]
          moves origin/master to exactly the branch head by fast-forward push, never --force; last line SHIP_MERGED)
   1. pushed: <branch> == origin/<branch>             2. fast-forward: origin/master is an ancestor of <branch>
   3. files changed vs origin/master, and the deploy pair make-go.py auto would pick (or "no deploy needed")
-  4. CI: the newest platform.yml run for exactly the branch head commit; waits up to --wait minutes (default 20)
+  4. CI: the newest platform.yml run for exactly the branch head commit; waits up to --wait minutes (default 20);
+     no run at all for a change that would deploy stops it (LIQUIDGOV_CI_GATE_MODE=warn: only a WARNING)
   5. phone VERDICT lines from that run's log; ALL-PASS required when site files (src/, assets/) changed
   6. the phone-screenshots artifact downloaded to --out (default ~/scratch/<date>-claude-ship/<branch>), PNGs listed
 Last line: SHIP_READY <branch> or SHIP_NOT_READY <branch>: <reasons>; exit 0 when ready, 1 when not, 2 on bad usage.
@@ -133,7 +134,12 @@ def check(branch, wait_min, out_dir):
     if not r:
         if pair != "none":
             print("4. CI: NO platform run for %s" % sha[:7])
-            WARNINGS.append("no CI run for the head commit")   # Brandon 2026-11-16 (warn only): a missing result warns, a failed one still stops
+            # Block by default (2026-11-20, as deploy/ci-gate.sh since wip/159): a missing result stops a merge like a
+            # failed one. LIQUIDGOV_CI_GATE_MODE=warn brings back the 2026-11-16 warn-only behaviour.
+            if os.environ.get("LIQUIDGOV_CI_GATE_MODE", "block") == "warn":
+                WARNINGS.append("no CI run for the head commit")
+            else:
+                reasons.append("no CI run for the head commit (LIQUIDGOV_CI_GATE_MODE=warn only warns)")
         else:
             print("4. CI: no platform run (its paths filter skips this change); nothing to deploy")
         print("5. phone VERDICT: none (no run)")
@@ -213,13 +219,13 @@ def local_record(branch):
     return {"tree": tree, "when": when, "verdicts": [l.strip() for l in lines if l.startswith("VERDICT ")]}
 
 
-WARNINGS = []   # things worth a loud line that do not stop a merge (no CI result at all; see the gate's warn mode)
+WARNINGS = []   # things worth a loud line that do not stop a merge (no CI result only with LIQUIDGOV_CI_GATE_MODE=warn)
 
 
 def finish(branch, reasons, pair, files):
     print()
     for w in WARNINGS:
-        print("WARNING: %s (not blocking; Brandon 2026-11-16: warn only while nobody is on the site)" % w)
+        print("WARNING: %s (not blocking)" % w)
     if reasons:
         print("SHIP_NOT_READY %s: %s" % (branch, "; ".join(reasons)))
         return 1

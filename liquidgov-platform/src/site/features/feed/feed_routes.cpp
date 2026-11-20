@@ -76,6 +76,48 @@ std::vector<Unfamiliar> unfamiliar_posts(const std::string& user, std::size_t li
     }
     return out;
 }
+
+// Mix-in (feed filters slice 5, Brandon 2026-11-20): the tabs Unfamiliar posts may be mixed into (not Unread, which
+// is about what is new, nor Unfamiliar itself), and how often for one tab: its own choice, else the usual one, except
+// Friends, which stays off unless chosen on that tab ("people I chose").
+bool mixable_view(const std::string& v) {
+    return v == "all" || v == "friends" || v == "committees" || v == "discussed" || v == "friendsfirst" || v == "near";
+}
+int mix_every_for(const FeedMix& m, const std::string& view) {
+    if (!mixable_view(view)) return 0;
+    const auto it = m.per_view.find(view);
+    if (it != m.per_view.end()) return it->second;
+    return view == "friends" ? 0 : m.every;
+}
+std::string mix_name(int every) {
+    return every == 10 ? "Rarely" : every == 5 ? "Sometimes" : every == 3 ? "Often" : "Off";
+}
+// The feed's corner menu: the usual setting, and this tab's own.
+std::string mix_menu(const FeedMix& m, const std::string& view) {
+    auto opts = [](int chosen, bool with_usual, bool usual_chosen, const std::string& usual_label) {
+        std::string o;
+        if (with_usual)
+            o += "<option value=\"usual\"" + std::string(usual_chosen ? " selected" : "") + ">" + usual_label + "</option>";
+        for (int v : {0, 10, 5, 3}) {
+            const std::string label = v == 0 ? "Off" : mix_name(v) + " (1 post in " + std::to_string(v) + ")";
+            o += "<option value=\"" + std::to_string(v) + "\"" + (!usual_chosen && chosen == v ? " selected" : "") + ">" +
+                 label + "</option>";
+        }
+        return o;
+    };
+    std::string html = "<details class=\"feedmix\"><summary>Mix-in: " + mix_name(mix_every_for(m, view)) + "</summary>"
+        "<form method=\"POST\" action=\"/feed/mix\"><input type=\"hidden\" name=\"view\" value=\"" + html_escape(view) + "\">"
+        "<p class=\"muted\">Now and then, a post from outside your circle (people you haven't met, groups you're not in) "
+        "is mixed in, with a line saying why. Worked out from your own activity only.</p>"
+        "<label for=\"mixevery\">Usually</label><select id=\"mixevery\" name=\"every\">" + opts(m.every, false, false, "") + "</select>";
+    if (mixable_view(view)) {
+        const auto it = m.per_view.find(view);
+        html += "<label for=\"mixtab\">On this tab</label><select id=\"mixtab\" name=\"tab_every\">" +
+            opts(it == m.per_view.end() ? 0 : it->second, true, it == m.per_view.end(),
+                 view == "friends" ? "Off unless chosen here (Friends)" : "Same as usual") + "</select>";
+    }
+    return html + "<button type=\"submit\">Save</button></form></details>";
+}
 }  // namespace
 
 std::optional<std::string> feed_routes(Route& r) {
@@ -126,6 +168,7 @@ std::optional<std::string> feed_routes(Route& r) {
             tab("discussed","Most discussed")+tab("friendsfirst","Friends first")+
             tab("unread",unread_label)+tab("near","Near me")+tab("unfamiliar","Unfamiliar")+
             "</div></div>"+ // .feedtabs: on a phone the five tabs wrap instead of scrolling the chosen one out of sight
+            mix_menu(g_store.feed_mix_of(user), filter_key)+
             flash_error(qs)+
             feed_composer_card(user);
         auto posts = filter_key == "unread" ? fresh : filter == FeedFilter::All ? all_posts
@@ -161,6 +204,26 @@ std::optional<std::string> feed_routes(Route& r) {
         } else if (filter_key == "friendsfirst") {
             std::stable_partition(posts.begin(), posts.end(),
                 [&](const Post& p) { return p.author == user || g_store.are_friends(user, p.author); });
+        }
+        // Mix-in: after every (N-1) posts of this tab, one Unfamiliar post it does not already show, with its reason
+        if (const int every = mix_every_for(g_store.feed_mix_of(user), filter_key); every > 1 && !posts.empty()) {
+            std::set<std::uint64_t> shown;
+            for (const auto& p : posts) shown.insert(p.id);
+            const auto pool = unfamiliar_posts(user, 40);
+            std::size_t k = 0;
+            int since = 0;
+            std::vector<Post> mixed;
+            for (const auto& p : posts) {
+                mixed.push_back(p);
+                if (++since < every - 1) continue;
+                since = 0;
+                while (k < pool.size() && shown.count(pool[k].post.id)) ++k;
+                if (k == pool.size()) continue;
+                reasons[pool[k].post.id] = "Mixed in from outside your circle. " + pool[k].reason;
+                shown.insert(pool[k].post.id);
+                mixed.push_back(pool[k++].post);
+            }
+            posts.swap(mixed);
         }
         std::string extra;
         if (filter_key == "unread") {
@@ -304,6 +367,22 @@ std::optional<std::string> feed_routes(Route& r) {
         if (target->author != user) return http_code("403 Forbidden", "not your post");
         g_store.delete_post(pid, user);
         return http_redir(back);
+    }
+    if(method=="POST"&&path=="/feed/mix") {
+        if(!acc) return need_login();
+        auto f = parse_form(body);
+        FeedMix m = g_store.feed_mix_of(user);
+        auto rate = [](const std::string& v, int fallback) {
+            return (v == "0" || v == "3" || v == "5" || v == "10") ? std::stoi(v) : fallback;
+        };
+        m.every = rate(f["every"], m.every);
+        const std::string view = f["view"];
+        if (mixable_view(view) && f.count("tab_every")) {
+            if (f["tab_every"] == "usual") m.per_view.erase(view);
+            else if (const int v = rate(f["tab_every"], -1); v >= 0) m.per_view[view] = v;
+        }
+        g_store.set_feed_mix(user, m);
+        return http_redir(mixable_view(view) || view == "unread" || view == "unfamiliar" ? "/feed?filter=" + view : "/feed");
     }
     if(method=="POST"&&path=="/feed") {
         if(!acc) return need_login();

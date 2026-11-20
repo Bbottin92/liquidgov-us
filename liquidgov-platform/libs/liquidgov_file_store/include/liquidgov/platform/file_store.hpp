@@ -103,6 +103,11 @@
 //          existed before hints are not nagged; a new account is written with on=1). dismissed is the ids of the
 //          hints this person has said "got it" to (letters, digits, - and _ only); they stay dismissed when hints are
 //          turned off and on again, until "show hints again" clears the list. Fields after these are kept verbatim.
+//   fmix   <username> <every> [<view:every,...>]  // Brandon 2026-11-20 (feed filters slice 5): how often Unfamiliar
+//          posts are mixed into the feed. every is 0 (off), 3, 5 or 10 (one mixed-in post per that many); the
+//          optional list holds a tab's own choice (view = the feed's ?filter= name, letters only). Absent record = off
+//          (accounts from before it are not changed); a new account is written with every=10. Fields after these are
+//          kept verbatim.
 //   mapp   <username> <show> <groups> <posts> <comments> <friends> [<pains>]  // each 0|1:
 //          what the map may show about this person (MapPrefs). Absence = the
 //          defaults (all on except friends). Separate tag so pref keeps its shape.
@@ -452,6 +457,9 @@ public:
     // Hints for newcomers (see the hints tag above). hints_of gives {on=false, no dismissed} for someone with no record.
     HintPrefs hints_of(const std::string& username) const;
     void set_hints(const std::string& username, const HintPrefs& h);
+    // The feed's mix-in setting (fmix tag above). feed_mix_of gives FeedMix{} (off) for someone with no record.
+    FeedMix feed_mix_of(const std::string& username) const;
+    void set_feed_mix(const std::string& username, const FeedMix& m);
     // True once the person has a saved mapp record (they saved Map settings, or the 2026-11-10 friends-on migration
     // wrote their defaults). Without one, map_prefs_of() gives MapPrefs{} defaults.
     bool has_map_prefs(const std::string& username) const;
@@ -826,6 +834,7 @@ private:
     void write_mail_read(std::ostream& body);
     void write_map_prefs(std::ostream& body);
     void write_hints(std::ostream& body);
+    void write_feed_mix(std::ostream& body);
     void write_members(std::ostream& body);
     void write_notices(std::ostream& body);
     void write_pains(std::ostream& body);
@@ -878,6 +887,7 @@ private:
     std::map<std::string, AccountPrefs> prefs_;
     std::map<std::string, MapPrefs> map_prefs_; // absent = MapPrefs{} defaults
     std::map<std::string, HintPrefs> hints_;    // absent = off, nothing dismissed
+    std::map<std::string, FeedMix> feed_mix_;   // absent = off everywhere
     std::vector<Post> posts_;
     std::uint64_t next_reply_id_ = 1;
     std::vector<PostReply> replies_;

@@ -16,6 +16,8 @@
       text: 'Swim into a pool to open it. Drag, or use the arrow keys or WASD, and press Enter on a pool to go in.' },
     { id: 'map-search', path: /^\/map/, at: '#lgm-q',
       text: 'Search the map by a person\u2019s name, a word, or a date like \u201cnov 12\u201d.' },
+    { id: 'mix', path: /^\/feed$/, at: '.feedmix',
+      text: 'Now and then a post from outside your circle is mixed into your feed, with a line saying why. Change how often, or turn it off, here.' },
     { id: 'thumbs', path: /^\/(feed|u\/)/, at: '.reactions',
       text: 'Thumbs are how people say what they think. You choose who sees yours.' }
   ];

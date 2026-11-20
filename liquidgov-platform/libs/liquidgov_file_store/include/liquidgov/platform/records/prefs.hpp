@@ -47,6 +47,17 @@ enum class FeedFilter : int {
     // 3 was Drawings (removed: Brandon 2026-11-10, no Drawings feed category)
 };
 
+// How often posts from outside your circle (the feed's Unfamiliar posts) are mixed into the other feed tabs (fmix tag;
+// feed filters slice 5, Brandon 2026-11-20). every: 0 = off, else one mixed-in post per that many posts (10, 5 or 3).
+// per_view: a tab's own choice (the feed's corner menu), keyed by the tab's ?filter= name; a tab without one uses
+// every, except Friends, which stays off unless chosen there. Absent record = off everywhere (existing accounts);
+// a new account is written with every = 10.
+struct FeedMix {
+    int every = 0;
+    std::map<std::string, int> per_view;
+    std::vector<std::string> extra_fields;   // a newer version's fields, written back untouched
+};
+
 struct AccountPrefs {
     // Most open by default (Brandon: "all of the settings should be set to
     // the highest amount of visibility by default... I want people to

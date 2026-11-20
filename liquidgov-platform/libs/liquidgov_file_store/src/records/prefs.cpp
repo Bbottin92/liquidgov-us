@@ -18,6 +18,15 @@ namespace liquidgov::platform {
 
 using namespace store_detail;
 
+// fmix values: a rate is 0, 3, 5 or 10; a tab name is 1-20 lowercase letters (the feed's ?filter= names).
+static bool feed_mix_every_ok(const std::string& s) { return s == "0" || s == "3" || s == "5" || s == "10"; }
+static bool feed_mix_view_ok(const std::string& s) {
+    if (s.empty() || s.size() > 20) return false;
+    for (unsigned char ch : s) if (ch < 'a' || ch > 'z') return false;
+    return true;
+}
+
+
 namespace {
 
 bool starts_with_ci(const std::string& s, const std::string& prefix) {
@@ -214,6 +223,29 @@ bool FileStore::read_prefs(const std::vector<std::string>& f, LoadPending& pendi
         if (!who.empty()) hints_[who] = hp;
         return true;
     }
+    if (tag == "fmix") {
+        // 3 or 4 fields, or more from a newer version (kept verbatim in extra_fields)
+        if (f.size() < 3) throw std::runtime_error("LGP1: bad fmix record");
+        const std::string who = pct_decode(f[1]);
+        FeedMix m;
+        if (!feed_mix_every_ok(f[2])) throw std::runtime_error("LGP1: bad fmix rate");
+        m.every = std::stoi(f[2]);
+        if (f.size() >= 4 && !f[3].empty()) {
+            std::string cur;
+            for (char ch : f[3] + ",") {
+                if (ch != ',') { cur += ch; continue; }
+                const auto colon = cur.find(':');
+                if (colon == std::string::npos || !feed_mix_view_ok(cur.substr(0, colon)) ||
+                    !feed_mix_every_ok(cur.substr(colon + 1)))
+                    throw std::runtime_error("LGP1: bad fmix tab");
+                m.per_view[cur.substr(0, colon)] = std::stoi(cur.substr(colon + 1));
+                cur.clear();
+            }
+        }
+        for (std::size_t i = 4; i < f.size(); ++i) m.extra_fields.push_back(f[i]);
+        if (!who.empty()) feed_mix_[who] = m;
+        return true;
+    }
     if (tag == "mapp") {
         // 7 or 8 fields, or more from a newer version (kept verbatim in extra_fields).
         if (f.size() < 7) throw std::runtime_error("LGP1: bad mapp record");
@@ -238,6 +270,36 @@ static bool hint_id_ok(const std::string& s) {
     if (s.empty() || s.size() > 40) return false;
     for (unsigned char ch : s) if (!(std::isalnum(ch) || ch == '-' || ch == '_')) return false;
     return true;
+}
+
+FeedMix FileStore::feed_mix_of(const std::string& username) const {
+    auto it = feed_mix_.find(username);
+    return it == feed_mix_.end() ? FeedMix{} : it->second;
+}
+
+// Only the known rates and plain tab names are kept; anything else is dropped on save (never written, so never refused
+// on the next load).
+void FileStore::set_feed_mix(const std::string& username, const FeedMix& m) {
+    if (username.empty()) return;
+    FeedMix c;
+    c.every = feed_mix_every_ok(std::to_string(m.every)) ? m.every : 0;
+    for (const auto& [view, every] : m.per_view)
+        if (feed_mix_view_ok(view) && feed_mix_every_ok(std::to_string(every))) c.per_view[view] = every;
+    c.extra_fields = m.extra_fields;
+    auto old = feed_mix_.find(username);
+    if (old != feed_mix_.end() && c.extra_fields.empty()) c.extra_fields = old->second.extra_fields;
+    feed_mix_[username] = c;
+    flush();
+}
+
+void FileStore::write_feed_mix(std::ostream& body) {
+    for (const auto& [who, m] : feed_mix_) {
+        body << "fmix\t" << pct_encode(who) << "\t" << m.every << "\t";
+        bool first = true;
+        for (const auto& [view, every] : m.per_view) { body << (first ? "" : ",") << view << ":" << every; first = false; }
+        for (const auto& x : m.extra_fields) body << "\t" << x;
+        body << "\n";
+    }
 }
 
 HintPrefs FileStore::hints_of(const std::string& username) const {

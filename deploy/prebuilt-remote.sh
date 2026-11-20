@@ -42,6 +42,7 @@ case "$phase" in
     echo "NRESTARTS=$(systemctl show -p NRestarts --value liquidgov)"
     if [ -x "$BIN" ]; then echo BIN_EXEC; else echo BIN_MISSING; exit 1; fi
     if [ -e "$KEEP" ]; then echo PRE_PREBUILT_PRESENT; else echo PRE_PREBUILT_ABSENT; fi
+    if [ -e "$KEEP" ] && cmp -s "$BIN" "$KEEP"; then echo PRE_PREBUILT_SAME_AS_RUNNING; fi
     if [ -e "$PRE_FLOW" ]; then echo PRE_FLOW_PRESENT; else echo PRE_FLOW_ABSENT; fi
     if [ -e "$PRE_CITY" ]; then echo PRE_CITY_PRESENT; else echo PRE_CITY_ABSENT; fi
     stat -c 'STORE size=%s mtime=%y' "$STORE"
@@ -52,7 +53,11 @@ case "$phase" in
     echo PREFLIGHT_DONE
     ;;
   backup)
-    if [ -e "$KEEP" ]; then echo PRE_PREBUILT_ALREADY; exit 1; fi
+    # A copy left by an earlier attempt of THIS deploy (it stopped after this step, before the build: q56) is
+    # byte-identical to the running program, so it is still the right undo copy: reuse it. Any other copy refuses.
+    if [ -e "$KEEP" ]; then
+      if cmp -s "$BIN" "$KEEP"; then echo PRE_PREBUILT_REUSED; else echo PRE_PREBUILT_ALREADY; exit 1; fi
+    fi
     if [ ! -e "$PRE_FLOW" ] || [ ! -e "$PRE_CITY" ]; then echo ROLLBACK_CHAIN_MISSING; exit 1; fi
     if [ ! -x "$BIN" ]; then echo BIN_MISSING; exit 1; fi
     stamp=$(date -u +%Y%m%dT%H%M%SZ)

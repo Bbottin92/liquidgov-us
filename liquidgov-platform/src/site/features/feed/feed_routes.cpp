@@ -7,9 +7,129 @@
 #include "site/features/feed/post_block.hpp"
 #include "site/features/map/map_rules.hpp"
 #include "site/features/pains/pains.hpp"
+#include "site/ui/favicon_cookies.hpp"
 #include "site/ui/wrap.hpp"
 
+#include <algorithm>
+#include <cstdint>
+#include <map>
+#include <set>
+#include <vector>
+
 namespace liquidgov::site {
+
+namespace {
+// Unread since you last looked (feed filters slice 2, wip/161): the newest post id and the newest reply id this
+// browser was shown in the Unread tab, for this account, kept in the lg_feedseen=<user>.<post id>.<reply id> cookie.
+// Nothing is stored on the server, so it is per browser. A cookie for another account (or none) means nothing has been
+// seen yet. The older cookie <user>.<post id> (before wip/171) has no reply id: replies count from the next visit.
+struct FeedSeen { std::uint64_t post = 0; std::uint64_t reply = 0; bool has_reply = false; };
+bool seen_number(const std::string& digits, std::uint64_t& out) {
+    if (digits.empty() || digits.size() > 19 || digits.find_first_not_of("0123456789") != std::string::npos) return false;
+    try { out = std::stoull(digits); return true; } catch (...) { return false; }
+}
+FeedSeen feed_seen_of(const std::string& req, const std::string& user) {
+    auto pos = req.find("\r\nCookie:"); if (pos == std::string::npos) pos = req.find("\r\ncookie:");
+    if (pos == std::string::npos) return {};
+    const auto end = req.find("\r\n", pos + 2);
+    const std::string line = req.substr(pos, end == std::string::npos ? std::string::npos : end - pos);
+    auto k = line.find("lg_feedseen="); if (k == std::string::npos) return {};
+    k += 12; const auto sc = line.find(';', k);
+    const std::string v = line.substr(k, sc == std::string::npos ? std::string::npos : sc - k);
+    if (v.size() <= user.size() + 1 || v.compare(0, user.size(), user) != 0 || v[user.size()] != '.') return {};
+    const std::string rest = v.substr(user.size() + 1);
+    const auto dot = rest.find('.');
+    FeedSeen out;
+    if (!seen_number(rest.substr(0, dot), out.post)) return {};
+    if (dot != std::string::npos) {
+        if (!seen_number(rest.substr(dot + 1), out.reply)) return {};
+        out.has_reply = true;
+    }
+    return out;
+}
+
+// Unfamiliar (feed filters slice 4, wip/163; Brandon 2026-11-20 "New people & groups", no quality bar for now):
+// posts from people you are not friends with and have never replied to or seconded, that are public (Anybody, as the
+// map shows them) or in a group you are not in (as that group's own page shows them). Worked out from your own activity
+// only, on each request; nothing is stored or shared. Each comes with a one-line reason. Looks at the newest 1000
+// posts (recent_posts is unscoped, so every post is checked here before it is used). Never your own, a friend's, a
+// post in one of your groups, or anyone blocked either way.
+struct Unfamiliar { Post post; std::string reason; };
+std::vector<Unfamiliar> unfamiliar_posts(const std::string& user, std::size_t limit) {
+    const auto recent = g_store.recent_posts(1000); // newest first
+    std::set<std::string> familiar{user};
+    for (const auto& p : recent) {
+        if (familiar.count(p.author)) continue;
+        if (g_store.are_friends(user, p.author) || g_store.has_seconded(p.id, user)) { familiar.insert(p.author); continue; }
+        for (const auto& r : g_store.replies_of(p.id))
+            if (r.author == user) { familiar.insert(p.author); break; }
+    }
+    std::set<std::string> mine;
+    for (const auto& c : g_store.communities_of(user)) mine.insert(c.slug);
+    std::vector<Unfamiliar> out;
+    for (const auto& p : recent) {
+        if (familiar.count(p.author) || g_store.is_blocked(user, p.author) || g_store.is_blocked(p.author, user)) continue;
+        std::vector<std::string> groups;
+        if (!p.community.empty()) groups.push_back(p.community);
+        groups.insert(groups.end(), p.extra_groups.begin(), p.extra_groups.end());
+        bool in_mine = false;
+        for (const auto& g : groups) if (mine.count(g)) in_mine = true;
+        if (in_mine) continue;
+        std::string reason;
+        if (!groups.empty()) {
+            const auto c = g_store.community(groups.front());
+            reason = "From a group you're not in: " + (c ? c->name : groups.front());
+        } else if (p.audience == PostAudience::Anybody && map_post_ok(p, user)) {
+            reason = "Public, from someone you're not friends with and haven't replied to yet";
+        } else continue;
+        out.push_back({p, reason});
+        if (out.size() >= limit) break;
+    }
+    return out;
+}
+
+// Mix-in (feed filters slice 5, Brandon 2026-11-20): the tabs Unfamiliar posts may be mixed into (not Unread, which
+// is about what is new, nor Unfamiliar itself), and how often for one tab: its own choice, else the usual one, except
+// Friends, which stays off unless chosen on that tab ("people I chose").
+bool mixable_view(const std::string& v) {
+    return v == "all" || v == "friends" || v == "committees" || v == "discussed" || v == "friendsfirst" || v == "near";
+}
+int mix_every_for(const FeedMix& m, const std::string& view) {
+    if (!mixable_view(view)) return 0;
+    const auto it = m.per_view.find(view);
+    if (it != m.per_view.end()) return it->second;
+    return view == "friends" ? 0 : m.every;
+}
+std::string mix_name(int every) {
+    return every == 10 ? "Rarely" : every == 5 ? "Sometimes" : every == 3 ? "Often" : "Off";
+}
+// The feed's corner menu: the usual setting, and this tab's own.
+std::string mix_menu(const FeedMix& m, const std::string& view) {
+    auto opts = [](int chosen, bool with_usual, bool usual_chosen, const std::string& usual_label) {
+        std::string o;
+        if (with_usual)
+            o += "<option value=\"usual\"" + std::string(usual_chosen ? " selected" : "") + ">" + usual_label + "</option>";
+        for (int v : {0, 10, 5, 3}) {
+            const std::string label = v == 0 ? "Off" : mix_name(v) + " (1 post in " + std::to_string(v) + ")";
+            o += "<option value=\"" + std::to_string(v) + "\"" + (!usual_chosen && chosen == v ? " selected" : "") + ">" +
+                 label + "</option>";
+        }
+        return o;
+    };
+    std::string html = "<details class=\"feedmix\"><summary>Mix-in: " + mix_name(mix_every_for(m, view)) + "</summary>"
+        "<form method=\"POST\" action=\"/feed/mix\"><input type=\"hidden\" name=\"view\" value=\"" + html_escape(view) + "\">"
+        "<p class=\"muted\">Now and then, a post from outside your circle (people you haven't met, groups you're not in) "
+        "is mixed in, with a line saying why. Worked out from your own activity only.</p>"
+        "<label for=\"mixevery\">Usually</label><select id=\"mixevery\" name=\"every\">" + opts(m.every, false, false, "") + "</select>";
+    if (mixable_view(view)) {
+        const auto it = m.per_view.find(view);
+        html += "<label for=\"mixtab\">On this tab</label><select id=\"mixtab\" name=\"tab_every\">" +
+            opts(it == m.per_view.end() ? 0 : it->second, true, it == m.per_view.end(),
+                 view == "friends" ? "Off unless chosen here (Friends)" : "Same as usual") + "</select>";
+    }
+    return html + "<button type=\"submit\">Save</button></form></details>";
+}
+}  // namespace
 
 std::optional<std::string> feed_routes(Route& r) {
     LG_ROUTE_LOCALS(r)
@@ -30,27 +150,141 @@ std::optional<std::string> feed_routes(Route& r) {
     }
     if(method=="GET"&&path=="/feed") {
         if(!acc) return need_login();
+        // The choice lives only in the address; nothing new is stored (feed filters slice 1, wip/160). The two
+        // orderings take the same posts as All and only change their order: Most discussed by the number of
+        // replies each post shows (a tie keeps newest first), Friends first puts my friends' and my own posts
+        // before the group posts (newest first in each part).
         std::string filter_key = qs.count("filter") ? qs.at("filter") : "all";
         FeedFilter filter = FeedFilter::All;
         if (filter_key == "friends") filter = FeedFilter::Friends;
         else if (filter_key == "committees") filter = FeedFilter::Committees;
-        else filter_key = "all"; // anything else, an old ?filter=drawings link included, is All (no Drawings, Brandon 2026-11-10)
-        auto tab = [&](const char* key, const char* label) {
+        else if (filter_key != "discussed" && filter_key != "friendsfirst" && filter_key != "unread" &&
+                 filter_key != "near" && filter_key != "unfamiliar")
+            filter_key = "all"; // anything else, an old ?filter=drawings link included, is All (no Drawings, Brandon 2026-11-10)
+        auto tab = [&](const char* key, const std::string& label) {
             const bool active = filter_key == key;
             return "<a class=\"btn"+std::string(active?"\" aria-current=\"page":" ghost")+"\" href=\"/feed?filter="+key+"\">"+label+"</a>";
         };
+        // Unread: the All posts newer than the last one seen in the Unread tab, my own posts left out, and older posts
+        // with a reply from someone else newer than the last reply seen there. The tab says how many; opening it shows
+        // them and marks them seen (the cookie moves to the newest All post and the newest reply on them).
+        const FeedSeen seen = feed_seen_of(req, user);
+        const auto all_posts = g_store.feed_view(user, 80, FeedFilter::All); // newest first
+        std::vector<Post> fresh;
+        std::set<std::uint64_t> new_reply_on;   // older posts that are unread only because of a new reply
+        std::uint64_t newest_reply = 0;
+        for (const auto& p : all_posts) {
+            bool replied = false;
+            for (const auto& r : g_store.replies_of(p.id)) {
+                newest_reply = std::max(newest_reply, r.id);
+                if (seen.has_reply && r.id > seen.reply && r.author != user) replied = true;
+            }
+            if (p.id > seen.post && p.author != user) fresh.push_back(p);
+            else if (replied) { fresh.push_back(p); new_reply_on.insert(p.id); }
+        }
+        const std::string unread_label = fresh.empty() ? std::string("Unread") : "Unread ("+std::to_string(fresh.size())+")";
         std::string html = "<h1>Feed</h1><p class=\"muted eyebrow\">"+html_escape(fmt_time(now()))+
             " &middot; "+std::to_string(g_store.account_count())+" members</p>"
-            "<div class=\"segtabs\">"+
+            "<div class=\"feedtabs\"><div class=\"segtabs\">"+
             tab("all","All")+tab("friends","Friends")+tab("committees","Groups")+
-            "</div>"+
+            tab("discussed","Most discussed")+tab("friendsfirst","Friends first")+
+            tab("unread",unread_label)+tab("near","Near me")+tab("unfamiliar","Unfamiliar")+
+            "</div></div>"+ // .feedtabs: on a phone the five tabs wrap instead of scrolling the chosen one out of sight
+            mix_menu(g_store.feed_mix_of(user), filter_key)+
             flash_error(qs)+
             feed_composer_card(user);
-        auto posts = g_store.feed_view(user, 80, filter);
-        if (posts.empty()) html += "<div class=\"card\"><p class=\"empty\">Nothing in this view yet.</p>"
+        auto posts = filter_key == "unread" ? fresh : filter == FeedFilter::All ? all_posts
+                                                : g_store.feed_view(user, 80, filter); // newest first
+        // Near me (feed filters slice 3, wip/162; Brandon 2026-11-20 "Groups in my city"): posts in groups whose city
+        // is the city you live in (your own profile's "Where you live now"), member or not, as any group page shows
+        // them. Only public group info is used, never where your friends live. Posts by someone you blocked or who
+        // blocked you are left out.
+        std::string near_city;
+        if (filter_key == "near") {
+            posts.clear();
+            near_city = g_store.profile_of(user).living;
+            const std::string key = city_key(near_city);
+            std::set<std::uint64_t> taken;
+            if (!key.empty())
+                for (const auto& c : g_store.communities_in_city(key))
+                    for (const auto& p : g_store.posts_in(c.slug, 80))
+                        if (taken.insert(p.id).second && !g_store.is_blocked(user, p.author) &&
+                            !g_store.is_blocked(p.author, user)) posts.push_back(p);
+            std::sort(posts.begin(), posts.end(), [](const Post& a, const Post& b) { return a.id > b.id; });
+            if (posts.size() > 80) posts.resize(80);
+        }
+        std::map<std::uint64_t, std::string> reasons; // a one-line "why you see this" above a post
+        if (filter_key == "unread")
+            for (const auto id : new_reply_on) reasons[id] = "New reply since you last looked.";
+        if (filter_key == "unfamiliar") {
+            posts.clear();
+            for (auto& u : unfamiliar_posts(user, 80)) { reasons[u.post.id] = u.reason; posts.push_back(std::move(u.post)); }
+        }
+        if (filter_key == "discussed") {
+            std::map<std::uint64_t, std::size_t> replies;
+            for (const auto& p : posts) replies[p.id] = g_store.replies_of(p.id).size();
+            std::stable_sort(posts.begin(), posts.end(),
+                [&](const Post& a, const Post& b) { return replies[a.id] > replies[b.id]; });
+        } else if (filter_key == "friendsfirst") {
+            std::stable_partition(posts.begin(), posts.end(),
+                [&](const Post& p) { return p.author == user || g_store.are_friends(user, p.author); });
+        }
+        // Mix-in: after every (N-1) posts of this tab, one Unfamiliar post it does not already show, with its reason
+        if (const int every = mix_every_for(g_store.feed_mix_of(user), filter_key); every > 1 && !posts.empty()) {
+            std::set<std::uint64_t> shown;
+            for (const auto& p : posts) shown.insert(p.id);
+            const auto pool = unfamiliar_posts(user, 40);
+            std::size_t k = 0;
+            int since = 0;
+            std::vector<Post> mixed;
+            for (const auto& p : posts) {
+                mixed.push_back(p);
+                if (++since < every - 1) continue;
+                since = 0;
+                while (k < pool.size() && shown.count(pool[k].post.id)) ++k;
+                if (k == pool.size()) continue;
+                reasons[pool[k].post.id] = "Mixed in from outside your circle. " + pool[k].reason;
+                shown.insert(pool[k].post.id);
+                mixed.push_back(pool[k++].post);
+            }
+            posts.swap(mixed);
+        }
+        std::string extra;
+        if (filter_key == "unread") {
+            html += posts.empty()
+                ? "<div class=\"card\"><p class=\"empty\">Nothing new since you last looked here.</p></div>"
+                : "<p class=\"muted\">New since you last looked here (in this browser). They count as seen now.</p>";
+            const std::uint64_t newest_post = all_posts.empty() ? 0 : all_posts.front().id;
+            if (newest_post > seen.post || newest_reply > seen.reply || (!seen.has_reply && newest_post > 0)) {
+                extra = "Set-Cookie: lg_feedseen="+user+"."+std::to_string(std::max(newest_post, seen.post))+"."+
+                        std::to_string(std::max(newest_reply, seen.reply))+
+                        "; HttpOnly; Path=/; SameSite=Lax; Max-Age=31536000";
+                if (g_https) extra += "; Secure";
+                extra += "\r\n";
+            }
+        } else if (filter_key == "near") {
+            if (city_key(near_city).empty())
+                html += "<div class=\"card\"><p class=\"empty\">Near me needs the city you live in.</p>"
+                        "<p class=\"muted\">Add it under \"Where you live now\" on <a href=\"/me\">your profile</a>.</p></div>";
+            else if (posts.empty())
+                html += "<div class=\"card\"><p class=\"empty\">No group posts in "+html_escape(near_city)+" yet.</p>"
+                        "<p class=\"muted\">Groups that name your city show up here. <a href=\"/communities\">Start one</a>.</p></div>";
+            else
+                html += "<p class=\"muted\">Posts in groups in "+html_escape(near_city)+".</p>";
+        } else if (filter_key == "unfamiliar") {
+            html += posts.empty()
+                ? "<div class=\"card\"><p class=\"empty\">Nothing unfamiliar right now.</p>"
+                  "<p class=\"muted\">Posts from people and groups you haven't met yet show up here.</p></div>"
+                : "<p class=\"muted\">Outside your usual circle: people you haven't talked with and groups you're not in. "
+                  "Worked out from your own activity only; nobody else sees this list.</p>";
+        } else if (posts.empty()) html += "<div class=\"card\"><p class=\"empty\">Nothing in this view yet.</p>"
             "<p class=\"muted\">Write one above, or <a href=\"/friends\">add a friend</a> so theirs show up.</p></div>";
-        for (const auto& p : posts) html += "<div class=\"card\">"+post_block(p, user)+"</div>";
-        return pg("Feed", html);
+        for (const auto& p : posts) {
+            const auto why = reasons.find(p.id);
+            html += "<div class=\"card\">"+(why == reasons.end() ? std::string()
+                : "<p class=\"muted feedwhy\">"+html_escape(why->second)+"</p>")+post_block(p, user)+"</div>";
+        }
+        return http_ok(wrap("Feed", user, unread, html), extra);
     }
 
     // /post-media/<blob_id> -- an image or video attached to a post.
@@ -159,6 +393,22 @@ std::optional<std::string> feed_routes(Route& r) {
         if (target->author != user) return http_code("403 Forbidden", "not your post");
         g_store.delete_post(pid, user);
         return http_redir(back);
+    }
+    if(method=="POST"&&path=="/feed/mix") {
+        if(!acc) return need_login();
+        auto f = parse_form(body);
+        FeedMix m = g_store.feed_mix_of(user);
+        auto rate = [](const std::string& v, int fallback) {
+            return (v == "0" || v == "3" || v == "5" || v == "10") ? std::stoi(v) : fallback;
+        };
+        m.every = rate(f["every"], m.every);
+        const std::string view = f["view"];
+        if (mixable_view(view) && f.count("tab_every")) {
+            if (f["tab_every"] == "usual") m.per_view.erase(view);
+            else if (const int v = rate(f["tab_every"], -1); v >= 0) m.per_view[view] = v;
+        }
+        g_store.set_feed_mix(user, m);
+        return http_redir(mixable_view(view) || view == "unread" || view == "unfamiliar" ? "/feed?filter=" + view : "/feed");
     }
     if(method=="POST"&&path=="/feed") {
         if(!acc) return need_login();

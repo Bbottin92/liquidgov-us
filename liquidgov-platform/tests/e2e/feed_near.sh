@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-# Feed filters, slice 3: Near me (Brandon 2026-11-20: "Groups in my city"; wip/162).
-#   /feed?filter=near shows posts in groups whose city is the city I live in (my own profile's "Where you live now",
-#   matched the way /city/<key> matches: "fresno ca" = "Fresno, CA"), whether or not I am a member, newest first.
-#   Groups in other cities or with no city, and posts outside groups, are not shown. Posts by someone I blocked or
-#   who blocked me are left out. With no city on my profile the tab says how to add one.
+# Feed: the city-based "Near me" tab is gone (wip/179, 2026-11-20). It was built as "posts in groups in your city";
+#   Brandon meant posts from people whose droplet is left within a chosen distance on the street map, which needs the
+#   droplet on the street map first, so the wrong tab was taken out before it went live. This suite now checks that
+#   no Near me tab is offered, that an old /feed?filter=near link shows All, and that the mix-in menu does not list it.
 # Usage: bash feed_near.sh <path to liquidgov_http> <path to liquidgov_e2e_seed>
 # Throwaway store, port 18148. Never touches the live site.
 set -u
@@ -45,45 +44,19 @@ order() { python3 -c 'import re,sys; print(" ".join(re.findall(r"<p>(F-[a-z0-9-]
 
 start
 post $STR /communities -d "slug=fres&name=Fresno+Bikes&category=10&subcategory=Bikes&city=Fresno%2C+CA" >/dev/null
-post $STR /communities -d "slug=sf&name=SF+Bikes&category=10&subcategory=Bikes&city=San+Francisco" >/dev/null
-post $STR /communities -d "slug=nocity&name=Anywhere&category=10&subcategory=Bikes" >/dev/null
-post $PAL /c/fres/join -d "" >/dev/null
 post $STR /c/fres -F "text=F-fres-one" >/dev/null
-post $PAL /c/fres -F "text=F-fres-pal" >/dev/null
-post $STR /c/sf -F "text=F-sf" >/dev/null
-post $STR /c/nocity -F "text=F-none" >/dev/null
 post $PAL /feed -F "text=F-pal-plain" >/dev/null
-
-r=$(get $ME "/feed?filter=near" n0.html)
-check "Near me answers 200" '[ "$r" = 200 ]' "$r"
-check "Near me is a tab, and the current one" 'tabs n0.html | grep -q "aria-current=\"page\" href=\"/feed?filter=near\">Near me<"' "$(tabs n0.html)"
-check "no city on my profile: no posts, and it says where to add one" \
-    '[ -z "$(order n0.html)" ] && grep -q "Near me needs the city you live in" "$W/n0.html" && grep -q "href=\"/me\"" "$W/n0.html"' "$(order n0.html)"
-
 post $ME /me/profile -d "display_name=Brandon&living=fresno+ca" >/dev/null
-r=$(get $ME "/feed?filter=near" n1.html)
-check "my city written differently still matches: the Fresno group's posts, newest first, though I am not a member" \
-    '[ "$(order n1.html)" = "F-fres-pal F-fres-one" ]' "$(order n1.html)"
-check "... and it says which city" 'grep -q "Posts in groups in fresno ca" "$W/n1.html"' "missing"
-check "other cities, groups with no city and posts outside groups are left out" \
-    '! grep -qE "F-sf|F-none|F-pal-plain" "$W/n1.html"' "$(order n1.html)"
-
-post $ME /me/profile -d "display_name=Brandon&living=Boise" >/dev/null
-r=$(get $ME "/feed?filter=near" n2.html)
-check "a city with no groups: no posts, and it says so" \
-    '[ -z "$(order n2.html)" ] && grep -q "No group posts in Boise yet" "$W/n2.html"' "$(order n2.html)"
-
-post $ME /me/profile -d "display_name=Brandon&living=Fresno%2C+CA" >/dev/null
-post $PAL /settings/block -d "who=Bbottin" >/dev/null
-r=$(get $ME "/feed?filter=near" n3.html)
-check "someone who blocked me: their post is left out" '[ "$(order n3.html)" = "F-fres-one" ]' "$(order n3.html)"
-post $ME /settings/block -d "who=stranger" >/dev/null
-r=$(get $ME "/feed?filter=near" n4.html)
-check "someone I blocked: their post is left out" '[ -z "$(order n4.html)" ]' "$(order n4.html)"
-
-r=$(curl -s -o /dev/null -w '%{http_code}' "$URL/feed?filter=near")
-check "signed out, the Near me link asks you to log in" '[ "$r" = 302 ] || [ "$r" = 303 ]' "$r"
-
+r=$(curl -s -o "$W/a.html" -w '%{http_code}' -b "lg_session=$ME" "$URL/feed?filter=all")
+check "All answers 200" '[ "$r" = 200 ]' "$r"
+check "no Near me tab on the feed" '! tabs a.html | grep -q "Near me"' "$(tabs a.html)"
+check "...and no filter=near link anywhere on the page" '! grep -q "filter=near" $W/a.html' "found"
+r=$(curl -s -o "$W/n.html" -w '%{http_code}' -b "lg_session=$ME" "$URL/feed?filter=near")
+check "an old /feed?filter=near link still answers 200" '[ "$r" = 200 ]' "$r"
+check "...and shows All (All is the current tab, the same posts in the same order)" \
+    'tabs n.html | grep -q "aria-current=\"page\" href=\"/feed?filter=all\">All<" && [ "$(order n.html)" = "$(order a.html)" ]' "$(order n.html) vs $(order a.html)"
+check "the mix-in menu does not offer Near me" '! grep -qi "name=\"tab\" value=\"near\"\|value=\"near\"" $W/a.html' "offered"
+stop
 echo "passes=$passes fails=$fails"
 echo "EXIT=$([ $fails -eq 0 ] && echo 0 || echo 1)"
 [ $fails -eq 0 ]

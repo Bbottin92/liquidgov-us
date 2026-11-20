@@ -21,6 +21,12 @@ def state():
     # which tests/rollback/portraits_undo.sh already used
     d = (ROOT / e2e["root"]).parent
     used = {nc.port_of(str(p)) for p in d.rglob("*.sh")} - {None}
+    # 2026-11-20: also every other port a suite binds (a stand-in server's FAKE=18152 in outside_wikipedia.sh was offered
+    # again): any NAME=<number> assignment whose number is inside the range
+    for p in d.rglob("*.sh"):
+        for m in re.finditer(r"\b[A-Z][A-Z0-9_]*=(\d{4,5})\b", p.read_text(encoding="utf-8", errors="replace")):
+            if lo <= int(m.group(1)) <= hi:
+                used.add(int(m.group(1)))
     return lo, hi, used
 
 

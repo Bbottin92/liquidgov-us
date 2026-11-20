@@ -15,6 +15,11 @@ std::optional<std::string> portrait_history_routes(Route& r);
 // history instead of being released (the oldest beyond 10 are released). Same result as save_avatar.
 SaveAvatarResult save_portrait_keeping_history(AccountId owner, const std::vector<std::uint8_t>& bytes);
 
+// "Remove portrait" (POST /me/avatar/clear): the portrait moves into the person's history instead of being released,
+// so a tap by mistake can be undone from /me/portrait (Brandon's phone check 2026-11-20: "if you accidentally touch
+// remove profile picture it does it", and it was gone for good). Nothing happens when there is no portrait.
+void remove_portrait_keeping_history(AccountId owner);
+
 // The owner's "Earlier portraits" card on /me/portrait: current + history thumbnails (each a button the canvas
 // script loads), delete buttons and the show-on-profile choice. Empty when there is nothing to show.
 std::string portrait_history_owner_html(const std::string& username);

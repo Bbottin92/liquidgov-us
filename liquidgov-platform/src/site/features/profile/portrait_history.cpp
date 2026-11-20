@@ -102,6 +102,22 @@ SaveAvatarResult save_portrait_keeping_history(AccountId owner, const std::vecto
     return res;
 }
 
+void remove_portrait_keeping_history(AccountId owner) {
+    // clear_avatar releases the portrait. Take one more reference first (put of the same bytes returns the same blob
+    // and adds one), clear, then hand that reference to the history, exactly as save_portrait_keeping_history does.
+    auto old = g_store.get(owner);
+    if (!old) return;
+    bool held = false;
+    if (auto old_bytes = g_blobs.get(old->blob_id)) {
+        g_blobs.put(*old_bytes, "image/png");
+        held = true;
+    }
+    clear_avatar(g_blobs, g_store, owner);
+    if (!held) return;
+    for (const auto& dropped : g_store.keep_portrait(owner, old->blob_id, old->created_at))
+        g_blobs.release(dropped);
+}
+
 std::string portrait_history_owner_html(const std::string& username) {
     auto me = g_store.find_by_username(username);
     if (!me) return "";

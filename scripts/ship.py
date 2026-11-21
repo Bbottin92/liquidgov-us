@@ -2,8 +2,12 @@
 Brandon 2026-11-11 ("yes fix the guard, then do ship"): a one-file change took ~15 hand-run steps, each a place to
 slip. ship runs the checks; Brandon's one word (merge / go) still does the changing.
 Usage: python scripts/ship.py check <branch> [--wait MIN] [--out DIR]
-       python scripts/ship.py merge <branch> [--wait MIN] [--out DIR]   (only on Brandon's "merge": runs check, then
-         moves origin/master to exactly the branch head by fast-forward push, never --force; last line SHIP_MERGED)
+       python scripts/ship.py merge <branch> [--wait MIN] [--out DIR]   (only on Brandon's "merge": runs check,
+         fast-forwards this checkout to the checked commit, then moves origin/master to exactly it by fast-forward
+         push, never --force; last line SHIP_MERGED)
+       python scripts/ship.py deploy <name> "<purpose>" [--override-file F]   python scripts/ship.py go <name> [--override-file F]
+         F: `field: value` lines variable / deploy / said / reason / undo, for an override Brandon OK'd in chat (his
+         whole message in `said`); only LIQUIDGOV_NO_ROLLBACK_OK so far
   1. pushed: <branch> == origin/<branch>             2. fast-forward: origin/master is an ancestor of <branch>
   3. files changed vs origin/master, and the deploy pair make-go.py auto would pick (or "no deploy needed")
   4. CI: the newest platform.yml run for exactly the branch head commit; waits up to --wait minutes (default 20);
@@ -256,12 +260,23 @@ def merge(branch, wait_min, out_dir):
         # a commit made during the CI wait was never checked (review B1, 2026-11-11): never push it
         raise Fail("the branch moved during the check (checked %s, now local %s / origin %s); run check again"
                    % (sha[:7], now_local[:7], now_origin[:7] or "none"))
+    # The pre-push hook checks the files of the checkout the push runs from, not the commit being pushed. Run from the
+    # main checkout on old master, it judged a test already fixed on the branch and refused (2026-11-16, and again
+    # 2026-11-21 for nov20; lesson merging-or-pushing.md:48). So that checkout first moves to exactly the checked commit.
+    # tests/repo/ship_fixes_check.py (N1)
+    if git("rev-parse", "HEAD") != sha:
+        here = git("rev-parse", "--abbrev-ref", "HEAD")
+        if here != "master" or git("status", "--porcelain"):
+            raise Fail("the checkout running ship is on %s%s, so its pre-push hook would check other files than %s; "
+                       "run merge from a clean master checkout" % (here, " with changes" if here == "master" else "", sha[:7]))
+        git("merge", "--ff-only", "-q", sha)
+        print("   this checkout fast-forwarded to %s, so the pre-push hook checks the files being pushed" % sha[:7])
     run(["git", "push", "origin", "%s:refs/heads/master" % sha], "git push origin master")
     git("fetch", "-q", "origin")
     now = git("rev-parse", "origin/master")
     if now != sha:
         raise Fail("after the push origin/master is %s, not %s" % (now[:7], sha[:7]))
-    print("origin/master is now %s (= %s). Local master in the main checkout: git pull --ff-only" % (sha[:7], branch))
+    print("origin/master is now %s (= %s), and so is this checkout." % (sha[:7], branch))
     print("SHIP_MERGED %s %s" % (branch, sha[:7]))
     return 0
 
@@ -284,6 +299,12 @@ KEY_PREFIX = "export LIQUIDGOV_DEPLOY_KEY=%s LIQUIDGOV_DEPLOY_SSH=%s; " % (__imp
 # inherited from whatever shell ran ship.
 OVERRIDES = ("LIQUIDGOV_CI_OVERRIDE", "LIQUIDGOV_DEPLOY_ALLOW_DIRTY", "LIQUIDGOV_NO_ROLLBACK_OK",
              "LIQUIDGOV_LIVE_COMMIT")
+# The switches an --override-file may set (q274, Brandon 2026-11-21: "plain yes in chat is enough", judged on what his
+# whole message means). nov20 (2026-11-20) needed LIQUIDGOV_NO_ROLLBACK_OK and ship refused it, so every step after the
+# guard was run by hand. The CI, dirty-tree and live-commit switches stay hand-run: they skip a check instead of
+# accepting a named risk with an undo plan. tests/repo/ship_override_check.py
+OVERRIDE_FILE_OK = ("LIQUIDGOV_NO_ROLLBACK_OK",)
+OVERRIDE_FIELDS = ("variable", "deploy", "said", "reason", "undo")
 # rsync --itemize-changes: only '<', '>' or 'c' in column 1 move content; '.f....og...' is an owner/group-only
 # difference (the real dry run 2026-11-11 listed 149 of those) and is not a file to deploy.
 ITEM = __import__("re").compile(r"^[<>c]f\S{9} (\S.*)$")
@@ -303,15 +324,67 @@ def log_path(name, what):
     return os.path.join(d, "%s-%s.log" % (name, what))
 
 
-def shell(cwd, command, log):
+def read_override(path, name):
+    """An --override-file: `field: value` lines (variable, deploy, said, reason, undo; '#' starts a comment). Returns
+    (variable, value, summary); refuses a missing field, a variable not in OVERRIDE_FILE_OK, or another deploy's file.
+    `said` is Brandon's whole message, quoted, so the log shows what the OK was."""
+    try:
+        text = open(path, encoding="utf-8-sig").read()
+    except OSError as e:
+        raise Fail("the override file %s cannot be read: %s" % (path, e))
+    fields = {}
+    for line in text.splitlines():
+        if line.strip().startswith("#") or ":" not in line:
+            continue
+        key, val = line.split(":", 1)
+        fields[key.strip().lower()] = val.strip()
+    missing = [k for k in OVERRIDE_FIELDS if not fields.get(k)]
+    if missing:
+        raise Fail("the override file %s has no %s (each is one `field: value` line)" % (path, ", ".join(missing)))
+    var = fields["variable"]
+    if var not in OVERRIDE_FILE_OK:
+        raise Fail("the override file %s sets %s; an override file may set only %s (the others stay hand-run)"
+                   % (path, var, ", ".join(OVERRIDE_FILE_OK)))
+    if fields["deploy"] != name:
+        raise Fail("the override file %s is for deploy %r, not %r (an OK covers one deploy)" % (path, fields["deploy"], name))
+    value = "Brandon said: %s | reason: %s | undo: %s" % (fields["said"], fields["reason"], fields["undo"])
+    return var, value, "OVERRIDE %s for %s (from %s): %s" % (var, name, path, value)
+
+
+def override_prefix(override):
+    """The `export VAR=...;` text for an override, inside the command like KEY_PREFIX (wsl.exe passes no env)."""
+    return "" if not override else "export %s=%s; " % (override[0], __import__("shlex").quote(override[1]))
+
+
+def why_refused(text, log):
+    """Every guard/refusal line of a failed run with the indented list under it, then the log path. The old message was
+    the run's last 300 characters, which cut the rollback guard's record list off (nov20: the fmix line; lesson
+    deploying-site.md:86)."""
+    lines = text.splitlines()
+    keep = []
+    for i, line in enumerate(lines):
+        if any(k in line for k in ("ROLLBACK_GUARD", "REFUS", "Refusing", "FAIL")):
+            keep.append(line)
+            j = i + 1
+            while j < len(lines) and lines[j].startswith("  "):
+                keep.append(lines[j])
+                j += 1
+    body = "\n".join(keep) if keep else text.strip()[-300:]
+    return "%s\n(full log: %s)" % (body, log)
+
+
+def shell(cwd, command, log, override=None):
     """Run one bash command in cwd (WSL for real), with Claude's key in the command text. Output is written to log
     line by line AS IT RUNS and there is no time limit (review B2: a timeout could kill a deploy mid-way and the log
-    was only written at the end). Returns (rc, text); rc < 0 or >= 128 means the shell was killed."""
+    was only written at the end). Returns (rc, text); rc < 0 or >= 128 means the shell was killed. An override from
+    read_override() goes into the command text too; override variables from the caller's own env never do."""
     env = {k: v for k, v in ENV.items() if k not in OVERRIDES}
     lines = []
     try:
         with open(log, "w", encoding="utf-8") as f:
-            p = subprocess.Popen(SH + [KEY_PREFIX + command], cwd=cwd, stdout=subprocess.PIPE,
+            if override:
+                f.write(override[2] + "\n")
+            p = subprocess.Popen(SH + [KEY_PREFIX + override_prefix(override) + command], cwd=cwd, stdout=subprocess.PIPE,
                                  stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace", env=env)
             for line in p.stdout:
                 f.write(line)
@@ -344,10 +417,14 @@ def master_ready(main):
         raise Fail("local master != origin/master (pull or merge first; GitHub and live must agree)")
 
 
-def deploy(name, purpose):
+def deploy(name, purpose, override_file=None):
     """Only after Brandon's "merge" landed: dry-run file list -> make-go auto -> pair committed + pushed -> go.sh dry.
-    Changes nothing on the server. Last line SHIP_DRY_DONE <name>; then show Brandon and wait for his go."""
+    Changes nothing on the server. Last line SHIP_DRY_DONE <name>; then show Brandon and wait for his go.
+    --override-file: see read_override(); its variable reaches the sync dry run and the go script's dry run."""
     no_overrides()
+    override = read_override(override_file, name) if override_file else None
+    if override:
+        print(override[2])
     main = main_checkout()
     master_ready(main)
     go = "deploy/%s-go.sh" % name
@@ -368,9 +445,10 @@ def deploy(name, purpose):
     if os.path.exists(os.path.join(wt, go)):
         print("1-3. pair %s already committed on %s: reusing it (no make-go, no new commit)" % (go, branch))
     else:
-        rc, text = shell(wt, "LIQUIDGOV_DEPLOY_DRY_RUN=1 bash deploy/sync-to-droplet.sh", log_path(name, "sync-dry"))
+        sync_log = log_path(name, "sync-dry")
+        rc, text = shell(wt, "LIQUIDGOV_DEPLOY_DRY_RUN=1 bash deploy/sync-to-droplet.sh", sync_log, override)
         if rc != 0:
-            raise Fail("the sync dry run failed (exit %d): %s" % (rc, text.strip()[-300:]))
+            raise Fail("the sync dry run failed (exit %d):\n%s" % (rc, why_refused(text, sync_log)))
         files = [m.group(1).strip() for m in map(ITEM.match, text.splitlines()) if m]
         if not files:
             raise Fail("nothing differs from live (sync dry run listed no files)")
@@ -392,26 +470,31 @@ def deploy(name, purpose):
             raise Fail("SHIP_PAIR_PUSHED_UNVERIFIED: pushed %s but origin/%s does not match" % (branch, branch))
         print("3. pair committed on %s and pushed: %s" % (branch, gitm(wt, "rev-parse", "--short", branch)))
     log = log_path(name, "dry")
-    rc, text = shell(wt, "bash %s dry" % go, log)
+    rc, text = shell(wt, "bash %s dry" % go, log, override)
     shown = [l for l in text.splitlines() if any(k in l for k in ("CI_GATE", "DRY_OK", "DRY_ONLY_DONE", "REFUS",
                                                                   "FAIL", "WARNING"))]
     print("4. %s dry (exit %d; full log %s):" % (go, rc, log))
     for l in shown:
         print("     " + l)
     if rc != 0 or "DRY_ONLY_DONE" not in text:
-        raise Fail("the dry run did not finish (exit %d)" % rc)
+        raise Fail("the dry run did not finish (exit %d):\n%s" % (rc, why_refused(text, log)))
     if "CI_GATE_OK" not in text:
         raise Fail("the CI gate would refuse this deploy (see the dry-run lines above)")
     print("\nShow Brandon the dry run and the screenshots from `ship.py check`. On his \"merge\": "
-          "python scripts/ship.py merge %s ; then only on his go: python scripts/ship.py go %s" % (branch, name))
+          "python scripts/ship.py merge %s ; then only on his go: python scripts/ship.py go %s%s"
+          % (branch, name, (" --override-file " + override_file) if override else ""))
     print("SHIP_DRY_DONE %s" % name)
     return 0
 
 
-def go_live(name):
+def go_live(name, override_file=None):
     """Only on Brandon's go for THIS change: <name>-go.sh go (CI gate, backup, sync, chown, build/restart, public
-    checks, RECORD lines). SHIP_LIVE <name> only with exit 0, CHECK_DONE and both RECORD lines."""
+    checks, RECORD lines). SHIP_LIVE <name> only with exit 0, CHECK_DONE and both RECORD lines.
+    --override-file: see read_override(); checked again here, so a file for another deploy is refused."""
     no_overrides()
+    override = read_override(override_file, name) if override_file else None
+    if override:
+        print(override[2])
     main = main_checkout()
     go = "deploy/%s-go.sh" % name
     master_ready(main)
@@ -420,7 +503,7 @@ def go_live(name):
               % (name, go))
         return 1
     log = log_path(name, "go")
-    rc, text = shell(main, "bash %s go" % go, log)
+    rc, text = shell(main, "bash %s go" % go, log, override)
     lines = text.splitlines()
     for l in lines[-15:]:
         print("     " + l)
@@ -445,11 +528,20 @@ def go_live(name):
 def main(argv):
     import re
     if len(argv) >= 2 and argv[0] in ("deploy", "go"):
-        if not re.fullmatch(r"[a-z][a-z0-9]*", argv[1]) or (argv[0] == "deploy" and len(argv) != 3):
+        args, override_file = list(argv), None
+        if "--override-file" in args:
+            i = args.index("--override-file")
+            if i + 1 >= len(args):
+                print(__doc__)
+                return 2
+            override_file = args[i + 1]
+            del args[i:i + 2]
+        if not re.fullmatch(r"[a-z][a-z0-9]*", args[1]) or len(args) != (3 if args[0] == "deploy" else 2):
             print(__doc__)
             return 2
         try:
-            return deploy(argv[1], argv[2]) if argv[0] == "deploy" else go_live(argv[1])
+            return (deploy(args[1], args[2], override_file) if args[0] == "deploy"
+                    else go_live(args[1], override_file))
         except Fail as e:
             print(("SHIP_NOT_READY %s: %s" if argv[0] == "deploy" else "SHIP_GO_FAILED %s: %s") % (argv[1], e))
             return 1

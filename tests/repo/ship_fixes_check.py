@@ -8,7 +8,9 @@ blockers first"; scratch/2026-11-11-grokbot-ship-review/REVIEW.md).
   H2 deploy never commits on master: the pair goes on its own wip branch in its own worktree, pushed; master and the
      main checkout are untouched; go refuses until that branch is merged.
   M3 override variables (LIQUIDGOV_CI_OVERRIDE, ..._ALLOW_DIRTY, ..._NO_ROLLBACK_OK, ..._LIVE_COMMIT) in the caller's
-     environment are refused, not passed along.
+     environment are refused, not passed along (an OK'd one goes through --override-file: ship_override_check.py).
+  N1 merge fast-forwards the checkout it runs from to the checked commit before pushing, so the pre-push hook checks
+     the files being pushed (lesson merging-or-pushing.md:48); a dirty checkout is refused.
 Usage: python tests/repo/ship_fixes_check.py [repo root] -> last line passes=N fails=M; exit 1 on any FAIL."""
 import json
 import os
@@ -178,6 +180,36 @@ try:
           "late" in sh(work, "git", "log", "-1", "--format=%s", "wip/9-change"), out)
     check("B1: merge refuses a branch that moved during the check, and master stays put",
           rc == 1 and "moved" in out and om() == before, out)
+
+    # ---- N1 (2026-11-16 and 2026-11-21): the pre-push hook checks the WORKING FILES of the checkout the push runs
+    # from. Pushed from a main checkout still on old master, it judged the old files and refused. This hook refuses
+    # unless the working tree holds the file the branch adds, the way the real one judged the stale test.
+    sh(work, "git", "checkout", "-q", "-b", "wip/10-n1", "master")
+    open(os.path.join(work, "liquidgov-platform", "assets", "n1.css"), "w").write("n1\n")
+    sh(work, "git", "add", "."); sh(work, "git", "commit", "-q", "-m", "n1")
+    sh(work, "git", "push", "-q", "origin", "wip/10-n1"); sh(work, "git", "checkout", "-q", "master")
+    sh(work, "git", "fetch", "-q", "origin")
+    hook = os.path.join(work, ".git", "hooks", "pre-push")
+    open(hook, "w", newline="\n").write("#!/bin/sh\n[ -f liquidgov-platform/assets/n1.css ] || "
+                                        "{ echo 'pre-push: stale working tree'; exit 1; }\n")
+    os.chmod(hook, 0o755)
+    n1_sha = sh(work, "git", "rev-parse", "wip/10-n1")
+    rc, out = ship("merge", "wip/10-n1", "--wait", "5", "--out", os.path.join(tmp, "o1"), branch="wip/10-n1")
+    check("N1: merge from a checkout on old master fast-forwards it first, so the pre-push hook passes",
+          rc == 0 and "SHIP_MERGED wip/10-n1" in out and om() == n1_sha, out)
+    check("N1: ...and that checkout is now at the merged commit", sh(work, "git", "rev-parse", "HEAD") == n1_sha,
+          sh(work, "git", "log", "-1", "--oneline"))
+    os.remove(hook)
+    sh(work, "git", "checkout", "-q", "-b", "wip/11-n1b", "master")
+    open(os.path.join(work, "liquidgov-platform", "assets", "n1b.css"), "w").write("n1b\n")
+    sh(work, "git", "add", "."); sh(work, "git", "commit", "-q", "-m", "n1b")
+    sh(work, "git", "push", "-q", "origin", "wip/11-n1b")
+    open(os.path.join(work, "liquidgov-platform", "assets", "dirty.css"), "w").write("x\n")
+    sh(work, "git", "checkout", "-q", "master")
+    before = om()
+    rc, out = ship("merge", "wip/11-n1b", "--wait", "5", "--out", os.path.join(tmp, "o2"), branch="wip/11-n1b")
+    check("N1: a dirty checkout is refused instead of fast-forwarded, and master stays put",
+          rc == 1 and "clean master checkout" in out and om() == before, out)
 finally:
     shutil.rmtree(tmp, ignore_errors=True)
 

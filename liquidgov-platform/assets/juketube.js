@@ -727,9 +727,13 @@
         items.forEach(function (it) {
           var id = vidOf(it);
           if (!id) return;
-          var label = it.title || ((it.queued_by || "track") + " · " + id);
+          // titles, not raw ids (Brandon 2026-11-21: History showed "bottinbrandon · hdIvZlqzteE"): a known title
+          // now, and fillTitle() swaps the placeholder row's text when YouTube answers
+          var known = titles[id] && titles[id] !== id ? titles[id] : "";
+          var label = it.title || known || ((it.queued_by || "track") + " · " + id);
           if (q && label.toLowerCase().indexOf(q) === -1 && id.toLowerCase().indexOf(q) === -1) return;
           ytHit({ video_id: id, title: label });
+          if (!it.title && !known) fillTitle(id);
           n++;
         });
         if (!n) resultsEl.textContent = q ? "No history matches." : "No history yet.";
@@ -943,12 +947,61 @@
   document.addEventListener("keydown", function (e) { if (e.key === "Escape") endFull(); });
   document.addEventListener("fullscreenchange", syncFsBtn);
   document.addEventListener("webkitfullscreenchange", syncFsBtn);
+  // Copy URL (Brandon 2026-11-21: "the copy url button doesnt work"). It called clipboard.writeText, ignored a refusal
+  // ("Write permission denied" in the desktop app's browser) and said Copied anyway. Now: the clipboard API, else the
+  // older copy command on a hidden field, else the link shown selected with "Press Ctrl+C". It says Copied only when a
+  // copy happened. Test: tests/browser/juketube_copy_check.py
+  function copyLabel(text, ms) {
+    copyBtn.textContent = text;
+    setTimeout(function () { copyBtn.textContent = "Copy URL"; }, ms || 1200);
+  }
+  function legacyCopy(u) {
+    var ta = document.createElement("textarea");
+    ta.value = u;
+    ta.setAttribute("readonly", "");
+    ta.style.cssText = "position:fixed;left:-9999px;top:0;opacity:0";
+    document.body.appendChild(ta);
+    ta.select();
+    var ok = false;
+    try { ok = document.execCommand("copy"); } catch (e) { ok = false; } // err-ok: falls through to the shown link
+    document.body.removeChild(ta);
+    return ok;
+  }
+  function showLink(u) {
+    var box = document.getElementById("jbcopybox");
+    if (!box) {
+      box = document.createElement("input");
+      box.id = "jbcopybox";
+      box.readOnly = true;
+      box.setAttribute("aria-label", "Link to copy");
+      copyBtn.parentNode.insertBefore(box, copyBtn.nextSibling);
+    }
+    box.value = u;
+    box.hidden = false;
+    box.focus();
+    box.select();
+    copyLabel("Press Ctrl+C", 4000);
+    setTimeout(function () { box.hidden = true; }, 8000);
+  }
   copyBtn.addEventListener("click", function () {
-    if (!lastId) return;
+    if (!lastId) { copyLabel("Nothing playing"); return; }
     var u = ytUrl(lastId);
-    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(u);
-    copyBtn.textContent = "Copied";
-    setTimeout(function () { copyBtn.textContent = "Copy URL"; }, 1000);
+    function fallback(why) {
+      lgBeacon("jb_copy_fallback", why);
+      if (legacyCopy(u)) copyLabel("Copied");
+      else showLink(u);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      var p;
+      try { p = navigator.clipboard.writeText(u); } catch (e) { fallback("threw: " + (e && e.name)); return; }
+      if (p && typeof p.then === "function") {
+        p.then(function () { copyLabel("Copied"); }, function (e) { fallback("refused: " + (e && e.name)); });
+        return;
+      }
+      copyLabel("Copied");
+      return;
+    }
+    fallback("no clipboard api");
   });
 
   function playChannel(ch) {

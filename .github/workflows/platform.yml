@@ -506,7 +506,7 @@ jobs:
           export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
           python3 liquidgov-platform/tests/browser/juketube_overlap_check.py "$PWD/liquidgov-platform" "$RUNNER_TEMP/phone"
 
-      - name: Juketube Full fills the screen (juketube_full_check) (browser, report-only)
+      - name: Juketube Full fills the screen, Copy URL copies (juketube_full_check) (browser, report-only)
         if: always()
         timeout-minutes: 5
         continue-on-error: true

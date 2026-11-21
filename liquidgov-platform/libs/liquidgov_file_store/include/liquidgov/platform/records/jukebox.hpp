@@ -41,6 +41,11 @@ struct JukeboxHistoryEntry {
     std::int64_t played_at = 0;
 };
 
+// A shared station's saved history is stored as ordinary history ("jh" records) under the owner
+// kStationHistoryPrefix + station id ("" = the site-wide station). Not a username, so the store keeps these
+// owners on save by this prefix (write_jukebox). One definition, read by the store and the site (2026-11-21).
+inline constexpr const char* kStationHistoryPrefix = "jbs:";
+
 inline constexpr std::size_t kJukeboxQueueCap = 50;
 
 inline constexpr std::size_t kJukeboxHistoryCap = 30;

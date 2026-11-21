@@ -104,6 +104,9 @@ void run_community_session(int fd, const std::string& username, const std::strin
                                 auto& hist = g_community_history_by_station[station];
                                 hist.push_back(CommunityTrack{now_playing.video_id, now_playing.queued_by});
                                 if (hist.size() > kCommunityHistoryCap) hist.pop_front();
+                                // saved too, so a restart (every deploy) no longer wipes it; tests/e2e/juketube_history.sh
+                                g_store.record_jukebox_play(kStationHistoryPrefix + station, now_playing.video_id,
+                                                            now_playing.queued_by);
                             }
                             now_playing = CommunityNowPlaying{*id, username, 0, now, true};
                             g_store.set_jukebox_pos(station, *id, 0, now);
@@ -156,6 +159,10 @@ void run_community_session(int fd, const std::string& username, const std::strin
                         auto& hist = g_community_history_by_station[station];
                         hist.push_back(CommunityTrack{now_playing.video_id, now_playing.queued_by});
                         if (hist.size() > kCommunityHistoryCap) hist.pop_front();
+                        // saved too (Brandon 2026-11-21 "theres no history appearing": the in-memory list above is
+                        // emptied by every restart, so each deploy wiped it); tests/e2e/juketube_history.sh
+                        g_store.record_jukebox_play(kStationHistoryPrefix + station, now_playing.video_id,
+                                                    now_playing.queued_by);
                         community_advance_locked(station, now);
                         const auto& np = g_community_now_by_station[station];
                         if (np.active) g_store.set_jukebox_pos(station, np.video_id, 0, now);

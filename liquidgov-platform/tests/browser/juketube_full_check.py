@@ -13,6 +13,10 @@ requestFullscreen: none (missing), hang (a promise that never settles), refuse (
   F5 refuse: filled at once
   F6 while filled, the panel's 250 ms docking timer does not move it (still the viewport box 1 s later)
   F7 the reason reaches /log (ev=jb_full_fallback, d names it), so the next real sighting says what the browser did
+Copy URL (Brandon 2026-11-21: "the copy url button doesnt work"; the clipboard refused and the button said Copied):
+  C1 nothing playing: it says "Nothing playing"   C2 clipboard works: the track's link is copied, "Copied"
+  C3 clipboard refused: the older copy command is used, then "Copied"; C3b the reason reaches /log
+  C4 both refused: the link is shown selected with "Press Ctrl+C", never "Copied"
 Usage: LG_BROWSER=$(command -v google-chrome) python3 juketube_full_check.py [<liquidgov-platform dir>] [<out dir>]
 Prints "VERDICT juketube-full: ALL-PASS" or the failed cases. Exit 1 on a FAIL."""
 import http.server
@@ -58,11 +62,33 @@ window.YT = {PlayerState: {UNSTARTED: -1, ENDED: 0, PLAYING: 1, PAUSED: 2, BUFFE
 """
 
 
-def page(mode):
+# Copy URL (2026-11-21, "the copy url button doesnt work"): a stand-in station socket that sends one "now playing"
+# snapshot (so the button has a link), and the clipboard paths: ok, refused with the old copy command working, refused
+# with it failing too. Every call is recorded in window.__copy.
+WS_PLAYING = """
+window.WebSocket = function () { var me = this; me.readyState = 0; setTimeout(function () { me.readyState = 1;
+  if (me.onopen) me.onopen({}); if (me.onmessage) me.onmessage({data: JSON.stringify({now: {video_id: 'dQw4w9WgXcQ',
+  queued_by: 'pal', elapsed: 0}, upcoming: 0, listeners: 1})}); }, 50); };
+window.WebSocket.prototype.send = function () {}; window.WebSocket.prototype.close = function () {};
+window.WebSocket.OPEN = 1;
+"""
+CLIPS = {
+    "ok": "navigator.clipboard.writeText = function (t) { window.__copy.push('api:' + t); return Promise.resolve(); };",
+    "refuse": "navigator.clipboard.writeText = function (t) { window.__copy.push('api-refused'); return Promise.reject("
+              "new DOMException('Write permission denied', 'NotAllowedError')); };"
+              "document.execCommand = function (c) { window.__copy.push('legacy:' + c); return true; };",
+    "refuseall": "navigator.clipboard.writeText = function (t) { window.__copy.push('api-refused'); return Promise.reject("
+                 "new DOMException('Write permission denied', 'NotAllowedError')); };"
+                 "document.execCommand = function (c) { window.__copy.push('legacy-failed'); return false; };",
+}
+
+
+def page(mode, ws="", clip=""):
     return ("<!doctype html><html><head><meta charset=utf-8>"
             "<link rel=stylesheet href=/assets/site.css><link rel=stylesheet href=/assets/juketube.css></head>"
             "<body><main class=wrap><h1>Feed</h1><p>page</p></main><div id=juketube-root></div>"
-            "<script>" + YT_STUB + MODES.get(mode, "") + "</script>"
+            "<script>window.__copy = [];" + YT_STUB + MODES.get(mode, "") + (WS_PLAYING if ws == "playing" else "") +
+            CLIPS.get(clip, "") + "</script>"
             "<script src=/assets/juketube.js></script></body></html>")
 
 
@@ -80,8 +106,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         u = urllib.parse.urlparse(self.path)
         if u.path == "/":
-            mode = urllib.parse.parse_qs(u.query).get("mode", [""])[0]
-            return self.send(200, "text/html; charset=utf-8", page(mode).encode())
+            q = urllib.parse.parse_qs(u.query)
+            arg = lambda k: q.get(k, [""])[0]
+            return self.send(200, "text/html; charset=utf-8", page(arg("mode"), arg("ws"), arg("clip")).encode())
         if u.path in ("/assets/juketube.js", "/assets/juketube.css", "/assets/site.css"):
             with open(os.path.join(PLATFORM, u.path.lstrip("/")), "rb") as f:
                 body = f.read()
@@ -122,8 +149,14 @@ def fills(s):
     return s and s["full"] and s["box"] == [0, 0, W, H]
 
 
-def load(ws, port, mode):
-    ws.call("Page.navigate", url="http://127.0.0.1:%d/?mode=%s" % (port, mode))
+COPY = ("(function(){var b=document.getElementById('jbcopybox');return {label:document.getElementById('jbcopy')"
+        ".textContent,calls:window.__copy,box:!!(b&&!b.hidden),boxValue:b?b.value:'',selected:!!(b&&b.selectionEnd>0&&"
+        "b.selectionEnd-b.selectionStart===b.value.length)};})()")
+URL1 = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+
+
+def load(ws, port, mode, extra=""):
+    ws.call("Page.navigate", url="http://127.0.0.1:%d/?mode=%s%s" % (port, mode, extra))
     for _ in range(40):
         if cdp.js(ws, "!!document.getElementById('jbfs') && document.readyState === 'complete'"):
             break
@@ -187,6 +220,36 @@ def main():
         time.sleep(0.3)
         s = cdp.js(ws, STATE)
         check("F5 refuse: filled at once", fills(s), s)
+
+        # ---- Copy URL
+        load(ws, port, "", "&clip=ok")
+        click(ws, "#jbcopy")
+        time.sleep(0.2)
+        c = cdp.js(ws, COPY)
+        check("C1 nothing playing: the button says so instead of doing nothing", c and c["label"] == "Nothing playing", c)
+        load(ws, port, "", "&ws=playing&clip=ok")
+        time.sleep(0.5)
+        click(ws, "#jbcopy")
+        time.sleep(0.3)
+        c = cdp.js(ws, COPY)
+        check("C2 clipboard works: the track's link is copied and it says Copied",
+              c and ("api:" + URL1) in c["calls"] and c["label"] == "Copied", c)
+        load(ws, port, "", "&ws=playing&clip=refuse")
+        time.sleep(0.5)
+        click(ws, "#jbcopy")
+        time.sleep(0.3)
+        c = cdp.js(ws, COPY)
+        check("C3 clipboard refused: the older copy command is used, then Copied",
+              c and "api-refused" in c["calls"] and "legacy:copy" in c["calls"] and c["label"] == "Copied", c)
+        copy_logs = [l.get("d", [""])[0] for l in LOGS if l.get("ev", [""])[0] == "jb_copy_fallback"]
+        check("C3b the refusal reason reaches /log (ev=jb_copy_fallback)", any("refused" in r for r in copy_logs), LOGS)
+        load(ws, port, "", "&ws=playing&clip=refuseall")
+        time.sleep(0.5)
+        click(ws, "#jbcopy")
+        time.sleep(0.3)
+        c = cdp.js(ws, COPY)
+        check("C4 both refused: the link is shown selected with 'Press Ctrl+C', never 'Copied'",
+              c and c["box"] and c["boxValue"] == URL1 and c["selected"] and c["label"] == "Press Ctrl+C", c)
     finally:
         cdp.stop_edge(proc, getattr(ws, "profile", None))
         srv.shutdown()

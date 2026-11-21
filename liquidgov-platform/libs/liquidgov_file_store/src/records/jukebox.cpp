@@ -334,7 +334,7 @@ void FileStore::write_jukebox(std::ostream& body) {
         }
     }
     for (const auto& [owner, list] : jukebox_history_) {
-        if (!by_username_.count(owner) && owner.rfind("jbs:", 0) != 0) continue;
+        if (!by_username_.count(owner) && owner.rfind(kStationHistoryPrefix, 0) != 0) continue;
         for (const auto& h : list) {
             body << "jh\t" << pct_encode(h.owner) << "\t" << pct_encode(h.video_id) << "\t"
                  << pct_encode(h.queued_by) << "\t" << h.played_at << "\n";

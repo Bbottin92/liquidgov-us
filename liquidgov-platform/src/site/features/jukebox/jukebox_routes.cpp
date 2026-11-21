@@ -150,10 +150,16 @@ std::optional<std::string> jukebox_routes(Route& r) {
         // plays instead. "" is the site-wide station, a real and distinct value from "no
         // station param at all" -- qs.count, not qs[].empty(), is what tells them apart.
         if (qs.count("station")) {
-            std::deque<CommunityTrack> hist;
-            {
+            // The saved history first (Brandon 2026-11-21 "theres no history appearing": the in-memory list was all
+            // there was, and every restart, so every deploy, emptied it). The memory list only covers a store that
+            // has nothing saved yet. tests/e2e/juketube_history.sh
+            std::vector<CommunityTrack> hist;
+            for (const auto& h : g_store.jukebox_history_of(kStationHistoryPrefix + qs.at("station")))
+                hist.push_back(CommunityTrack{h.video_id, h.queued_by});
+            if (hist.empty()) {
                 std::lock_guard<std::mutex> lock(g_community_mu);
-                hist = g_community_history_by_station[qs.at("station")];
+                const auto& mem = g_community_history_by_station[qs.at("station")];
+                hist.assign(mem.begin(), mem.end());
             }
             std::string out = "{\"items\":[";
             for (auto it = hist.rbegin(); it != hist.rend(); ++it) {

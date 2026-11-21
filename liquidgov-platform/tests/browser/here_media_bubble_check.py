@@ -77,8 +77,12 @@ def cases(a, b):
     hm.until(lambda: (look(a) or {}).get("playing"), 15)
     time.sleep(0.6)   # the dot glides to its place
     s = look(a)
-    a.check("B0 precondition: both turn the camera on, in range; pal's picture arrives and is playing",
-            bool(ok) and bool(s) and s["playing"], s)
+    b0 = bool(ok) and bool(s) and s["playing"]
+    # 2026-11-21: B0 failed once in 21 CI runs with no bubble at all (master 0e96918) and nothing to say why; a failure
+    # now carries whether both rooms opened, what Bbottin's page holds for pal, and the setup messages each side got
+    a.check("B0 precondition: both turn the camera on, in range; pal's picture arrives and is playing", b0,
+            s if b0 else {"bubble": s, "rooms opened": bool(ok), "pal as Bbottin's peer": a.peer("pal"),
+                          "setup messages (Bbottin, pal)": [a.sigs(), b.sigs()]})
     a.check("B1 it is inside pal's dot, centered on pal's portrait, small and round; not in the corner strip",
             small_round(s) and s["inDot"] == "pal" and not s["inStrip"] and centered(s), s)
     b.move(0.6, 0.25)

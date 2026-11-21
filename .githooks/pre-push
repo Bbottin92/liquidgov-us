@@ -32,7 +32,8 @@ fail=0
 # Only the checks the change could affect run (Brandon 2026-11-10): affected_checks.py holds the list of checks and the
 # files each one reads, and picks from the staged files (pre-commit sets LG_CHECK_MODE=--staged) or the commits being
 # pushed (git's stdin here). It runs every check when the hooks or itself change, or when it can't tell what changed.
-checks="$(git_stdin="$(cat)"; printf '%s\n' "$git_stdin" | "$PY" "$ROOT/scripts/affected_checks.py" "$ROOT" "${LG_CHECK_MODE:---push}")" || {
+git_stdin="$(cat)"  # read once here: the pass records below need the pushed commit too (q278)
+checks="$(printf '%s\n' "$git_stdin" | "$PY" "$ROOT/scripts/affected_checks.py" "$ROOT" "${LG_CHECK_MODE:---push}")" || {
   echo "pre-push: affected_checks.py failed, so the checks could not be chosen; refusing." >&2
   exit 1
 }
@@ -43,6 +44,26 @@ checks="$(git_stdin="$(cat)"; printf '%s\n' "$git_stdin" | "$PY" "$ROOT/scripts/
 # prints nothing. Said on a SKIPPED line, never counted as passed; GitHub's hook-checks run (Linux) runs them on every
 # push and ship.py waits for it. If the list cannot be read nothing is skipped (hook_linux_only_skip_check.py).
 linux_only="$("$PY" "$ROOT/scripts/affected_checks.py" "$ROOT" --linux-only 2>/dev/null | tr '\n' ' ')" || linux_only=""
+# Pass records (q278, Brandon 2026-11-21 "yes, make it the first item"): a commit that touched scripts/affected_checks.py
+# ran every check at commit and again at push on the very same files (twice that night on wip/183). The checks read the
+# files ON DISK, so a pass is recorded only for an exact tree: at commit, the index's tree when the disk matches the
+# index (nothing unstaged, nothing untracked); at push, a check is skipped only when ONE ref is pushed, its commit's tree
+# has a record for that check, and the disk is exactly that commit. Skips say SKIPPED, never passed; GitHub's
+# hook-checks run still runs everything. Records live in the git dir (lg-check-pass/<tree>-<check>), never committed.
+# Worked out here, before GIT_* is dropped: at commit the index may be GIT_INDEX_FILE. tests/repo/hook_pass_record_check.py
+MODE="${LG_CHECK_MODE:---push}"
+PASS_DIR="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)/lg-check-pass"
+disk_clean() { git diff --quiet "$@" 2>/dev/null && [ -z "$(git ls-files --others --exclude-standard 2>/dev/null)" ]; }
+tree=""
+if [ "$MODE" = "--staged" ]; then
+  if disk_clean; then tree="$(git write-tree 2>/dev/null)" || tree=""; fi
+else
+  set -- $(printf '%s\n' "$git_stdin" | sed '/^$/d')
+  if [ $# -eq 4 ]; then
+    t="$(git rev-parse --verify -q "$2^{tree}" 2>/dev/null)" || t=""
+    if [ -n "$t" ] && [ "$t" = "$(git rev-parse 'HEAD^{tree}' 2>/dev/null)" ] && disk_clean HEAD; then tree="$t"; fi
+  fi
+fi
 # Checks never get git's hook variables (2026-11-14). Git runs a hook with GIT_DIR, GIT_INDEX_FILE and friends set; a
 # check that builds a throwaway repo (prebuilt_check.py: git init, commit "one"/"two") then acted on THIS repository:
 # core.bare=true in the main checkout and junk commits on a linked worktree's branch (twice, 2026-11-12). The selector
@@ -53,11 +74,17 @@ for check in $checks; do
   case " $linux_only " in *" $check "*)
     echo "SKIPPED (Linux-only): $check  (not passed; GitHub's hook-checks run runs it)"; continue;;
   esac
+  if [ -n "$tree" ] && [ "$MODE" != "--staged" ] && [ -f "$PASS_DIR/$tree-$check" ]; then
+    echo "SKIPPED (passed at commit on tree $(printf '%.7s' "$tree"), same files): $check"; continue
+  fi
+  start=$(date +%s)
   out="$("$PY" "$ROOT/tests/repo/$check" "$ROOT" 2>&1)"; rc=$?
-  echo "$out" | tail -1
+  echo "$(echo "$out" | tail -1)  [$(( $(date +%s) - start ))s]"
   if [ $rc -ne 0 ]; then
     echo "$out" | grep "FAIL" | head -15 >&2
     fail=1
+  elif [ -n "$tree" ] && [ "$MODE" = "--staged" ]; then
+    mkdir -p "$PASS_DIR" 2>/dev/null && : > "$PASS_DIR/$tree-$check" 2>/dev/null  # err-ok: no record only means a rerun
   fi
 done
 if [ $fail -ne 0 ]; then

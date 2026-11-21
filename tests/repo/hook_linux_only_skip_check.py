@@ -142,7 +142,9 @@ def cases(tmp):
           "L3 Windows: a SKIPPED (Linux-only) line names it (never counted as passed)", out)
     check("a_ok_check: 1 checks, 0 failed" in out, "L3 Windows: the other check still ran", out)
 
-    # the push to master (every check): the same on Windows; refused on Linux
+    # the push to master (every check): the same on Windows; refused on Linux. The commit above left pass records for
+    # this tree, so the push would skip a_ok_check (q278, hook_pass_record_check.py); without them it must run.
+    shutil.rmtree(os.path.join(main, ".git", "lg-check-pass"), ignore_errors=True)
     r = git(main, "push", "-q", "origin", "master", env=env("linux"))
     check(r.returncode != 0 and ran(marker), "L4 control, Linux: the push to master is refused by the failing check",
           (r.returncode, r.stdout + r.stderr))

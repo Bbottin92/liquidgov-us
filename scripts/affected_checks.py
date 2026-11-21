@@ -56,6 +56,7 @@ CHECKS = {
     "ship_workflows_check.py": ["scripts/ship.py"],
     "ship_fixes_check.py": ["scripts/ship.py"] + DEPLOY,
     "ship_override_check.py": ["scripts/ship.py"] + DEPLOY,
+    "hook_pass_record_check.py": [".githooks/*"],
     "ship_recheck_check.py": ["scripts/ship.py"],
     # tests/repo/*: a NEW check must be in CHECKS, and only these two say so; mapped to nothing, they never ran when a
     # check was added, so ship_override_check.py passed locally and failed GitHub's full run (2026-11-21, lesson

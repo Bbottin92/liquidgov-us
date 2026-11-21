@@ -155,7 +155,9 @@ def run_cases(tmp):
         repair(main)
         if out(tree, "rev-parse", "HEAD") != tip or out(tree, "log", "-1", "--format=%s") != want[0]:
             git(tree, "reset", "-q", "--hard", tip)
-        # pre-push, by explicit commit id as in the 2026-11-12 sightings
+        # pre-push, by explicit commit id as in the 2026-11-12 sightings. The commit above left a pass record for this
+        # tree, so the push would skip the probe (q278, hook_pass_record_check.py); without the record it must run.
+        shutil.rmtree(os.path.join(main, ".git", "lg-check-pass"), ignore_errors=True)
         r = git(tree, "push", "-q", "origin", "%s:refs/heads/%s" % (out(tree, "rev-parse", "HEAD"), branch), env=env)
         judge("push from a " + label, main, tree, probe_out, r, want, files)
         repair(main)

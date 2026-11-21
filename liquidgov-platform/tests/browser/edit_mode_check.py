@@ -157,13 +157,14 @@ def main(argv):
                 [ms.get(i, {}).get("comment") for i in (1, 2, 3)] == ["make Back bigger", "show these as pool chips", "rename to My pools"],
                 {"comments": [ms.get(i, {}).get("comment") for i in (1, 2, 3)]})
         box_before = m1.get("box")
-        cdp.js(ws, "(scrollTo(0, 300), '1')")
+        # the strict CSP drops the demo's inline style attributes, so the spacer is sized through the CSSOM (allowed under CSP)
+        scrolled = cdp.js(ws, "(document.getElementById('spacer').style.height = '1400px', scrollTo(0, 300), JSON.stringify(scrollY))")
         time.sleep(0.2)
         s2 = state()
         m1s = {m["n"]: m for m in s2["report"]["marks"]}.get(1, {})
         r.check("E6 marks are kept in page px: after a 300 px scroll the box is the same and on screen it moved 300 px up",
-                m1s.get("box") == box_before and box_before and abs((box_before["t"] - m1s["seen"]["t"]) - 300) < 2,
-                {"before": box_before, "after": m1s.get("box"), "seen": m1s.get("seen")})
+                scrolled == "300" and m1s.get("box") == box_before and box_before and abs((box_before["t"] - m1s["seen"]["t"]) - 300) < 2,
+                {"scrollY": scrolled, "before": box_before, "after": m1s.get("box"), "seen": m1s.get("seen")})
         cdp.js(ws, "(scrollTo(0, 0), LG_EDIT.remove(2), '1')")
         cdp.js(ws, "(async () => { LG_EDIT.on(); const cv = document.querySelector('#lg-edit-root canvas');"
                    " const ev = (t, x, y) => cv.dispatchEvent(new PointerEvent(t, {clientX: x, clientY: y, pointerId: 1, bubbles: true, button: 0, buttons: t === 'pointerup' ? 0 : 1}));"

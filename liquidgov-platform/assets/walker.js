@@ -63,7 +63,12 @@
     },
     // On-screen buttons: none since the joystick (q64): select is a tap on it (or Enter), back is the phone's own back
     // (or Esc). Kept as an empty map so a page or check that lists the buttons finds none.
-    buttons: {}
+    buttons: {},
+    // The joystick's first-time note (q64, mockup scratch/2026-11-17-claude-ux-mockups/joystick-2-first-time-bubble.png):
+    // above the joystick on phones, through tip.js (LG_TIP, name -> its seen-flag), until "Got it" or maxViews pages.
+    tip: { name: 'joy', cls: 'lg-joy-tip', okCls: 'lg-joy-ok', maxViews: 3, title: 'Your drop walks the page',
+      lines: ['Drag the joystick to walk', 'Tap it to use what you are next to', 'Your phone’s back button goes back'],
+      ok: 'Got it' }
   };
   // Your drop's menu: id and look of the popup, the accessible name of your drop, the toggles' names, and the drip speed
   // slider (a multiple of maxSpeed, from min to max in steps; store: its localStorage key).
@@ -106,6 +111,27 @@
     return { x: dx * k, y: dy * k };
   }
 
+  // joyTip(pad, keys): the joystick's first-time note above it, phones only (a mouse sees no joystick), shown by tip.js's
+  // rules (one tip at a time, after the intro, seen-flag lg-joy-hint). Without tip.js on the page: no note.
+  function joyTip(pad, keys) {
+    var N = CONTROLS.tip;
+    if (window.matchMedia && matchMedia('(hover: hover) and (pointer: fine)').matches) return;
+    // tip.js may come later in the page (deferred scripts run in order, all before DOMContentLoaded): wait for it once
+    if (!window.LG_TIP) {
+      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { if (window.LG_TIP) joyTip(pad, keys); }, { once: true });
+      return;
+    }
+    var el = document.createElement('div');
+    el.className = 'lg-tip ' + N.cls;
+    el.setAttribute('role', 'note');
+    el.innerHTML = '<strong></strong><ul></ul><button type="button" class="' + N.okCls + '"></button>';
+    el.querySelector('strong').textContent = N.title;
+    N.lines.forEach(function (t) { var li = document.createElement('li'); li.textContent = t; el.querySelector('ul').appendChild(li); });
+    el.querySelector('button').textContent = N.ok;
+    pad.insertBefore(el, keys);
+    LG_TIP.wire(el, el.querySelector('button'), N.name, { maxViews: N.maxViews });
+  }
+
   // mount(page): puts the pad on the page (once) and wires keys, the touchpad and buttons to the page's walker.
   // page: {dir(dir, down) (keys), pull(x, y) (the touchpad's vector; 0, 0 = let go), select() -> true when it used
   // something, back(), resized() (optional), box: this page's map box id (optional; the portal takes you there)}.
@@ -120,6 +146,7 @@
       ['--lgw-margin', T.margin + 'px']].forEach(function (v) { pad.style.setProperty(v[0], v[1]); });
     document.body.appendChild(pad);
     var keys = pad.querySelector('.lg-here-keys');
+    joyTip(pad, keys);
     var held = {};
     var touchpad = pad.querySelector('.' + T.cls), knob = touchpad.firstChild, grip = null, from = null;
     var downAt = 0, moved = false;   // a tap = let go within T.tapMs, never past T.tapSlop px: A (select)

@@ -25,6 +25,7 @@ are the cases this file runs now.
   J1  the joystick replaced the D-pad: no direction buttons are left on the pad
   P3  the joystick and the Juketube button do not overlap
   P4  the joystick is at least 44x44 px
+  JT1 the joystick's first-time note shows above it with CONTROLS.tip's title and lines; Got it hides it for good (q64)
   A1  a switch in your drop's menu meets WCAG AA (4.5:1), off and on (the site's --lg-switch-* colors)
   T5  a tip's close button does not cover its text (Juketube's tip; the walker has no note of its own any more)
   T4  one tip at a time (LG_TIP): while one shows, another waits without its view being counted
@@ -344,8 +345,19 @@ class Run(m.Run):
         self.wait("!!document.querySelector('#lg-here-pad .lg-here-keys')", 3)
 
     def tips(self):
-        """T4/T5: tip.js on a page with the walker (the walker has no note of its own any more)."""
+        """JT1: the joystick's first-time note (q64); T4/T5: tip.js on a page with the walker."""
         self.wait("!!window.LG_TIP", 3)
+        jt = self.j("(() => { const N = LG_WALKER.CONTROLS.tip, el = document.querySelector('#lg-here-pad .' + N.cls),"
+                    " j = document.querySelector('#lg-here-pad .' + LG_WALKER.CONTROLS.touchpad.cls);"
+                    " const r = {there: !!el && getComputedStyle(el).display !== 'none', title: el && el.querySelector('strong').textContent === N.title,"
+                    " lines: el ? [...el.querySelectorAll('li')].map(l => l.textContent) : [], want: N.lines,"
+                    " above: !!(el && j) && el.getBoundingClientRect().bottom <= j.getBoundingClientRect().top + 1};"
+                    " if (el) el.querySelector('.' + N.okCls).click();"
+                    " r.gone = !el || getComputedStyle(el).display === 'none'; r.flag = localStorage.getItem(LG_TIP.flag(N.name));"
+                    " return JSON.stringify(r); })()") or {}
+        self.check("JT1 phone: the joystick's first-time note shows above it with CONTROLS.tip's title and lines; Got it"
+                   " hides it for good", jt.get("there") and jt.get("title") and jt.get("lines") == jt.get("want")
+                   and jt.get("above") and jt.get("gone") and jt.get("flag") == "1", jt)
         self.j("(() => { const d = document.createElement('div'); d.id = 'jbhint'; d.className = 'lg-tip';"
                " d.innerHTML = '<span>Juketube — search, stations, history. Tap a track and everyone on that station hears it.</span>"
                "<button type=\"button\" id=\"jbhintclose\" class=\"lg-tip-close\" aria-label=\"Hide this tip\">×</button>';"

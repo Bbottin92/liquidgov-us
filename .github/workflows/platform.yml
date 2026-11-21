@@ -506,6 +506,15 @@ jobs:
           export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
           python3 liquidgov-platform/tests/browser/juketube_overlap_check.py "$PWD/liquidgov-platform" "$RUNNER_TEMP/phone"
 
+      - name: Juketube Full fills the screen (juketube_full_check) (browser, report-only)
+        if: always()
+        timeout-minutes: 5
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
+          python3 liquidgov-platform/tests/browser/juketube_full_check.py "$PWD/liquidgov-platform"
+
       - name: drawing canvas layout (canvas_layout_check) (browser, report-only)
         if: always()
         timeout-minutes: 5

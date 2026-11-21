@@ -244,7 +244,7 @@ BOXES = r"""(() => { const C = window.LG_WALKER && LG_WALKER.CONTROLS, q = s => 
   const box = e => { if (!e) return null; const r = e.getBoundingClientRect(); return {l: r.left, t: r.top, r: r.right, b: r.bottom, w: r.width, h: r.height}; };
   const T = C.touchpad || {}; out.touchpad = box(q('#lg-here-pad .' + T.cls)); out.unit = box(q('#lg-here-pad .lg-here-keys'));
   out.alpha = ['.' + T.cls].map(s => { const e = q('#lg-here-pad ' + s); return e ? parseFloat(getComputedStyle(e).opacity) : null; }); out.dirButtons = document.querySelectorAll('#lg-here-pad [data-dir]').length;
-  out.padButtons = document.querySelectorAll('#lg-here-pad button').length;
+  out.padButtons = document.querySelectorAll('#lg-here-pad .lg-here-keys button').length;   // the controls unit, not the first-time note's Got it
   const tpe = q('#lg-here-pad .' + T.cls); out.round = tpe ? getComputedStyle(tpe).borderRadius : null;
   out.buttons = {}; Object.keys(C.buttons || {}).forEach(k => { const e = q('#lg-here-pad .' + C.buttons[k].cls); out.buttons[k] = box(e); if (out.buttons[k]) out.buttons[k].text = e.textContent; });
   out.jb = box(q('#jbtoggle'));

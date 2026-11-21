@@ -97,8 +97,11 @@ class DotsRun(phone_check.Run):
                 st = self.walk_to_button()
                 self.check("D3 phone: walking up to Send friend request marks it", "friend request" in (st.get("near") or "").lower(), st)
                 self.shot("phone-near")
+                # A is a quick tap on the round joystick since q64 (no A button): press and let go in place
                 pressed = self.j("(() => { const n = document.querySelector('.lg-here-near');"
-                                 " document.querySelector('#lg-here-pad .lg-here-a').click();"
+                                 " const t = document.querySelector('#lg-here-pad .lg-here-touchpad'), r = t.getBoundingClientRect();"
+                                 " const o = {pointerId: 7, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, bubbles: true};"
+                                 " t.dispatchEvent(new PointerEvent('pointerdown', o)); t.dispatchEvent(new PointerEvent('pointerup', o));"
                                  " return JSON.stringify(n ? n.textContent.trim() : null); })()")
                 landed = None
                 for _ in range(30):   # wait for the form's POST and redirect to land (up to 6 s)

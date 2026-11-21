@@ -14,16 +14,17 @@ your drop in its middle (no Center button), and a tap on your drop opens its men
 the old switch, hopping and Center cases are gone (P5, P6, T1-T3, C1, C2, D1, and the old M1/M3/M4, H0/H1); the names below
 are the cases this file runs now.
 
-  K0  the controls map (LG_WALKER.CONTROLS) binds every direction, select and back to keys and buttons, has no Center
-      button, and names the drop menu (microphone, camera, a drip speed range around 1x)
+  K0  the controls map (LG_WALKER.CONTROLS) binds every direction, select and back to keys, has no on-screen buttons
+      (q64: the round joystick's tap is select, the phone's own back is back), and names the drop menu (microphone,
+      camera, a drip speed range around 1x)
   Phone 390x844, the profile-like page:
   N1  there is no Drop/Scroll switch, strip or note; the pad is on the page from the start
-  P1  the touchpad + A/B unit is centered, in the bottom quarter, lifted CONTROLS.touchpad.lift px, inside its margins
-  P2  A and B are attached to the touchpad's right side, stacked, each half its height
-  U1  the touchpad, A and B are equally see-through (CONTROLS.touchpad.alpha)
-  J1  the touchpad replaced the D-pad: no direction buttons are left on the pad
-  P3  no two controls overlap (touchpad, A, B, the Juketube button)
-  P4  every control is at least 44x44 px
+  P1  the joystick is centered, in the bottom quarter, lifted CONTROLS.touchpad.lift px, inside its margins
+  P2  the joystick is round, CONTROLS.touchpad.size px across, with no A, B or other button on the pad (q64)
+  U1  the joystick is see-through (CONTROLS.touchpad.alpha)
+  J1  the joystick replaced the D-pad: no direction buttons are left on the pad
+  P3  the joystick and the Juketube button do not overlap
+  P4  the joystick is at least 44x44 px
   A1  a switch in your drop's menu meets WCAG AA (4.5:1), off and on (the site's --lg-switch-* colors)
   T5  a tip's close button does not cover its text (Juketube's tip; the walker has no note of its own any more)
   T4  one tip at a time (LG_TIP): while one shows, another waits without its view being counted
@@ -64,7 +65,7 @@ are the cases this file runs now.
   M6  when the map zooms out by itself (a box was opened), the walking zoom comes back
   MC2 phone: the map slides so the walker stays in the middle of the part you can see (above the pad)
   MN6 phone: a tap on your drop on the map opens the same menu
-  M3  phone: the touchpad walks the walker onto a connected box; A does what a tap does; B goes back
+  M3  phone: the joystick walks the walker onto a connected box; the phone's own back goes back (no B since q64)
   Z1  1280x800: the wheel over the map zooms in toward the pointer and back out, the page does not scroll, and the
       zoom stops at LG_MAP.ZOOM.max / never goes under ZOOM.min
   Z3  the trail marks the box you came from (lgm-trail-prev, "Back to ..."); clicking it goes back there
@@ -241,8 +242,10 @@ BOXES = r"""(() => { const C = window.LG_WALKER && LG_WALKER.CONTROLS, q = s => 
   if (!C) return JSON.stringify({noMap: true});
   const box = e => { if (!e) return null; const r = e.getBoundingClientRect(); return {l: r.left, t: r.top, r: r.right, b: r.bottom, w: r.width, h: r.height}; };
   const T = C.touchpad || {}; out.touchpad = box(q('#lg-here-pad .' + T.cls)); out.unit = box(q('#lg-here-pad .lg-here-keys'));
-  out.alpha = ['.' + T.cls, '.' + C.buttons.select.cls, '.' + C.buttons.back.cls].map(s => { const e = q('#lg-here-pad ' + s); return e ? parseFloat(getComputedStyle(e).opacity) : null; }); out.dirButtons = document.querySelectorAll('#lg-here-pad [data-dir]').length;
-  out.buttons = {}; Object.keys(C.buttons).forEach(k => { const e = q('#lg-here-pad .' + C.buttons[k].cls); out.buttons[k] = box(e); if (out.buttons[k]) out.buttons[k].text = e.textContent; });
+  out.alpha = ['.' + T.cls].map(s => { const e = q('#lg-here-pad ' + s); return e ? parseFloat(getComputedStyle(e).opacity) : null; }); out.dirButtons = document.querySelectorAll('#lg-here-pad [data-dir]').length;
+  out.padButtons = document.querySelectorAll('#lg-here-pad button').length;
+  const tpe = q('#lg-here-pad .' + T.cls); out.round = tpe ? getComputedStyle(tpe).borderRadius : null;
+  out.buttons = {}; Object.keys(C.buttons || {}).forEach(k => { const e = q('#lg-here-pad .' + C.buttons[k].cls); out.buttons[k] = box(e); if (out.buttons[k]) out.buttons[k].text = e.textContent; });
   out.jb = box(q('#jbtoggle'));
   const h = q('header.top').getBoundingClientRect(), hit = document.elementFromPoint(h.left + h.width / 2, h.top + h.height / 2);
   out.headerHit = !!hit && q('header.top').contains(hit);
@@ -396,40 +399,38 @@ class Run(m.Run):
         C = self.j("JSON.stringify((window.LG_WALKER && LG_WALKER.CONTROLS) || null)") or {}
         acts = set((C.get("keys") or {}).values())
         S = (C.get("menu") or {}).get("speed") or {}
-        self.check("K0 the controls map binds every direction, select and back to keys and buttons, has no Center button,"
-                   " and names the drop menu (microphone, camera, a drip speed range around 1x)",
+        # q64 (Brandon 2026-11-17): the round joystick has no on-screen buttons (select = a tap on it, back = the phone's own)
+        self.check("K0 the controls map binds every direction, select and back to keys, has no on-screen buttons (the"
+                   " joystick's tap is select), and names the drop menu (microphone, camera, a drip speed range around 1x)",
                    bool(C) and set(C.get("dirs", [])) == set(WAY) and set(WAY) | {"select", "back"} <= acts
-                   and all(a in C.get("buttons", {}) for a in ["select", "back"]) and "center" not in C.get("buttons", {})
+                   and C.get("buttons") == {}
                    and set((C.get("menu") or {}).get("toggles") or {}) == {"mic", "cam", "hear"}
                    and 0 < S.get("min", 0) < 1 < S.get("max", 0) and S.get("store")
                    and (C.get("maxSpeed") or 0) > 0 and all((C.get("touchpad") or {}).get(k, 0) > 0
-                                                            for k in ("reach", "width", "height", "alpha", "lift", "margin"))
+                                                            for k in ("reach", "size", "alpha", "lift", "margin", "tapMs", "tapSlop"))
                    and 0 < (C.get("touchpad") or {}).get("deadZone", 0) < 1, C)
         vw, vh, btn = b.get("vw", 0), b.get("vh", 0), b.get("buttons") or {}
         dp, u, T = b.get("touchpad"), b.get("unit"), C.get("touchpad") or {}
-        self.check("P1 phone: the touchpad + A/B unit is centered, in the bottom quarter, %spx off the bottom, inside %spx margins"
+        self.check("P1 phone: the joystick is centered, in the bottom quarter, %spx off the bottom, inside %spx margins"
                    % (T.get("lift"), T.get("margin")),
                    bool(u) and abs((u["l"] + u["r"]) / 2 - vw / 2) <= 2 and u["t"] > 0.75 * vh
                    and abs((vh - u["b"]) - T.get("lift", -99)) <= 2 and u["l"] >= T.get("margin", 0) - 1
                    and u["r"] <= vw - T.get("margin", 0) + 1, {"unit": u, "vw": vw, "vh": vh})
-        a, bb = btn.get("select"), btn.get("back")
-        self.check("P2 phone: A and B are attached to the touchpad's right side, stacked, each half its height",
-                   bool(dp and a and bb) and abs(a["l"] - dp["r"]) <= 1 and abs(bb["l"] - dp["r"]) <= 1
-                   and abs(a["t"] - dp["t"]) <= 1 and abs(bb["b"] - dp["b"]) <= 1 and abs(a["b"] - bb["t"]) <= 1
-                   and abs(a["h"] - dp["h"] / 2) <= 1 and abs(bb["h"] - dp["h"] / 2) <= 1, {"touchpad": dp, "A": a, "B": bb})
+        sz = T.get("size", 0)
+        self.check("P2 phone: the joystick is round, %spx across, with no A or B (or any) button on the pad" % sz,
+                   bool(dp) and abs(dp["w"] - sz) <= 1 and abs(dp["h"] - sz) <= 1 and (b.get("round") or "").startswith("50%")
+                   and b.get("padButtons") == 0, {"joystick": dp, "round": b.get("round"), "padButtons": b.get("padButtons")})
         al = b.get("alpha") or []
-        self.check("U1 phone: the touchpad, A and B are equally see-through (opacity %s)" % T.get("alpha"),
-                   len(al) == 3 and all(x is not None and abs(x - T.get("alpha", 9)) < 0.01 for x in al) and al[0] < 1, al)
-        self.check("J1 phone: the touchpad replaced the D-pad (no direction buttons on the pad)", b.get("dirButtons") == 0, b.get("dirButtons"))
-        parts = {"touchpad": dp, "select": btn.get("select"), "back": btn.get("back"), "juketube": b.get("jb")}
+        self.check("U1 phone: the joystick is see-through (opacity %s)" % T.get("alpha"),
+                   len(al) == 1 and al[0] is not None and abs(al[0] - T.get("alpha", 9)) < 0.01 and al[0] < 1, al)
+        self.check("J1 phone: the joystick replaced the D-pad (no direction buttons on the pad)", b.get("dirButtons") == 0, b.get("dirButtons"))
+        parts = {"joystick": dp, "juketube": b.get("jb")}
         names = list(parts)
         clash = [(x, y) for i, x in enumerate(names) for y in names[i + 1:] if overlaps(parts[x], parts[y])]
-        self.check("P3 phone: no two controls overlap (touchpad, A, B, Juketube button)",
+        self.check("P3 phone: the joystick and the Juketube button do not overlap",
                    all(parts.values()) and not clash, {"overlaps": clash, "boxes": parts})
-        ctl = dict(btn, touchpad=dp)
-        small = {k: (r["w"], r["h"]) for k, r in ctl.items() if r and (r["w"] < 44 or r["h"] < 44)}
-        self.check("P4 phone: every control is at least 44x44 px", len(ctl) >= 3 and all(ctl.values()) and not small,
-                   {"small": small, "count": len(ctl)})
+        small = {"joystick": (dp["w"], dp["h"])} if dp and (dp["w"] < 44 or dp["h"] < 44) else {}
+        self.check("P4 phone: the joystick is at least 44x44 px", bool(dp) and not small, {"small": small, "joystick": dp})
         self.tips()
         self.shot("phone", {"x": 0, "y": 0, "width": vw, "height": vh})
         self.touchpad_pull(C, dp, vw, vh)
@@ -1102,10 +1103,11 @@ class Run(m.Run):
         st = self.j(self.WALK) or {}
         self.check("M3 phone: staying in the pool you swam into opens it (it becomes the center; A is the portal now)",
                    bool(target) and (st.get("trail") or "").startswith(label[:15]), {"want": label, "trail": st.get("trail")})
-        self.tap("#lg-here-pad ." + (B.get("back") or {}).get("cls", "none"))
+        # no B button since q64: the phone's own back (history.back(), what the back gesture does) goes back on the map
+        self.j("(history.back(), '1')")
         self.wait("(document.querySelector('.lgm-trail-step.here') || {}).textContent === 'You'", 4)
         st = self.j(self.WALK) or {}
-        self.check("M3 phone: B goes back (the trail is You again)", st.get("trail") == "You", st.get("trail"))
+        self.check("M3 phone: the phone's back goes back (the trail is You again)", st.get("trail") == "You", st.get("trail"))
 
 
     # ---- the portal

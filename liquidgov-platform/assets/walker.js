@@ -4,8 +4,10 @@
    Walking is always on (Brandon 2026-11-14: "we gotta get rid of the drop/scroll switch... just leave it on drop mode
    and if you wanna scroll you can just do that instead of using the joystick"): there is no switch. You scroll the
    page, or pinch and wheel the map, the way you always do; the touchpad and the keys walk your drop.
-   Phone: a see-through touchpad with A and B stacked on its right side, one unit at the bottom center, in thumb reach.
-   With a mouse (a screen that can hover) the touchpad and A/B are not shown.
+   Phone: one small round see-through joystick at the bottom center, in thumb reach (Brandon 2026-11-17, q64; it
+   replaced the touchpad with A and B beside it): drag it to walk; a quick tap on it is A (use what you are next to).
+   There is no B button: the phone's own back button and gesture go back. With a mouse (a screen that can hover) the
+   joystick is not shown.
    Desktop: WASD or the arrows move, Enter = A (select), Esc = B (back); never while you type in a field (there B/Esc
    just leaves the field).
    The screen keeps your drop in its middle as you walk, always (Brandon 2026-11-14: "keep the screen tracking logic the
@@ -25,15 +27,15 @@
     // speed is a fraction of maxSpeed; one shape function is used on profiles and the map. Reduced motion: circle.
     shape: { cls: 'lg-walker-drop', tailCls: 'lg-walker-tail', phCls: 'lg-here-ph', size: 38, tail: 0.9, stretch: 0.16,
       settleMs: 180, mapMoveMs: 350 },
-    // The phone's touchpad (Brandon 2026-11-13 1:08 AM, in place of the D-pad; it works like a joystick): touch anywhere
-    // on it and drag; the farther your finger from where it touched (up to reach px), the faster you walk. A pull under
-    // deadZone (a fraction of reach) does nothing; full reach is maxSpeed, on the map as on any page.
-    // Its look and place (1:08/1:09 AM), the one source for site.css (as CSS variables on #lg-here-pad): width x height
-    // px, A and B are boxes height/2 tall stacked on its right side (together its height), all three at opacity alpha;
-    // the unit sits at the bottom center, lift px above the bottom edge (above the safe area), at most the screen's width
-    // less 2 x margin.
-    touchpad: { cls: 'lg-here-touchpad', knob: 'lg-here-knob', label: 'Walk: touch and drag', reach: 48, deadZone: 0.2,
-      width: 220, height: 132, alpha: 0.62, lift: 28, margin: 16 },
+    // The phone's joystick (Brandon 2026-11-17, q64: "a small round joystick ... drag walks, tap = A, B removed"; it
+    // replaced the 2026-11-13 touchpad with A/B): touch it and drag; the farther your finger from where it touched (up to
+    // reach px), the faster you walk. A pull under deadZone (a fraction of reach) does nothing; full reach is maxSpeed.
+    // A touch that lets go within tapMs ms, never having moved tapSlop px, is a tap: A (use what you are next to).
+    // Its look and place, the one source for site.css (as CSS variables on #lg-here-pad): a round size px across at
+    // opacity alpha, at the bottom center, lift px above the bottom edge (above the safe area), margin px from the sides.
+    // (The key stays 'touchpad' so every page and check reads the same entry.)
+    touchpad: { cls: 'lg-here-touchpad', knob: 'lg-here-knob', label: 'Walk: drag. Tap: use what you are next to',
+      reach: 34, deadZone: 0.2, size: 68, alpha: 0.62, lift: 28, margin: 16, tapMs: 300, tapSlop: 8 },
     // On the map the camera shows the boxes this many times bigger than the fitted view, around your drop (Brandon
     // 2026-11-13 12:55 AM: "it should look bigger"), until you zoom out yourself (pinch, wheel).
     mapZoom: 1.8,
@@ -59,11 +61,9 @@
       w: 'up', arrowup: 'up', a: 'left', arrowleft: 'left', s: 'down', arrowdown: 'down', d: 'right', arrowright: 'right',
       enter: 'select', escape: 'back'
     },
-    // action -> the button's class, accessible name and face
-    buttons: {
-      select: { cls: 'lg-here-a', label: 'Use what you are next to', text: 'A' },
-      back: { cls: 'lg-here-b', label: 'Go back', text: 'B' }
-    }
+    // On-screen buttons: none since the joystick (q64): select is a tap on it (or Enter), back is the phone's own back
+    // (or Esc). Kept as an empty map so a page or check that lists the buttons finds none.
+    buttons: {}
   };
   // Your drop's menu: id and look of the popup, the accessible name of your drop, the toggles' names, and the drip speed
   // slider (a multiple of maxSpeed, from min to max in steps; store: its localStorage key).
@@ -97,11 +97,6 @@
     var a = document.activeElement;
     return !!a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT' || a.isContentEditable);
   }
-  function keyButton(act, attrs) {
-    return '<button type="button" class="' + B[act].cls + '"' + (attrs || '') + ' aria-label="' + B[act].label + '">' +
-      B[act].text + '</button>';
-  }
-
   // The touchpad's pull, from the finger's offset (px, from where it touched) to a walking vector: {x, y} with length 0
   // inside the dead zone, rising to 1 at full reach (so speed = length * maxSpeed).
   function pullVector(dx, dy) {
@@ -120,13 +115,14 @@
     pad.id = 'lg-here-pad';
     pad.innerHTML =
       '<div class="lg-here-keys"><div class="' + T.cls + '" role="application" aria-label="' + T.label +
-      '"><span class="' + T.knob + '"></span></div><div class="lg-here-ab">' + keyButton('select') + keyButton('back') + '</div></div>';
-    [['--lgw-w', T.width + 'px'], ['--lgw-h', T.height + 'px'], ['--lgw-alpha', String(T.alpha)], ['--lgw-lift', T.lift + 'px'],
+      '"><span class="' + T.knob + '"></span></div></div>';
+    [['--lgw-size', T.size + 'px'], ['--lgw-alpha', String(T.alpha)], ['--lgw-lift', T.lift + 'px'],
       ['--lgw-margin', T.margin + 'px']].forEach(function (v) { pad.style.setProperty(v[0], v[1]); });
     document.body.appendChild(pad);
     var keys = pad.querySelector('.lg-here-keys');
     var held = {};
     var touchpad = pad.querySelector('.' + T.cls), knob = touchpad.firstChild, grip = null, from = null;
+    var downAt = 0, moved = false;   // a tap = let go within T.tapMs, never past T.tapSlop px: A (select)
 
     // The unit stays clear of the Juketube button (fixed at the right edge just above the bottom): if they meet, the
     // unit rises above it.
@@ -161,18 +157,20 @@
     function pull(e) {
       var r = touchpad.getBoundingClientRect(), dx = e.clientX - from.x, dy = e.clientY - from.y;
       var len = Math.sqrt(dx * dx + dy * dy);
+      if (len >= T.tapSlop) moved = true;
       if (len > T.reach) { dx = dx * T.reach / len; dy = dy * T.reach / len; }
       knob.style.left = Math.round(from.x - r.left + dx) + 'px';
       knob.style.top = Math.round(from.y - r.top + dy) + 'px';
       var v = pullVector(dx, dy);
       page.pull(v.x, v.y);
     }
-    function release() {
+    function release(tapOk) {
       if (grip === null) return;
       grip = null;
       knob.style.left = knob.style.top = '';
       touchpad.classList.remove('lg-here-touching');
       page.pull(0, 0);
+      if (tapOk && !moved && Date.now() - downAt <= T.tapMs) page.select();   // a tap on the joystick is A
     }
     function letGo() { Object.keys(held).forEach(function (d) { hold(d, false); }); release(); }
     function back() {
@@ -184,16 +182,16 @@
       e.preventDefault();
       grip = e.pointerId;
       from = { x: e.clientX, y: e.clientY };
+      downAt = Date.now(); moved = false;
       touchpad.classList.add('lg-here-touching');
       try { touchpad.setPointerCapture(e.pointerId); } catch (x) {} // err-ok: without capture it still follows over itself
       pull(e);
     });
     touchpad.addEventListener('pointermove', function (e) { if (e.pointerId === grip) pull(e); });
+    // only a real pointerup can be a tap; cancel or a lost capture just lets go
     ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(function (t) {
-      touchpad.addEventListener(t, function (e) { if (e.pointerId === grip) release(); });
+      touchpad.addEventListener(t, function (e) { if (e.pointerId === grip) release(t === 'pointerup'); });
     });
-    pad.querySelector('.' + B.select.cls).addEventListener('click', function () { page.select(); });
-    pad.querySelector('.' + B.back.cls).addEventListener('click', back);
 
     document.addEventListener('keydown', function (e) {
       if (e.defaultPrevented) return;   // the focused element already took the key

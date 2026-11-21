@@ -55,6 +55,7 @@ CHECKS = {
     "ship_deploy_check.py": ["scripts/ship.py"] + DEPLOY,
     "ship_workflows_check.py": ["scripts/ship.py"],
     "ship_fixes_check.py": ["scripts/ship.py"] + DEPLOY,
+    "ship_override_check.py": ["scripts/ship.py"] + DEPLOY,
     "ship_recheck_check.py": ["scripts/ship.py"],
     "affected_checks_check.py": [],
     "affected_checks_master_check.py": [],

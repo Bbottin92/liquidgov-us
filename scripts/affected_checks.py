@@ -41,6 +41,8 @@ CHECKS = {
     "make_go_dry_label_check.py": DEPLOY,
     "ci_gate_check.py": DEPLOY,
     "ci_scope_check.py": ["scripts/ci_scope.py", ".github/workflows/*", "tests/repo/ci_scope_check.py"],  # q238: the canvas-only CI scope
+    "ci_verdicts_check.py": ["scripts/ci_verdicts.py", "scripts/ship.py", ".github/workflows/ci-verdicts.yml",
+                             "tests/repo/ci_verdicts_check.py"],  # q291: the VERDICT lines' one parser and its CI summary
     "sync_gate_check.py": DEPLOY,
     "ci_gate_interop_check.py": DEPLOY,
     "rollback_guard_check.py": DEPLOY + ["liquidgov-platform/libs/liquidgov_file_store/*"],

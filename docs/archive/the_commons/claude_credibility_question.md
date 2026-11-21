@@ -180,7 +180,7 @@ a linked group of n counts n^a independent voices (a ~ 0.5); the per-call crowd 
 
 **Effort: Stewardship** (Brandon: "something that measures peoples effort or like hard workingness. like people that
 design proposals or do a certain thing to help maintain the site, like admins"; Grok consulted 2026-11-21,
-scratch/2026-11-21-claude-effort-credibility-2/grok-answer.txt; Claude and Grok agree on the shape):
+scratch/2026-11-21-claude-effort-credibility-3/grok-answer.txt; Claude and Grok agree on the shape):
 - A unit counts only when the work is FINISHED and someone other than you relied on it: a proposal that reached a decision
   (a capped smaller unit when it loses, so people do not only propose safe winners); a report closed and confirmed by the
   reporter or a jury; a fix the site can recheck still holds after a wait. You never confirm your own act. Posts, hours
@@ -193,4 +193,28 @@ scratch/2026-11-21-claude-effort-credibility-2/grok-answer.txt; Claude and Grok 
   holding it, every action logged, appeals and a random sample reviewed by non-admin juries, removable.
 - Open (Claude): witnessed work favors visible work; quiet help (welcoming newcomers) has no natural witness. Grok: make
   every chore the site can see loggable, leave off-site and purely social help unscored, allow a small capped thanks.
+
+### Round 5 review: Grok Bot (2026-11-21, a third voice; still nothing decided)
+
+Grok Bot read Rounds 1-5 (not Grok's full answer: Claude's prompt cited the empty first run's folder; the summary above
+was enough for its points). Claude agrees with each point below unless noted.
+- **Launch with two kinds**, Trust/Reliability and Contribution; add Creativity, Bravery, Fairness once there is data
+  (five scores at once are five things to game and tune). Fairness waits until juries have enough volume to compare against.
+- **Keep Round 3's one public exception**: the fading note on a post a jury found misleading (it describes the post, not
+  the person). React-before-the-room hides counts, tint and others' reactions only, never content.
+- **Stewardship gaps**: (a) collusive confirmation: a unit needs a confirmer outside your linked cluster, plus random spot
+  checks; (b) the losing-proposal unit can be farmed with junk proposals: a proposal needs minimum independent support
+  before it reaches a decision. Quiet help: the witness is "the newcomer stayed": after N days of their own activity the
+  newcomer may give one small capped thanks to whoever welcomed them; nothing more is scored.
+- **Wrong-against-the-crowd costs less than right earns** (bounded), and abstaining never costs; otherwise silence is
+  the safe play and Bravery is undercut. (Claude: agreed; this replaces the mirror cost above. Calls are yes/no, not
+  stated probabilities, so an asymmetric rule does not break honesty.)
+- **Outcome-setting can be gamed**: a proposer writes a trivially true "checkable outcome and date" and allies call it
+  early. The outcome criteria need acceptance by someone other than the proposer; calls from linked accounts collapse.
+- **Don't keep a private "how often you go with the majority" record**: it is a dossier if it leaks or is subpoenaed.
+  Store nothing that nothing uses. (Claude: agreed; drops that idea from "thumbs measure agreement" above.)
+- **Build order**: (1) the curves settings file and the weight formula (activity ramp x repeat decay x group collapse),
+  applied to thumbs, with a test on every knob (Round 4 needs it anyway); (2) the call log: time plus agreement count at
+  the moment of each call, recorded from day one before any scoring, because it can never be recovered later; (3)
+  Stewardship units for proposals that reach a decision. The other kinds wait for data.
 

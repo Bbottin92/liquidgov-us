@@ -55,17 +55,6 @@ class Run(wc.Run):
             self.traces.append(self.trace)
         return st
 
-    def walk_report(self, name):
-        """For a failing case: a screenshot named `name` and the last hop's traces, the looks cut to the last 8 a try."""
-        try:
-            self.shot(name)
-        except Exception as e:  # err-ok: a missing picture must not hide the trace; said in the report
-            name = "no shot (%s: %s)" % (type(e).__name__, e)
-        st = self.j(self.WALK) or {}
-        return {"shot": name, "status": self.j("JSON.stringify((document.getElementById('lgm-status') || {}).textContent || '')"),
-                "pos": st.get("pos"), "scale": st.get("scale"),
-                "tries": [dict(t, looks=t["looks"][-8:], n_looks=len(t["looks"])) for t in getattr(self, "traces", [])]}
-
     def _hop_once(self, target, limit_s=14):
         self.settle()   # (walker_controls_check.Run.settle: wait until the map is still before walking)
         """Walk to box `target` with the touchpad (free walking, 2026-11-15; it used to be one push along a connector):
@@ -73,13 +62,10 @@ class Run(wc.Run):
         at the box's edge), or the time is up. Returns the state then. The checks that inherit this keep calling it
         hop()."""
         end, best, stuck = time.time() + limit_s, None, 0
-        # the walk's trace (2026-11-21, walker_valve_types Y2 failing 13 of 19 CI runs, never reproduced locally): every
-        # look as [phase, at, spot, target middle, distance], then why it stopped; a failing case prints it
-        trace = self.trace = {"target": target, "looks": [], "why": "timeout"}
+        trace = self.new_trace(target)   # (walker_controls_check.Run: printed by a failing case's walk_report)
 
         def look(phase, st, to, n):
-            r = lambda v: [round(v[0]), round(v[1])] if v else None  # noqa: E731
-            trace["looks"].append([phase, st.get("at"), r(st.get("spot")), r(to), round(n) if n is not None else None])
+            self.trace_look(trace, phase, st, to, n)
         # first to the middle of the box it stands in, so it leaves through the channel's mouth (a pull straight at the
         # target from off to one side meets the bank: dry land stops the drop since 2026-11-15)
         st = self.j(self.WALK) or {}

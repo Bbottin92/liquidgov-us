@@ -87,6 +87,7 @@ Exit 1 on a FAIL."""
 import base64
 import http.server
 import json
+import math
 import re
 import os
 import sys
@@ -827,11 +828,36 @@ class Run(m.Run):
         """_map_go_once, and if the walker stopped short of the box, twice more (a person tries again; a busy machine can
         end one walk early: the M5 flake of 2026-11-16, which passed alone)."""
         st = self._map_go_once(target, limit_s, keys)
+        self.traces = [self.trace]   # one trace per try, printed by a failing case (walk_report)
         for _ in range(2):
             if st.get("at") == target:
                 break
             st = self._map_go_once(target, limit_s, keys)
+            self.traces.append(self.trace)
         return st
+
+    def new_trace(self, target):
+        """A walk's trace (2026-11-21: M5 and walker_valve_types Y2 fail on CI about 1 run in 2, never reproduced
+        locally): each look as [phase, at, spot, target middle, distance], where it started, and why it stopped."""
+        self.trace = {"target": target, "looks": [], "why": "timeout"}
+        return self.trace
+
+    @staticmethod
+    def trace_look(trace, phase, st, to, n):
+        r = lambda v: [round(v[0]), round(v[1])] if v else None  # noqa: E731
+        trace["looks"].append([phase, st.get("at"), r(st.get("spot")), r(to), round(n) if n is not None else None])
+
+    def walk_report(self, name):
+        """For a failing case: a screenshot named `name` and the last walk's traces (hop or map_go), the looks cut to the
+        last 8 a try, with the status line, the map position and the zoom."""
+        try:
+            self.shot(name)
+        except Exception as e:  # err-ok: a missing picture must not hide the trace; said in the report
+            name = "no shot (%s: %s)" % (type(e).__name__, e)
+        st = self.j(self.WALK) or {}
+        return {"shot": name, "status": self.j("JSON.stringify((document.getElementById('lgm-status') || {}).textContent || '')"),
+                "pos": st.get("pos"), "scale": st.get("scale"), "near": st.get("near"),
+                "tries": [dict(t, looks=t["looks"][-8:], n_looks=len(t["looks"])) for t in getattr(self, "traces", [])]}
 
     def settle(self, limit_s=3.0):
         """Wait until the map is still: the same trail, zoom, place and box for two looks in a row. A walk that starts
@@ -869,20 +895,26 @@ class Run(m.Run):
                 self.ws.call("Input.dispatchKeyEvent", type="keyUp", key=k, windowsVirtualKeyCode=VK.get(k, ord(k.upper())))
             time.sleep(0.06)
 
+        trace = self.new_trace(target)
         st = self.j(self.WALK) or {}
         here = st.get("at")
+        trace["from"] = here
         if here and here != target:   # first to the middle of the pool you are in: you leave by a channel's mouth
             for _ in range(25):
                 st = self.j(self.WALK) or {}
                 mid, spot = (st.get("mids") or {}).get(here), st.get("spot")
                 if not mid or not spot or max(abs(mid[0] - spot[0]), abs(mid[1] - spot[1])) < 8:
+                    trace["recenter"] = "reached" if mid and spot else "no middle/spot: %s" % [bool(mid), bool(spot)]
                     break
+                self.trace_look(trace, "center", st, mid, math.hypot(mid[0] - spot[0], mid[1] - spot[1]))
                 hold(mid[0] - spot[0], mid[1] - spot[1])
         while time.time() < end:
             st = self.j(self.WALK) or {}
             to, spot = (st.get("mids") or {}).get(target), st.get("spot")
             if st.get("at") == target or not to or not spot:
+                trace["why"] = "arrived" if st.get("at") == target else "no target/spot: %s" % [bool(to), bool(spot)]
                 return st
+            self.trace_look(trace, "walk", st, to, math.hypot(to[0] - spot[0], to[1] - spot[1]))
             hold(to[0] - spot[0], to[1] - spot[1])
         return self.j(self.WALK) or {}
 
@@ -995,10 +1027,11 @@ class Run(m.Run):
         to = self.map_go(ring[0]) if ring else {}
         two = sorted(set(ring[1:]))
         faint = self.faint()
+        m5 = bool(ring) and to.get("at") == ring[0] and two and all(faint.get(i) == "0.5" for i in two)
         self.check("M5 desktop: standing in %s, the boxes two channels away (the other kinds) are faint, not gone (layers,"
-                   " Brandon 2026-11-15)" % (ring[0] if ring else "?"),
-                   bool(ring) and to.get("at") == ring[0] and two and all(faint.get(i) == "0.5" for i in two),
-                   {"at": to.get("at"), "faint": faint})
+                   " Brandon 2026-11-15)" % (ring[0] if ring else "?"), m5,
+                   dict({"at": to.get("at"), "faint": faint},
+                        **({} if m5 or to.get("at") == (ring[0] if ring else None) else {"walk": self.walk_report("m5-walk")})))
         for _ in range(8):
             self.ws.call("Input.dispatchMouseEvent", type="mouseWheel", x=sx, y=sy, deltaX=0, deltaY=100)
             time.sleep(0.05)

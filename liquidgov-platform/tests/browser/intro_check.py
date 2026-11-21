@@ -117,9 +117,9 @@ STATE = r"""(() => { const q = s => document.querySelector(s), box = e => { if (
 
 
 # I2's test tip: wired through the real LG_TIP (tip.js) while the intro is up, the way Juketube wires #jbhint.
-WIRE_TIP = r"""(() => { if (!window.LG_TIP) return 'no LG_TIP'; const t = document.createElement('div'), x = document.createElement('button');
+WIRE_TIP = r"""(() => { if (!window.LG_TIP) return JSON.stringify('no LG_TIP'); const t = document.createElement('div'), x = document.createElement('button');
   t.id = 'lgintrochecktip'; t.className = 'lg-tip'; t.textContent = 'intro check tip'; x.className = 'lg-tip-close'; x.textContent = 'x';
-  t.appendChild(x); document.body.appendChild(t); LG_TIP.wire(t, x, 'introcheck', {}); return 'wired'; })()"""
+  t.appendChild(x); document.body.appendChild(t); LG_TIP.wire(t, x, 'introcheck', {}); return JSON.stringify('wired'); })()"""  # self.j parses JSON (a bare string comes back as {"raw": ...})
 
 
 FIT = r"""(() => { const vw = innerWidth, vh = innerHeight, q = s => document.querySelector(s), el = q('#lgintro'), v = q('#lgintrovid');

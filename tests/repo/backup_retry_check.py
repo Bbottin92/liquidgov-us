@@ -20,6 +20,9 @@ import tempfile
 BASH = shutil.which("bash") or "bash"  # PATH's bash, never System32's WSL launcher (lesson 2026-11-08)
 ROOT = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(__file__), "..", ".."))
 passes = fails = 0
+# The fake running program. It starts with #! because Git Bash on Windows treats a file as executable ([ -x ]) only
+# when it has a .exe name or a shebang (chmod does nothing there); on Linux the chmod 755 below is what counts.
+RUNNING = b"#!/bin/sh\n# running program v1\n"
 
 
 def check(name, ok, detail=""):
@@ -35,13 +38,15 @@ def fake_opt(base, keep_name, keep_bytes):
     os.makedirs(os.path.join(opt, "build"))
     open(os.path.join(opt, "liquidgov_accounts.lgp"), "w").write("LGP1\nacct\t1\n")
     binp = os.path.join(opt, "build", "liquidgov_http")
-    open(binp, "wb").write(b"running program v1\n")
+    open(binp, "wb").write(RUNNING)
     os.chmod(binp, 0o755)
     for old in ("pre-flow", "pre-city"):
         open(os.path.join(opt, "liquidgov_http." + old), "wb").write(b"older program\n")
     if keep_bytes is not None:
         open(os.path.join(opt, "liquidgov_http." + keep_name), "wb").write(keep_bytes)
-    return opt
+    # The path is pasted into bash text: on Windows its backslashes would be stripped by unquoted assignments
+    # (C:\Users\x -> C:Usersx) and every case failed with ROLLBACK_CHAIN_MISSING (lesson editing-tests.md:112).
+    return opt.replace("\\", "/")
 
 
 tmp = tempfile.mkdtemp(prefix="backup-retry-")
@@ -67,7 +72,7 @@ try:
         up = name.upper()
         for case, keep_bytes, want_rc, want_line in (
                 ("no leftover copy: backup runs", None, 0, "BACKUP_DONE"),
-                ("a leftover copy identical to the running program is reused", b"running program v1\n", 0, "PRE_%s_REUSED" % up),
+                ("a leftover copy identical to the running program is reused", RUNNING, 0, "PRE_%s_REUSED" % up),
                 ("a leftover copy that differs from the running program still refuses", b"some other program\n", 1, "PRE_%s_ALREADY" % up)):
             d = tempfile.mkdtemp(dir=tmp)
             opt = fake_opt(d, keep, keep_bytes)
@@ -80,7 +85,7 @@ try:
             backups = glob.glob(os.path.join(opt, "liquidgov_accounts.lgp.pre-%s-*" % name))
             if want_rc == 0:
                 ok = (r.returncode == 0 and want_line in lines and "BACKUP_DONE" in lines and len(backups) == 1
-                      and open(keep_path, "rb").read() == b"running program v1\n")
+                      and open(keep_path, "rb").read() == RUNNING)
             else:
                 ok = (r.returncode != 0 and want_line in lines and "BACKUP_DONE" not in lines and not backups
                       and sorted(os.listdir(opt)) == before and open(keep_path, "rb").read() == keep_bytes)
@@ -94,7 +99,7 @@ try:
         if len(gate) != 1 or len(pre) != 2:
             continue
         for case, keep_bytes, want_pass in (("no leftover copy: preflight passes", None, True),
-                                            ("leftover copy identical to the running program: preflight passes", b"running program v1\n", True),
+                                            ("leftover copy identical to the running program: preflight passes", RUNNING, True),
                                             ("leftover copy that differs: preflight refuses", b"some other program\n", False)):
             d = tempfile.mkdtemp(dir=tmp)
             opt = fake_opt(d, keep, keep_bytes)

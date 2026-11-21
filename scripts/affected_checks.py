@@ -57,8 +57,11 @@ CHECKS = {
     "ship_fixes_check.py": ["scripts/ship.py"] + DEPLOY,
     "ship_override_check.py": ["scripts/ship.py"] + DEPLOY,
     "ship_recheck_check.py": ["scripts/ship.py"],
-    "affected_checks_check.py": [],
-    "affected_checks_master_check.py": [],
+    # tests/repo/*: a NEW check must be in CHECKS, and only these two say so; mapped to nothing, they never ran when a
+    # check was added, so ship_override_check.py passed locally and failed GitHub's full run (2026-11-21, lesson
+    # editing-tests.md:114). 0.1 s each.
+    "affected_checks_check.py": ["tests/repo/*"],
+    "affected_checks_master_check.py": ["tests/repo/*"],
     "ci_runs_checks_check.py": [".github/workflows/*", "scripts/run_hook_checks.py", "tests/repo/*"],
     "ci_skip_list_check.py": ["scripts/run_hook_checks.py", "tests/repo/*"],
     "hook_windows_skip_check.py": [".githooks/*", "scripts/affected_checks.py", "scripts/run_hook_checks.py"],

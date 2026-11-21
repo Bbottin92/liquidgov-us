@@ -60,6 +60,9 @@ got = sel(["docs/archive/new.md"], ["docs/archive/new.md"])
 check("a new file anywhere runs naming_check (and only that)", got == ["naming_check.py"], got)
 got = sel(["tests/repo/ci_gate_check.py"])
 check("a check's own file runs that check", "ci_gate_check.py" in got, got)
+got = sel(["tests/repo/zz_brand_new_check.py"], ["tests/repo/zz_brand_new_check.py"])
+check("a new check file runs the two map checks (it must be added to CHECKS; editing-tests.md:114)",
+      {"affected_checks_check.py", "affected_checks_master_check.py"} <= set(got), got)
 for f in (".githooks/pre-push", "scripts/affected_checks.py"):
     got = sel([f])
     check("%s runs every check" % f, set(got) == on_disk, len(got))

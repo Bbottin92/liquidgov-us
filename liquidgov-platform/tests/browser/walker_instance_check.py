@@ -47,11 +47,24 @@ class Run(wc.Run):
         walker_controls_check M5, 2026-11-16, each passing alone). A box whose valve turns the walker away is still
         not entered however often it tries, so the refusal checks are unchanged."""
         st = self._hop_once(target, limit_s)
+        self.traces = [self.trace]   # one trace per try (_hop_once), printed by a failing case
         for _ in range(2):
             if st.get("at") == target:
                 break
             st = self._hop_once(target, limit_s)
+            self.traces.append(self.trace)
         return st
+
+    def walk_report(self, name):
+        """For a failing case: a screenshot named `name` and the last hop's traces, the looks cut to the last 8 a try."""
+        try:
+            self.shot(name)
+        except Exception as e:  # err-ok: a missing picture must not hide the trace; said in the report
+            name = "no shot (%s: %s)" % (type(e).__name__, e)
+        st = self.j(self.WALK) or {}
+        return {"shot": name, "status": self.j("JSON.stringify((document.getElementById('lgm-status') || {}).textContent || '')"),
+                "pos": st.get("pos"), "scale": st.get("scale"),
+                "tries": [dict(t, looks=t["looks"][-8:], n_looks=len(t["looks"])) for t in getattr(self, "traces", [])]}
 
     def _hop_once(self, target, limit_s=14):
         self.settle()   # (walker_controls_check.Run.settle: wait until the map is still before walking)
@@ -60,32 +73,46 @@ class Run(wc.Run):
         at the box's edge), or the time is up. Returns the state then. The checks that inherit this keep calling it
         hop()."""
         end, best, stuck = time.time() + limit_s, None, 0
+        # the walk's trace (2026-11-21, walker_valve_types Y2 failing 13 of 19 CI runs, never reproduced locally): every
+        # look as [phase, at, spot, target middle, distance], then why it stopped; a failing case prints it
+        trace = self.trace = {"target": target, "looks": [], "why": "timeout"}
+
+        def look(phase, st, to, n):
+            r = lambda v: [round(v[0]), round(v[1])] if v else None  # noqa: E731
+            trace["looks"].append([phase, st.get("at"), r(st.get("spot")), r(to), round(n) if n is not None else None])
         # first to the middle of the box it stands in, so it leaves through the channel's mouth (a pull straight at the
         # target from off to one side meets the bank: dry land stops the drop since 2026-11-15)
         st = self.j(self.WALK) or {}
         if st.get("at"):
             self.last_box = st["at"]
         here = st.get("at") or getattr(self, "last_box", "")   # in no box (turned away at a valve): back to the last one
+        trace["from"] = here
         if here and here != target:
             for _ in range(30):
                 st = self.j(self.WALK) or {}
                 mid, spot = (st.get("mids") or {}).get(here), st.get("spot")
                 if not mid or not spot or not self.tp:
+                    trace["recenter"] = "no middle/spot/touchpad: %s" % [bool(mid), bool(spot), bool(self.tp)]
                     break
                 dx, dy = mid[0] - spot[0], mid[1] - spot[1]
                 n = math.hypot(dx, dy)
+                look("center", st, mid, n)
                 if n < 6:
+                    trace["recenter"] = "reached"
                     break
                 self.pull(self.tp, dx / n * self.reach, dy / n * self.reach, max(0.05, min(0.3, n / 175.0)))
         while time.time() < end:
             st = self.j(self.WALK) or {}
             to, spot = (st.get("mids") or {}).get(target), st.get("spot")
             if st.get("at") == target or not to or not spot or not self.tp:
+                trace["why"] = "arrived" if st.get("at") == target else "no target/spot/touchpad: %s" % [bool(to), bool(spot), bool(self.tp)]
                 break
             dx, dy = to[0] - spot[0], to[1] - spot[1]
             n = math.hypot(dx, dy) or 1
+            look("walk", st, to, n)
             stuck = stuck + 1 if best is not None and n > best - 2 else 0
             if stuck >= 6:   # the camera can still be gliding after a level change: a few looks that seem stuck are not
+                trace["why"] = "stuck (6 looks no closer)"
                 break
             best = n if best is None else min(best, n)
             self.pull(self.tp, dx / n * self.reach, dy / n * self.reach, max(0.08, min(0.4, n / 175.0)))

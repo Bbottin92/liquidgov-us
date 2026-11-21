@@ -73,8 +73,10 @@ class Run(wi.Run):
         self.load()
         refused = self.hop("mine:politics").get("at")
         entered = self.hop("mine:friends").get("at")
+        y2 = refused == "" and entered == "mine:friends"
         self.check("Y2 Private: a box private to someone else is not entered (you stop at its edge, in no box); private to you, it is entered",
-                   refused == "" and entered == "mine:friends", {"private to someone else -> at": refused, "private to you -> at": entered})
+                   y2, dict({"private to someone else -> at": refused, "private to you -> at": entered},
+                            **({} if y2 else {"walk to friends": self.walk_report("y2-friends")})))
         self.open_here()
         self.wait("!!document.querySelector('#lgm-nodes .lgn-person')", 5)
         time.sleep(0.8)
@@ -87,6 +89,7 @@ class Run(wi.Run):
         self.load()
         through = self.hop("mine:friends")     # walks to its middle and stops getting closer there
         over = self.j(self.OVER)
+        walk4 = None if over is True else self.walk_report("y4-conduit")
         self.set_valve("mine:friends", "open")
         time.sleep(0.4)
         stops = self.state()
@@ -95,7 +98,7 @@ class Run(wi.Run):
                    over is True and through.get("at") == "" and through.get("instance") == "mainstream"
                    and stops.get("at") == "mine:friends" and stops.get("instance") == "mine:friends",
                    {"over the conduit box": over, "conduit -> at": through.get("at"), "conduit -> instance": through.get("instance"),
-                    "open -> at": stops.get("at")})
+                    "open -> at": stops.get("at"), "walk to friends": walk4})
         for n in nodes.values():
             n.pop("valve", None)
 

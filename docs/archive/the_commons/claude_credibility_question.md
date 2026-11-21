@@ -134,3 +134,63 @@ Decided (Brandon, 2026-11-16), closing Round 4's open questions:
 - **Everyone sees the tint.**
 Consequence to build for: a thumb is counted for everyone (the count and the tint), but its NAME is left out of the list for the viewers you hid it from, and for everyone if it is private. The same thumb can therefore be named to one viewer and unnamed to another.
 
+## Round 5: many kinds, strengths-only display, the crowd, effort (Brandon, 2026-11-21; BRAINSTORM, nothing decided)
+
+Brandon: "im just spit balling so you take all of this with a grain of salt". Everything below is ideas and leanings to
+argue with. Rounds 1-4 stand; thumbs (Round 4) can be built without anything here except their weighting.
+
+**Many kinds, avenues and uses.** Brandon: "multiple avenues for credibility, and different kinds, and different
+applications of it. like positive and negative, and trust, morality, creativity maybe, obedience, bravery". A rough cut:
+Trust (claims hold up, commitments kept), Creativity (things others keep or remix), Bravery (right early and against the
+crowd, below), Fairness (calls that match independent juries), Contribution (Round 2), each earned its own way and each
+unlocking its own things. Claude's pushback, open: score **Reliability** (kept commitments) rather than obedience, since on
+a civic site rewarding obedience punishes dissent; and no **morality** score (the majority grading the minority's values);
+honesty and fair judgement of others are the measurable parts.
+
+**Strengths only in public.** Brandon: "we should be careful about how we present things though, because nobody's going to
+like to see a negative score on anything". Lean: others see only what you are recognized for ("Trusted in Fresno
+Neighbors", "Called it early x4"); no recognition shows nothing (like "New"). Negatives exist, lower hidden weight, show
+only to you with the reason and an appeal, and fade. Open: whether Round 3's plain fading note on a post a jury found
+misleading stays as the one public exception.
+
+**Thumbs measure agreement, not credibility.** Brandon: "thumbs might indicate general opinion agreeability". Lean:
+agreement belongs to the thing (counts, tint); a person's "how often you go with the majority" could exist only privately;
+agreeing with the crowd never earns standing (it would reward conformity).
+
+**Right against the crowd (Asch).** Brandon: "some kind of measurement for people who go against the grain and are later
+vindicated", citing the conformity experiment. Lean: record each call with its time and how many agreed then; when it
+settles against something independent (a stated outcome and date, a verified fact, a jury overturned on appeal; never
+"the crowd changed its mind"), reward with a standard proper scoring rule: more when few agreed, near zero when most did;
+the mirror cost when wrong (private). Start narrow: only things that settle on their own (proposals may state a checkable
+outcome and a date), a minimum of ~10 settled calls before anything shows, a cap per call. Shown as "Called it early: N".
+
+**React before you see the room.** Brandon: "maybe you cant see comments or replies until you thumbs up down or neutral
+unless you opt out in which case theyre all neutral, which is a metric of its own". Claude's lean: hide the room's
+OPINION (counts, tint, others' reactions) until you react, not the content (forced clicks to read produce noise); or hide
+comments only for a short window on fresh posts. Neutral is a real choice. Opting out counts as "did not weigh in", not
+as neutral. Long-quiet accounts: most people lurk, so never shown as suspicious; they weigh little until they have
+recent activity, and a burst from long-dormant accounts on one target is flagged for review. Brandon: "i like the recent
+account addition".
+
+**Curves that throttle fairly** (Brandon: "reasonable graph curves that throttle and carbeurate things fairly"). Starting
+shapes, each one knob in one settings file: weight ramps with active days in the last 90 (half weight at ~14 days, a
+floor above zero); the k-th mark from one person in a period counts p^k (p ~ 0.5, so one person adds up to at most ~2);
+a linked group of n counts n^a independent voices (a ~ 0.5); the per-call crowd reward is capped (~3); every mark fades
+(a half-life of months). A person's weight is the product, never below the floor of Round 1 point 7.
+
+**Effort: Stewardship** (Brandon: "something that measures peoples effort or like hard workingness. like people that
+design proposals or do a certain thing to help maintain the site, like admins"; Grok consulted 2026-11-21,
+scratch/2026-11-21-claude-effort-credibility-2/grok-answer.txt; Claude and Grok agree on the shape):
+- A unit counts only when the work is FINISHED and someone other than you relied on it: a proposal that reached a decision
+  (a capped smaller unit when it loses, so people do not only propose safe winners); a report closed and confirmed by the
+  reporter or a jury; a fix the site can recheck still holds after a wait. You never confirm your own act. Posts, hours
+  online, drafts and edits pay nothing.
+- The Round 5 curves apply (repeats halve, linked confirmers collapse, weekly cap, fade); it saturates, no streaks, no
+  public rank, so grinding and burnout do not pay.
+- It feeds Contribution (shown on tap as "4 proposals decided, 3 fixes held"), not its own public number; it unlocks the
+  tools that ARE the work (starting proposals, blank pages, moderation, maintenance), never reach or vote weight.
+- Admin is a tool you qualify for (Stewardship floor plus decent Judgment and Conduct), not a title: no points for
+  holding it, every action logged, appeals and a random sample reviewed by non-admin juries, removable.
+- Open (Claude): witnessed work favors visible work; quiet help (welcoming newcomers) has no natural witness. Grok: make
+  every chore the site can see loggable, leave off-site and purely social help unscored, allow a small capped thanks.
+

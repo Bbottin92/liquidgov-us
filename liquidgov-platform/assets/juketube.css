@@ -55,6 +55,16 @@ body{padding-bottom:calc(1rem + env(safe-area-inset-bottom,0px) + 3rem + 58px + 
 /* open panel: the wrapper stays a child of #juketube-root (never re-inserted, so the iframe never reloads) and sits
    over #jbtube-slot; left/top/width/height come from juketube.js trackSlot() */
 #jbtube-wrap.jb-docked{position:fixed;inset:auto;z-index:57}
+/* Full's fallback when the browser gives no real full screen (juketube.js, 2026-11-21): the player fills the window */
+#jbtube-wrap.jb-full{
+  position:fixed !important;left:0 !important;top:0 !important;width:100vw !important;height:100vh !important;
+  height:100dvh !important;z-index:2147483000;border-radius:0;opacity:1;pointer-events:auto;
+}
+#jbfsclose{
+  position:absolute;top:.6rem;right:.6rem;z-index:3;width:2.75rem;height:2.75rem;border-radius:50%;
+  border:1px solid #c4a574;background:rgba(10,8,6,.75);color:#f3e6cc;font-size:1.5rem;line-height:1;cursor:pointer;
+}
+#jbfsclose[hidden]{display:none}
 #jbtube-wrap iframe,#jbtube-player{
   position:absolute;inset:0;width:100% !important;height:100% !important;border:0;display:block;
 }

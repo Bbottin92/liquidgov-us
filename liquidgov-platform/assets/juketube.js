@@ -72,7 +72,8 @@
     '<div id="jbresults"></div>' +
     "</div>" +
     '<div id="jbnow"><span class="muted">Connecting…</span></div>' +
-    '<div id="jbtube-wrap"><div id="jbtube-player"></div><div id="jbtube-block" hidden></div></div>' +
+    '<div id="jbtube-wrap"><div id="jbtube-player"></div><div id="jbtube-block" hidden></div>' +
+    '<button type="button" id="jbfsclose" hidden aria-label="Exit full screen">×</button></div>' +
     '<div class="jb-controls">' +
     '<button type="button" id="jbpause">Play</button>' +
     '<button type="button" id="jbskip">Skip</button>' +
@@ -144,6 +145,7 @@
     wrapEl.style.left = wrapEl.style.top = wrapEl.style.width = wrapEl.style.height = "";
   }
   function trackSlot() {
+    if (wrapEl.classList.contains("jb-full")) return; // filling the window (Full's fallback): stay put until it ends
     var r = wrapSlot.getBoundingClientRect();
     var p = panel.getBoundingClientRect();
     var outside = r.top < p.top - 1 || r.bottom > p.bottom + 1 || r.left < p.left - 1 || r.right > p.right + 1;
@@ -164,6 +166,7 @@
   }
   function parkPlayer() {
     if (dockTimer) { clearInterval(dockTimer); dockTimer = null; }
+    if (wrapEl.classList.contains("jb-full") && window.__lgJbEndFull) window.__lgJbEndFull();
     wrapEl.classList.remove("jb-docked");
     wrapEl.classList.add("jb-parked");
     clearDockBox();
@@ -239,7 +242,9 @@
     if (!panel.classList.contains("open")) return;
     var t = e.target;
     if (!t || !document.documentElement.contains(t)) return;
-    if (panel.contains(t) || toggle.contains(t)) return;
+    // the player sits in #juketube-root, not the panel (it never moves, so it never reloads), but it is part of the
+    // panel: a press on it, its block layer or Full's x is not "outside" (2026-11-21: the x closed the whole panel)
+    if (panel.contains(t) || toggle.contains(t) || wrapEl.contains(t)) return;
     setOpen(false);
   });
 
@@ -887,12 +892,57 @@
       else ytPlayer.unloadModule("captions");
     } catch (e) {}
   });
+  // Full (Brandon 2026-11-21: "i cant fullscreen the juketube", desktop browser). It only asked for real full screen and
+  // did nothing when that was missing (iPhone Safari has none for a page element) or refused; in the desktop app's
+  // browser the request never settled at all. Now: real full screen first; when there is none, it is refused, or it has
+  // not started within 1.5 s, the player fills the window instead (× or Esc closes it). Why it fell back goes to /log, so
+  // the next sighting says what the browser did. Test: tests/browser/juketube_full_check.py
+  var fsWrap = document.getElementById("jbtube-wrap");
+  var fsClose = document.getElementById("jbfsclose");
+  function fsActive() { return document.fullscreenElement === fsWrap || document.webkitFullscreenElement === fsWrap; }
+  function syncFsBtn() {
+    var on = fsActive() || fsWrap.classList.contains("jb-full");
+    fsBtn.textContent = on ? "Exit" : "Full";
+    fsBtn.setAttribute("aria-pressed", on ? "true" : "false");
+  }
+  function startFull(why) {
+    lgBeacon("jb_full_fallback", why);
+    fsWrap.classList.remove("jb-docked", "jb-parked");
+    fsWrap.style.left = fsWrap.style.top = fsWrap.style.width = fsWrap.style.height = "";
+    fsWrap.classList.add("jb-full");
+    fsClose.hidden = false;
+    syncFsBtn();
+  }
+  function endFull() {
+    if (!fsWrap.classList.contains("jb-full")) return;
+    fsWrap.classList.remove("jb-full");
+    fsClose.hidden = true;
+    syncFsBtn();
+    placePlayer();
+  }
+  window.__lgJbEndFull = endFull;
   fsBtn.addEventListener("click", function () {
-    var el = document.getElementById("jbtube-wrap");
-    if (!el) return;
-    var req = el.requestFullscreen || el.webkitRequestFullscreen;
-    if (req) req.call(el);
+    if (fsWrap.classList.contains("jb-full")) { endFull(); return; }
+    if (fsActive()) {
+      var exit = document.exitFullscreen || document.webkitExitFullscreen;
+      if (exit) exit.call(document);
+      return;
+    }
+    var req = fsWrap.requestFullscreen || fsWrap.webkitRequestFullscreen;
+    if (!req) { startFull("no fullscreen api"); return; }
+    var settled = false;
+    var timer = setTimeout(function () { if (!settled && !fsActive()) { settled = true; startFull("no answer in 1.5 s"); } }, 1500);
+    var p;
+    try { p = req.call(fsWrap); } catch (e) { clearTimeout(timer); startFull("threw: " + (e && e.name)); return; }
+    if (p && typeof p.then === "function") {
+      p.then(function () { settled = true; clearTimeout(timer); syncFsBtn(); },
+             function (e) { if (settled) return; settled = true; clearTimeout(timer); startFull("refused: " + (e && e.name)); });
+    }
   });
+  fsClose.addEventListener("click", function (e) { e.stopPropagation(); endFull(); });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") endFull(); });
+  document.addEventListener("fullscreenchange", syncFsBtn);
+  document.addEventListener("webkitfullscreenchange", syncFsBtn);
   copyBtn.addEventListener("click", function () {
     if (!lastId) return;
     var u = ytUrl(lastId);

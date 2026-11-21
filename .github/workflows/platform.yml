@@ -513,7 +513,7 @@ jobs:
         run: |
           set -uo pipefail
           export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
-          python3 liquidgov-platform/tests/browser/juketube_full_check.py "$PWD/liquidgov-platform"
+          python3 liquidgov-platform/tests/browser/juketube_full_check.py "$PWD/liquidgov-platform" "$RUNNER_TEMP/phone"
 
       - name: drawing canvas layout (canvas_layout_check) (browser, report-only)
         if: always()

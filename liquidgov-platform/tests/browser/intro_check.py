@@ -11,8 +11,10 @@ paused, ended and error are stubbed) so the overlay stays up while the cases loo
 Cases (390x844 phone):
   I1  a fresh browser (logged out): the intro is up; its pref name is kIntroPref; the first-visit line reads "Plays
       every visit. Turn off in Settings" with a link to /settings/intro; the line does not meet Skip
-  I2  while the intro plays the home page's Drop note (tip.js) waits: not shown under the video; after Skip the intro
-      is gone, then the note shows and the Drop/Scroll switch pulses (one at a time)
+  I2  a first-time tip (tip.js, LG_TIP.wire) that comes due while the intro plays waits: not shown under the video;
+      after Skip the intro is gone, then the tip shows. The home page's own Drop note and Drop/Scroll switch pulse
+      were removed when walking became always on (Brandon 2026-11-14, home_drop.js); Juketube's #jbhint is tip.js's
+      user now, so the case wires a test tip (#lgintrochecktip) through the real LG_TIP during the intro
   I3  the next visit: the intro plays again, without the first-visit line
   I4  /settings/intro logged out: 'Play intro video on each visit' is on by default; turning it off keeps '0' in
       localStorage 'liquidgov.<kIntroPref>' and the next visit has no intro (gone before the page shows); on again
@@ -107,11 +109,17 @@ def make_handler(platform):
 
 STATE = r"""(() => { const q = s => document.querySelector(s), box = e => { if (!e || e.hidden || getComputedStyle(e).display === 'none') return null;
     const r = e.getBoundingClientRect(); return {l: r.left, t: r.top, r: r.right, b: r.bottom}; };
-  const P = LG_WALKER && LG_WALKER.CONTROLS.buttons.drop, tip = P && P.tip ? q('.lg-tip.' + P.tip.cls) : null, el = q('#lgintro'), note = q('#lgintronote');
+  const el = q('#lgintro'), note = q('#lgintronote');
   return JSON.stringify({intro: !!el, atLoad: window.LG_INTRO_AT_LOAD, mode: el && el.dataset.mode, pref: el && el.dataset.pref,
     note: box(note), noteText: note ? note.textContent.trim() : null, link: note && note.querySelector('a') ? note.querySelector('a').getAttribute('href') : null,
-    skip: box(q('#lgintroskip')), tip: box(tip), pulse: !!q('.' + P.cls + '.' + LG_WALKER.CONTROLS.home.invite),
+    skip: box(q('#lgintroskip')), tip: box(q('#lgintrochecktip')),
     store: (() => { try { return Object.assign({}, localStorage); } catch (e) { return null; } })()}); })()"""
+
+
+# I2's test tip: wired through the real LG_TIP (tip.js) while the intro is up, the way Juketube wires #jbhint.
+WIRE_TIP = r"""(() => { if (!window.LG_TIP) return 'no LG_TIP'; const t = document.createElement('div'), x = document.createElement('button');
+  t.id = 'lgintrochecktip'; t.className = 'lg-tip'; t.textContent = 'intro check tip'; x.className = 'lg-tip-close'; x.textContent = 'x';
+  t.appendChild(x); document.body.appendChild(t); LG_TIP.wire(t, x, 'introcheck', {}); return 'wired'; })()"""
 
 
 FIT = r"""(() => { const vw = innerWidth, vh = innerHeight, q = s => document.querySelector(s), el = q('#lgintro'), v = q('#lgintrovid');
@@ -179,14 +187,17 @@ class Run(w.Run):
                    s.get("intro") is True and s.get("mode") == "browser" and s.get("pref") == pref and bool(n) and bool(k)
                    and s.get("noteText") == "Plays every visit. Turn off in Settings" and s.get("link") == "/settings/intro"
                    and not w.overlaps(n, k), s)
-        self.check("I2 while the intro plays the Drop note waits (not shown under the video)", s.get("tip") is None, s)
+        wired = self.j(WIRE_TIP)
+        s1 = self.j(STATE) or {}
+        self.check("I2 a first-time tip due while the intro plays waits (not shown under the video)",
+                   wired == "wired" and s1.get("intro") is True and s1.get("tip") is None, {"wire": wired, "state": s1})
         self.tap("#lgintroskip")
         self.wait("!document.getElementById('lgintro')", 3)
         time.sleep(0.3)
         s2 = self.j(STATE) or {}
         self.shot("intro-after-skip-phone", {"x": 0, "y": 0, "width": 390, "height": 420})
-        self.check("I2 after Skip the intro is gone, then the Drop note shows and the switch pulses (one at a time)",
-                   s2.get("intro") is False and bool(s2.get("tip")) and s2.get("pulse") is True, s2)
+        self.check("I2 after Skip the intro is gone, then the tip shows",
+                   s2.get("intro") is False and bool(s2.get("tip")), s2)
         s3 = self.load("/")
         self.check("I3 the next visit plays the intro again, without the first-visit line",
                    s3.get("intro") is True and s3.get("note") is None, s3)

@@ -1,0 +1,26 @@
+name: uptime
+
+# Is liquidgov.us reachable BY NAME from outside? (q295: on 2026-11-20 and 2026-11-21 the site was down for everyone
+# while the server was fine, because the domain's nameservers went silent, and nothing said so.) Every 15 minutes a
+# GitHub runner asks public DNS for the domain's nameservers, asks each of them, asks 1.1.1.1 and 8.8.8.8, and loads
+# https://liquidgov.us/ by name (scripts/uptime_check.py). A failing look turns the run red, adds an error
+# annotation naming what failed, and GitHub emails about the failed scheduled run.
+# Runs from the default branch only (GitHub's rule for schedules). GitHub may run a schedule a few minutes late, and
+# pauses schedules in a public repo after 60 days with no commits.
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  uptime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: liquidgov.us resolves and loads by name
+        run: python3 scripts/uptime_check.py liquidgov.us

@@ -787,6 +787,22 @@
       btn.addEventListener('click', function () { show(panel.hidden); });
       document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !panel.hidden) show(false); });
       host.appendChild(btn); host.appendChild(panel);
+      // Below the trail, never on it (2026-11-21): at a fixed top of 3.2rem the "?" sat on the phone trail's first box
+      // (Back to You), so a tap on Back opened the key; map_bar_check B6 had failed on master since 2026-11-20 for this.
+      // The trail's height changes with the screen and the trail, so the key follows the bars' bottom edge.
+      function place() {
+        var bars = document.getElementById('lgm-bars');
+        if (!bars) return;
+        var top = Math.round(bars.getBoundingClientRect().bottom - host.getBoundingClientRect().top) + 8;
+        if (top < 8) top = 8;
+        btn.style.top = top + 'px';
+        panel.style.top = (top + 52) + 'px';
+        panel.style.maxHeight = 'calc(100% - ' + (top + 60) + 'px)';
+      }
+      place();
+      window.addEventListener('resize', place);
+      var bars0 = document.getElementById('lgm-bars');
+      if (bars0 && window.ResizeObserver) new ResizeObserver(place).observe(bars0);
     }
     // The stream you are in is drawn over the others where they cross (Brandon 2026-11-16: "whatever stream youre on should be
     // on the topmost layer"): its shore, water and shimmer are drawn again in #lgm-top, above every stream and below the pools,

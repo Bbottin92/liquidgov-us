@@ -111,6 +111,12 @@ class BarRun(phone_check.Run):
         self.tap_sel("#lgm-trail .lgm-trail-prev")
         t6 = self.trail()
         self.check("B6 the previous box (Back) from Groups goes up to You", before == ["You", "Groups"] and t6 == ["You"], {"before": before, "after": t6})
+        # B6b (2026-11-21): nothing sits on any trail box. The "?" key button covered the Back box on a phone, which is
+        # why B6 failed since 2026-11-20 (its tap landed on lgm-keybtn).
+        cover = self.j("JSON.stringify([...document.querySelectorAll('#lgm-trail .lgm-trail-step')].map(b => { const r = "
+                       "b.getBoundingClientRect(), e = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);"
+                       " return e && !b.contains(e) ? (e.id || e.tagName) : null; }).filter(Boolean))")
+        self.check("B6b no other control covers a trail box (the '?' key sits below the trail)", cover == [], cover)
         # B7 (the MAINstream pill from You) went with the strip above the map (Brandon 2026-11-15: the map is fullscreen
         # under the site header; nothing else around it)
         self.shot("mainstream")

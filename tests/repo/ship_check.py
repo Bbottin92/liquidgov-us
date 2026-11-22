@@ -15,7 +15,12 @@ import tempfile
 
 ROOT = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(__file__), "..", ".."))
 SHIP = os.path.join(ROOT, "scripts", "ship.py")
-ENV = {k: v for k, v in os.environ.items() if not k.startswith("GIT_") and k != "LIQUIDGOV_CI_GATE_MODE"}
+# GIT_*, LG_CHECK_MODE and bytecode handled by the shared helper (hook_env_isolation_check.py keeps it that way):
+# this check sets core.hooksPath for its fake pre-push hook (q310)
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "scripts"))
+from hook_env import clean_env  # noqa: E402  (scripts/hook_env.py)
+ENV = clean_env()
+ENV.pop("LIQUIDGOV_CI_GATE_MODE", None)
 passes = fails = 0
 
 FAKE_GH = r'''

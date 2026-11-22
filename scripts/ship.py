@@ -243,6 +243,28 @@ def finish(branch, reasons, pair, files):
     return 0
 
 
+def push(sha, log):
+    """git push of sha to master with NO time limit, its output (the pre-push hook's checks) written to log line by line
+    as it runs. run()'s 300 s cap killed the push of PR #31 mid-checks (2026-11-21, q310); never --no-verify.
+    tests/repo/ship_check.py (slow pre-push hook)"""
+    os.makedirs(os.path.dirname(log) or ".", exist_ok=True)
+    lines = []
+    try:
+        with open(log, "w", encoding="utf-8") as f:
+            p = subprocess.Popen(["git", "push", "origin", "%s:refs/heads/master" % sha], cwd=REPO, env=ENV,
+                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8",
+                                 errors="replace")
+            for line in p.stdout:
+                f.write(line)
+                f.flush()
+                lines.append(line)
+            rc = p.wait()
+    except OSError as e:
+        raise Fail("git push origin master could not run: %s" % e)
+    if rc != 0:
+        raise Fail("git push origin master failed (exit %d): %s" % (rc, why_refused("".join(lines), log)))
+
+
 def merge(branch, wait_min, out_dir):
     """Only on Brandon's "merge": the full check first; then origin/master moves to exactly the branch head by a plain
     push (git refuses anything but a fast-forward; never --force), and the result is read back."""
@@ -271,7 +293,9 @@ def merge(branch, wait_min, out_dir):
                        "run merge from a clean master checkout" % (here, " with changes" if here == "master" else "", sha[:7]))
         git("merge", "--ff-only", "-q", sha)
         print("   this checkout fast-forwarded to %s, so the pre-push hook checks the files being pushed" % sha[:7])
-    run(["git", "push", "origin", "%s:refs/heads/master" % sha], "git push origin master")
+    push_log = os.path.join(out_dir, "push.log")
+    print("   pushing; the pre-push checks write to %s as they run (no time limit)" % push_log)
+    push(sha, push_log)
     git("fetch", "-q", "origin")
     now = git("rev-parse", "origin/master")
     if now != sha:

@@ -175,9 +175,21 @@ try:
     rc, out = merge("wip/1-code", dict(ok_state, runs=[dict(GREEN, conclusion="failure")]))
     check("merge of a NOT ready branch refuses and leaves origin/master alone",
           rc == 1 and "SHIP_NOT_READY" in out and om() == before, out)
+    # q310 (2026-11-21, PR #31): the push runs the pre-push hook's checks; ship used to cap it at 300 s and keep no log.
+    # A slow hook's output must land in out/m/push.log as it runs; a failing hook refuses and names that log.
+    hook = os.path.join(work, ".git", "hooks", "pre-push")
+    push_log = os.path.join(tmp, "out", "m", "push.log")
+    open(hook, "w", newline="\n").write("#!/bin/sh\necho PREPUSH-CHECK-FAILED\nexit 1\n")
+    rc, out = merge("wip/1-code", ok_state)
+    check("a failing pre-push hook: merge refuses, origin/master unchanged, the error names push.log",
+          rc == 1 and om() == before and "push.log" in out and "PREPUSH-CHECK-FAILED" in out, out)
+    open(hook, "w", newline="\n").write("#!/bin/sh\necho PREPUSH-CHECKS-RAN\nsleep 2\nexit 0\n")
     rc, out = merge("wip/1-code", ok_state)
     check("merge of a ready branch moves origin/master to exactly the branch head",
           rc == 0 and om() == sh(work, "git", "rev-parse", "wip/1-code") and "SHIP_MERGED" in out, out)
+    check("...and the slow pre-push hook's output is in push.log",
+          os.path.isfile(push_log) and "PREPUSH-CHECKS-RAN" in open(push_log, encoding="utf-8").read(), out)
+    os.remove(hook)
     sh(work, "git", "fetch", "-q", "origin")
     rc, out = merge("wip/2-assets", ok_state)
     check("merge of a branch that is no longer a fast-forward refuses (no force push)",

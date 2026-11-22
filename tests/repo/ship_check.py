@@ -179,11 +179,19 @@ try:
     # A slow hook's output must land in out/m/push.log as it runs; a failing hook refuses and names that log.
     hook = os.path.join(work, ".git", "hooks", "pre-push")
     push_log = os.path.join(tmp, "out", "m", "push.log")
-    open(hook, "w", newline="\n").write("#!/bin/sh\necho PREPUSH-CHECK-FAILED\nexit 1\n")
+    # git on Linux skips a hook without the exec bit (Windows has none; CI hook-checks failed on it 2026-11-21), and a
+    # global core.hooksPath would bypass .git/hooks: pin both.
+    sh(work, "git", "config", "core.hooksPath", os.path.dirname(hook))
+
+    def write_hook(body):
+        with open(hook, "w", newline="\n") as f:
+            f.write(body)
+        os.chmod(hook, 0o755)
+    write_hook("#!/bin/sh\necho PREPUSH-CHECK-FAILED\nexit 1\n")
     rc, out = merge("wip/1-code", ok_state)
     check("a failing pre-push hook: merge refuses, origin/master unchanged, the error names push.log",
           rc == 1 and om() == before and "push.log" in out and "PREPUSH-CHECK-FAILED" in out, out)
-    open(hook, "w", newline="\n").write("#!/bin/sh\necho PREPUSH-CHECKS-RAN\nsleep 2\nexit 0\n")
+    write_hook("#!/bin/sh\necho PREPUSH-CHECKS-RAN\nsleep 2\nexit 0\n")
     rc, out = merge("wip/1-code", ok_state)
     check("merge of a ready branch moves origin/master to exactly the branch head",
           rc == 0 and om() == sh(work, "git", "rev-parse", "wip/1-code") and "SHIP_MERGED" in out, out)

@@ -16,8 +16,9 @@ Usage: python scripts/ship.py check <branch> [--wait MIN] [--out DIR]
   6. the phone-screenshots artifact downloaded to --out (default ~/scratch/<date>-claude-ship/<branch>), PNGs listed
 Last line: SHIP_READY <branch> or SHIP_NOT_READY <branch>: <reasons>; exit 0 when ready, 1 when not, 2 on bad usage.
 Nothing here merges, pushes or deploys. A gh or git error counts as not ready (fails closed).
-Test seams: SHIP_GH (JSON list, the gh command), SHIP_REPO (repo root), SHIP_NO_FETCH=1, SHIP_POLL_SECONDS.
-Tests: tests/repo/ship_check.py"""
+Test seams: SHIP_GH (JSON list, the gh command), SHIP_REPO (repo root), SHIP_NO_FETCH=1, SHIP_POLL_SECONDS,
+  SHIP_PUSH_SIMULATE=fail|fail-after|ok-no-push, SHIP_FETCH_FAIL=1 (post-push read-back of origin/master).
+Tests: tests/repo/ship_check.py, tests/repo/ship_preconditions_check.py"""
 import datetime
 import json
 import os
@@ -64,6 +65,109 @@ def git(*args):
     return run(["git"] + list(args), "git " + args[0]).strip()
 
 
+def _unknown_revision(err):
+    text = str(err).lower()
+    return "unknown revision" in text or "ambiguous argument" in text or "needed a single revision" in text
+
+
+def _corrupt_ref(err):
+    text = str(err).lower()
+    return ("broken ref" in text or "invalid object" in text or "bad object" in text
+            or "corrupt" in text or "not a commit" in text)
+
+
+def _ref_sha(ref):
+    """Sha of ref, or None if the ref does not exist. Raise Fail when the ref is corrupt or unreadable."""
+    try:
+        return git("rev-parse", "--verify", ref)
+    except Fail as e:
+        if _corrupt_ref(e):
+            raise Fail("could not read %s (corrupt or unreadable): %s" % (ref, e))
+        if _unknown_revision(e):
+            return None
+        raise Fail("could not read %s: %s" % (ref, e))
+
+
+def _is_ancestor(maybe_anc, maybe_desc):
+    try:
+        git("merge-base", "--is-ancestor", maybe_anc, maybe_desc)
+        return True
+    except Fail as e:
+        if "exit 1" in str(e):
+            return False
+        raise
+
+
+def _fast_forward_branch(branch, sha):
+    """Move the local branch to sha by fast-forward only (the caller already proved it is behind)."""
+    head = git("rev-parse", "--abbrev-ref", "HEAD")
+    if head == branch:
+        if git("status", "--porcelain"):
+            raise Fail("working tree is not clean, so local branch %s could not be fast-forwarded to %s"
+                       % (branch, sha[:7]))
+        git("merge", "--ff-only", "-q", sha)
+    else:
+        git("update-ref", "refs/heads/" + branch, sha)
+
+
+def align_branch_to_origin(branch):
+    """Make the local branch match origin/<branch> when it is only missing or strictly behind.
+    Refuse with a plain reason when the branch is missing entirely, ahead, or diverged, or a ref
+    is unreadable. Returns the sha to use."""
+    local = _ref_sha("refs/heads/" + branch)
+    remote = _ref_sha("origin/" + branch)
+    if local is None and remote is None:
+        raise Fail("branch %s does not exist locally or on origin; create it or fetch origin first" % branch)
+    if local is None and remote is not None:
+        try:
+            git("branch", "--track", branch, "origin/" + branch)
+        except Fail as e:
+            raise Fail("could not create local branch %s from origin/%s: %s" % (branch, branch, e))
+        print("created local branch %s at %s to match origin/%s" % (branch, remote[:7], branch))
+        return remote
+    if remote is None and local is not None:
+        return local
+    if local == remote:
+        return local
+    local_behind = _is_ancestor(local, remote)
+    local_ahead = _is_ancestor(remote, local)
+    if local_behind and not local_ahead:
+        try:
+            _fast_forward_branch(branch, remote)
+        except Fail as e:
+            raise Fail("local branch %s is behind origin/%s (local %s, origin %s) but could not fast-forward: %s"
+                       % (branch, branch, local[:7], remote[:7], e))
+        print("fast-forwarded local branch %s from %s to %s (origin/%s)"
+              % (branch, local[:7], remote[:7], branch))
+        return remote
+    if local_ahead and not local_behind:
+        relation = "ahead of"
+    else:
+        relation = "diverged from"
+    raise Fail("local branch %s %s origin/%s (local %s, origin %s); update or push the local branch before check/merge"
+               % (branch, relation, branch, local[:7], remote[:7]))
+
+
+def _read_origin_master():
+    """The remote's real master sha via ls-remote, or (None, reason) when it cannot be read."""
+    if os.environ.get("SHIP_FETCH_FAIL") == "1":
+        return None, "could not read origin/master after the push: ls-remote failed (SHIP_FETCH_FAIL=1)"
+    try:
+        out = git("ls-remote", "origin", "refs/heads/master")
+    except Fail as e:
+        return None, "could not read origin/master after the push: %s" % e
+    line = (out.splitlines()[0] if out.strip() else "")
+    sha = line.split()[0] if line else ""
+    hexdigits = "0123456789abcdef"
+    if len(sha) < 40 or any(c not in hexdigits for c in sha.lower()):
+        return None, "could not read origin/master after the push: missing or unreadable ref %r" % out[:200]
+    try:
+        git("fetch", "-q", "origin")
+    except Fail:
+        pass
+    return sha, None
+
+
 def pair_for(files):
     site = [f for f in files if f.startswith(PLATFORM)]
     if not site:
@@ -87,7 +191,7 @@ def check(branch, wait_min, out_dir):
     reasons = []
     if os.environ.get("SHIP_NO_FETCH") != "1":
         git("fetch", "-q", "origin")
-    sha = git("rev-parse", branch)
+    sha = align_branch_to_origin(branch)
     VERIFIED[branch] = sha  # the one commit every check below is about; merge pushes exactly this (review B1)
     try:
         osha = git("rev-parse", "origin/" + branch)
@@ -249,12 +353,22 @@ def finish(branch, reasons, pair, files):
 def push(sha, log):
     """git push of sha to master with NO time limit, its output (the pre-push hook's checks) written to log line by line
     as it runs. run()'s 300 s cap killed the push of PR #31 mid-checks (2026-11-21, q310); never --no-verify.
-    tests/repo/ship_check.py (slow pre-push hook)"""
+    tests/repo/ship_check.py (slow pre-push hook).
+    Test seams: SHIP_PUSH_SIMULATE=fail (no push, report failure); fail-after (push, then report failure);
+    ok-no-push (report success without pushing)."""
     os.makedirs(os.path.dirname(log) or ".", exist_ok=True)
+    sim = os.environ.get("SHIP_PUSH_SIMULATE") or ""
+    cmd = ["git", "push", "origin", "%s:refs/heads/master" % sha]
+    if sim == "fail":
+        open(log, "w", encoding="utf-8").close()
+        raise Fail("git push origin master failed (exit 1): simulated push failure (log: %s)" % log)
+    if sim == "ok-no-push":
+        open(log, "w", encoding="utf-8").close()
+        return
     lines = []
     try:
         with open(log, "w", encoding="utf-8") as f:
-            p = subprocess.Popen(["git", "push", "origin", "%s:refs/heads/master" % sha], cwd=REPO, env=ENV,
+            p = subprocess.Popen(cmd, cwd=REPO, env=ENV,
                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8",
                                  errors="replace")
             for line in p.stdout:
@@ -264,13 +378,19 @@ def push(sha, log):
             rc = p.wait()
     except OSError as e:
         raise Fail("git push origin master could not run: %s" % e)
+    if sim == "fail-after":
+        if rc != 0:
+            raise Fail("git push origin master failed (exit %d): %s" % (rc, why_refused("".join(lines), log)))
+        raise Fail("git push origin master failed (exit 1): simulated failure after the push (log: %s)" % log)
     if rc != 0:
         raise Fail("git push origin master failed (exit %d): %s" % (rc, why_refused("".join(lines), log)))
 
 
 def merge(branch, wait_min, out_dir):
     """Only on Brandon's "merge": the full check first; then origin/master moves to exactly the branch head by a plain
-    push (git refuses anything but a fast-forward; never --force), and the result is read back."""
+    push (git refuses anything but a fast-forward; never --force), and the result is read back.
+    After every push attempt, including a reported failure, look at the remote's real master before saying
+    failed or landed."""
     if check(branch, wait_min, out_dir) != 0:
         return 1
     sha = VERIFIED[branch]
@@ -298,14 +418,26 @@ def merge(branch, wait_min, out_dir):
         print("   this checkout fast-forwarded to %s, so the pre-push hook checks the files being pushed" % sha[:7])
     push_log = os.path.join(out_dir, "push.log")
     print("   pushing; the pre-push checks write to %s as they run (no time limit)" % push_log)
-    push(sha, push_log)
-    git("fetch", "-q", "origin")
-    now = git("rev-parse", "origin/master")
-    if now != sha:
-        raise Fail("after the push origin/master is %s, not %s" % (now[:7], sha[:7]))
-    print("origin/master is now %s (= %s), and so is this checkout." % (sha[:7], branch))
-    print("SHIP_MERGED %s %s" % (branch, sha[:7]))
-    return 0
+    push_error = None
+    try:
+        push(sha, push_log)
+    except Fail as e:
+        push_error = e
+    now, look_error = _read_origin_master()
+    if look_error:
+        raise Fail("%s%s" % (look_error, ("; push also reported: %s" % push_error) if push_error else ""))
+    if now == sha:
+        if push_error:
+            print("push reported a failure, but origin/master is %s, so the commit landed on GitHub." % now[:7])
+            print("push said: %s" % push_error)
+        print("origin/master is now %s (= %s), and so is this checkout." % (sha[:7], branch))
+        print("SHIP_MERGED %s %s" % (branch, sha[:7]))
+        return 0
+    if push_error:
+        raise Fail("%s (looked at origin/master: %s, not the pushed %s; log: %s)"
+                   % (push_error, now[:7], sha[:7], push_log))
+    raise Fail("push reported success, but origin/master is %s, not the pushed %s; not landed (log: %s)"
+               % (now[:7], sha[:7], push_log))
 
 
 # ---- deploy / go (Brandon 2026-11-11 "yes build it"): the liquidgov-deploy order, steps 3-9, driven by the scripts

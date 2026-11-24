@@ -1,0 +1,37 @@
+name: ci-verdicts
+
+# The browser checks in platform.yml are report-only steps, so a platform run says success while a VERDICT FAILS
+# (2026-11-21: intro, walker-valve-types, sticky-ci, herebubble-ci and bar-ci failed on master from 2026-11-20 and
+# nobody saw it; lessons/merging-or-pushing.md:80, q291). A step cannot read another step's output, so this workflow
+# runs once the platform run has finished, reads that run's log and puts every failing verdict where it is seen: a
+# warning annotation on the run and a table in this run's summary. Report-only too (exit 0 on failing verdicts): it
+# says, it does not block. scripts/ci_verdicts.py is the one parser (ship.py reads verdicts through it as well).
+# GitHub runs workflow_run workflows from the default branch, so this starts working once it is on master.
+
+on:
+  workflow_run:
+    workflows: [platform]
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  verdicts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: failing browser verdicts of platform run ${{ github.event.workflow_run.id }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          set -uo pipefail
+          # the log can take a moment to be served after the run completes: three looks, 20 s apart, then fail loudly
+          for i in 1 2 3; do
+            gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --log > "$RUNNER_TEMP/platform.log" && break
+            echo "log of run $RUN_ID not served yet (look $i)"; [ "$i" = 3 ] && exit 1; sleep 20
+          done
+          python3 scripts/ci_verdicts.py parse "$RUNNER_TEMP/platform.log" --github

@@ -1,0 +1,20 @@
+<!doctype html>
+<!-- A stand-in page for tools/edit_mode.js: try edit mode here without the site (open this file in the Claude app's
+     browser pane), and the page tests/browser/edit_mode_check.py draws on. Not served by the site. -->
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Edit mode demo page</title></head>
+<body style="margin:0;font:16px system-ui;background:#0f1622;color:#e8eef7">
+<header style="display:flex;gap:12px;align-items:center;padding:14px 20px;background:#16202f">
+  <a href="#" class="brand" style="color:#7fd3ff;font-weight:700;text-decoration:none">MAINstream</a>
+  <nav><button id="lgm-back" class="lgm-trail-step" style="padding:6px 12px">Back</button>
+       <button class="lgm-trail-step here" style="padding:6px 12px">Groups</button></nav>
+</header>
+<main style="padding:20px;max-width:900px">
+  <h1>Your pools</h1>
+  <p class="lead">Friends, Politics, Places and Groups are the pools around you.</p>
+  <ul class="pools"><li data-id="mine:friends">Friends</li><li data-id="mine:politics">Politics</li><li data-id="mine:places">Places</li></ul>
+  <div id="spacer" style="height:1400px"></div>
+  <p id="footer-note">End of page</p>
+</main>
+<script src="edit_mode.js"></script>
+</body></html>

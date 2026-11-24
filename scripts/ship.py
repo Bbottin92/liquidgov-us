@@ -27,6 +27,9 @@ import sys
 import tempfile
 import time
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import ci_verdicts  # noqa: E402  (the VERDICT lines' one parser)
+
 REPO = os.environ.get("SHIP_REPO") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GH = json.loads(os.environ["SHIP_GH"]) if os.environ.get("SHIP_GH") else ["gh"]
 GH_REPO = ["--repo", "Bbottin92/liquidgov-us"]
@@ -158,7 +161,7 @@ def check(branch, wait_min, out_dir):
             if r.get("conclusion") != "success":
                 reasons.append("CI " + str(r.get("conclusion")))
             log = run(GH + ["run", "view", rid] + GH_REPO + ["--log"], "gh run view --log")
-            verdicts = sorted({l[l.index("VERDICT "):].strip() for l in log.splitlines() if "VERDICT " in l})
+            verdicts = sorted({v["line"] for v in ci_verdicts.verdicts(log)})   # the one parser (q291)
             print("5. phone VERDICT: " + ("; ".join(verdicts) if verdicts else "none in the log"))
             if site_changed and (not verdicts or any("ALL-PASS" not in v for v in verdicts)):
                 reasons.append("phone VERDICT not ALL-PASS")

@@ -37,6 +37,7 @@ jobs:
     outputs:
       platform: ${{ steps.diff.outputs.platform }}
       canvas_only: ${{ steps.diff.outputs.canvas_only }}
+      map: ${{ steps.diff.outputs.map }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -70,7 +71,10 @@ jobs:
           fi
           printf '%s\n' "$files" > "$RUNNER_TEMP/files.txt"
           if [ -n "$base" ]; then git diff -U0 "$base" HEAD -- liquidgov-platform/assets/site.css > "$RUNNER_TEMP/css.diff"; else : > "$RUNNER_TEMP/css.diff"; fi
-          python3 scripts/ci_scope.py --files "$RUNNER_TEMP/files.txt" --css-diff "$RUNNER_TEMP/css.diff" | tee -a "$GITHUB_OUTPUT"
+          # map=false skips the map/walker browser steps when nothing they see changed (q290, 2026-11-21); a push to
+          # master always runs them (--full).
+          FULL=""; if [ "$EVENT" = push ] && [ "$REF" = refs/heads/master ]; then FULL="--full"; fi
+          python3 scripts/ci_scope.py --files "$RUNNER_TEMP/files.txt" --css-diff "$RUNNER_TEMP/css.diff" $FULL | tee -a "$GITHUB_OUTPUT"
           if [ "$files" = "new ref" ] || printf '%s\n' "$files" | grep -qE '^(liquidgov-platform/|scripts/lgcheck\.sh$|\.github/workflows/platform\.yml$)'; then
             echo "platform=true" >> "$GITHUB_OUTPUT"; echo "platform changed: full build and tests"
           else
@@ -245,7 +249,7 @@ jobs:
       # The bars stay at the top WHILE THE PAGE SCROLLS (Grok Bot's map check, should-fix 5: B8 in the bar check reads
       # only the computed style, which stays "sticky" when an ancestor traps it). Report-only like the three above.
       - name: map sticky-bars check (browser, report-only)
-        if: always()
+        if: always() && needs.changes.outputs.map != 'false'
         timeout-minutes: 10
         continue-on-error: true
         run: |
@@ -384,7 +388,7 @@ jobs:
       # Map SPEC phase 1 (Brandon 2026-11-11): the filter bar, Back, Zoom out, sticky bars. Report-only for the same reason
       # as the step above; its "VERDICT bar-ci" line is read by ship.py like the phone VERDICT. Same screenshot folder.
       - name: map bar check (browser, report-only)
-        if: always()
+        if: always() && needs.changes.outputs.map != 'false'
         timeout-minutes: 10
         continue-on-error: true
         run: |
@@ -394,7 +398,7 @@ jobs:
 
       # The map's Hidden mode (Brandon 2026-11-11). Report-only like the two above; "VERDICT hidden-ci" is gated by ship.py.
       - name: map hidden-mode check (browser, report-only)
-        if: always()
+        if: always() && needs.changes.outputs.map != 'false'
         timeout-minutes: 10
         continue-on-error: true
         run: |
@@ -489,7 +493,7 @@ jobs:
       # map_live_check, map_live_check2, map_big_level_check, map_you_ring_all_kinds_check and map_view_only_check, which
       # tested the old model (a fresh ring per level, the side panel).
       - name: the map is one world, boxes and pools (map_world_check) (browser, report-only)
-        if: always()
+        if: always() && needs.changes.outputs.map != 'false'
         timeout-minutes: 8
         continue-on-error: true
         run: |
@@ -532,6 +536,15 @@ jobs:
           set -uo pipefail
           export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
           python3 liquidgov-platform/tests/browser/finerange_check.py "$PWD/liquidgov-platform"
+
+      - name: edit mode marks, numbers and comments under a strict CSP (edit_mode_check) (browser, report-only)
+        if: always()
+        timeout-minutes: 5
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          export LG_BROWSER="$(command -v google-chrome || command -v chromium || true)"
+          python3 liquidgov-platform/tests/browser/edit_mode_check.py "$PWD/liquidgov-platform" "$RUNNER_TEMP/phone"
 
       - name: Messages page layout (messenger_layout_check) (browser, report-only)
         if: always()
@@ -579,7 +592,7 @@ jobs:
           python3 liquidgov-platform/tests/browser/site_hidden_check.py "$PWD/liquidgov-platform"
 
       - name: walker controls, WASD/Enter/Esc and the phone D-pad, A and B (walker_controls_check) (browser, report-only)
-        if: always()
+        if: always() && needs.changes.outputs.map != 'false'
         timeout-minutes: 5
         continue-on-error: true
         run: |
@@ -597,7 +610,7 @@ jobs:
           python3 liquidgov-platform/tests/browser/intro_check.py "$PWD/liquidgov-platform" "$RUNNER_TEMP/phone"
 
       - name: walker kind marks (walker_kind_marks_check) (browser, report-only)
-        if: always()
+        if: always() && needs.changes.outputs.map != 'false'
         timeout-minutes: 5
         continue-on-error: true
         run: |
@@ -606,7 +619,7 @@ jobs:
           python3 liquidgov-platform/tests/browser/walker_kind_marks_check.py "$PWD/liquidgov-platform" "$RUNNER_TEMP/phone"
 
       - name: walker kind table (walker_kind_table_check) (browser, report-only)
-        if: always()
+        if: always() && needs.changes.outputs.map != 'false'
         timeout-minutes: 5
         continue-on-error: true
         run: |
@@ -615,7 +628,7 @@ jobs:
           python3 liquidgov-platform/tests/browser/walker_kind_table_check.py "$PWD/liquidgov-platform" "$RUNNER_TEMP/phone"
 
       - name: walker map clarity (walker_map_clarity_check) (browser, report-only)
-        if: always()
+        if: always() && needs.changes.outputs.map != 'false'
         timeout-minutes: 5
         continue-on-error: true
         run: |
@@ -624,7 +637,7 @@ jobs:
           python3 liquidgov-platform/tests/browser/walker_map_clarity_check.py "$PWD/liquidgov-platform" "$RUNNER_TEMP/phone"
 
       - name: walker page icon clear (walker_page_icon_clear_check) (browser, report-only)
-        if: always()
+        if: always() && needs.changes.outputs.map != 'false'
         timeout-minutes: 5
         continue-on-error: true
         run: |
@@ -633,7 +646,7 @@ jobs:
           python3 liquidgov-platform/tests/browser/walker_page_icon_clear_check.py "$PWD/liquidgov-platform" "$RUNNER_TEMP/phone"
 
       - name: walker page slot (walker_page_slot_check) (browser, report-only)
-        if: always()
+        if: always() && needs.changes.outputs.map != 'false'
         timeout-minutes: 5
         continue-on-error: true
         run: |
@@ -642,7 +655,7 @@ jobs:
           python3 liquidgov-platform/tests/browser/walker_page_slot_check.py "$PWD/liquidgov-platform" "$RUNNER_TEMP/phone"
 
       - name: walker page symbol (walker_page_symbol_check) (browser, report-only)
-        if: always()
+        if: always() && needs.changes.outputs.map != 'false'
         timeout-minutes: 5
         continue-on-error: true
         run: |
@@ -651,7 +664,7 @@ jobs:
           python3 liquidgov-platform/tests/browser/walker_page_symbol_check.py "$PWD/liquidgov-platform" "$RUNNER_TEMP/phone"
 
       - name: walker shore colour (walker_shore_colour_check) (browser, report-only)
-        if: always()
+        if: always() && needs.changes.outputs.map != 'false'
         timeout-minutes: 5
         continue-on-error: true
         run: |
@@ -660,7 +673,7 @@ jobs:
           python3 liquidgov-platform/tests/browser/walker_shore_colour_check.py "$PWD/liquidgov-platform" "$RUNNER_TEMP/phone"
 
       - name: walker signs (walker_signs_check) (browser, report-only)
-        if: always()
+        if: always() && needs.changes.outputs.map != 'false'
         timeout-minutes: 5
         continue-on-error: true
         run: |
@@ -669,7 +682,7 @@ jobs:
           python3 liquidgov-platform/tests/browser/walker_signs_check.py "$PWD/liquidgov-platform" "$RUNNER_TEMP/phone"
 
       - name: walker signs spread (walker_signs_spread_check) (browser, report-only)
-        if: always()
+        if: always() && needs.changes.outputs.map != 'false'
         timeout-minutes: 5
         continue-on-error: true
         run: |
@@ -678,7 +691,7 @@ jobs:
           python3 liquidgov-platform/tests/browser/walker_signs_spread_check.py "$PWD/liquidgov-platform" "$RUNNER_TEMP/phone"
 
       - name: walker stream crossing (walker_stream_crossing_check) (browser, report-only)
-        if: always()
+        if: always() && needs.changes.outputs.map != 'false'
         timeout-minutes: 5
         continue-on-error: true
         run: |
@@ -687,7 +700,7 @@ jobs:
           python3 liquidgov-platform/tests/browser/walker_stream_crossing_check.py "$PWD/liquidgov-platform" "$RUNNER_TEMP/phone"
 
       - name: map walker instanceId, spatial step 3 (walker_instance_check) (browser, report-only)
-        if: always()
+        if: always() && needs.changes.outputs.map != 'false'
         timeout-minutes: 5
         continue-on-error: true
         run: |
@@ -696,7 +709,7 @@ jobs:
           python3 liquidgov-platform/tests/browser/walker_instance_check.py "$PWD/liquidgov-platform" "$RUNNER_TEMP/phone"
 
       - name: map Drop-mode proximity filter, spatial step 4 (walker_proximity_check) (browser, report-only)
-        if: always()
+        if: always() && needs.changes.outputs.map != 'false'
         timeout-minutes: 5
         continue-on-error: true
         run: |
@@ -705,7 +718,7 @@ jobs:
           python3 liquidgov-platform/tests/browser/walker_proximity_check.py "$PWD/liquidgov-platform" "$RUNNER_TEMP/phone"
 
       - name: map walker valve, spatial step 6 (walker_valve_check) (browser, report-only)
-        if: always()
+        if: always() && needs.changes.outputs.map != 'false'
         timeout-minutes: 5
         continue-on-error: true
         run: |
@@ -714,7 +727,7 @@ jobs:
           python3 liquidgov-platform/tests/browser/walker_valve_check.py "$PWD/liquidgov-platform" "$RUNNER_TEMP/phone"
 
       - name: map walker valve types, spatial step 7 (walker_valve_types_check) (browser, report-only)
-        if: always()
+        if: always() && needs.changes.outputs.map != 'false'
         timeout-minutes: 5
         continue-on-error: true
         run: |

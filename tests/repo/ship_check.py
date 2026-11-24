@@ -15,7 +15,12 @@ import tempfile
 
 ROOT = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(__file__), "..", ".."))
 SHIP = os.path.join(ROOT, "scripts", "ship.py")
-ENV = {k: v for k, v in os.environ.items() if not k.startswith("GIT_") and k != "LIQUIDGOV_CI_GATE_MODE"}
+# GIT_*, LG_CHECK_MODE and bytecode handled by the shared helper (hook_env_isolation_check.py keeps it that way):
+# this check sets core.hooksPath for its fake pre-push hook (q310)
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "scripts"))
+from hook_env import clean_env  # noqa: E402  (scripts/hook_env.py)
+ENV = clean_env()
+ENV.pop("LIQUIDGOV_CI_GATE_MODE", None)
 passes = fails = 0
 
 FAKE_GH = r'''
@@ -175,9 +180,29 @@ try:
     rc, out = merge("wip/1-code", dict(ok_state, runs=[dict(GREEN, conclusion="failure")]))
     check("merge of a NOT ready branch refuses and leaves origin/master alone",
           rc == 1 and "SHIP_NOT_READY" in out and om() == before, out)
+    # q310 (2026-11-21, PR #31): the push runs the pre-push hook's checks; ship used to cap it at 300 s and keep no log.
+    # A slow hook's output must land in out/m/push.log as it runs; a failing hook refuses and names that log.
+    hook = os.path.join(work, ".git", "hooks", "pre-push")
+    push_log = os.path.join(tmp, "out", "m", "push.log")
+    # git on Linux skips a hook without the exec bit (Windows has none; CI hook-checks failed on it 2026-11-21), and a
+    # global core.hooksPath would bypass .git/hooks: pin both.
+    sh(work, "git", "config", "core.hooksPath", os.path.dirname(hook))
+
+    def write_hook(body):
+        with open(hook, "w", newline="\n") as f:
+            f.write(body)
+        os.chmod(hook, 0o755)
+    write_hook("#!/bin/sh\necho PREPUSH-CHECK-FAILED\nexit 1\n")
+    rc, out = merge("wip/1-code", ok_state)
+    check("a failing pre-push hook: merge refuses, origin/master unchanged, the error names push.log",
+          rc == 1 and om() == before and "push.log" in out and "PREPUSH-CHECK-FAILED" in out, out)
+    write_hook("#!/bin/sh\necho PREPUSH-CHECKS-RAN\nsleep 2\nexit 0\n")
     rc, out = merge("wip/1-code", ok_state)
     check("merge of a ready branch moves origin/master to exactly the branch head",
           rc == 0 and om() == sh(work, "git", "rev-parse", "wip/1-code") and "SHIP_MERGED" in out, out)
+    check("...and the slow pre-push hook's output is in push.log",
+          os.path.isfile(push_log) and "PREPUSH-CHECKS-RAN" in open(push_log, encoding="utf-8").read(), out)
+    os.remove(hook)
     sh(work, "git", "fetch", "-q", "origin")
     rc, out = merge("wip/2-assets", ok_state)
     check("merge of a branch that is no longer a fast-forward refuses (no force push)",
